@@ -10,7 +10,10 @@
 //!                           online|online-browser|online-friends|online-friend|
 //!                           online-account|online-picker|
 //!                           online-party|online-party-picker|online-messages|online-conversation|
-//!                           online-message|online-request
+//!                           online-message|online-request|
+//!                           online-party-voice|online-party-member|online-voice|online-voice-key|
+//!                           online-voice-devices|online-voice-denied
+//!                           online-muted|online-restriction|online-paused|online-banned
 //!                 [--screenshot=out.png] [--size=WxH] [--tr]
 //! ```
 //!
@@ -123,6 +126,26 @@ pub enum OnlineLook {
     Conversation,
     /// A stranger's first messages, waiting for an answer.
     Request,
+    /// The party with voice on: Lumen speaks, Kit is muted for the player.
+    PartyVoice,
+    /// One member: how loud they are heard, mute.
+    PartyMember,
+    /// The voice page.
+    Voice,
+    /// The voice page while the talk key waits for a key.
+    VoiceKey,
+    /// The microphones to choose from.
+    VoiceDevices,
+    /// The net service switched voice off: the system refused the microphone.
+    VoiceDenied,
+    /// Home while a moderator's mute runs.
+    Muted,
+    /// The page of that mute: what, why, until when, how to appeal.
+    Restriction,
+    /// A conversation while the mute runs: the field is replaced.
+    Paused,
+    /// The Start page after a ban.
+    Banned,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -178,6 +201,16 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "online-message" => ScreenPage::Online(OnlineLook::Message),
         "online-conversation" => ScreenPage::Online(OnlineLook::Conversation),
         "online-request" => ScreenPage::Online(OnlineLook::Request),
+        "online-party-voice" => ScreenPage::Online(OnlineLook::PartyVoice),
+        "online-party-member" => ScreenPage::Online(OnlineLook::PartyMember),
+        "online-voice" => ScreenPage::Online(OnlineLook::Voice),
+        "online-voice-key" => ScreenPage::Online(OnlineLook::VoiceKey),
+        "online-voice-devices" => ScreenPage::Online(OnlineLook::VoiceDevices),
+        "online-voice-denied" => ScreenPage::Online(OnlineLook::VoiceDenied),
+        "online-muted" => ScreenPage::Online(OnlineLook::Muted),
+        "online-restriction" => ScreenPage::Online(OnlineLook::Restriction),
+        "online-paused" => ScreenPage::Online(OnlineLook::Paused),
+        "online-banned" => ScreenPage::Online(OnlineLook::Banned),
         other => {
             let n: usize = other.strip_prefix("settings")?.parse().ok()?;
             (n < crate::screens::settings::Category::ALL.len())
@@ -205,6 +238,7 @@ fn online_data(
         accent,
         now: SAMPLE_NOW,
         utc_offset: Some(0),
+        game_running: false,
     }
 }
 
@@ -215,6 +249,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         Account, AccountId, Activity, Count, Friend, FriendLists, Invitation, Presence, Privacy,
         Request, SessionRef,
     };
+    use anyps5_core::online::control::{Appeal, Restriction};
     use anyps5_core::online::{Cloud, Dialog, Online, Pending, SignedIn, Status};
     use std::collections::BTreeMap;
     let account = |id: u64, handle: &str| Account {
@@ -250,6 +285,21 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         OnlineLook::Start => return state,
         OnlineLook::Browser => {
             state.pending = Some(Pending::Browser);
+            return state;
+        }
+        OnlineLook::Banned => {
+            state.restrictions.ban(Restriction {
+                rule: Some("cheating".into()),
+                reason: Some(
+                    "Used a program that changes the game for everyone in the session.".into(),
+                ),
+                action: Some(12),
+                appeal: Some(Appeal {
+                    status: "available".into(),
+                    deadline: SAMPLE_NOW as u64 + 150 * 86_400,
+                }),
+                ..Restriction::new(Restriction::BANNED, Some(SAMPLE_NOW as u64 + 30 * 86_400))
+            });
             return state;
         }
         _ => {}
@@ -298,6 +348,22 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
     ]);
     state.privacy = Some(Privacy::default());
     sample_social(&mut state);
+    sample_voice(&mut state, look);
+    if matches!(
+        look,
+        OnlineLook::Muted | OnlineLook::Restriction | OnlineLook::Paused
+    ) {
+        state.restrictions.list(vec![Restriction {
+            rule: Some("spam".into()),
+            reason: Some("The same link went to many people who did not know you.".into()),
+            action: Some(41),
+            appeal: Some(Appeal {
+                status: "available".into(),
+                deadline: SAMPLE_NOW as u64 + 150 * 86_400,
+            }),
+            ..Restriction::new(Restriction::MUTED, Some(SAMPLE_NOW as u64 + 3 * 86_400))
+        }]);
+    }
     if look == OnlineLook::Picker {
         state.dialog = Some(Dialog {
             id: 1,
@@ -306,6 +372,88 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         });
     }
     state
+}
+
+/// Party voice over the invented party: on for the looks that show it, with Lumen speaking.
+fn sample_voice(state: &mut anyps5_core::online::Online, look: OnlineLook) {
+    use anyps5_core::online::api::AccountId;
+    use anyps5_core::online::control::{VoiceLevel, VoicePeer, VoiceState};
+    use anyps5_core::online::{Devices, PeerPrefs, VoicePrefs};
+    if !matches!(
+        look,
+        OnlineLook::PartyVoice
+            | OnlineLook::PartyMember
+            | OnlineLook::Voice
+            | OnlineLook::VoiceKey
+            | OnlineLook::VoiceDevices
+            | OnlineLook::VoiceDenied
+    ) {
+        return;
+    }
+    state.voice.devices = Some(Devices {
+        input: vec![
+            "Headset Microphone (USB Audio)".into(),
+            "Microphone Array (Built-in)".into(),
+        ],
+        output: vec![
+            "Headset Earphone (USB Audio)".into(),
+            "Speakers (Built-in)".into(),
+        ],
+        selected_input: Some("Headset Microphone (USB Audio)".into()),
+        selected_output: None,
+    });
+    state.voice.load(VoicePrefs {
+        enabled: look != OnlineLook::VoiceDenied,
+        input: Some("Headset Microphone (USB Audio)".into()),
+        peers: vec![
+            PeerPrefs {
+                account: AccountId(4),
+                percent: 100,
+                muted: true,
+            },
+            PeerPrefs {
+                account: AccountId(2),
+                percent: 130,
+                muted: false,
+            },
+        ],
+        ..VoicePrefs::default()
+    });
+    if look == OnlineLook::VoiceDenied {
+        state.voice.problem = Some(anyps5_core::online::Problem {
+            message: "access denied".into(),
+            denied: true,
+        });
+        return;
+    }
+    if let Some(party) = &mut state.social.party {
+        for member in &mut party.members {
+            member.voice = member.account.id != AccountId(4) || look != OnlineLook::PartyVoice;
+        }
+    }
+    state.voice.state = VoiceState::On;
+    state.voice.me = VoiceLevel {
+        level: 0,
+        speaking: false,
+    };
+    state.voice.peers = vec![
+        VoicePeer {
+            account: AccountId(2),
+            level: VoiceLevel {
+                level: 62,
+                speaking: true,
+            },
+            link: Some(anyps5_core::online::Link::Direct),
+        },
+        VoicePeer {
+            account: AccountId(4),
+            level: VoiceLevel {
+                level: 30,
+                speaking: true,
+            },
+            link: Some(anyps5_core::online::Link::Relay),
+        },
+    ];
 }
 
 /// An invented party of three, a session, four conversations and a stranger who wrote first.
@@ -1119,6 +1267,22 @@ impl ScreenGallery {
                     OnlineLook::PartyPicker => {
                         self.online_panel.show_page(Page::PartyPicker, &data);
                     }
+                    OnlineLook::PartyVoice => self.online_panel.show_page(Page::Party, &data),
+                    OnlineLook::PartyMember => self.online_panel.show_page(
+                        Page::PartyMember(anyps5_core::online::api::AccountId(2)),
+                        &data,
+                    ),
+                    OnlineLook::Voice | OnlineLook::VoiceDenied => {
+                        self.online_panel.show_page(Page::Voice, &data);
+                    }
+                    OnlineLook::VoiceKey => {
+                        self.online_panel.show_page(Page::Voice, &data);
+                        self.online_panel.begin_capture();
+                    }
+                    OnlineLook::VoiceDevices => self.online_panel.show_page(
+                        Page::VoiceDevices(anyps5_core::online::DeviceKind::Input),
+                        &data,
+                    ),
                     OnlineLook::Messages => self.online_panel.show_page(Page::Messages, &data),
                     OnlineLook::Message => self
                         .online_panel
@@ -1129,6 +1293,14 @@ impl ScreenGallery {
                     OnlineLook::Request => self
                         .online_panel
                         .show_page(Page::MessageRequest("c-nyx".into()), &data),
+                    OnlineLook::Muted => self.online_panel.show_page(Page::Home, &data),
+                    OnlineLook::Restriction => self
+                        .online_panel
+                        .show_page(Page::Restriction("muted".into()), &data),
+                    OnlineLook::Paused => self
+                        .online_panel
+                        .show_page(Page::Conversation("c-lumen".into()), &data),
+                    OnlineLook::Banned => self.online_panel.show_page(Page::Start, &data),
                     _ => {}
                 }
             }
