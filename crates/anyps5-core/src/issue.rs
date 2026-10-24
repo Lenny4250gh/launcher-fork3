@@ -306,18 +306,7 @@ pub fn open_url(url: &str) -> io::Result<()> {
             "not a github.com link",
         ));
     }
-    #[cfg(windows)]
-    {
-        std::process::Command::new("explorer.exe")
-            .arg(url)
-            .spawn()?;
-        Ok(())
-    }
-    #[cfg(not(windows))]
-    {
-        std::process::Command::new("xdg-open").arg(url).spawn()?;
-        Ok(())
-    }
+    crate::platform::open_url(url)
 }
 
 #[cfg(test)]
