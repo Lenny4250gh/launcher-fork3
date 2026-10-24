@@ -8,7 +8,7 @@ It is part of **[AnyPlay](https://github.com/anyplay-gg)**, which builds everyth
 |---|---|
 | **Launcher** (this repository) | Your library: unlock, play, controls, trophies and saves |
 | **[Network](https://github.com/anyplay-gg/network)** | Online play with friends over the internet, in development: the net service this launcher starts, the bridge protocol and the specifications |
-| **[Cloud](https://github.com/anyplay-gg/cloud)** | The services behind the network, run by AnyPlay or by you. AnyPlay runs a test cloud for now |
+| **[Cloud](https://github.com/anyplay-gg/cloud)** | The services behind the network, run by AnyPlay at [anyplaynet.com](https://anyplaynet.com) or by you |
 
 News, help and other players: the [AnyPlay Discord](https://discord.gg/nSHbHBRdS).
 
@@ -121,7 +121,7 @@ The online part is in development. This is what works today and what does not.
 
 **What does not work yet.**
 
-- The cloud that release builds use by default, `https://anyplaynet.com`, is a test cloud: expect resets and downtime. Under **Online → Cloud** you can use one of your own or of friends instead; [anyplay-gg/cloud](https://github.com/anyplay-gg/cloud) explains how to host it with `docker compose up`.
+- The cloud that release builds use by default is AnyPlay's own, `https://anyplaynet.com`. Under **Online → Cloud** you can use one of your own or of friends instead; [anyplay-gg/cloud](https://github.com/anyplay-gg/cloud) explains how to host it with `docker compose up`.
 - No real game plays online yet. The bridge that connects a game to the network lives in an AnyPS5 build, and it is still under review. Until a toolkit carries it, games start as before, offline. The [known gaps](https://github.com/anyplay-gg/network/blob/main/docs/gaps.md) list what is missing.
 - On Linux, starting a game with the bridge is untested.
 
