@@ -28,7 +28,7 @@ env:
   # The anyplay-gg/network revision whose net service the launcher carries.
   # A full commit SHA, never a branch: a release is built from a revision somebody chose. Bump it by
   # a pull request, or set the repository variable NETWORK_REF; a run by hand can take another one.
-  NETWORK_REF: ${{ inputs.network_ref || vars.NETWORK_REF || 'a92e0fdc03347b2b447d7ae67fb5a3bc3072deb9' }}
+  NETWORK_REF: ${{ inputs.network_ref || vars.NETWORK_REF || '3380d8762a510d54363515d88d545db9bbfe0a08' }}
   # The compiler of every release build, an exact version.
   RUST_TOOLCHAIN: 1.99.0
   # The cloud a release build names by default (the repository variable). Without it, players enter one.
