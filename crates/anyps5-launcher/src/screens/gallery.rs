@@ -4,7 +4,7 @@
 //! ```text
 //! anyplay-launcher --gallery=settings|settings1..6|game-settings|confirm|controls|controls-capture|
 //!                           controls-end|advanced|trophies|trophies-hidden|trophies-revealed|banner|start|unlocking|log|report|library|
-//!                           about-update|behavior-links|behavior-clips-off|behavior-clips|behavior-clips-key|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|
+//!                           about-update|behavior-links|settings-codec|settings-codec-off|behavior-clips-off|behavior-clips|behavior-clips-key|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
 //!                           saves|saves-empty|restore|
@@ -112,6 +112,8 @@ pub enum ScreenPage {
     WhatsNewLauncher,
     /// Behavior with the AnyPlay links registered to this launcher.
     BehaviourLinks,
+    /// Advanced on Linux with share screen on: the OpenH264 row turned on (and downloaded), or off.
+    SettingsCodec(bool),
     /// Behavior with Clips off, on at 30 seconds, and waiting for the clip key.
     BehaviourClipsOff,
     BehaviourClips,
@@ -461,6 +463,8 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "about-update-refused" => ScreenPage::AboutUpdate(UpdateLook::Refused),
         "whats-new-launcher" => ScreenPage::WhatsNewLauncher,
         "behavior-links" => ScreenPage::BehaviourLinks,
+        "settings-codec" => ScreenPage::SettingsCodec(true),
+        "settings-codec-off" => ScreenPage::SettingsCodec(false),
         "behavior-clips-off" => ScreenPage::BehaviourClipsOff,
         "behavior-clips" => ScreenPage::BehaviourClips,
         "behavior-clips-key" => ScreenPage::BehaviourClipsKey,
@@ -614,6 +618,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
                 joinable: true,
                 members: 2,
                 max_members: 4,
+                kind: Default::default(),
             }),
         })
     };
@@ -683,6 +688,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         title: NAMES[4].into(),
         version: "01.000".into(),
         expires: 0,
+        kind: Default::default(),
     }];
     let count = |platinum, gold, silver, bronze| Count {
         bronze,
@@ -1048,6 +1054,7 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
         version: "01.000".into(),
         leader: AccountId(1),
         max_members: 4,
+        kind: Default::default(),
         visibility: Visibility::Friends,
         members: vec![Member {
             account: account(1, "Mira"),
@@ -1071,6 +1078,10 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
             updated,
             request: false,
             party: None,
+            unread: 0,
+            muted: false,
+            pinned: false,
+            rev: 0,
         }
     };
     let now = SAMPLE_NOW as u64;
@@ -1085,6 +1096,7 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
     lumen.marks = vec![ReadMark {
         account: AccountId(2),
         seq: 4,
+        delivered: 4,
     }];
     let mut group = chat(
         "c-raid",
@@ -1136,6 +1148,11 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
             sender: account(who, handle),
             text: text.into(),
             created: now - ago,
+            reply: None,
+            edited: None,
+            deleted: false,
+            reactions: Vec::new(),
+            rev: 0,
         };
     state.social.ingest(
         "c-lumen",
@@ -1179,6 +1196,7 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
                 said("c-lumen", 7, 2, "Lumen", "Ready when you are.", 720),
             ],
             last: 7,
+            rev: 0,
         },
     );
     state.social.ingest(
@@ -1204,6 +1222,7 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
                 ),
             ],
             last: 2,
+            rev: 0,
         },
     );
 }
@@ -1863,6 +1882,12 @@ impl ScreenGallery {
             },
             cjk_fonts: anyps5_core::fonts::CjkState::Missing,
             phone: &self.phone,
+            openh264: matches!(self.page, ScreenPage::SettingsCodec(_)).then(|| {
+                crate::screens::settings::Openh264Env {
+                    state: anyps5_core::openh264::CodecState::Ready,
+                    worker: Some(("ready".into(), None)),
+                }
+            }),
             clips: crate::screens::settings::ClipsEnv {
                 count: if self.prefs.clips_seconds > 0 { 3 } else { 0 },
                 capturing: matches!(self.page, ScreenPage::BehaviourClipsKey),
@@ -2213,6 +2238,10 @@ impl ScreenGallery {
                     .open_launcher(&self.launcher_notes.notes, shell.language);
             }
             ScreenPage::BehaviourLinks => self.settings.open_at(3, true),
+            ScreenPage::SettingsCodec(on) => {
+                self.prefs.online_openh264 = on;
+                self.settings.open_at(6, true);
+            }
             ScreenPage::BehaviourClipsOff => {
                 self.prefs.clips_seconds = 0;
                 self.settings.open_at(3, true);

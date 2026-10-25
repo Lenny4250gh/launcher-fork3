@@ -187,6 +187,14 @@ impl NetProcess {
         if relay_only {
             command.arg("--relay-only");
         }
+        // The share worker the net service starts finds Cisco's OpenH264 where the launcher
+        // downloads it, unless the variable is set for a test.
+        if cfg!(target_os = "linux") && std::env::var_os(crate::openh264::LIBRARY_ENV).is_none() {
+            command.env(
+                crate::openh264::LIBRARY_ENV,
+                crate::openh264::library_in(data),
+            );
+        }
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -1028,6 +1036,7 @@ impl Online {
             Command::SendMessage {
                 conversation: conversation.to_owned(),
                 text,
+                reply: None,
             },
         );
         true
@@ -1501,6 +1510,11 @@ impl Online {
                 }
             }
             // The request is in the list the cloud gives; reading it announces what is new.
+            // Not used by the launcher yet (network #61 and #62): ignored, as before they existed.
+            Event::SessionEnded { .. }
+            | Event::Delivered { .. }
+            | Event::Typing { .. }
+            | Event::MessageUpdate { .. } => {}
             Event::MessageRequest { .. } | Event::Conversation { .. } => {
                 self.refresh_conversations();
             }
@@ -2196,6 +2210,7 @@ mod tests {
                         joinable: true,
                         members: 1,
                         max_members: 4,
+                        kind: Default::default(),
                     }),
                 }),
                 revision: 0,
@@ -2228,6 +2243,10 @@ mod tests {
             updated: last,
             request,
             party: None,
+            unread: 0,
+            muted: false,
+            pinned: false,
+            rev: 0,
         }
     }
 
@@ -2240,9 +2259,15 @@ mod tests {
                     sender: account(sender, "x"),
                     text: format!("m{seq}"),
                     created: seq,
+                    reply: None,
+                    edited: None,
+                    deleted: false,
+                    reactions: Vec::new(),
+                    rev: 0,
                 })
                 .collect(),
             last: to,
+            rev: 0,
         }
     }
 
@@ -2515,6 +2540,11 @@ mod tests {
                 sender: account(1, "Alec"),
                 text: "On my way".into(),
                 created: 3,
+                reply: None,
+                edited: None,
+                deleted: false,
+                reactions: Vec::new(),
+                rev: 0,
             },
         );
         assert!(!notices.iter().any(|n| matches!(n, Notice::Message { .. })));
