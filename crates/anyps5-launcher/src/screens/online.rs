@@ -480,6 +480,7 @@ impl OnlinePanel {
         let view = SideView {
             title: &title,
             subtitle: subtitle.as_deref(),
+            question: false,
             list_id: "online-rows",
             nav: &self.side.nav,
             accent: data.accent,
