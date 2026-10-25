@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! anyplay-launcher --gallery=settings|settings1..6|game-settings|confirm|controls|controls-capture|
-//!                           controls-end|advanced|trophies|banner|start|unlocking|log|report|library|
+//!                           controls-end|advanced|trophies|trophies-hidden|trophies-revealed|banner|start|unlocking|log|report|library|
 //!                           about-update|behavior-links|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
 //!                           saves|saves-empty|restore|
@@ -80,6 +80,10 @@ pub enum ScreenPage {
     ControlsEnd,
     Advanced,
     Trophies,
+    /// A secret trophy focused, with its Show pill.
+    TrophiesHidden,
+    /// The same trophy after Show.
+    TrophiesRevealed,
     Banner,
     Start,
     Unlocking,
@@ -176,6 +180,8 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "controls-end" => ScreenPage::ControlsEnd,
         "advanced" => ScreenPage::Advanced,
         "trophies" => ScreenPage::Trophies,
+        "trophies-hidden" => ScreenPage::TrophiesHidden,
+        "trophies-revealed" => ScreenPage::TrophiesRevealed,
         "banner" => ScreenPage::Banner,
         "start" => ScreenPage::Start,
         "unlocking" => ScreenPage::Unlocking,
@@ -833,6 +839,9 @@ fn fake_game(index: usize) -> Game {
     }
 }
 
+/// The invented set's secret trophy ("The Glass Wing").
+const SECRET_TROPHY: usize = 6;
+
 fn fake_trophies() -> TrophySet {
     type Spec = (
         &'static str,
@@ -1230,6 +1239,7 @@ impl ScreenGallery {
                 set: &self.set,
                 language,
                 accent,
+                show_hidden: self.prefs.show_hidden_trophies,
             },
         );
         self.library.show(
@@ -1342,6 +1352,11 @@ impl ScreenGallery {
             }
             ScreenPage::Advanced => self.advanced.open_row(4),
             ScreenPage::Trophies => self.trophies.open_at(1),
+            ScreenPage::TrophiesHidden => self.trophies.open_at(SECRET_TROPHY),
+            ScreenPage::TrophiesRevealed => {
+                self.trophies.open_at(SECRET_TROPHY);
+                self.trophies.reveal(SECRET_TROPHY);
+            }
             ScreenPage::Library => self.library.open(1),
             ScreenPage::ControlsEnd => self.controls.open_row(30),
             ScreenPage::Toolkit(look) => {
