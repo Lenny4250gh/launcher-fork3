@@ -144,6 +144,8 @@ pub struct LauncherApp {
     clips: clips::ClipsService,
     applied: Applied,
     focused: bool,
+    /// Frames drawn since the last rate line: window start, count, last frame.
+    rate: (std::time::Instant, u32, std::time::Instant),
     /// Overlays that are open or still animating out.
     overlays_shown: Vec<Overlay>,
     /// Artwork behind the home screen that is fading in or out, newest last.
@@ -200,6 +202,7 @@ impl LauncherApp {
             panels: config.panels,
             applied: Applied::default(),
             focused: true,
+            rate: (std::time::Instant::now(), 0, std::time::Instant::now()),
             overlays_shown: Vec::new(),
             artwork: Vec::new(),
             started: false,
@@ -367,6 +370,20 @@ impl LauncherApp {
     pub fn finish_frame(&mut self, ctx: &Context) {
         let playing = self.model.running.is_some() || self.model.starting.is_some();
         self.shell.finish_frame(ctx, !playing && self.focused);
+        // How often the launcher draws, to see what an idle one costs (about 30 when idle).
+        let now = std::time::Instant::now();
+        // A gap (unfocused, a game in front, nothing to draw) would drag the average to about 0:
+        // start a fresh window instead of logging across it.
+        if now.duration_since(self.rate.2).as_secs_f32() > 2.0 {
+            self.rate = (now, 0, now);
+        }
+        self.rate.2 = now;
+        self.rate.1 += 1;
+        let seconds = now.duration_since(self.rate.0).as_secs_f32();
+        if seconds >= 10.0 {
+            tracing::info!(target: "idle", "{:.1} frames/s, focused={}", self.rate.1 as f32 / seconds, self.focused);
+            self.rate = (now, 0, now);
+        }
     }
 
     /// Shows the preferences to the shell: language, theme, accent, motion, sounds, music.
@@ -871,7 +888,7 @@ pub(crate) fn paint_artwork_layer(
             keep.push(id);
         }
         if alpha > 0.003 && !reduced && !paused {
-            ctx.request_repaint_after(Duration::from_millis(16));
+            ctx.request_repaint_after(crate::ui::background::IDLE_REPAINT);
         }
     }
     *artwork = keep;
