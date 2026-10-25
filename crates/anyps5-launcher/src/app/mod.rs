@@ -23,6 +23,7 @@ pub mod links;
 pub mod model;
 pub mod online;
 pub mod online_local;
+pub mod online_screen;
 pub mod overlay;
 pub mod panels;
 pub mod pipeline;
