@@ -20,6 +20,7 @@ pub mod launch;
 pub mod library;
 pub mod linkreg;
 pub mod links;
+pub mod location;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod notes;
@@ -32,6 +33,7 @@ pub mod play_together;
 pub mod process;
 pub mod recommended;
 pub mod releases;
+pub mod relocate;
 pub mod remote;
 pub mod report;
 pub mod saves;
