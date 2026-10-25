@@ -138,6 +138,9 @@ pub struct GameSettings {
     /// `Some(false)` turns the shader and pipeline caches off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shader_cache: Option<bool>,
+    /// The release this game stays on (`v0.1.2`); `None` follows the global toolkit choice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolkit: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tuning: Option<InputTuning>,
     #[serde(default = "yes")]
@@ -159,6 +162,7 @@ impl Default for GameSettings {
             relink: Vec::new(),
             resolution: None,
             shader_cache: None,
+            toolkit: None,
             tuning: None,
             vsync: true,
             window_size: 75,
@@ -315,10 +319,13 @@ pub struct SharedSettings {
 
 impl SharedSettings {
     pub fn new(game: &Game, settings: &GameSettings) -> SharedSettings {
+        // Which toolkit is installed is a fact about this PC, not a setting to hand on.
+        let mut settings = settings.clone();
+        settings.toolkit = None;
         SharedSettings {
             format: SHARED_FORMAT.to_string(),
             game: game.name.clone(),
-            settings: settings.clone(),
+            settings,
             title_id: game.title_id.clone(),
             version: 1,
         }
@@ -434,7 +441,7 @@ fn default_profile_name() -> String {
 }
 
 fn default_repository() -> String {
-    "boykopovar/AnyPS5".to_string()
+    crate::toolkit::DEFAULT_REPOSITORY.to_string()
 }
 
 fn one() -> u32 {
@@ -474,6 +481,10 @@ pub struct Preferences {
     pub discord_presence: bool,
     #[serde(default)]
     pub hide_while_playing: bool,
+    /// Hidden trophies that are not earned show their name and description in the trophy list.
+    /// Local only: the network never sees it.
+    #[serde(default)]
+    pub show_hidden_trophies: bool,
     /// The launcher fills its screen, like a console; off, it is a maximised window (F11).
     #[serde(default = "yes")]
     pub fullscreen: bool,
@@ -549,6 +560,7 @@ impl Default for Preferences {
             music: true,
             discord_presence: true,
             hide_while_playing: false,
+            show_hidden_trophies: false,
             fullscreen: true,
             profile_name: default_profile_name(),
             games_folder: None,
@@ -624,8 +636,8 @@ impl Preferences {
         let bytes = bytes
             .strip_prefix(&[0xEF, 0xBB, 0xBF][..])
             .unwrap_or(&bytes);
-        match serde_json::from_slice(bytes) {
-            Ok(prefs) => prefs,
+        match serde_json::from_slice::<Preferences>(bytes) {
+            Ok(prefs) => prefs.for_current_platform(),
             Err(error) => {
                 tracing::warn!(
                     "preferences.json is damaged ({error}); moved to preferences.json.bad"
@@ -639,10 +651,54 @@ impl Preferences {
         }
     }
 
+    /// On the first native macOS start, read the old XDG preference file without altering it.
+    /// A native preference file, including one recovering from corruption, always takes priority.
+    pub fn load_with_fallback(paths: &AppPaths, previous: &AppPaths) -> Preferences {
+        if !paths.preferences_file().exists() && previous.preferences_file().is_file() {
+            fs::read(previous.preferences_file())
+                .ok()
+                .and_then(|bytes| {
+                    serde_json::from_slice::<Self>(
+                        bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes),
+                    )
+                    .ok()
+                })
+                .map(Self::for_current_platform)
+                .unwrap_or_else(Self::first_run)
+        } else {
+            Self::load(paths)
+        }
+    }
+
+    fn for_current_platform(mut self) -> Self {
+        if cfg!(target_os = "macos") && self.toolkit_repository == "boykopovar/AnyPS5" {
+            // Migrate the old non-Windows default, retaining user-selected third-party sources.
+            self.toolkit_repository = crate::toolkit::DEFAULT_REPOSITORY.into();
+            self.toolkit_pinned = None;
+        }
+        self
+    }
+
     /// Writes the preferences atomically.
     pub fn save(&self, paths: &AppPaths) -> io::Result<()> {
         let text = serde_json::to_string_pretty(self).map_err(io::Error::other)?;
         write_atomic(&paths.preferences_file(), text.as_bytes())
+    }
+
+    /// The releases that must stay installed: the one the pinned channel stays on and the ones
+    /// games stay on, as plain tags (`0.1.2`), oldest first, without doubles.
+    pub fn kept_toolkit_tags(&self) -> Vec<String> {
+        let mut tags: Vec<String> = self
+            .toolkit_pinned
+            .iter()
+            .chain(self.games.values().filter_map(|g| g.toolkit.as_ref()))
+            .filter_map(|tag| crate::toolkit::pin_tag(tag))
+            .collect();
+        tags.sort_by(|a, b| {
+            crate::toolkit::compare_tags(a, b).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        tags.dedup();
+        tags
     }
 
     /// The settings of a game (defaults when it has none yet).
@@ -1106,7 +1162,10 @@ mod tests {
         assert_eq!(value["theme"], 0);
         assert_eq!(value["language"], "en");
         assert_eq!(value["backdrop"], "theme");
-        assert_eq!(value["toolkitRepository"], "boykopovar/AnyPS5");
+        assert_eq!(
+            value["toolkitRepository"],
+            crate::toolkit::DEFAULT_REPOSITORY
+        );
         assert_eq!(value["gamesFolder"], Value::Null);
         assert_eq!(value["cpuConversion"], "auto");
     }
@@ -1128,13 +1187,66 @@ mod tests {
         assert!(prefs.fullscreen);
         assert!(prefs.check_for_updates);
         assert_eq!(prefs.profile_name, "Player");
-        assert_eq!(prefs.toolkit_repository, "boykopovar/AnyPS5");
+        assert_eq!(prefs.toolkit_repository, crate::toolkit::DEFAULT_REPOSITORY);
         assert!(!prefs.games["c:/g"].vsync);
         assert_eq!(prefs.games["c:/g"].window_size, 75);
         prefs.save(&paths).unwrap();
         let again: Value =
             serde_json::from_slice(&fs::read(paths.preferences_file()).unwrap()).unwrap();
         assert_eq!(again["futureThing"], json!({"a": [1, 2]}));
+    }
+
+    #[test]
+    fn preferences_without_a_game_toolkit_follow_the_global_one() {
+        // A file written before the field existed, with a game that has settings of its own.
+        let prefs: Preferences = serde_json::from_str(
+            r#"{"toolkitPinned": "v0.1.1", "games": {"c:/g": {"vsync": false}, "c:/h": {}}}"#,
+        )
+        .unwrap();
+        assert_eq!(prefs.games["c:/g"].toolkit, None);
+        assert_eq!(prefs.games["c:/h"].toolkit, None);
+        assert_eq!(prefs.kept_toolkit_tags(), ["0.1.1"]);
+        // Following the global choice writes nothing, so the file stays as an old launcher reads it.
+        let text = serde_json::to_string(&prefs.games["c:/g"]).unwrap();
+        assert!(!text.contains("toolkit"), "{text}");
+    }
+
+    #[test]
+    fn a_game_toolkit_survives_a_round_trip_and_is_kept_installed() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::under(dir.path());
+        let mut prefs = Preferences::default();
+        let id = GameId::from_key("c:/games/a");
+        let mut settings = prefs.game_settings(&id);
+        settings.toolkit = Some("v0.1.2".into());
+        prefs.set_game_settings(&id, settings);
+        let other = GameId::from_key("c:/games/b");
+        let mut settings = prefs.game_settings(&other);
+        settings.toolkit = Some("0.1.2".into());
+        prefs.set_game_settings(&other, settings);
+        let third = GameId::from_key("c:/games/c");
+        let mut settings = prefs.game_settings(&third);
+        settings.toolkit = Some("not a tag".into());
+        prefs.set_game_settings(&third, settings);
+        prefs.toolkit_pinned = Some("v0.1.10".into());
+        prefs.save(&paths).unwrap();
+        let loaded = Preferences::load(&paths);
+        assert_eq!(loaded.game_settings(&id).toolkit.as_deref(), Some("v0.1.2"));
+        // One tag per release, oldest first, and nothing that is not a release tag.
+        assert_eq!(loaded.kept_toolkit_tags(), ["0.1.2", "0.1.10"]);
+    }
+
+    #[test]
+    fn a_shared_settings_file_does_not_carry_the_toolkit() {
+        let settings = GameSettings {
+            toolkit: Some("v0.1.2".into()),
+            fullscreen: true,
+            ..Default::default()
+        };
+        let shared = SharedSettings::new(&game(), &settings);
+        assert_eq!(shared.settings.toolkit, None);
+        assert!(shared.settings.fullscreen);
+        assert!(!shared.to_json().contains("toolkit"));
     }
 
     #[test]
@@ -1168,6 +1280,44 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let prefs = Preferences::load(&AppPaths::under(dir.path()));
         assert!(!prefs.onboarded && prefs.games.is_empty());
+    }
+
+    #[test]
+    fn preference_fallback_preserves_the_old_file_and_native_settings_take_priority() {
+        let dir = tempfile::tempdir().unwrap();
+        let previous = AppPaths::under(&dir.path().join("old"));
+        let native = AppPaths::under(&dir.path().join("native"));
+        let mut old = Preferences {
+            profile_name: "Example Player".into(),
+            toolkit_repository: "example/custom-runtime".into(),
+            ..Preferences::default()
+        };
+        old.games_folder = Some(dir.path().join("games"));
+        old.extra.insert("futureSetting".into(), true.into());
+        old.save(&previous).unwrap();
+        let original = fs::read(previous.preferences_file()).unwrap();
+        let imported = Preferences::load_with_fallback(&native, &previous);
+        assert_eq!(imported, old);
+        assert_eq!(fs::read(previous.preferences_file()).unwrap(), original);
+        imported.save(&native).unwrap();
+        old.profile_name = "Changed old profile".into();
+        old.save(&previous).unwrap();
+        assert_eq!(
+            Preferences::load_with_fallback(&native, &previous).profile_name,
+            "Example Player"
+        );
+    }
+
+    #[test]
+    fn damaged_fallback_is_not_renamed_or_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let previous = AppPaths::under(&dir.path().join("old"));
+        let native = AppPaths::under(&dir.path().join("native"));
+        fs::create_dir_all(&previous.config).unwrap();
+        fs::write(previous.preferences_file(), b"{broken").unwrap();
+        let _ = Preferences::load_with_fallback(&native, &previous);
+        assert_eq!(fs::read(previous.preferences_file()).unwrap(), b"{broken");
+        assert!(!native.preferences_file().exists());
     }
 
     #[test]

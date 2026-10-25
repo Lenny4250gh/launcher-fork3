@@ -16,8 +16,7 @@ use crate::notes::{self, ReleaseNotes};
 use crate::paths::AppPaths;
 use crate::platform::Os;
 use crate::toolkit::{
-    API_BASE, DEFAULT_REPOSITORY, ReleaseInfo, ToolkitError, compare_tags, parse_release,
-    parse_releases,
+    API_BASE, ReleaseInfo, ToolkitError, compare_tags, parse_release, parse_releases,
 };
 
 /// How many releases the "pin a version" choice offers.
@@ -34,7 +33,7 @@ pub struct Endpoints {
 impl Endpoints {
     pub fn github(repo: &str) -> Endpoints {
         let pages =
-            (repo == DEFAULT_REPOSITORY).then(|| "https://boykopovar.github.io/AnyPS5".to_owned());
+            (repo == "boykopovar/AnyPS5").then(|| "https://boykopovar.github.io/AnyPS5".to_owned());
         Endpoints {
             api: API_BASE.to_owned(),
             pages,
@@ -60,6 +59,7 @@ struct PagesRelease {
 struct PagesPlatforms {
     windows: Option<PagesAsset>,
     linux: Option<PagesAsset>,
+    macos: Option<PagesAsset>,
 }
 
 #[derive(Deserialize)]
@@ -143,6 +143,7 @@ pub fn libs_digest_disagrees(
         .and_then(|p| match Os::current() {
             Os::Windows => p.windows,
             Os::Linux => p.linux,
+            Os::Macos => p.macos,
         })
         .and_then(|asset| asset.sha256);
     pages.tag.trim_start_matches('v') == release.plain_tag()
@@ -169,6 +170,41 @@ pub fn recent(
         max_age,
     )?;
     parse_releases(&json)
+}
+
+/// The release `tag` (with or without `v`), from the last ones or, for an older one, asked for by
+/// name. Only the configured repository is asked.
+pub fn by_tag(
+    paths: &AppPaths,
+    endpoints: &Endpoints,
+    repo: &str,
+    tag: &str,
+) -> Result<ReleaseInfo, ToolkitError> {
+    let wanted = tag.trim().trim_start_matches('v');
+    if let Some(found) = recent(paths, endpoints, repo, Duration::ZERO)?
+        .into_iter()
+        .find(|r| r.plain_tag() == wanted)
+    {
+        return Ok(found);
+    }
+    // Only a dotted-number tag is put into the address.
+    if crate::toolkit::pin_tag(wanted).as_deref() != Some(wanted) {
+        return Err(ToolkitError::NoRelease);
+    }
+    let json = api_json(
+        paths,
+        endpoints,
+        repo,
+        &format!("releases/tags/v{wanted}"),
+        &format!("tag-{wanted}.json"),
+        Duration::ZERO,
+    )?;
+    let release = parse_release(&json)?;
+    if release.plain_tag() == wanted {
+        Ok(release)
+    } else {
+        Err(ToolkitError::NoRelease)
+    }
 }
 
 /// One release's notes, as the "What's new" panel shows them.
@@ -267,7 +303,9 @@ mod tests {
               {{"name":"{}","browser_download_url":"{base}/r","size":1}},
               {{"name":"{}","browser_download_url":"{base}/p","size":1,"digest":"sha256:{}"}},
               {{"name":"release-notes.md","browser_download_url":"{base}/notes/{tag}","size":1,"digest":"sha256:{}"}}]}}"#,
-            Os::current().relinker_asset(tag),
+            Os::current()
+                .relinker_asset(tag)
+                .unwrap_or_else(|| "unrelated-platform-asset".into()),
             Os::current().libs_asset(tag),
             "a".repeat(64),
             "b".repeat(64)
