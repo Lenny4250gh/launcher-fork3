@@ -280,12 +280,48 @@ pub fn reveal(path: &Path) -> io::Result<()> {
 pub fn open_url(url: &str) -> io::Result<()> {
     #[cfg(windows)]
     {
-        Command::new("explorer.exe").arg(url).spawn().map(drop)
+        shell_open(url)
     }
     #[cfg(not(windows))]
     {
         xdg_open(url)
     }
+}
+
+/// Asks Windows to open `target` with its default program, as a double click would
+/// (`ShellExecuteW`, no shell and no Explorer). `explorer.exe <address>` opened the Documents
+/// folder next to the browser once the address was longer than a path may be, as the sign-in
+/// address is. The call runs on a thread of its own with COM set up, as the shell wants.
+#[cfg(windows)]
+fn shell_open(target: &str) -> io::Result<()> {
+    use windows::Win32::System::Com::{
+        COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize,
+    };
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::{HSTRING, w};
+
+    let target = HSTRING::from(target);
+    std::thread::Builder::new()
+        .name("shell-open".into())
+        .spawn(move || {
+            // SAFETY: COM is set up and torn down on this thread only; the strings outlive the call.
+            unsafe {
+                let com = CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+                let result = ShellExecuteW(None, w!("open"), &target, None, None, SW_SHOWNORMAL);
+                if com.is_ok() {
+                    CoUninitialize();
+                }
+                // Above 32 is success; below it is an error code, with the reason in the last error.
+                if result.0 as usize > 32 {
+                    Ok(())
+                } else {
+                    Err(io::Error::last_os_error())
+                }
+            }
+        })?
+        .join()
+        .unwrap_or_else(|_| Err(io::Error::other("the shell call panicked")))
 }
 
 #[cfg(not(windows))]
