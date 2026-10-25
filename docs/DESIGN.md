@@ -211,7 +211,7 @@ Components:
 |---|---|
 | Tile row small / large / gap / label column | 118 / 176 / 16 / 300 |
 | Unselected tile y offset | `(176 - 118) * 0.18` = 10.44 |
-| Library tile | 196, column gap 26, row gap 30, 6 columns, grid padding 14 |
+| Library tile | 196, column gap 26, row gap 30, as many columns as fit the width (at least 3), grid padding 14 |
 | Splash tile | 200 |
 | Onboarding folder tiles | 84, gap 12, first 8 games |
 | Console button | min height 54, horizontal padding 30 (18 when icon only), icon 17, gap 10, `Play` min width 210, onboarding buttons 220 / 180 |
@@ -814,6 +814,53 @@ works on; the rest follow the global choice (Stable, Pinned, Local Build, 3.7).
 - Gallery scenes `game-toolkit` (the row, on a pinned game), `toolkit-unused` (two removable
   releases) and the home scenes `home-toolkit` and `home-toolkit-missing` (the fact; the question).
 
+### 3.9 One control family and one focus (2026-10-25, replaces the white focus of 1.2, 1.4 and 5.x)
+
+The audit is `docs/ui-audit-2026-10-25.md`. The owner's findings were: the focused profile pill turns white and
+covers its neighbours, the buttons are three families, hover is missing, the clock looks odd. The rules:
+
+**Controls are capsules, containers are rounded rectangles.** Every button, pill and icon button is a capsule (a glyph alone
+makes a circle); rows, cards, cells and tiles keep their radii (12, 16, 20, 12 %). Three heights, nothing between:
+
+| Size | Height | Text | Glyph | Used for |
+|---|---|---|---|---|
+| Large | 54 | 19 semibold, 30 padding | 17 (22 alone) | the action row of the game page, dialogs |
+| Medium | 44 | 16 semibold, 20 padding | 18 (20 alone) | the top bar: library, friends, settings, profile |
+| Small | 32 | 14 medium, 14 padding | 14 | an answer inside a line of text ("How did it run?") |
+
+Neighbouring controls are always 12 apart (`size::CONTROL_GAP`), in the top bar and the action row alike. The profile pill is a
+control like the three buttons; only the clock, which is a status and not a control, sits 28 dp further out.
+
+**Two variants.** *Primary* is ink, not accent: white 0.92 fill, a dark label (`color::on_primary`, 16:1 to 19:1 on the theme tones), one per view
+(Play, Unlock, Accept). *Secondary* is everything else: white 0.10 fill, a 1 px white 0.12 hairline, white ink. Destructive is
+a secondary with the destructive ink.
+
+| State | Secondary | Primary |
+|---|---|---|
+| Rest | fill 0.10, hairline 0.12 | fill 0.92 |
+| Hover (pointer only, eases in 120 ms) | fill 0.16, hairline 0.32, pointing-hand cursor | fill 1.0 |
+| Pressed | fill 0.26, scale 0.97 | fill 0.78, scale 0.97 |
+| Focused | fill 0.20, hairline 0.32, **ring** | fill 1.0, **ring** |
+| Disabled | 40 %, no hover, no cursor | 40 % |
+
+**Focus is a ring.** One treatment everywhere: a white 0.95 ring outside the shape with a 1.2 dp gap, 2 dp wide on controls
+(`size::FOCUS_RING`) and 3 dp on tiles, cards and cells, plus a fill one step lighter. Nothing grows, nothing swaps its ink and no
+glow sits behind a translucent fill (a shadow under a translucent fill shows through as a seam). The layout never moves when focus
+moves, so the 12 dp gap holds. The ring is the focus indicator for keyboard and gamepad: it is white on dark artwork and on every
+fill of the family (a primary focused is a white ring around a white capsule, separated by the gap). Containers (rows, cards,
+cells) use `components::paint_surface`: rest fill, +5 % white on hover, +9 % and the ring on focus, +6 % pressed.
+
+**Hover** exists on every control the pointer can reach and answers like the tiles do: the tiles draw the focus ring at 45 % under
+the pointer, controls lighten and show a brighter hairline. Only colour and opacity change, in 120 ms (`Motion::Hover`, the same
+under reduced motion because it moves nothing); the press scale (0.97) is the only transform.
+
+**The clock** is a status line, not a control: 17 medium, white 0.78, set in a box four digits wide with the colon fixed in the
+middle (two dots on the digits' cap height), so the minute ticking over moves nothing and the digits need no tabular cells
+(whose spaced 1s read as a typo). Centred on the bar's centre line with the buttons.
+
+**Failed unlock** says what happened and what to do in one headline ("Unlocking stopped. Try again. ..."), with the technical
+message as a quiet line under it.
+
 ## 4. Materials and blur on the GPU
 
 SwiftUI `.ultraThinMaterial` is a backdrop blur with a light tint and some saturation; it is used under every panel. egui has no
@@ -886,15 +933,15 @@ Vertical stack, spacing 0: **TopBar**, **TileRow** (or **EmptyLibrary**), flexib
 
 **Top bar** (padding h 64, top 34): left "Games" (24 semibold), a small spinner while scanning; right-aligned, left to right:
 library button (glyph: 3x3 grid), friends button (glyph: two people; see below), settings button (glyph: gear), 12 dp apart; then 32 dp
-on, the profile; then 32 dp on, the clock (HH:mm, local time, updated every minute, 20 medium tabular white 0.92). Icon buttons: 44
-circle, white 0.10 fill; focused: white fill, black glyph, scale 1.1, glow. The profile and the friends button are pills of the same
-height on the same surface, hover and focus (white 0.10, white 0.16 on hover, white with black ink when focused). Everything sits on
+on, the profile (12 dp, the same gap), then 28 dp on, the clock (HH:mm, local time, 17 medium white 0.78, colon fixed; 3.9). Icon buttons: 44
+circle, a secondary control of the family in 3.9. The profile and the friends button are pills of the same
+height on the same surface, hover and focus (3.9: a ring and a lighter fill, never white). Everything sits on
 one centre line, the clock's digits included. (S-home.)
 
 - **Profile.** Signed in: the avatar (a 36 dp circle with an accent-to-accent-0.55 diagonal gradient and the first letter of the
   account's handle, uppercase, 16 bold white), then the handle (16 medium, white 0.92, cut in the middle past 160 dp). Signed
   out: the `user-circle` outline in the avatar's footprint, in ink, and "Sign In" (16 medium). The PC's user name never shows here;
-  it stays a setting (`profile_name`) for what the launcher calls the player locally. Select opens the online area.
+  it stays a setting (`profile_name`) for what the launcher calls the player locally. Signed in, Select opens the player's own profile screen (section 17, "Profile screen"); signed out it opens the online area on sign-in.
 - **Friends.** The friends icon in a 44 dp circle. While friends are online it grows into a pill that ends in a dot in the accent (8 dp,
   8 dp after the glyph) and their number (16 medium, tabular, 6 dp after the dot, 16 dp of padding at the end; `99+` above 99). At
   none, or while signed out, it is the plain circle: a count of zero says nothing. Its name says what it shows: "Friends, 3 online"
@@ -1126,7 +1173,7 @@ up-down arrows, curve, scope, gauge, waveform, timer, tortoise, keyboard, trigge
 ### 5.10 Library grid
 
 Full-screen overlay over the home (black 0.74 blurred): header `library` (40 light) + count (22 medium, 0.5, 8 leading) + hint bar
-without options; below, a scrolling grid of **6 columns x 196** tiles (gap 26 x 30). Each cell: tile with focus ring on the
+without options; below, a scrolling grid of **196** tiles (gap 26 x 30) with as many columns as fit the width, at least three (`columns_for`; up and down move by that row). Each cell: tile with focus ring on the
 keyboard-selected one, name (15; semibold white when focused, else regular 0.75; 1 line, truncated), state label (12). Click =
 select that game and close. Keys: arrows move (up/down jump a row of 6), select picks, back/options close. The focused tile scrolls
 to the centre (animation 31). (S-library. The tile shown "Playing" uses the coral accent.)
@@ -1214,8 +1261,8 @@ for new trophy records; each new one raises a banner and refreshes the trophy se
 
 ### 5.15 Onboarding (first start)
 
-Three steps; left-aligned column on a left-to-right black 0.55 -> 0.1 gradient over the (live) theme backdrop; padding 110 x 80.
-Top: three dots (current 46 x 5, others 18 x 5; white 0.95 for steps up to the current one, else 0.22; gap 10; 54 below).
+Three steps, four when there is a cloud to sign in to (release builds name AnyPlay’s); left-aligned column on a left-to-right black 0.55 -> 0.1 gradient over the (live) theme backdrop; padding 110 x 80.
+Top: one dot per step (current 46 x 5, others 18 x 5; white 0.95 for steps up to the current one, else 0.22; gap 10; 54 below).
 Then the step (animation 18), flexible space, bottom row: `back` button (chevron-left glyph, unfocused, only from step 1) left,
 hint bar (no options) right. Title block: title 54 light, subtitle 19 white 0.7 (max 720 wide), gap 14; step gap 46.
 
@@ -1224,12 +1271,18 @@ hint bar (no options) right. Title block: title 54 light, subtitle 19 white 0.7 
 | 0 | `welcome` / `welcomeSubtitle` | overline `chooseLanguage`; two cards 280 x 150 (radius 20, padding 26, bottom-left aligned): `TR` or `EN` (15 bold, 0.6) over the language's own name (28 medium). Focused: white fill, black text, scale 1.04, glow; else white 0.10 + 1 px white 0.14 |
 | 1 | `chooseTheme` / `chooseThemeSubtitle` | three theme cards (S-themes): live or still preview 330 x 186 (radius 18, focus ring) above a row: theme name (22) and a 12 dp dot in the theme's default accent; focused card scale 1.04 / opacity 1, others 0.97 / 0.72 |
 | 2 | `chooseFolder` / `chooseFolderSubtitle` | button `pickFolder` (or `changeFolder` once chosen; folder glyph, min 220), and once a folder is set the prominent button `start` (arrow glyph, min 180); a glass card (radius 16, padding 20, max 640) with a status glyph (magnifier while scanning, question-folder if empty, check in accent) + `scanning` / `noGamesFound` / `gamesFound` (18 medium) over the path (13, 0.5, middle truncated); the first 8 games as 84 tiles |
+| 3 | `Play together` / signing in (`OnboardingText`) | only with a cloud: one row of buttons, Sign In (prominent, sign-in glyph), Create Account (user-plus glyph) and Not Now (arrow glyph), min 180 each, gap 12; under them a detail line (13, 0.6): you can sign in any time from the top bar |
+
+Our own wording replaces the generated table’s for the welcome and folder subtitles, the empty library and the About text
+(`ui/i18n.rs` `ours`): they speak of the player’s games and game dumps, never of a platform’s name.
 
 The **language and theme choices apply live** while moving the focus (left/right change `preferences.language` / `preferences.theme`
 immediately, so the page re-renders in that language and the backdrop switches theme); select confirms and advances (sound
 `select`); Back (Esc/B/button) returns (sound `back`). Step 2 focus: 0 = the folder button, 1 = Start (only once a folder is set; focus
-jumps to Start after picking); select on Start finishes: sound `unlocked`, cross-fade (animation 19), focus on the tiles, rescan if
-empty. Mouse: tapping a language card selects and confirms; tapping a theme card selects it (sound `move`).
+jumps to Start after picking); select on Start goes on to the online step when there is a cloud, and otherwise finishes: sound `unlocked`, cross-fade
+(animation 19), focus on the tiles, rescan if empty. Step 3 focus: 0 Sign In, 1 Create Account, 2 Not Now. Every choice
+finishes the first start; Sign In and Create Account also open the online area, where the browser sign-in starts as soon as
+the net service has said hello (a missing service drops it). Mouse: tapping a language card selects and confirms; tapping a theme card selects it (sound `move`).
 
 ### 5.16 Icon mapping (SF Symbols -> Phosphor, MIT)
 
@@ -1343,7 +1396,7 @@ community/layouts/<TITLEID>/<name>.ini
 ```
 
 The launcher fetches `index.json` from
-`https://raw.githubusercontent.com/anyplay-gg/launcher/main/community/layouts` once per run and
+`https://raw.githubusercontent.com/anyplaynet/launcher/main/community/layouts` once per run and
 title, when the controls open, and then the files of that title (8 at most, 16 KiB each, 8 s for
 all). An entry is valid when the title ID is four capitals and five digits, the name has 1 to 40
 characters, and the file is `<folder>/<name>.ini` of letters, digits, `.`, `_` and `-`. A file that fails
@@ -1623,9 +1676,9 @@ through the AnyPlay network also gets "on AnyPlay", the size of the party and a 
   when the session, the party or the join link changes (`app/discord.rs`, once per frame, only when
   the activity differs from the one shown).
 - **The Join button.** With presence on, the join button on, signed in and a session or party, the
-  launcher asks the net service for a [join code](https://github.com/anyplay-gg/network/blob/main/spec/cloud-api.md#join-codes)
+  launcher asks the net service for a [join code](https://github.com/anyplaynet/network/blob/main/spec/cloud-api.md#join-codes)
   (`join_code`) and adds two buttons: `Join on AnyPlay` (the code's link, `<web>/join/<code>`) and
-  `Get AnyPlay` (`https://github.com/anyplay-gg/launcher/releases/latest`). Discord allows two buttons,
+  `Get AnyPlay` (`https://github.com/anyplaynet/launcher/releases/latest`). Discord allows two buttons,
   a label up to 32 characters and an address up to 512 over https; an address that fails these gets
   no buttons. A cloud that answers `not_found` has nothing joinable: no code, no buttons, and no new
   question until the session or party is another one. A code is asked for again 10 minutes before it
@@ -1953,11 +2006,12 @@ list still updates.
 
 No counterpart in the macOS launcher (Sparkle there). Core module `anyps5_core::selfupdate`, host `app::selfupdate`.
 
-- **Check.** Once per start, in the background, when the *Check for Updates* preference is on: the latest release of `anyplay-gg/launcher` (the same request and HTTP client as the toolkit check). A newer semver (pre-release tags sort below their release) is downloaded and verified at once; garbage tags are never newer. Previews, the demo, the gallery and the tests never check.
+- **Check.** Once per start, in the background, when the *Check for Updates* preference is on: the latest release of `anyplaynet/launcher` (the same request and HTTP client as the toolkit check). A newer semver (pre-release tags sort below their release) is downloaded and verified at once; garbage tags are never newer. Previews, the demo, the gallery and the tests never check.
 - **Verify.** The portable `AnyPlay-Launcher-<v>-x64.exe` (or, in a release without it, `AnyPS5-Launcher-<v>-x64.exe`; every release carries both, 9.7) goes to `%LOCALAPPDATA%\AnyPS5\Updates`. Its SHA-256 must match the line in the release's `SHA256SUMS.txt`; a missing line, a wrong hash or a file that does not start with `MZ` refuses the update and leaves nothing behind. The file gets its final name only after that, so a file of that name is always a verified one.
 - **Swap.** Windows cannot overwrite a running exe but can rename it. The staged file is copied beside the running exe (`<name>.new`, it may be on another drive), the running exe is renamed to `<name>.old`, the copy takes its place. A failure in the second step moves the old one back. The next start deletes `.old` files and stale downloads (one still in use stays until a later start). It works for the installed exe (`%LOCALAPPDATA%\Programs\AnyPlay Launcher`, or `...\AnyPS5 Launcher` for an install from v0.1.x) and for the portable exe in any writable folder. The swap keeps the exe's file name; nothing depends on it. A folder that refuses new files is reported before anything is downloaded: About shows "<v> available, but this folder is read-only" and nothing else happens.
 - **When.** A calm toast when the update is ready: "Launcher <v> is ready. It installs when you close the launcher." The swap runs on exit, after the preferences are saved. An update staged by a run that closed too early is offered again at the next start without a second download.
-- **About.** The *Version* row reads "<v>" and, with a staged update, "<v> ready" with a *Restart Now* row above *Quit*. It closes the launcher, swaps, and starts the new exe with the same arguments.
+- **About.** The *Version* row reads "<v>" and, with a staged update, "<v> ready" with a *Restart Now* row above *Quit*. It closes the launcher, swaps, and starts the new exe with the same arguments. Under it, from a gap: *AnyPlay Website* (anyplaynet.com), *AnyPlay Discord* (news, help and other players), *Privacy Policy* and *Terms of Service* open their pages in the browser (`about_strings`; the launcher opens only these), then a line on who it builds on (AnyPS5 by boykopovar; the launcher began as utkuhalis’ AnyPS5-ARM launcher), and *Quit* last.
+- **What’s New.** The highlights group the toolkit’s changes under names players know (Graphics, Trophies, Saves, Sound, Controllers, Online, Starting games, System; `area_title`), merging areas that share a name; an unknown area keeps its own. *Everything* below keeps the exact scopes.
 - **Signed manifest.** The step above is the *unsigned* path and runs only while `data/update-keys.txt` holds no trusted key (it holds none yet). From the first key on, the launcher takes updates only through the release's `latest.json` and `latest.json.sig`: an Ed25519 signature by a trusted key, an unexpired manifest, a version newer than the running one, a running version not below the manifest's `minimum_version`, and a download with the manifest's SHA-256 and size. The tag and `SHA256SUMS.txt` are then not used, and there is no fallback to the unsigned path: a release without a manifest is refused. A refusal only logs, offline the check just fails, and neither touches the installed exe. Nothing the player sees changes. The format, the rules, the migration and the key ceremony (making, storing, adding and rotating the key) are in [UPDATES.md](UPDATES.md).
 - **Not done.** The exe is not code-signed. Without a trusted key the checksum list comes from the same release as the exe, so it guards against a damaged or substituted download, not against a compromised release; the signed manifest is what does.
 
@@ -1990,7 +2044,7 @@ Registration (`anyps5_core::linkreg`): `HKCU\Software\Classes\anyps5` with `URL 
 
 ### 9.7 The launcher's name
 
-Up to v0.1.3 the launcher was called AnyPS5 Launcher. It is AnyPlay Launcher now: a platform trademark has no place in our names ([the line is drawn at the law](https://github.com/anyplay-gg/network/blob/main/docs/adr/0021-the-line-is-drawn-at-the-law.md)). AnyPS5 still names the engine the games run on, and the About text says so.
+Up to v0.1.3 the launcher was called AnyPS5 Launcher. It is AnyPlay Launcher now: a platform trademark has no place in our names ([the line is drawn at the law](https://github.com/anyplaynet/network/blob/main/docs/adr/0021-the-line-is-drawn-at-the-law.md)). AnyPS5 still names the engine the games run on, and the About text says so.
 
 - **Renamed:** every visible name of the product (window titles, texts in both languages, Discord, reports, the controls file header), the exe and the release files (`AnyPlay-Launcher-<v>-*`), the installer's name, folder and shortcuts, the Linux binary, desktop entry and icon, and the app id.
 - **Kept, because installs and links already use them:** the data folders (`%APPDATA%\AnyPS5`, `%LOCALAPPDATA%\AnyPS5`, `~/.config/anyps5`, `~/.local/share/anyps5`, `Pictures\AnyPS5`), the `.AnyPS5` store in games folders, `org.anyps5.<titleid>`, the `anyps5://` scheme and the registry key names, the `ANYPS5_*` variables, the single-instance mutex and pipe names, the log-start marker, the settings format tag, the installer's AppId, the crate names. (The Discord application was kept until it got AnyPlay's own, 7.4.)
@@ -2162,9 +2216,9 @@ Deviations: the diagnosis sentence in the log view is derived from the log text 
 
 ## 17. Online area (crate `anyps5-launcher`, modules `screens::online`, `app::online`, `app::panels::online`)
 
-The launcher's side of the AnyPlay network ([anyplay-gg/network](https://github.com/anyplay-gg/network)): signing in, friends and their presence, requests, invitations, joining a friend's game, parties and messages. The launcher shows; the net service (`anyplay-net`) acts. They talk over the net service's standard streams with the control protocol (`spec/control-protocol.md` there); `anyps5_core::online` holds the process and the state, and `Model::online` is that state.
+The launcher's side of the AnyPlay network ([anyplaynet/network](https://github.com/anyplaynet/network)): signing in, friends and their presence, requests, invitations, joining a friend's game, parties and messages. The launcher shows; the net service (`anyplay-net`) acts. They talk over the net service's standard streams with the control protocol (`spec/control-protocol.md` there); `anyps5_core::online` holds the process and the state, and `Model::online` is that state.
 
-**Entry.** Two buttons of the top bar open the online area: the profile (the last stop of `HomeFocus::Top`: library, friends, settings, profile) and the friends button beside the library. Both are pills as tall as the icon buttons, on the icon buttons' surface (white 0.10, 0.16 on hover, white with dark ink when focused), with the same focus grow and glow as their neighbours. Signed out the profile reads "Sign In" and never shows the PC's name; signed in it shows the account's handle. While messages wait it ends in a count (a 20 dp capsule, light ink on the dark pill and dark on the light one it becomes when focused, `9+` above nine; the accent stays the online dot's alone), and the button's name says it: "Mira, Online, 3 unread". Its radius is the avatar's plus the 4 dp inset, so pill and avatar stay concentric. While the cloud answers a 4 dp accent dot sits at the avatar's lower right in a 6 dp ring of the pill's own colour. The friends button shows how many friends are online (section 5.3). Select on either opens `Overlay::Online`, a side panel on the game sheet's frame; the panel opens on the friends list once signed in and on sign-in otherwise.
+**Entry.** Two buttons of the top bar lead into the online area: the profile (the last stop of `HomeFocus::Top`: library, friends, settings, profile) and the friends button beside the library. Both are pills as tall as the icon buttons, on the icon buttons' surface (white 0.10, 0.16 on hover, white with dark ink when focused), with the same focus grow and glow as their neighbours. Signed out the profile reads "Sign In" and never shows the PC's name; signed in it shows the account's handle. While messages wait it ends in a count (a 20 dp capsule, light ink on the dark pill and dark on the light one it becomes when focused, `9+` above nine; the accent stays the online dot's alone), and the button's name says it: "Mira, Online, 3 unread". Its radius is the avatar's plus the 4 dp inset, so pill and avatar stay concentric. While the cloud answers a 4 dp accent dot sits at the avatar's lower right in a 6 dp ring of the pill's own colour. The friends button shows how many friends are online (section 5.3). Select on the friends button opens `Overlay::Online`, a side panel on the game sheet's frame, on the friends list once signed in and on sign-in otherwise. Select on the profile opens the player's own **profile screen** once signed in (below) and the same panel on sign-in before. The screen's second button, Friends & Online, leads on into the panel, so nothing the profile reached before is out of reach; the unread count of the profile is repeated there, "Friends & Online (3)".
 
 **Answering in place.** A request row is a row with a *buttons* control: two small pills, 32 dp high and 12 dp apart, at the row's end (Accept, Decline). At rest they are quiet chips on the dark row; the row focused turns white, the pill the keys would press turns dark on it and the other stays a pale chip. Left and right choose between them, select presses the chosen one (Accept to begin with), and a click presses the pill it lands on. A click on the row's body presses neither: it opens the request's own page (where it can be blocked), so a stray click never answers. No motion beyond the row's own focus and hover. The friends list says what a friend plays ("Playing Lanternfall", "· You can join") but not for how long: presence carries no start time today, so the minutes are left out until the cloud sends one.
 
@@ -2192,7 +2246,6 @@ The launcher's side of the AnyPlay network ([anyplay-gg/network](https://github.
 | Restriction | the restriction's title ("Messages and Friend Requests Paused", "New Account Limits", "Account Banned") / "Until Oct 25, 2026 at 9:14 PM" or "Until further notice" | What This Means (one note), Reason (the rule, then "Note From the Moderator" and the moderator's words as plain text), Appeal. A mute with an appeal still open for filing: a note with the last day, the field "Why do you think this is a mistake?" (wide) and Send Appeal; an appeal that was sent, decided or out of time is one note instead. A ban: Appeal in Browser and its note. A new account's limit has no reason and no appeal. The page ends by itself when the restriction does (back to where the player came from) |
 | Add a Friend, Report, Account | | the name field and Send Request (while a restriction stops friend requests, one row "Friend Requests Paused" with the end in its detail stands in their place and opens the Restriction page); the reason choice and Send Report; Manage Account (opens the account web: e-mail, passkeys, devices, deleting the account), cloud, Hide Your IP Address (toggle) with its note, Who Sees Your Trophies (Friends, Everyone, Only You) with its note, the blocked, Sign Out. A **Restrictions** group opens Home and Account whenever one is in force: a row for each, with its end as the detail |
 | Invitation picker | "Invite to …" / "Pick up to … friends" | one toggle per online friend, Send Invitations, Cancel |
-| Profile | "Profile" / "This is what other players see" (own) or the friend's presence | the profile header (below); on the player's own profile Edit Profile first (opens the account web; detail "Opens your account on the web"), with a note under it when the profile is empty; then Trophies (the grades, or the line "Trophies are private"), Most Played (at most three games with their time), Linked Accounts (Discord, Steam, each with its Phosphor logo; an unknown provider keeps the link icon) |
 | Feed | "Feed" / "Recent activity from you and your friends" | cards, newest first (below); or one note while it loads, is empty, offline or failed (Try Again; Add a Friend for a player without friends) |
 
 A text row can be **wide** (`Row::wide`): its field takes the whole row, written from the left, outlined (1 dp, 22 % of the row's ink) so it does not pass for one more row, and the title is its hint while it is empty (62 % of the row's ink). Enter ends the editing and runs the row (`Change::Submit`): a message goes out, a friend request is sent. A conversation keeps its draft per conversation in the core, so a refused message, a page change or a closed panel loses nothing.
@@ -2201,16 +2254,25 @@ Rows keep their identity by their `RowId` and their place among rows of the same
 
 Hints that explain a text field or a toggle stand under it with the normal 8 dp row gap, not attached: the focused row grows 3 dp and would touch an attached note. A command waiting for the net service says "Sending…" in its detail line.
 
-**Profile page** (network `spec/cloud-api.md` Profiles, ADR 0024). `profile` answers a `ProfilePage`: the parts the player may see (`about`, `favourites`, `avatar`, `playtime`), the trophy counts (null when hidden) and the linked accounts. A part the cloud leaves out is not shown, because for a stranger an empty part says nothing and a placeholder would say that it was hidden; the one exception is the line "Trophies are private", which the gamer cards already say. Only on the player's own profile, an empty profile gets a note that points to the web.
-  - *Header.* Scrolls with the rows. A **profile banner** (the cloud has no banner picture, and the trophy banner is another thing): a 16 dp card with the 72 dp avatar, the handle (24 semibold, one line) and the text (14, at most three lines). The panel's title is "Profile", so the handle is said once, in the banner. Under it "Favourite Games": up to three cards side by side, the game's icon at 64 dp over its name (13, two lines), or for a game the player does not have a dimmed placeholder and the title ID, with no art. Everything about a game (name, icon) comes from the player's library; the cloud only knows title IDs.
-  - *Banner colour.* Derived from the avatar's pixels (`anyps5_core::online::banner_colour`): twelve hue sectors vote with saturation times brightness (grey, near-black and transparent pixels do not vote; a picture with almost none has no colour), the strongest sector's weighted mean is the accent, and it is darkened with the hue kept until white ink on it has at least 7:1 and the text under the handle (white at 88 %) at least 5.5:1. Deterministic. Without an avatar, or with a grey one, the colour is the theme accent mixed 62 % toward black and darkened the same way. The text on the banner is white and white 88 %.
-  - *Avatars.* `app::avatars` fetches `/v1/avatars/{hash}` of the cloud in use on a worker thread, checks that the bytes hash to the name, keeps the file under `Network\avatars` and hands it to the texture service like a game icon; a failed fetch is tried again after a minute. Without a picture, an avatar is the first letter of the handle on one of six calm colours (each at least 5:1 with white) chosen by the account number.
-  - *Focus.* Only Edit Profile takes the focus, so the page opens on it with the banner in view. Up and down still walk every row, the facts too (the list follows; a fact shows no highlight), so a pad can scroll the rest into view. Back leaves the page.
-  - *Trophy names.* Never from the cloud. A feed sentence names a trophy only when the player has the game, its trophy file is read (`Effect::LoadTrophies`, off the UI thread, once per game) and the trophy is not hidden, or hidden and earned by the player.
+**Profile screen** (`screens::profile`, its host `app::panels::profile`, the return path `app::profile`; network `spec/cloud-api.md` Profiles, ADR 0024). A full-screen overlay (`Overlay::Profile`) for a player's profile, the player's own or another's, on the frame of the trophy list: glass, 90 dp of side padding, the hint bar at the top right. It replaced the profile page of the side panel, whose banner is gone. `profile` answers a `ProfilePage`: the parts the player may see (`about`, `favourites`, `avatar`, `playtime`), the trophy counts (null when hidden) and the linked accounts. What is shown is decided in `screens::profile::view`, a function from what the launcher knows to plain data (`ProfileView`), and tested without a window; the painter decides nothing.
+  - *Entry and Back.* The profile button of the top bar (own, once signed in), Your Profile on the online Home, View Profile on a friend's page, and a card of the feed (the account of the card). Back leaves for where the player came from (`app::profile::Back`): Home for the button; for the others the online panel opens again on the page it was left on, with the focus on the row it was on. Signed out, the button keeps its old meaning and opens sign-in. On the player's own profile the buttons under the name are Edit Profile (opens the account web, as before; the one prominent button) and Friends & Online (the online panel on its first page: friends, requests, messages, parties, the account and its settings). On a friend's: Friend Options (their page in the panel: Join Game, Message, Invite, Remove, Block, Report). On someone who asked: Answer Request. On a stranger: Add Friend. Entering through a profile never closes the way back to anything the old page offered.
+  - *Header.* One column, no banner: the avatar (120 dp; the first letter of the handle on one of six calm colours without a picture), the handle as the title (40 light), under it a line with a chip for how you know each other ("Friend", "Request sent", "Wants to be friends"; nothing for a stranger or for yourself) and the status (their presence: Online, Playing a game, Offline, with a dot in the accent while they are online; for the own profile "This is what other players see"), then the text about them (17, white 86 %, at most three lines, 640 dp wide; the status line above it is the small one: 15 medium, 70 %), then the buttons. On a friend's profile a quiet line under the text says what only a friend's page can: "You have 3 of their games" (their titles that are in the player's library; left out at none). "Playing Neon Orchard" says what they play and nothing about joining: the profile has no Join button (that is on their page in the panel, one press away through Friend Options). The only colour that is the player's own is a soft wash behind the top-left of the page: the avatar's colour (`banner_colour`, or the monogram's colour) at 22 % in the corner, to nothing 520 dp down and 70 % across; text keeps its contrast with the glass because the wash is never stronger than that. Behind the 120 dp avatar and the handle it is the one thing on the page that could only be this player's.
+  - *Figures.* On the right of the header, plain, no boxes: games, hours (minutes below one hour), trophies, each a 34 light tabular figure over a small tracked label, the trophies with their grades as four coloured trophy glyphs and counts under the label (platinum first, a grade without trophies left out). Points are not shown: the launcher has no points of its own and does not invent them. A figure whose part is hidden is left out and the others close ranks; with only one figure left there is no strip at all (one number alone only repeats the caption of its section).
+  - *Sections.* Games, Recent Trophies and Recent Activity, in at most two columns, and a section with nothing to show for another player is not there at all, so no one sees that a part was hidden: three sections put the games on the left (45 % of the width) and the other two stacked on the right; two sections one column each; one stands on the left. The own profile keeps all three and says in one sentence what fills an empty one ("Earn a trophy in a game and it shows up here."). A section has a 20 semibold caption (with the count of games in 14 beside it), rows 8 dp apart and 40 dp between sections. Nothing sits in a box at rest: a row is text on the page; the pointer makes it a faint surface (white 7 %), the focus makes it the white card of every list (3 dp grow, dark ink, shadow).
+  - *Games.* The own profile lists the library from this PC, the last played first, then the most played: the art (52 dp), the name, "42 h · Last played 2 h ago" (or "Not played yet"), and at the end the trophy progress as "9/40" with a 4 dp bar in the accent under it (counted from the trophy file once read). Another player's: their titles from `playtime` and `favourites`, favourites first in their order, then by time (at most eight; the figure counts them all): the name and a detail ("Favourite", "Not in your library") and at the end their time. **A game's name and art come only from the player's own copy**: a title the player does not have is a neutral tile with its title ID as the name and no press; one they have opens on Home with that game selected.
+  - *Trophies.* The own profile: the five newest earned trophies from the trophy files (first set only, as the network records), by name, the game and when. Another player's: the trophy items of their feed, a trophy named from the player's own copy of the game ("First Light") or, without one, "Gold trophy", the game's name or "In a game", when, and at the end the rarity ("Rare, 2.3%") when the cloud has one. A grade is a 44 dp tile in the grade's colour (glyph and a 14 % wash) and never colour alone: the words carry it too ("Gold trophy" for an unnamed one; "Gold · Ember Drift · 40 min ago" under a named one). The rarity is the last part of that line ("… · Rare, 2.3%"), not a fact hanging at the far end of the row. Select on another player's trophy opens the feed on that item, where the reactions are; on the player's own trophy it opens the game on Home.
+  - *Activity.* Their feed items without the trophies (those have their own section): avatar (36 dp), the sentence with the handle ("Lumen earned a gold trophy in …", "You and Sol are friends now"), the time and the reactions that were given ("GG 3 · Same 1"; read only). Select opens the feed on that item.
+  - *States.* Loading ("Loading profile…" over a spinner on a quiet disc; static under reduced motion), offline ("You are offline"), failed (Try Again, the one focus stop), private (a stranger who shares nothing: "This profile is private"), and a friend with nothing yet ("Nothing to show yet"), each one block of words in the middle of what the header leaves; the own profile never waits for the cloud, because games and trophies are on this PC: while offline a note under the header says that activity comes back.
+  - *Focus.* One treatment: the console buttons' and the rows' (white card, 3 dp grow). Only a row that does something is a stop (a game the player does not have is text, not a dead white card). Three kinds of place: the buttons under the name (left and right between them), the left column and the right column (up and down within; left and right cross to the row at the nearest height; up from the top of a column reaches the buttons, the first one from the left column and the last from the right). `screens::profile::nav::step` is pure and tested. The page is one scrolling surface, header included (the wheel freely; the pad by following the focus, centred, with the focus spring), so a small window gives the rows the whole height once the header has gone. What scrolls past the top edge under the hint bar or the bottom of the screen fades out over its last 20 dp as the other lists do; the header fades as a whole once its lower half has passed the edge. The page opens on the first button, or on the first row without buttons. Back and Options leave. Hover and press come from the shared components; reduced motion is the animator's.
+  - *Avatars.* `app::avatars` fetches `/v1/avatars/{hash}` of the cloud in use on a worker thread, checks that the bytes hash to the name, keeps the file under `Network\avatars` and hands it to the texture service like a game icon; a failed fetch is tried again after a minute.
+  - *Trophy names.* Never from the cloud. A sentence names a trophy only when the player has the game, its trophy file is read (`Effect::LoadTrophies`, off the UI thread, once per game) and the trophy is not hidden, or hidden and earned by the player.
+  - *Words.* Sentence-style notes, title-case buttons and captions, no exclamation marks. English and Turkish in `profile_strings.rs` and `online_feed_strings.rs`.
+
+Gallery scenes (1600 x 900 and 1920 x 1200): `profile-own`, `profile-own-focus`, `profile-own-end` (scrolled to the last row, the header faded), `profile-friend`, `profile-friend-hidden` (trophies and playtime hidden), `profile-request`, `profile-new` (a new account's own profile), `profile-new-friend`, `profile-private`, `profile-loading`, `profile-error`, `profile-offline`.
 
 **Feed page.** `feed` answers a page of items; `react` sets or takes back the player's one reaction. The page asks when it opens (and for the player's own profile, for the avatar), again for each `feed` event, and for older items near the end of the list.
   - *Card.* A card is a row's surface: 40 dp avatar, the handle ("You" for the player's own items; 17 medium) with the time at the trailing edge (13), one sentence (14, at most three lines) and, for a trophy with a rarity, a line with the grade's trophy icon in its colour and "Rare, 2.3%"; under them the four reactions Nice, GG, Wow and Same as 36 dp pills 12 dp apart, all of one width so the columns line up from card to card, each with its count when it is above zero (99+ above ninety-nine). The player's own reaction is stronger (22 % of the ink instead of 9 %) and carries a check, so it never rests on colour alone. The sentences: "earned the gold trophy “First Light” in Ember Drift", "earned a gold trophy in Ember Drift" (trophy not readable here), "earned a gold trophy in a game" (game not owned), "became friends with Nox", "played Paper Moon for the first time" or "played a game for the first time", "started a party with Nox and Kit". Rarity steps: under 1 % Extremely rare, under 5 % Rare, under 20 % Uncommon, else Common; none below ten players. Times: Just now, 5 min ago, 3 h ago, Yesterday, 3 d ago, then the day (Oct 12).
-  - *Focus.* A card is one stop; left and right walk into its reactions (and back), up and down keep the reaction, so a run of GGs is down, select, down, select. A focused card turns white like a focused row (3 dp grow); a focused reaction is solid ink inside it. Select on a card opens the profile of its account, on a reaction sets it, and on the player's own reaction takes it back. Back leaves the page. Near the last three cards the next page is fetched; "Show Older Activity" is the same by hand. Moving the focus plays the Move cue and a press the Select cue; nothing else moves.
+  - *Focus.* A card is one stop; left and right walk into its reactions (and back), up and down keep the reaction, so a run of GGs is down, select, down, select. A focused card turns white like a focused row (3 dp grow); a focused reaction is solid ink inside it. Select on a card opens the profile screen of its account (Back returns to the feed, where it was), on a reaction sets it, and on the player's own reaction takes it back. Back leaves the page. Near the last three cards the next page is fetched; "Show Older Activity" is the same by hand. Moving the focus plays the Move cue and a press the Select cue; nothing else moves.
   - *Reactions.* Applied at once and settled by the cloud's answer (`Online::react`): a refusal puts the counts back and toasts "The reaction did not go through. Try again." A page that lands meanwhile (a `feed` event, a refresh, an older page) never overwrites a reaction still on its way: the item keeps what the player made until the cloud answers or refuses, and only a refusal rolls it back. A second press on an item whose reaction is still on its way is ignored, so a rollback never meets a newer press.
   - *Paging.* `FeedState` merges: a refresh puts new items on top and keeps the older pages, drops items the cloud no longer lists, and replaces everything when more than a page of news arrived (the held items would leave a gap). The focus stays on its item when items come in above it.
   - *States.* One block in the middle of the room, an icon on a disc with a headline (17 semibold) and a note: loading ("Loading…"), offline ("You are offline"), failed ("The feed did not load" with Try Again under it), empty ("Nothing here yet" and what shows up here; Add a Friend for a player who has none). After a refusal the next page is not asked for by itself any more: "Show Older Activity" says "Could not load. Select to try again." and the player asks again.
@@ -2283,7 +2345,7 @@ Gallery scenes: `online`, `online-browser`, `online-friends`, `online-friend`, `
 
 Gallery scenes: `online-screen-ready`, `online-screen-hosting`, `online-screen-offer`, `online-screen-cannot`, `online-screen-watching`, `online-screen-stalled`, `online-screen-home`.
 Gallery scenes: `online-muted` (Home with a mute), `online-restriction` (the mute's page), `online-paused` (a conversation while muted), `online-banned` (the Start page after a ban), `online`, `online-browser`, `online-friends`, `online-friend`, `online-account`, `online-picker`, `online-party`, `online-party-picker`, `online-messages`, `online-conversation`, `online-message`, `online-request`, and `home-messages` (the profile button with unread messages).
-Gallery scenes: `profile-own`, `profile-other` (trophies and playtime hidden), `profile-minimal` (a new account's own profile), `profile-minimal-other`, `feed` (a card focused), `feed-reaction` (a reaction focused), `feed-empty`, `feed-loading` and `feed-error`; `online-muted` (Home with a mute), `online-restriction` (the mute's page), `online-paused` (a conversation while muted), `online-banned` (the Start page after a ban), `online`, `online-browser`, `online-friends`, `online-friend`, `online-account`, `online-picker`, `online-party`, `online-party-picker`, `online-messages`, `online-conversation`, `online-message`, `online-request`, and `home-messages` (the profile button with unread messages).
+Gallery scenes: `feed` (a card focused), `feed-reaction` (a reaction focused), `feed-empty`, `feed-loading` and `feed-error`; `online-muted` (Home with a mute), `online-restriction` (the mute's page), `online-paused` (a conversation while muted), `online-banned` (the Start page after a ban), `online`, `online-browser`, `online-friends`, `online-friend`, `online-account`, `online-picker`, `online-party`, `online-party-picker`, `online-messages`, `online-conversation`, `online-message`, `online-request`, and `home-messages` (the profile button with unread messages).
 
 ## 18. Phone as controller
 

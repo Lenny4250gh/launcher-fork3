@@ -11,6 +11,7 @@ use egui::{
 };
 
 use crate::app::model::{GameState, Model, SizeState};
+use crate::screens::failure_strings::FailureText;
 use crate::screens::online_social_strings::SocialText;
 use crate::screens::online_strings::OnlineText;
 use crate::screens::phone_strings::PhoneText;
@@ -24,8 +25,8 @@ use crate::screens::{
 use crate::ui::anim::{AnimExt, Motion, lerp};
 use crate::ui::chrome::{self, TileImage, TileOverlay, TileStyle};
 use crate::ui::components::{
-    self as components, Chip, ConsoleButton, FOCUS_GROW, IconButton, IndeterminateLine,
-    ProgressLine, hint_bar, hint_bar_size,
+    self as components, ConsoleButton, ControlSize, IconButton, IndeterminateLine, ProgressLine,
+    Variant, hint_bar, hint_bar_size,
 };
 use crate::ui::focus::HomeFocus;
 use crate::ui::i18n::{Arg, Key, Language, byte_text};
@@ -171,8 +172,8 @@ fn top_bar(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<P
     let painter = ui.painter().clone();
     let top = screen.min.y + pad::HOME_TOP;
     let mid = top + size::ICON_BUTTON * 0.5;
-    // 12 between the buttons of the strip, 32 between the groups (title, buttons, profile, clock).
-    let (button_gap, group_gap) = (12.0, 32.0);
+    // One gap between all four controls of the strip; a wider one before the clock.
+    let (button_gap, group_gap) = (size::CONTROL_GAP, 28.0);
 
     let title = text::paint(
         &painter,
@@ -203,22 +204,13 @@ fn top_bar(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<P
         );
     }
 
-    // From the right: clock, profile, then settings, friends and library.
+    // From the right: clock, then profile, settings, friends and library, all 12 apart.
     let mut x = screen.max.x - pad::HOME_X;
-    let clock = crate::app::clock::local_time().text();
-    let clock_width = text::tabular_width(&painter, ty::CLOCK, &clock);
-    x -= clock_width;
-    text::paint_tabular(
-        &painter,
-        pos2(x, mid - ty::CLOCK.line_height() * 0.5),
-        ty::CLOCK,
-        &clock,
-        white(0.92),
-    );
-    x -= group_gap;
+    x = paint_clock(&painter, x, mid) - group_gap;
 
     let visible = focus_visible(cx.model);
-    // Right to left in one strip: a focused button makes room for itself, so the gap stays 12.
+    // Right to left in one strip. A focused control grows nothing (the ring is outside), so the
+    // gap is the same at rest, under the pointer and with the focus.
     let strip = Rect::from_min_max(pos2(screen.min.x, top), pos2(x, top + size::ICON_BUTTON));
     let mut row = ui.new_child(
         UiBuilder::new()
@@ -243,7 +235,6 @@ fn top_bar(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<P
     if profile_button(&mut row, &profile, accent, focused(HomeFocus::PROFILE)).clicked() {
         presses.push(Press::Focus(HomeFocus::PROFILE));
     }
-    row.add_space(group_gap - button_gap);
     let response = IconButton::new(Icon::GEAR_SIX, language.text(Key::Settings))
         .focused(focused(HomeFocus::SETTINGS))
         .show(&mut row);
@@ -274,6 +265,45 @@ fn top_bar(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<P
     }
 }
 
+/// Room the colon of the clock takes between the hours and the minutes.
+const CLOCK_COLON: f32 = 7.0;
+
+/// The clock: hours and minutes with the colon fixed in the middle of a box as wide as four of
+/// the widest digit, so the minute ticking over moves nothing. The hours end at the colon and the
+/// minutes begin at it; the colon is two dots centred on the digits' cap height, which the font's
+/// own colon (set for lower case) is not. Ends at `right`, on the bar's centre line `mid`. Returns
+/// the box's left edge.
+fn paint_clock(painter: &egui::Painter, right: f32, mid: f32) -> f32 {
+    let time = crate::app::clock::local_time();
+    let style = ty::CLOCK;
+    let ink = color::text_clock();
+    let cell = text::digit_cell(painter, style);
+    let left = right - (4.0 * cell + CLOCK_COLON);
+    let colon_x = left + 2.0 * cell + CLOCK_COLON * 0.5;
+    text::paint(
+        painter,
+        pos2(colon_x - CLOCK_COLON * 0.5, mid),
+        Align2::RIGHT_CENTER,
+        style,
+        &format!("{:02}", time.hour),
+        ink,
+    );
+    text::paint(
+        painter,
+        pos2(colon_x + CLOCK_COLON * 0.5, mid),
+        Align2::LEFT_CENTER,
+        style,
+        &format!("{:02}", time.minute),
+        ink,
+    );
+    // Digits are as tall as capitals: 0.727 em in Inter.
+    let reach = style.size * 0.727 * 0.5 * 0.52;
+    for dy in [-reach, reach] {
+        painter.circle_filled(pos2(colon_x, mid + dy), style.size * 0.065, ink);
+    }
+    left
+}
+
 /// Between the title and the phone status; clear of the scanning spinner.
 const PHONE_STATUS_GAP: f32 = 48.0;
 const PHONE_STATUS_HEIGHT: f32 = 32.0;
@@ -296,11 +326,7 @@ fn phone_status(ui: &mut Ui, left_middle: egui::Pos2, name: &str, language: Lang
     if !ui.is_rect_visible(rect) {
         return;
     }
-    painter.rect_filled(
-        rect,
-        components::corner(PHONE_STATUS_HEIGHT * 0.5),
-        color::surface(),
-    );
+    components::paint_capsule(&painter, rect, color::surface());
     let ink = white(0.92);
     painter.text(
         pos2(rect.min.x + 12.0 + glyph * 0.5, rect.center().y),
@@ -352,32 +378,17 @@ fn profile_label(handle: Option<&str>, online: bool, unread: u64, language: Lang
 /// The longest a handle gets in the profile button before it is cut in the middle.
 const PROFILE_NAME_MAX: f32 = 160.0;
 
-/// The surface the top bar's pills share with its icon buttons: the button surface at rest, lighter
-/// on hover, white when focused, the same glow. Returns the rectangle to paint into, scaled by
-/// press, and its scale.
+/// The surface the top bar's pills share with its icon buttons (the secondary control at 44 dp):
+/// returns the rectangle to paint into, pressed in, and its scale.
 fn paint_pill(painter: &egui::Painter, it: &components::Interaction) -> (Rect, f32) {
-    let rect = components::snap_rect(
-        painter,
-        components::scale_rect(it.grown(FOCUS_GROW), it.press_scale()),
-    );
-    let rest = if it.hovered {
-        color::surface_hover()
-    } else {
-        color::surface()
-    };
-    let r = (rect.height() * 0.5).round();
-    components::paint_shadow(painter, rect, r, theme::shadows::icon_button(it.focus));
-    painter.rect_filled(
-        rect,
-        components::corner(r),
-        theme::mix(rest, color::surface_focused(), it.focus),
-    );
+    let rect = it.painted(painter);
+    components::paint_control(painter, rect, Variant::Secondary, it, false);
     (rect, rect.height() / size::ICON_BUTTON)
 }
 
-/// The ink of a pill: white on the dark surface, black once it is focused and white.
-fn pill_ink(focus: f32) -> Color32 {
-    theme::mix(white(0.92), Color32::BLACK, focus)
+/// The ink of a pill: the same white as the icon buttons, focused or not.
+fn pill_ink(_focus: f32) -> Color32 {
+    Color32::WHITE
 }
 
 /// The avatar (or the sign-in glyph) and the name as one button, on the surface of the icon
@@ -406,14 +417,7 @@ fn profile_button(
         (text::width(&painter, BADGE, &count) + 12.0).max(BADGE_HEIGHT) + 8.0
     };
     let width = inset + size::AVATAR + 10.0 + name_width + 16.0 + badge_width;
-    let it = components::interact(
-        ui,
-        vec2(width, size::ICON_BUTTON),
-        focused,
-        true,
-        None,
-        FOCUS_GROW,
-    );
+    let it = components::interact(ui, vec2(width, size::ICON_BUTTON), focused, true, None);
     it.response
         .widget_info(|| WidgetInfo::labeled(Role::Button, true, &profile.label));
     if !ui.is_rect_visible(it.rect) {
@@ -458,7 +462,7 @@ fn profile_button(
     if profile.signed_in && profile.online {
         // The ring takes the colour of the pill around it, so the dot sits apart from the avatar.
         let dot = avatar + vec2(avatar_r, avatar_r) * 0.72;
-        let ring = theme::mix(Color32::from_black_alpha(160), Color32::WHITE, it.focus);
+        let ring = theme::black(0.62);
         painter.circle_filled(dot, 6.0 * s, ring);
         painter.circle_filled(dot, 4.0 * s, accent);
     }
@@ -471,25 +475,21 @@ fn profile_button(
         ink,
     );
     if !count.is_empty() {
-        // Light on the dark pill, dark on the light one it becomes when focused.
+        // Light, with dark type: the one place a pill carries ink as a fill.
         let w = (text::width(&painter, BADGE, &count) + 12.0).max(BADGE_HEIGHT) * s;
         let h = BADGE_HEIGHT * s;
         let badge = Rect::from_min_size(
             pos2(shown.max.x + 8.0 * s, rect.center().y - h * 0.5),
             vec2(w, h),
         );
-        painter.rect_filled(
-            badge,
-            components::corner(h * 0.5),
-            theme::mix(white(0.92), Color32::BLACK, it.focus),
-        );
+        components::paint_capsule(&painter, badge, white(0.92));
         text::paint(
             &painter,
             badge.center(),
             Align2::CENTER_CENTER,
             BADGE,
             &count,
-            theme::mix(Color32::BLACK, Color32::WHITE, it.focus),
+            Color32::BLACK,
         );
     }
     it.response
@@ -526,7 +526,6 @@ fn friends_button(
         focused,
         true,
         None,
-        FOCUS_GROW,
     );
     it.response
         .widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
@@ -679,6 +678,10 @@ fn tile_row(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<
         style.focus = ring_t;
         style.ring = ring_t > 0.002;
         style.opacity = opacity.clamp(0.0, 1.0);
+        let under_pointer = interactive
+            && opacity > 0.5
+            && ctx.pointer_hover_pos().is_some_and(|p| rect.contains(p));
+        style.hover = ctx.animate_to(key("tile-hover"), f32::from(under_pointer), Motion::Hover);
         chrome::paint_tile(&painter, rect, &style);
 
         if interactive && opacity > 0.5 {
@@ -878,7 +881,7 @@ fn paint_hero(
     let (primary_title, primary_icon, primary_fill) = primary_look(&state, language);
     let mut pressed = None;
     let after_buttons = place(ui, row, |ui| {
-        ui.spacing_mut().item_spacing.x = 12.0;
+        ui.spacing_mut().item_spacing.x = size::CONTROL_GAP;
         let focused = |i: usize| visible && cx.model.focus == HomeFocus::Actions(i);
         let primary = ConsoleButton::new(primary_title)
             .icon(primary_icon)
@@ -891,7 +894,7 @@ fn paint_hero(
             pressed = Some(HomeFocus::Actions(0));
         }
         if let Some(text) = &trophy_text {
-            let response = Chip::new(text)
+            let response = ConsoleButton::new(text)
                 .accessible_name(format!("{}, {}", language.text(Key::Trophies), text))
                 .icon(Icon::TROPHY)
                 .icon_fill(true)
@@ -1037,7 +1040,8 @@ fn ask_line(
         );
         for (i, verdict) in crate::app::run_question::ANSWERS.iter().enumerate() {
             let answer = RunText::of(*verdict).text(language);
-            let response = Chip::new(answer)
+            let response = ConsoleButton::new(answer)
+                .size(ControlSize::Small)
                 .accessible_name(format!("{question} {answer}"))
                 .focused(visible && cx.model.focus == HomeFocus::Ask(i))
                 .show(ui);
@@ -1045,7 +1049,8 @@ fn ask_line(
                 pressed = Some(HomeFocus::Ask(i));
             }
         }
-        let dismiss = Chip::icon_only(Icon::X, RunText::Dismiss.text(language))
+        let dismiss = ConsoleButton::icon_only(Icon::X, RunText::Dismiss.text(language))
+            .size(ControlSize::Small)
             .focused(visible && cx.model.focus == HomeFocus::Ask(crate::ui::focus::ASK_LAST))
             .show(ui);
         if dismiss.clicked() {
@@ -1119,16 +1124,28 @@ fn action_row_status(
             });
         }
         GameState::Failed(message) => {
-            let galley = wrapped(
+            // What happened and what to do, in words; the technical message stays under it, quiet.
+            let headline = wrapped(
                 &painter,
-                ty::DETAIL_LARGE,
-                message,
+                ty::ROW_TITLE,
+                FailureText::UnlockStopped.text(language),
                 color::error_text(),
                 MESSAGE_WIDTH,
                 2,
             );
-            let pos = pos2(x, mid - galley.size().y * 0.5);
-            painter.galley(pos, galley, color::error_text());
+            let detail = wrapped(
+                &painter,
+                ty::DETAIL,
+                message,
+                color::text_detail(),
+                MESSAGE_WIDTH,
+                1,
+            );
+            let gap = 4.0;
+            let top = mid - (headline.size().y + gap + detail.size().y) * 0.5;
+            let detail_top = top + headline.size().y + gap;
+            painter.galley(pos2(x + 16.0, top), headline, color::error_text());
+            painter.galley(pos2(x + 16.0, detail_top), detail, color::text_detail());
         }
         _ => {
             if let Some(summary) = cx.model.diagnoses.get(&game.id) {

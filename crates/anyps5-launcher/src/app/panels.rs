@@ -21,6 +21,7 @@
 //! and answers through channels polled in [`OverlayHost::frame`].
 
 mod online;
+mod profile;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -133,6 +134,11 @@ pub struct PanelHost {
     recommended: RecommendedPanel,
     saves: SavesPanel,
     online_panel: crate::screens::online::OnlinePanel,
+    /// The profile screen (`Overlay::Profile`).
+    profile: crate::screens::profile::ProfileScreen,
+    /// The page the online panel opens on when the profile screen sent the player there: the
+    /// page, and a feed item to put the focus on.
+    online_start: Option<(crate::screens::online::Page, Option<u64>)>,
     restore: RestorePanel,
     save_view: Option<SaveView>,
     saves_stale: bool,
@@ -203,6 +209,8 @@ impl PanelHost {
             recommended: RecommendedPanel::default(),
             saves: SavesPanel::default(),
             online_panel: crate::screens::online::OnlinePanel::default(),
+            profile: crate::screens::profile::ProfileScreen::default(),
+            online_start: None,
             restore: RestorePanel::default(),
             save_view: None,
             saves_stale: true,
@@ -416,6 +424,7 @@ impl PanelHost {
                 }
             }
             SettingsAction::SetLinks(on) => self.set_links(model, on),
+            SettingsAction::OpenPage(page) => open_known_url(page),
             SettingsAction::Phone(crate::screens::phone::PhoneAction::OpenDriverPage) => {
                 open_known_url(crate::screens::phone::driver_page());
             }
@@ -1591,6 +1600,7 @@ impl OverlayHost for PanelHost {
             Overlay::Recommended => self.recommended_ui(cx, wanted),
             Overlay::WhatsNew => self.whats_new_ui(cx, wanted),
             Overlay::Online => self.online_ui(cx, wanted),
+            Overlay::Profile => self.profile_ui(cx, wanted),
         }
     }
 
@@ -1739,6 +1749,10 @@ fn open_known_url(url: &str) {
     let known = [
         crate::screens::phone::VIGEM_DOWNLOAD,
         crate::screens::phone::UINPUT_GUIDE,
+        crate::screens::about_strings::WEBSITE,
+        crate::screens::about_strings::DISCORD,
+        crate::screens::about_strings::PRIVACY,
+        crate::screens::about_strings::TERMS,
     ];
     if !known.contains(&url) {
         return;

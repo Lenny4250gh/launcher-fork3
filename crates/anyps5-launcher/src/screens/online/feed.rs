@@ -20,7 +20,7 @@ use crate::screens::side::{self, SideDrawn, SideView};
 use crate::ui::Shell;
 use crate::ui::anim::{AnimExt, lerp};
 use crate::ui::chrome::{PanelRow, RowControl};
-use crate::ui::components::{corner, paint_shadow};
+use crate::ui::components::{corner, paint_capsule, paint_shadow};
 use crate::ui::i18n::{Arg, Language};
 use crate::ui::icons::Icon;
 use crate::ui::input::Command;
@@ -205,7 +205,7 @@ pub fn names(handles: &[&str], language: Language) -> String {
 }
 
 /// The launcher's colour of a grade the cloud names.
-pub(super) fn theme_grade(grade: Grade) -> theme::Grade {
+pub fn theme_grade(grade: Grade) -> theme::Grade {
     match grade {
         Grade::Platinum => theme::Grade::Platinum,
         Grade::Gold => theme::Grade::Gold,
@@ -458,7 +458,7 @@ impl OnlinePanel {
                     online::toggled(item.mine, *reaction),
                 ));
             }
-            None => self.go(Page::Profile(item.account.id), data),
+            None => self.open_profile(item.account.id),
         }
     }
 
@@ -861,7 +861,7 @@ fn show_card(
         };
         let solid = if t > 0.5 { black(0.88) } else { white(0.95) };
         let fill = mix(rest_fill, solid, pt);
-        painter.rect_filled(pill, corner(REACTION_HEIGHT * 0.5), fill);
+        paint_capsule(&painter, pill, fill);
         let ink = mix(
             dim(if own { 1.0 } else { 0.82 }),
             if t > 0.5 {
@@ -948,7 +948,7 @@ fn paint_state(ui: &mut Ui, icon: Icon, title: &str, note: Option<&str>) {
 }
 
 /// A round picture, or the first letter of the handle on a calm colour.
-pub(super) fn paint_avatar(
+pub fn paint_avatar(
     painter: &egui::Painter,
     rect: Rect,
     avatar: Option<Avatar>,
@@ -958,11 +958,14 @@ pub(super) fn paint_avatar(
     let r = rect.width() * 0.5;
     match avatar {
         Some(avatar) => {
+            // A radius of exactly half draws egui's doubled-vertex seam on a snapped square (see
+            // `paint_capsule`); one dp less keeps a straight sliver and the same round look.
             painter.add(
-                egui::epaint::RectShape::filled(rect, corner(r), Color32::WHITE).with_texture(
-                    avatar.texture,
-                    Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-                ),
+                egui::epaint::RectShape::filled(rect, corner(r - 1.0), Color32::WHITE)
+                    .with_texture(
+                        avatar.texture,
+                        Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                    ),
             );
             // A faint edge keeps a dark picture apart from a dark card.
             painter.circle_stroke(rect.center(), r - 0.5, egui::Stroke::new(1.0, black(0.18)));

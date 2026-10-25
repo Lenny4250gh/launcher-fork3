@@ -6,6 +6,7 @@
 //! ```
 //!
 //! Scenes: `onboarding0`, `onboarding1`, `onboarding2` (folder chosen), `onboarding2-empty`,
+//! `onboarding3` (signing in, with a cloud),
 //! `home`, `home-actions`, `home-trophies`, `home-locked`, `home-unlocking`, `home-relinking`,
 //! `home-failed`, `home-queued`, `home-running`, `home-outdated`, `home-diagnosis`, `home-messages` (the
 //! profile button with unread messages), `home-friends` (signed in, three friends online),
@@ -94,6 +95,7 @@ impl Scene {
             "onboarding0" | "onboarding" => Scene::Onboarding(0),
             "onboarding1" => Scene::Onboarding(1),
             "onboarding2" => Scene::Onboarding(2),
+            "onboarding3" => Scene::Onboarding(3),
             "onboarding2-empty" => Scene::OnboardingEmpty,
             "home" => Scene::Home,
             "home-actions" => Scene::HomeActions,
@@ -129,11 +131,12 @@ impl Scene {
         })
     }
 
-    pub const ALL_NAMES: [&'static str; 34] = [
+    pub const ALL_NAMES: [&'static str; 35] = [
         "onboarding0",
         "onboarding1",
         "onboarding2",
         "onboarding2-empty",
+        "onboarding3",
         "home",
         "home-actions",
         "home-trophies",
@@ -183,6 +186,8 @@ pub struct Options {
     pub pad: bool,
     /// `--intro`: play the launch intro (to screenshot it part way with `--frames`).
     pub intro: bool,
+    /// `--hover=X,Y`: where the pointer rests, in dp (to screenshot a hover state).
+    pub hover: Option<(f32, f32)>,
     pub frames: u32,
     /// Commands fed to the app one after the other (`--script=right,select,wait60`).
     pub script: Vec<Step>,
@@ -234,6 +239,7 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
         turkish: false,
         pad: false,
         intro: false,
+        hover: None,
         frames: 100,
         script: Vec::new(),
         real_art: std::env::var_os("ANYPS5_PREVIEW_REAL_ART").map(PathBuf::from),
@@ -263,6 +269,10 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
             options.frames = frames.parse().unwrap_or(100);
         } else if let Some(script) = arg.strip_prefix("--script=") {
             options.script = parse_script(script);
+        } else if let Some(at) = arg.strip_prefix("--hover=") {
+            options.hover = at
+                .split_once(',')
+                .and_then(|(x, y)| Some((x.parse().ok()?, y.parse().ok()?)));
         } else if arg == "--pad" {
             options.pad = true;
         } else if arg == "--intro" {
@@ -447,6 +457,10 @@ pub fn apply_scene(app: &mut LauncherApp, scene: Scene, games: Vec<Game>) {
             };
         }
         p.game_artwork = scene != Scene::HomeNoArtwork;
+        // The online step needs a cloud to sign in to.
+        if scene == Scene::Onboarding(3) {
+            p.online_cloud = Some("https://anyplaynet.com".to_owned());
+        }
     });
     m.toolkit = Some("0.1.0".to_owned());
 
@@ -893,6 +907,14 @@ impl PreviewApp {
 }
 
 impl eframe::App for PreviewApp {
+    fn raw_input_hook(&mut self, _ctx: &Context, raw_input: &mut egui::RawInput) {
+        if let Some((x, y)) = self.options.hover {
+            raw_input
+                .events
+                .push(egui::Event::PointerMoved(egui::pos2(x, y)));
+        }
+    }
+
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         if self.options.scene.is_none() && self.frames == 0 {
             crate::app::window_chrome::apply(frame);

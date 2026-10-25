@@ -24,6 +24,7 @@
 // API is unused outside the gallery and the tests.
 #![allow(dead_code)]
 
+pub mod about_strings;
 pub mod advanced;
 pub mod banner;
 pub mod calls;
@@ -31,6 +32,7 @@ pub mod controls;
 pub mod convert;
 pub mod dialogs;
 pub mod discord_strings;
+pub mod failure_strings;
 pub mod format;
 pub mod gallery;
 pub mod gallery_feed;
@@ -39,6 +41,7 @@ pub mod home;
 pub mod library;
 pub mod log;
 pub mod onboarding;
+pub mod onboarding_strings;
 pub mod online;
 pub mod online_call_strings;
 pub mod online_feed_strings;
@@ -49,6 +52,8 @@ pub mod online_strings;
 pub mod online_voice_strings;
 pub mod phone;
 pub mod phone_strings;
+pub mod profile;
+pub mod profile_strings;
 pub mod recommended;
 pub mod rows;
 pub mod run_strings;

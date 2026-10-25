@@ -348,7 +348,7 @@ fn components_page(ui: &mut Ui, shell: &Shell) {
 
     heading(ui, "Top-bar icon buttons: rest, hover, focused");
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 24.0;
+        ui.spacing_mut().item_spacing.x = size::CONTROL_GAP;
         IconButton::new(Icon::SQUARES_FOUR, language.text(Key::Library)).show(ui);
         IconButton::new(Icon::GEAR_SIX, language.text(Key::Settings))
             .force(Some(Force::Hover))
@@ -358,6 +358,58 @@ fn components_page(ui: &mut Ui, shell: &Shell) {
             .show(ui);
     });
     ui.add_space(26.0);
+
+    heading(
+        ui,
+        "The family: large, medium, small x rest, hover, press, focus, disabled (ink, secondary, circle)",
+    );
+    for size_ in [
+        components::ControlSize::Large,
+        components::ControlSize::Medium,
+        components::ControlSize::Small,
+    ] {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = size::CONTROL_GAP;
+            let states = [
+                (None, false, true),
+                (Some(Force::Hover), false, true),
+                (Some(Force::Press), false, true),
+                (None, true, true),
+                (None, false, false),
+            ];
+            for (force, focused, enabled) in states {
+                ConsoleButton::new("Play")
+                    .icon(Icon::PLAY)
+                    .icon_fill(true)
+                    .prominent(true)
+                    .size(size_)
+                    .force(force)
+                    .focused(focused)
+                    .enabled(enabled)
+                    .show(ui);
+            }
+            for (force, focused, enabled) in states {
+                ConsoleButton::new("3/8")
+                    .icon(Icon::TROPHY)
+                    .icon_fill(true)
+                    .tabular(true)
+                    .size(size_)
+                    .force(force)
+                    .focused(focused)
+                    .enabled(enabled)
+                    .show(ui);
+            }
+            ConsoleButton::icon_only(Icon::GEAR_SIX, "Settings")
+                .size(size_)
+                .show(ui);
+            ConsoleButton::icon_only(Icon::GEAR_SIX, "Settings")
+                .size(size_)
+                .focused(true)
+                .show(ui);
+        });
+        ui.add_space(8.0);
+    }
+    ui.add_space(14.0);
 
     heading(ui, "Switch, progress, indeterminate");
     ui.horizontal(|ui| {
