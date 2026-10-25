@@ -289,6 +289,11 @@ fn draw(
             style.focus = t;
             style.ring = true;
             style.time = ui.ctx().clock();
+            style.hover = ui.ctx().animate_to(
+                ("library-hover", i),
+                f32::from(response.hovered()),
+                crate::ui::anim::Motion::Hover,
+            );
             paint_tile(
                 &painter,
                 Rect::from_min_size(cell.min, vec2(tile, tile)),
