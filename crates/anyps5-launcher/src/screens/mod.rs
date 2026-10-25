@@ -26,6 +26,7 @@
 
 pub mod advanced;
 pub mod banner;
+pub mod calls;
 pub mod controls;
 pub mod convert;
 pub mod dialogs;
@@ -39,6 +40,7 @@ pub mod library;
 pub mod log;
 pub mod onboarding;
 pub mod online;
+pub mod online_call_strings;
 pub mod online_feed_strings;
 pub mod online_restriction_strings;
 pub mod online_screen_strings;
