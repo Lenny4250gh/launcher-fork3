@@ -198,7 +198,7 @@ impl Scene {
         })
     }
 
-    pub const ALL_NAMES: [&'static str; 50] = [
+    pub const ALL_NAMES: [&'static str; 53] = [
         "onboarding0",
         "onboarding1",
         "onboarding2",
