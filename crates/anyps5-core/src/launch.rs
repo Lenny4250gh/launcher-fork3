@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 
 use crate::diagnosis::{Diagnosis, ExitInfo};
 use crate::error::EventSink;
+use crate::logflood::FloodFilter;
 use crate::paths::GameId;
 use crate::unlock::EXECUTABLE;
 
@@ -400,6 +401,22 @@ impl Launcher {
                 .name("run-pump".into())
                 .spawn(move || {
                     let mut buffer = [0u8; 8192];
+                    // A line the game repeats without end is written 50 times per 10 s, then
+                    // counted in one notice (see `logflood`).
+                    let mut flood = FloodFilter::new();
+                    let write = |bytes: &[u8], log: &mut fs::File| {
+                        if bytes.is_empty() {
+                            return;
+                        }
+                        let _ = log.write_all(bytes);
+                        let _ = log.flush();
+                        let mut tail = running.tail.lock().expect("tail lock");
+                        tail.extend(bytes);
+                        if tail.len() > TAIL_BYTES {
+                            let excess = tail.len() - TAIL_BYTES;
+                            tail.drain(..excess);
+                        }
+                    };
                     loop {
                         let n = match reader.read(&mut buffer) {
                             Ok(0) => break,
@@ -407,15 +424,10 @@ impl Launcher {
                             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                             Err(_) => break,
                         };
-                        let _ = log.write_all(&buffer[..n]);
-                        let _ = log.flush();
-                        let mut tail = running.tail.lock().expect("tail lock");
-                        tail.extend(&buffer[..n]);
-                        if tail.len() > TAIL_BYTES {
-                            let excess = tail.len() - TAIL_BYTES;
-                            tail.drain(..excess);
-                        }
+                        let kept = flood.push(&buffer[..n], Instant::now());
+                        write(&kept, &mut log);
                     }
+                    write(&flood.finish(), &mut log);
                     let _ = pumped_tx.send(());
                 })
                 .map_err(LaunchError::Spawn)?;
@@ -447,9 +459,19 @@ fn watch(
     let started = Instant::now();
     let mut had_window = false;
     let mut reported = false;
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut window_closed = false;
     loop {
         if running.stop.load(Ordering::SeqCst) {
             return;
+        }
+        // The window went while the game still runs: the player closed it.
+        #[cfg(windows)]
+        if had_window && !window_closed {
+            let window = running.window.load(Ordering::SeqCst);
+            if window != 0 && !crate::win::window_exists(window) && running.alive() {
+                window_closed = true;
+            }
         }
         if !running.alive() {
             break;
@@ -494,7 +516,7 @@ fn watch(
     // The game has ended. Let the pump drain so the log is complete before anyone reads it.
     let _ = pumped.recv_timeout(Duration::from_secs(2));
     let killed = running.killed.load(Ordering::SeqCst);
-    let code = if killed {
+    let status = if killed {
         None
     } else {
         running
@@ -504,10 +526,30 @@ fn watch(
             .try_wait()
             .ok()
             .flatten()
-            .and_then(|status| status.code())
-            .map(|c| c as u32)
     };
-    let info = ExitInfo { code, had_window };
+    let code = status.and_then(|status| status.code()).map(|c| c as u32);
+    #[cfg(unix)]
+    let signal = status.and_then(|status| std::os::unix::process::ExitStatusExt::signal(&status));
+    #[cfg(not(unix))]
+    let signal = None;
+    let info = ExitInfo {
+        code,
+        had_window,
+        signal,
+        window_closed,
+        killed,
+    };
+    // How it ended, in the game's log and the launcher's: the log of a game that dies ends with it.
+    let ending = info.describe();
+    tracing::info!(target: "game", "{}: {ending}", request.title_id);
+    if let Ok(mut file) = fs::OpenOptions::new().append(true).open(&request.log_file) {
+        let _ = writeln!(
+            file,
+            "
+[anyps5-launcher] end {} {ending}",
+            now_utc()
+        );
+    }
     (sink)(LaunchEvent::Exited {
         game: request.game.clone(),
         info: info.clone(),

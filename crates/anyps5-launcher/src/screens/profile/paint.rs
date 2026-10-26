@@ -139,7 +139,7 @@ fn wrapped(
     let mut job =
         egui::text::LayoutJob::simple(text.to_owned(), style.font(), Color32::PLACEHOLDER, width);
     job.wrap.max_rows = rows;
-    job.sections[0].format.line_height = Some(line * style.size);
+    job.sections[0].format.line_height = Some(line * style.px());
     painter.layout_job(job)
 }
 
@@ -531,6 +531,7 @@ fn paint_page(
     let ctx = ui.ctx().clone();
     let mut child = ui.new_child(UiBuilder::new().max_rect(list));
     let mut scroll = ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(Id::unique("profile-screen-scroll"))
         .auto_shrink([false, false])
         .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden);

@@ -2,10 +2,11 @@
 //! be screenshotted and compared with the original (`docs/DESIGN.md` screenshot table).
 //!
 //! ```text
-//! anyplay-launcher --gallery=settings|settings1..6|game-settings|game-settings-foot|confirm|controls|controls-capture|
+//! anyplay-launcher --gallery=controllers|controllers-test|settings|settings1..6|game-settings|game-settings-foot|confirm|controls|controls-capture|
 //!                           controls-end|advanced|trophies|trophies-hidden|trophies-revealed|banner|start|unlocking|log|report|library|
 //!                           captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
+//!                           game-hub|game-hub-running|game-hub-empty|trophies-all|
 //!                           about-update|behavior-links|settings-codec|settings-codec-off|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
@@ -60,6 +61,7 @@ use crate::app::preview::{HomeStand, Scene};
 use crate::screens::advanced::{AdvancedData, AdvancedPanel};
 use crate::screens::banner::{self, BannerLook, BannerTrophy};
 use crate::screens::captures::sample::CapturesLook;
+use crate::screens::controllers::{ControllersData, ControllersPanel};
 use crate::screens::controls::{ControlsData, ControlsPanel};
 use crate::screens::game_settings::{
     GameSettingsData, GameSettingsPanel, RecommendedRow, UninstallPanel,
@@ -84,6 +86,17 @@ use crate::ui::icons::Icon;
 use crate::ui::input::InputEvent;
 use anyps5_core::gamefiles::{GameInput, parse_input_ini};
 
+/// The states of the Game Hub (docs/DESIGN.md 5.22).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HubLook {
+    /// Trophies, captures, a friend playing, Play Together and a known verdict.
+    Full,
+    /// The game runs: the primary action is Back to Game.
+    Running,
+    /// Nothing to show yet: no trophies, no captures, nobody playing.
+    Empty,
+}
+
 /// The page to show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScreenPage {
@@ -95,6 +108,8 @@ pub enum ScreenPage {
     /// The game sheet on "Toolkit for This Game", the game staying on its own release.
     GameToolkit,
     Confirm,
+    Controllers,
+    ControllersTest,
     Controls,
     ControlsCapture,
     /// The last rows: import, export, reset.
@@ -120,6 +135,10 @@ pub enum ScreenPage {
     LibraryLongName,
     /// The Captures area, in one of its states.
     Captures(crate::screens::captures::sample::CapturesLook),
+    /// The Game Hub of an invented game, in one of its states.
+    Hub(HubLook),
+    /// The trophies of all invented games together.
+    TrophiesAll,
     /// The Toolkit category, in its rows: stable, an update waiting, pinned, a local build.
     Toolkit(ToolkitLook),
     /// The About page with a downloaded launcher update waiting ("Restart Now").
@@ -150,6 +169,13 @@ pub enum ScreenPage {
     SavesEmpty,
     /// The question before one is put back.
     Restore,
+    /// The unlocked copies and the room they take: three of them, or none.
+    Storage,
+    StorageEmpty,
+    /// The question before an unlocked copy is removed.
+    RemoveCopy,
+    /// The search of the library page.
+    LibrarySearch,
     /// The question when the release a game stays on is gone.
     ToolkitMissing,
     /// The online area on one of its pages, over invented friends.
@@ -708,6 +734,8 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "game-settings-foot" => ScreenPage::GameSettingsFoot,
         "game-toolkit" => ScreenPage::GameToolkit,
         "confirm" => ScreenPage::Confirm,
+        "controllers" => ScreenPage::Controllers,
+        "controllers-test" => ScreenPage::ControllersTest,
         "controls" => ScreenPage::Controls,
         "controls-capture" => ScreenPage::ControlsCapture,
         "controls-end" => ScreenPage::ControlsEnd,
@@ -734,6 +762,10 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "captures-confirm" => ScreenPage::Captures(CapturesLook::Confirm),
         "captures-missing" => ScreenPage::Captures(CapturesLook::Missing),
         "captures-loading" => ScreenPage::Captures(CapturesLook::Loading),
+        "game-hub" => ScreenPage::Hub(HubLook::Full),
+        "game-hub-running" => ScreenPage::Hub(HubLook::Running),
+        "game-hub-empty" => ScreenPage::Hub(HubLook::Empty),
+        "trophies-all" => ScreenPage::TrophiesAll,
         "about-update" => ScreenPage::AboutUpdate(UpdateLook::Ready),
         "about-update-checking" => ScreenPage::AboutUpdate(UpdateLook::Checking),
         "about-update-current" => ScreenPage::AboutUpdate(UpdateLook::UpToDate),
@@ -794,6 +826,10 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "saves" => ScreenPage::Saves,
         "saves-empty" => ScreenPage::SavesEmpty,
         "restore" => ScreenPage::Restore,
+        "storage" => ScreenPage::Storage,
+        "storage-empty" => ScreenPage::StorageEmpty,
+        "remove-copy" => ScreenPage::RemoveCopy,
+        "library-search" => ScreenPage::LibrarySearch,
         "toolkit-missing" => ScreenPage::ToolkitMissing,
         "friends-signin" => ScreenPage::Online(OnlineLook::Start),
         "friends-browser" => ScreenPage::Online(OnlineLook::Browser),
@@ -1962,6 +1998,9 @@ pub struct ScreenGallery {
     uninstall: UninstallPanel,
     saves: SavesPanel,
     restore: RestorePanel,
+    storage: crate::screens::library_storage::StoragePanel,
+    remove_copy: crate::screens::library_storage::RemovePanel,
+    library_search: crate::screens::library_search::SearchPanel,
     missing: crate::screens::toolkit_pin::MissingPanel,
     friends: crate::screens::friends::FriendsScreen,
     online: anyps5_core::online::Online,
@@ -1978,6 +2017,7 @@ pub struct ScreenGallery {
     phone: crate::app::phone::PhoneState,
     ludus: crate::app::ludus::LudusState,
     controls: ControlsPanel,
+    controllers: ControllersPanel,
     /// A game whose files name its controls, for the controls page.
     game_input: GameInput,
     /// Layouts the community shares for the invented game.
@@ -1987,6 +2027,8 @@ pub struct ScreenGallery {
     library: LibraryGrid,
     captures: crate::screens::captures::CapturesScreen,
     captures_sample: Option<crate::screens::captures::sample::Sample>,
+    hub: crate::screens::hub::HubScreen,
+    overview: crate::screens::overview::OverviewScreen,
     log: LogView,
     start: StartScreen,
     banner_icons: IconCache,
@@ -2003,9 +2045,11 @@ impl ScreenGallery {
     ) -> Self {
         let mut prefs = Preferences::first_run();
         prefs.theme = crate::screens::convert::theme_to_core(theme);
-        // --tr shows the page in Turkish.
+        // --tr shows the page in Turkish, --de in German.
         if language == crate::ui::i18n::Language::Turkish {
             prefs.language = anyps5_core::settings::Language::Turkish;
+        } else if language == crate::ui::i18n::Language::German {
+            prefs.language = anyps5_core::settings::Language::German;
         }
         prefs.onboarded = true;
         prefs.profile_name = "Mira".into();
@@ -2058,7 +2102,7 @@ impl ScreenGallery {
                 notes: ReleaseNotes::parse(SAMPLE_NOTES),
             },
             launcher_notes: Published {
-                tag: "0.1.4".into(),
+                tag: "0.3.0".into(),
                 date: String::new(),
                 notes: ReleaseNotes::parse_launcher(LAUNCHER_SAMPLE_NOTES),
             },
@@ -2079,6 +2123,9 @@ impl ScreenGallery {
             uninstall: UninstallPanel::default(),
             saves: SavesPanel::default(),
             restore: RestorePanel::default(),
+            storage: Default::default(),
+            remove_copy: Default::default(),
+            library_search: Default::default(),
             missing: crate::screens::toolkit_pin::MissingPanel::default(),
             friends: crate::screens::friends::FriendsScreen::default(),
             profile: crate::screens::profile::ProfileScreen::default(),
@@ -2098,6 +2145,7 @@ impl ScreenGallery {
                 _ => anyps5_core::online::Online::default(),
             },
             controls: ControlsPanel::default(),
+            controllers: ControllersPanel::default(),
             game_input: sample_game_input(),
             community: sample_community(),
             advanced: AdvancedPanel::default(),
@@ -2105,6 +2153,8 @@ impl ScreenGallery {
             library: LibraryGrid::default(),
             captures: crate::screens::captures::CapturesScreen::default(),
             captures_sample: None,
+            hub: crate::screens::hub::HubScreen::default(),
+            overview: crate::screens::overview::OverviewScreen::default(),
             log: LogView::default(),
             start: StartScreen::default(),
             banner_icons: IconCache::default(),
@@ -2134,6 +2184,149 @@ impl ScreenGallery {
         {
             calls::call_strip(ctx, &strip, language, 1.0, true);
         }
+    }
+
+    /// The Game Hub of the first invented game.
+    fn hub_screen(&mut self, shell: &mut Shell, ctx: &Context, look: HubLook) {
+        use crate::screens::hub::{Block, CaptureBlock, HubData, TrophyBlock};
+        use crate::screens::hub_strings::HubText as H;
+        use crate::screens::ingame::InGameText;
+        use crate::screens::run_strings::RunText;
+        use crate::ui::i18n::{Arg, Key};
+        let language = shell.language;
+        let accent = shell.accent_color();
+        let empty = look == HubLook::Empty;
+        let running = look == HubLook::Running;
+        let art = Some(self.tile(0));
+        let thumbs: Vec<Option<TileImage>> = (1..=4).map(|i| Some(self.tile(i))).collect();
+        let (primary_title, primary_icon) = if running {
+            (InGameText::BackToGame.text(language), Icon::PLAY_CIRCLE)
+        } else {
+            (language.text(Key::Play), Icon::PLAY)
+        };
+        let trophies = if empty {
+            TrophyBlock {
+                figure: String::new(),
+                fraction: None,
+                grades: [0; 4],
+                note: H::NoTrophyList.text(language).to_owned(),
+            }
+        } else {
+            TrophyBlock {
+                figure: H::TrophyCount.format(language, &[Arg::Int(12), Arg::Int(40)]),
+                fraction: Some(0.3),
+                grades: [0, 2, 4, 6],
+                note: H::LatestTrophy
+                    .format(language, &[Arg::Str("First Light"), Arg::Str("Gold")]),
+            }
+        };
+        let time = if empty {
+            Block::note(H::NeverPlayed.text(language))
+        } else {
+            Block::value(
+                "14 h 20 min",
+                Some(format!(
+                    "{}\n{}",
+                    H::ThisWeek.format(language, &[Arg::Str("2 h 5 min")]),
+                    H::LastPlayed.format(language, &[Arg::Str("yesterday")])
+                )),
+            )
+        };
+        let captures = CaptureBlock {
+            count: (!empty).then(|| H::CaptureCount.format(language, &[Arg::Int(7)])),
+            thumbs: if empty { Vec::new() } else { thumbs },
+            empty: H::NoCaptures.text(language).to_owned(),
+        };
+        let friends = if empty {
+            Block::note(H::NoFriendsPlaying.text(language))
+        } else {
+            Block::note(H::FriendsPlaying.format(language, &[Arg::Str("Mira, Lumen")]))
+        };
+        let together = if empty {
+            Block::note(H::TogetherNone.text(language))
+        } else {
+            Block::value(H::TogetherUpTo.format(language, &[Arg::Int(4)]), None)
+        };
+        let compat = if empty {
+            Block::note(H::CompatNone.text(language))
+        } else {
+            Block::note(RunText::Verdict.format(
+                language,
+                &[Arg::Str(RunText::Playable.text(language)), Arg::Int(23)],
+            ))
+        };
+        let music = if empty {
+            Block::note(H::MusicNone.text(language))
+        } else {
+            Block::value(H::MusicOn.text(language), None)
+        };
+        let data = HubData {
+            language,
+            accent,
+            name: NAMES[0],
+            subtitle: "1.00".to_owned(),
+            art,
+            primary_title: primary_title.to_owned(),
+            primary_icon,
+            primary_ready: !running,
+            trophies,
+            has_trophy_list: !empty,
+            time,
+            captures,
+            friends,
+            together,
+            compat,
+            music,
+        };
+        self.hub.show(shell, ctx, &[], &data);
+    }
+
+    /// The trophies of the invented games together.
+    fn overview_screen(&mut self, shell: &mut Shell, ctx: &Context) {
+        use crate::screens::hub_strings::HubText as H;
+        use crate::screens::overview::{OverviewData, OverviewRow};
+        use crate::ui::i18n::Arg;
+        let language = shell.language;
+        let accent = shell.accent_color();
+        let sample = [
+            (0usize, 12usize, 40usize),
+            (1, 3, 24),
+            (2, 0, 18),
+            (3, 31, 31),
+        ];
+        let rows: Vec<OverviewRow> = sample
+            .into_iter()
+            .map(|(i, earned, total)| {
+                let latest = if earned > 0 {
+                    H::OverviewLatest.format(language, &[Arg::Str("3 Oct")])
+                } else {
+                    H::OverviewNothingYet.text(language).to_owned()
+                };
+                OverviewRow {
+                    title_id: format!("PPSA{:05}", 90000 + i),
+                    name: NAMES[i].to_owned(),
+                    art: Some(self.tile(i)),
+                    earned,
+                    total,
+                    fraction: earned as f32 / total as f32,
+                    grades: if earned > 0 {
+                        [u32::from(earned == total), 2, 4, 6]
+                    } else {
+                        [0; 4]
+                    },
+                    label: format!("{}: {earned} of {total}. {latest}", NAMES[i]),
+                    latest,
+                }
+            })
+            .collect();
+        let data = OverviewData {
+            language,
+            accent,
+            summary: H::OverviewSummary.format(language, &[Arg::Int(46), Arg::Int(4)]),
+            loading: false,
+            rows: &rows,
+        };
+        self.overview.show(shell, ctx, &[], &data);
     }
 
     /// The Captures area over the invented folder.
@@ -2317,6 +2510,7 @@ impl ScreenGallery {
                 ]
             },
             grades: if new { [0; 4] } else { [1, 4, 9, 30] },
+            week_seconds: if new { 0 } else { 5 * 3_600 + 1_200 },
         };
         let inputs = Inputs {
             online: &self.online,
@@ -2425,6 +2619,7 @@ impl ScreenGallery {
                         quiet: true,
                     }
                 },
+                compat: sample_compat(i, language),
             })
             .collect();
         let resolutions: Vec<String> = Vec::new();
@@ -2489,6 +2684,7 @@ impl ScreenGallery {
             clips: crate::screens::settings::ClipsEnv {
                 count: if self.prefs.clips_seconds > 0 { 3 } else { 0 },
                 capturing: matches!(self.page, ScreenPage::BehaviourClipsKey),
+                broadcast_key: false,
             },
             location: match self.page {
                 ScreenPage::UnlockedLocation(look) => look.env(),
@@ -2565,6 +2761,48 @@ impl ScreenGallery {
                 .show(shell, &ctx, &events, &stamp, language, accent);
         }
         {
+            use crate::screens::library_search::SearchData;
+            use crate::screens::library_storage::{StorageData, StorageEntry};
+            let entries: Vec<StorageEntry> = if self.page == ScreenPage::StorageEmpty {
+                Vec::new()
+            } else {
+                [
+                    ("Lanternfall", Some(42_300_000_000u64)),
+                    ("Skybound", Some(18_900_000_000)),
+                    ("Cinder Run", None),
+                ]
+                .into_iter()
+                .map(|(name, bytes)| StorageEntry {
+                    name: name.to_owned(),
+                    bytes,
+                    running: false,
+                })
+                .collect()
+            };
+            let data = StorageData {
+                entries: &entries,
+                free: Some(212_000_000_000),
+                language,
+                accent,
+            };
+            self.storage.show(shell, &ctx, &events, &data);
+            self.remove_copy.show(
+                shell,
+                &ctx,
+                &events,
+                ("Lanternfall", Some(42_300_000_000)),
+                language,
+                accent,
+            );
+            let search = SearchData {
+                query: "sky",
+                found: 1,
+                language,
+                accent,
+            };
+            self.library_search.show(shell, &ctx, &events, &search);
+        }
+        {
             let data = online_data(&self.online, self.together_name(), language, accent);
             if self.friends.wants_local() {
                 self.friends.set_local(crate::screens::gallery_feed::local(
@@ -2601,10 +2839,12 @@ impl ScreenGallery {
                 NotesView::Ready(&self.notes)
             };
             let data = WhatsNewData {
-                tag: if launcher { "0.1.4" } else { "0.1.3" },
+                tag: if launcher { "0.3.0" } else { "0.1.3" },
                 view,
                 language,
                 launcher,
+                showcase: launcher,
+                accent,
             };
             self.whats_new.show(shell, &ctx, &events, &data);
         }
@@ -2635,6 +2875,15 @@ impl ScreenGallery {
                 game_input: Some(&self.game_input),
             };
             self.controls.show(shell, &ctx, &events, &mut data);
+        }
+        {
+            let mut data = ControllersData {
+                prefs: &mut self.prefs,
+                language,
+                accent,
+                game_running: false,
+            };
+            self.controllers.show(shell, &ctx, &events, &mut data);
         }
         {
             let game = &self.games[1];
@@ -2678,6 +2927,12 @@ impl ScreenGallery {
         if let ScreenPage::Captures(look) = self.page {
             self.captures_screen(shell, &ctx, look);
         }
+        if let ScreenPage::Hub(look) = self.page {
+            self.hub_screen(shell, &ctx, look);
+        }
+        if self.page == ScreenPage::TrophiesAll {
+            self.overview_screen(shell, &ctx);
+        }
         self.library.show(
             shell,
             &ctx,
@@ -2688,6 +2943,7 @@ impl ScreenGallery {
                 accent,
                 folder_set: false,
                 scanning: false,
+                bar: sample_bar(language),
             },
         );
         let diagnosis =
@@ -2733,6 +2989,19 @@ impl ScreenGallery {
             ScreenPage::Confirm => self.uninstall.open(),
             ScreenPage::Saves | ScreenPage::SavesEmpty => self.saves.open(),
             ScreenPage::Restore => self.restore.open(),
+            ScreenPage::Storage => self.storage.open_copy(0),
+            ScreenPage::StorageEmpty => {
+                let none: [crate::screens::library_storage::StorageEntry; 0] = [];
+                let data = crate::screens::library_storage::StorageData {
+                    entries: &none,
+                    free: None,
+                    language: shell.language,
+                    accent: shell.accent_color(),
+                };
+                self.storage.open(&data);
+            }
+            ScreenPage::RemoveCopy => self.remove_copy.open(),
+            ScreenPage::LibrarySearch => self.library_search.open(),
             ScreenPage::ToolkitMissing => self.missing.open(),
             ScreenPage::Online(look) => {
                 use crate::screens::online::{Ask, Page};
@@ -2926,6 +3195,8 @@ impl ScreenGallery {
                     _ => {}
                 }
             }
+            ScreenPage::Controllers => self.controllers.open(),
+            ScreenPage::ControllersTest => self.controllers.open_test(),
             ScreenPage::Controls => self.controls.open(),
             ScreenPage::ControlsCapture => {
                 self.controls.open_row(3);
@@ -2942,6 +3213,11 @@ impl ScreenGallery {
             ScreenPage::Library | ScreenPage::LibraryLongName => self.library.open(1),
             ScreenPage::LibraryEmpty => self.library.open(0),
             ScreenPage::Captures(look) => self.open_captures(ctx, look),
+            ScreenPage::Hub(_) => self.hub.open(),
+            ScreenPage::TrophiesAll => {
+                self.overview.open();
+                self.overview.set_focus(1);
+            }
             ScreenPage::ControlsEnd => self.controls.open_row(30),
             ScreenPage::Toolkit(look) => {
                 self.settings.open_at(Category::Toolkit.index(), true);
@@ -2968,8 +3244,7 @@ impl ScreenGallery {
                 });
             }
             ScreenPage::WhatsNewLauncher => {
-                self.whats_new
-                    .open_launcher(&self.launcher_notes.notes, shell.language);
+                self.whats_new.open_showcase();
             }
             ScreenPage::BehaviourLinks => {
                 self.settings.open_at(Category::ConnectedApps.index(), true);
@@ -3118,6 +3393,7 @@ fn sample_report() -> ReportInput {
         settings: serde_json::json!({"fullscreen": true, "windowSize": 100, "controls": {"Cross": ["KEY:F"]}}),
         crash: None,
         session: SAMPLE_LOG.into(),
+        controllers: vec!["DualSense Wireless Controller".into()],
         now: "2026-10-22T09:31:00Z".into(),
     }
 }
@@ -3234,5 +3510,40 @@ impl LocationLook {
             }),
             left: (self == LocationLook::Left).then(|| ("D:\\Games\\PS5".into(), 3)),
         }
+    }
+}
+
+/// What players found, for a few of the sample games.
+fn sample_compat(index: usize, language: crate::ui::i18n::Language) -> Option<StateText> {
+    use crate::app::library_view::Compat;
+    let tags: &[Compat] = match index {
+        0 => &[Compat::RunsWell, Compat::Lan],
+        2 => &[Compat::RunsWithIssues],
+        3 => &[Compat::NoStart],
+        4 => &[Compat::Lan],
+        _ => &[],
+    };
+    crate::app::library_panels::compat_line(tags, language)
+}
+
+/// The bar of the library page as a player meets it first.
+fn sample_bar(language: crate::ui::i18n::Language) -> crate::screens::library::BarData {
+    use crate::screens::library_strings::LibraryText as T;
+    crate::screens::library::BarData {
+        sort: T::SortBy.format(
+            language,
+            &[crate::ui::i18n::Arg::Str(T::SortName.text(language))],
+        ),
+        filter: T::ShowFilter.format(
+            language,
+            &[crate::ui::i18n::Arg::Str(T::FilterAll.text(language))],
+        ),
+        query: String::new(),
+        search: T::Search.text(language).to_owned(),
+        storage: T::Storage.text(language).to_owned(),
+        narrowed: false,
+        nothing_title: T::NothingHere.text(language).to_owned(),
+        nothing_text: T::NothingHereText.text(language).to_owned(),
+        clear: T::ClearFilters.text(language).to_owned(),
     }
 }

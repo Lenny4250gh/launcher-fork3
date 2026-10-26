@@ -52,6 +52,8 @@ pub struct BannerTrophy {
     pub grade: Grade,
     /// The trophy's PNG, if the package has one.
     pub icon: Option<Vec<u8>>,
+    /// The share of players who earned it, in percent, once the network knows.
+    pub rarity: Option<f32>,
 }
 
 impl BannerTrophy {
@@ -62,6 +64,7 @@ impl BannerTrophy {
             detail: trophy.detail.clone(),
             grade: crate::screens::convert::grade(trophy.grade),
             icon: trophy.icon.clone(),
+            rarity: None,
         }
     }
 }
@@ -334,13 +337,24 @@ pub fn paint_card(
         + 4.0 * k
         + detail_style.line_height();
     let mut y = card.center().y - block * 0.5;
-    // No cup before the label: the grade's trophy already stands on the right.
+    // No cup before the label: the grade's trophy already stands on the right. It names the
+    // grade, and the rarity once the network has it, so the colour is never the only cue.
+    let mut label = format!(
+        "{} · {}",
+        language.text(Key::TrophyEarned),
+        trophy.grade.title(language)
+    );
+    if let Some(percent) = trophy.rarity {
+        label.push_str(" · ");
+        label.push_str(&crate::screens::online::rarity_text(percent, language));
+    }
+    let label = text::middle_truncate(&painter, label_style, &label, max_w);
     text::paint(
         &painter,
         pos2(x, y),
         Align2::LEFT_TOP,
         label_style,
-        language.text(Key::TrophyEarned),
+        &label,
         fade(grade, alpha),
     );
     y += label_style.line_height() + 4.0 * k;
@@ -493,6 +507,7 @@ mod tests {
             detail: "Do the thing".into(),
             grade: Grade::Bronze,
             icon: None,
+            rarity: None,
         }
     }
 

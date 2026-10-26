@@ -407,6 +407,7 @@ fn the_own_profile_comes_from_this_pc() {
             at: NOW - 600,
         }],
         grades: [0, 1, 0, 2],
+        week_seconds: 0,
     };
     let ready = ready(view(&inputs(&online, &local, Some(&library), 1)));
     assert_eq!(ready.relation, Relation::Own);
@@ -419,7 +420,8 @@ fn the_own_profile_comes_from_this_pc() {
         [
             Press::EditProfile,
             Press::FriendsOnline,
-            Press::AppearOffline(true)
+            Press::AppearOffline(true),
+            Press::OpenTrophies,
         ]
     );
     let figures: Vec<(&str, &str)> = ready

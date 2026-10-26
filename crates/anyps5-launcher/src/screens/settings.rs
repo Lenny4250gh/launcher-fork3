@@ -20,10 +20,13 @@ use egui::{Align2, Color32, Context, Rect, Sense, Ui, UiBuilder, pos2, vec2};
 
 use crate::app::ludus::LudusState;
 use crate::app::phone::PhoneState;
+use crate::screens::broadcast_strings::BroadcastText;
 use crate::screens::clips_strings::ClipsText;
+use crate::screens::controllers_strings::Pads;
 use crate::screens::convert;
 use crate::screens::dialogs;
 use crate::screens::discord_strings::DiscordText;
+use crate::screens::feel_strings::{FeelText, volume_text};
 use crate::screens::format::{abbreviate_path, home_dir};
 use crate::screens::ingame::InGameText;
 use crate::screens::ludus::{self, LudusAction};
@@ -58,6 +61,7 @@ pub enum Category {
     Sound,
     Controllers,
     Captures,
+    Broadcast,
     Phone,
     Online,
     ConnectedApps,
@@ -79,7 +83,7 @@ pub struct Tab {
 
 /// The rail: the app itself, then the things the launcher does for the player, then the network
 /// and the programs around it, then the maintenance pages.
-pub const TABS: [Tab; 13] = [
+pub const TABS: [Tab; 14] = [
     Tab {
         category: Category::General,
         icon: Icon::GEAR_SIX,
@@ -114,6 +118,12 @@ pub const TABS: [Tab; 13] = [
         category: Category::Captures,
         icon: Icon::CAMERA,
         title: |l| words::Captures.text(l),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::Broadcast,
+        icon: Icon::PLAY_CIRCLE,
+        title: |l| BroadcastText::Title.text(l),
         starts_group: false,
     },
     Tab {
@@ -181,9 +191,7 @@ impl Category {
             SettingsPage::Sound => Category::Sound,
             SettingsPage::Controllers => Category::Controllers,
             SettingsPage::Captures => Category::Captures,
-            // The live-streaming page is added with the broadcast settings; until then the link
-            // lands on the page next to it.
-            SettingsPage::Broadcast => Category::Captures,
+            SettingsPage::Broadcast => Category::Broadcast,
             SettingsPage::Online => Category::Online,
             SettingsPage::ConnectedApps => Category::ConnectedApps,
             SettingsPage::Language => Category::Language,
@@ -284,6 +292,8 @@ pub struct ClipsEnv {
     pub count: usize,
     /// The clip key row waits for a key press.
     pub capturing: bool,
+    /// A stream key is kept for Broadcast (the key itself never reaches the settings).
+    pub broadcast_key: bool,
 }
 
 /// What the settings show that is not a preference.
@@ -373,6 +383,8 @@ pub enum SettingsAction {
     ShowScreenshots,
     /// "Show Clips": the folder the clips are in.
     ShowClips,
+    /// The stream key field changed: the key to keep, or `None` to remove it.
+    BroadcastKey(Option<String>),
     /// "Check now" (or the check was switched on).
     CheckForUpdates,
     /// Download and install the latest toolkit (first install or update).
@@ -402,6 +414,8 @@ pub enum SettingsAction {
     CheckLauncherUpdate,
     /// Open the notes of the staged launcher update.
     OpenLauncherNotes,
+    /// "What's New in 0.3.0, Show again": the showcase of the big release.
+    ShowWelcome,
     /// One of the About page's links (website, Discord, privacy, terms).
     OpenPage(&'static str),
     /// "Open AnyPlay Links with This Launcher" was switched: write or remove the registration.
@@ -410,6 +424,8 @@ pub enum SettingsAction {
     AddToSteam,
     /// "Add My Games to Steam": one entry for each game.
     AddGamesToSteam,
+    /// "Controllers": the full-screen page of the pads.
+    OpenControllers,
     /// A row of the Phone as Controller page asks for something.
     Phone(PhoneAction),
     /// A LudusCtrl row of the same page asks for something.
@@ -593,11 +609,11 @@ pub fn build_categories(
         Row::choice(
             "theme",
             t(Key::Theme),
-            Theme::ALL
+            Theme::CHOICES
                 .iter()
                 .map(|x| x.title(language).to_owned())
                 .collect(),
-            Theme::ALL
+            Theme::CHOICES
                 .iter()
                 .position(|x| *x == convert::theme(prefs.theme))
                 .unwrap_or(0),
@@ -653,6 +669,24 @@ pub fn build_categories(
             usize::from(prefs.reduced_motion),
         )
         .icon(Icon::WIND),
+    );
+    appearance.push(
+        Row::toggle(
+            "largerText",
+            FeelText::LargerText.text(language),
+            prefs.larger_text,
+        )
+        .detail(FeelText::LargerTextDetail.text(language))
+        .icon(Icon::TEXT_AA),
+    );
+    appearance.push(
+        Row::toggle(
+            "highContrast",
+            FeelText::HighContrast.text(language),
+            prefs.high_contrast,
+        )
+        .detail(FeelText::HighContrastDetail.text(language))
+        .icon(Icon::CIRCLE_HALF),
     );
 
     // Library
@@ -741,23 +775,76 @@ pub fn build_categories(
         .group_start(),
     );
 
-    // Sound
-    let sound = vec![
-        Row::toggle("sounds", t(Key::Sounds), prefs.sounds).icon(Icon::SPEAKER_HIGH),
-        Row::toggle("music", Extra::HomeMusic.text(language), prefs.music)
-            .detail(Extra::HomeMusicDetail.text(language))
-            .icon(Icon::MUSIC_NOTES),
-        Row::toggle(
-            "gameMusic",
-            Extra::GameMusic.text(language),
+    // Sound: each kind of sound, its switch, and its volume while it is on.
+    let mut sound = Vec::new();
+    let sound_rows = [
+        (
+            Row::toggle("sounds", t(Key::Sounds), prefs.sounds).icon(Icon::SPEAKER_HIGH),
+            prefs.sounds,
+            volume_row(
+                "volInterface",
+                FeelText::VolumeInterface,
+                prefs.volume_interface,
+                language,
+            ),
+        ),
+        (
+            Row::toggle("music", Extra::HomeMusic.text(language), prefs.music)
+                .detail(Extra::HomeMusicDetail.text(language))
+                .icon(Icon::MUSIC_NOTES),
+            prefs.music,
+            volume_row(
+                "volMusic",
+                FeelText::VolumeMusic,
+                prefs.volume_music,
+                language,
+            ),
+        ),
+        (
+            Row::toggle(
+                "gameMusic",
+                Extra::GameMusic.text(language),
+                prefs.game_music,
+            )
+            .detail(Extra::GameMusicDetail.text(language))
+            .icon(Icon::GAME_CONTROLLER),
             prefs.game_music,
-        )
-        .detail(Extra::GameMusicDetail.text(language))
-        .icon(Icon::GAME_CONTROLLER),
+            volume_row(
+                "volGameMusic",
+                FeelText::VolumeGameMusic,
+                prefs.volume_game_music,
+                language,
+            ),
+        ),
+        (
+            Row::toggle(
+                "notifSounds",
+                FeelText::NotificationSounds.text(language),
+                prefs.notification_sounds,
+            )
+            .detail(FeelText::NotificationSoundsDetail.text(language))
+            .icon(Icon::HEADPHONES),
+            prefs.notification_sounds,
+            volume_row(
+                "volNotif",
+                FeelText::VolumeNotifications,
+                prefs.volume_notifications,
+                language,
+            ),
+        ),
     ];
+    for (switch, on, volume) in sound_rows {
+        sound.push(switch);
+        if on {
+            sound.push(volume);
+        }
+    }
 
-    // Controllers
+    // Controllers: the Controller Center first, then the pad's own rows.
     let controllers = vec![
+        Row::action("controllers", Pads::Entry.text(language))
+            .detail(Pads::EntryDetail.text(language))
+            .icon(Icon::GAME_CONTROLLER),
         Row::choice(
             "vibration",
             Extra::Vibration.text(language),
@@ -819,7 +906,7 @@ pub fn build_categories(
         );
     }
     // Steam keeps its shortcuts in files of the user folder; the rows write them (DESIGN.md 9.9).
-    if cfg!(any(windows, target_os = "linux")) {
+    if cfg!(any(windows, target_os = "linux", target_os = "macos")) {
         apps.push(
             Row::command("addToSteam", SteamText::Add.text(language))
                 .detail(SteamText::AddDetail.text(language))
@@ -1071,6 +1158,18 @@ pub fn build_categories(
         }
     }
 
+    // Broadcast: live streaming needs the recorder (Windows); elsewhere the page says so.
+    let mut broadcast = Vec::new();
+    if env.windows_rows {
+        push_broadcast_rows(&mut broadcast, prefs, env, language);
+    } else {
+        broadcast.push(Row::info(
+            "broadcastNone",
+            words::NoBroadcast.text(language),
+            None,
+        ));
+    }
+
     // Advanced: the first page of the diagnostics has no heading, it is the page.
     let mut advanced = Vec::new();
     {
@@ -1120,6 +1219,15 @@ pub fn build_categories(
         env.launcher_notes,
         language,
     ));
+    about.push(
+        Row::command(
+            "welcomeAgain",
+            crate::screens::update_strings::UpdateText::WhatsNewIn
+                .format(language, &[Arg::Str(crate::screens::welcome::RELEASE)]),
+        )
+        .detail(crate::screens::welcome::show_again(language))
+        .icon(Icon::SPARKLE),
+    );
     {
         use crate::screens::about_strings::AboutText as A;
         about.push(
@@ -1158,6 +1266,7 @@ pub fn build_categories(
         page(Category::Sound, sound),
         page(Category::Controllers, controllers),
         page(Category::Captures, captures),
+        page(Category::Broadcast, broadcast),
         page(Category::Phone, phone_rows),
         page(Category::Online, online),
         page(Category::ConnectedApps, apps),
@@ -1166,6 +1275,74 @@ pub fn build_categories(
         page(Category::Advanced, advanced),
         page(Category::About, about),
     ]
+}
+
+/// Broadcast: where it goes, the server of a custom service, the stream key and the quality.
+fn push_broadcast_rows(
+    rows: &mut Vec<Row>,
+    prefs: &Preferences,
+    env: &SettingsEnv<'_>,
+    language: Language,
+) {
+    use anyps5_core::broadcast::{self, Service};
+    let service = Service::from_id(&prefs.broadcast_service);
+    let selected = Service::ALL.iter().position(|s| *s == service).unwrap_or(0);
+    let services = [
+        BroadcastText::Twitch,
+        BroadcastText::YouTube,
+        BroadcastText::Custom,
+    ]
+    .iter()
+    .map(|t| t.text(language).to_owned())
+    .collect();
+    rows.push(
+        Row::choice(
+            "broadcastService",
+            BroadcastText::Service.text(language),
+            services,
+            selected,
+        )
+        .detail(BroadcastText::ServiceDetail.text(language))
+        .icon(Icon::WIFI_HIGH),
+    );
+    if service == Service::Custom {
+        rows.push(
+            Row::text(
+                "broadcastServer",
+                BroadcastText::Server.text(language),
+                prefs.broadcast_server.clone(),
+            )
+            .detail(BroadcastText::ServerDetail.text(language))
+            .icon(Icon::KEYBOARD),
+        );
+    }
+    let shown = if env.clips.broadcast_key {
+        broadcast::MASK
+    } else {
+        ""
+    };
+    rows.push(
+        Row::text("broadcastKey", BroadcastText::Key.text(language), shown)
+            .detail(BroadcastText::KeyDetail.text(language))
+            .icon(Icon::KEYBOARD),
+    );
+    let qualities = [
+        BroadcastText::Quality720p30,
+        BroadcastText::Quality720p60,
+        BroadcastText::Quality1080p60,
+    ]
+    .iter()
+    .map(|t| t.text(language).to_owned())
+    .collect();
+    rows.push(
+        Row::choice(
+            "broadcastQuality",
+            BroadcastText::Quality.text(language),
+            qualities,
+            (prefs.broadcast_quality as usize).min(broadcast::QUALITIES.len() - 1),
+        )
+        .icon(Icon::SLIDERS_HORIZONTAL),
+    );
 }
 
 /// The lengths of Clips as the choice row shows them, Off first.
@@ -1366,6 +1543,36 @@ fn about_page(row: &str) -> Option<&'static str> {
     })
 }
 
+/// A volume row: 0 to 100 percent in steps of ten, Off at zero.
+fn volume_row(id: rows::RowId, title: FeelText, percent: u8, language: Language) -> Row {
+    Row::stepper(
+        id,
+        title.text(language),
+        i32::from(percent),
+        (0, 100),
+        10,
+        volume_text(percent, language),
+    )
+}
+
+fn percent(value: i32) -> u8 {
+    value.clamp(0, 100) as u8
+}
+
+/// The volumes the sound engine is given.
+pub fn volumes_of(prefs: &Preferences) -> crate::ui::sound::Volumes {
+    crate::ui::sound::Volumes {
+        interface: f32::from(prefs.volume_interface) / 100.0,
+        music: f32::from(prefs.volume_music) / 100.0,
+        game_music: f32::from(prefs.volume_game_music) / 100.0,
+        notifications: if prefs.notification_sounds {
+            f32::from(prefs.volume_notifications) / 100.0
+        } else {
+            0.0
+        },
+    }
+}
+
 /// Applies the preferences that the shell shows: theme and accent, language, motion, sounds. The
 /// host calls it once after loading the preferences; the panel calls it after every change.
 pub fn apply_preferences(shell: &mut Shell, ctx: &Context, prefs: &Preferences) {
@@ -1376,7 +1583,11 @@ pub fn apply_preferences(shell: &mut Shell, ctx: &Context, prefs: &Preferences) 
     shell.language = convert::language(prefs.language);
     shell.set_reduced_motion(ctx, prefs.reduced_motion);
     shell.sounds.enabled = prefs.sounds;
+    shell.sounds.set_volumes(volumes_of(prefs));
+    crate::ui::theme::set_larger_text(prefs.larger_text);
+    crate::ui::theme::set_high_contrast(prefs.high_contrast);
     shell.set_vibration(convert::vibration(prefs.vibration));
+    crate::ui::nav_bindings::apply(prefs);
 }
 
 /// Writes one change into the preferences. Dialogs (a picture, a folder) are the caller's
@@ -1388,7 +1599,7 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             row: "theme",
             index,
         } => {
-            if let Some(theme) = Theme::ALL.get(*index) {
+            if let Some(theme) = Theme::CHOICES.get(*index) {
                 prefs.theme = convert::theme_to_core(*theme);
             }
         }
@@ -1401,6 +1612,34 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             }
         }
         Change::Toggle { row: "artwork", on } => prefs.game_artwork = *on,
+        Change::Toggle {
+            row: "largerText",
+            on,
+        } => prefs.larger_text = *on,
+        Change::Toggle {
+            row: "highContrast",
+            on,
+        } => prefs.high_contrast = *on,
+        Change::Toggle {
+            row: "notifSounds",
+            on,
+        } => prefs.notification_sounds = *on,
+        Change::Stepper {
+            row: "volInterface",
+            value,
+        } => prefs.volume_interface = percent(*value),
+        Change::Stepper {
+            row: "volMusic",
+            value,
+        } => prefs.volume_music = percent(*value),
+        Change::Stepper {
+            row: "volGameMusic",
+            value,
+        } => prefs.volume_game_music = percent(*value),
+        Change::Stepper {
+            row: "volNotif",
+            value,
+        } => prefs.volume_notifications = percent(*value),
         Change::Toggle { row: "glass", on } => prefs.glass_window = *on,
         Change::Choice {
             row: "motion",
@@ -1468,6 +1707,22 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             row: "ludusctrl",
             on,
         } => prefs.phone_ludusctrl = *on,
+        Change::Choice {
+            row: "broadcastService",
+            index,
+        } => {
+            if let Some(service) = anyps5_core::broadcast::Service::ALL.get(*index) {
+                prefs.broadcast_service = service.id().to_owned();
+            }
+        }
+        Change::Choice {
+            row: "broadcastQuality",
+            index,
+        } => {
+            if *index < anyps5_core::broadcast::QUALITIES.len() {
+                prefs.broadcast_quality = *index as u32;
+            }
+        }
         Change::Choice {
             row: "clips",
             index,
@@ -1701,6 +1956,13 @@ impl SettingsPanel {
                     if id == "name" && prefs.profile_name != value {
                         prefs.profile_name = value;
                         out.changed = true;
+                    } else if id == "broadcastServer" && prefs.broadcast_server != value {
+                        prefs.broadcast_server = value;
+                        out.changed = true;
+                    } else if id == "broadcastKey" {
+                        out.actions.push(SettingsAction::BroadcastKey(
+                            anyps5_core::broadcast::key_from_field(&value),
+                        ));
                     }
                 }
             }
@@ -1749,6 +2011,7 @@ impl SettingsPanel {
                 ctx.data_mut(|d| d.insert_temp(egui::Id::unique("panel-text-focus"), true));
                 ctx.request_repaint();
             }
+            Change::Run { row: "controllers" } => out.actions.push(SettingsAction::OpenControllers),
             Change::Run { row: "rescan" } => out.actions.push(SettingsAction::Rescan),
             Change::Run {
                 row: "unlockedLocation",
@@ -1915,6 +2178,9 @@ impl SettingsPanel {
             Change::Run {
                 row: "launcherNotes",
             } => out.actions.push(SettingsAction::OpenLauncherNotes),
+            Change::Run {
+                row: "welcomeAgain",
+            } => out.actions.push(SettingsAction::ShowWelcome),
             Change::Run {
                 row: "launcherDownload",
             } => out.actions.push(SettingsAction::OpenPage(
@@ -2202,13 +2468,30 @@ mod tests {
         let cats = build_categories(&prefs, &e, Language::English);
         assert_eq!(
             ids(&cats, Category::Appearance),
-            ["theme", "accent", "backdrop", "artwork", "motion"]
+            [
+                "theme",
+                "accent",
+                "backdrop",
+                "artwork",
+                "motion",
+                "largerText",
+                "highContrast"
+            ]
         );
         prefs.backdrop = Backdrop::Image;
         let cats = build_categories(&prefs, &e, Language::English);
         assert_eq!(
             ids(&cats, Category::Appearance),
-            ["theme", "accent", "backdrop", "file", "artwork", "motion"],
+            [
+                "theme",
+                "accent",
+                "backdrop",
+                "file",
+                "artwork",
+                "motion",
+                "largerText",
+                "highContrast"
+            ],
             "the file row appears with a picture backdrop"
         );
     }
@@ -2942,6 +3225,7 @@ mod tests {
             Category::Sound,
             Category::Controllers,
             Category::Captures,
+            Category::Broadcast,
             Category::Online,
             Category::ConnectedApps,
         ] {
@@ -3084,9 +3368,9 @@ mod tests {
         let prefs = Preferences::first_run();
         let e = env(None, UpdateState::Unknown);
         let cats = build_categories(&prefs, &e, Language::English);
-        let want = rows::position(&cats[3].rows, "homeButton").unwrap();
+        let want = rows::position(&cats[0].rows, "homeButton").unwrap();
         let mut panel = SettingsPanel::default();
-        panel.open_at(3, true);
+        panel.open_at(0, true);
         panel.focus_row_id("homeButton");
         panel.apply_focus_id(&cats);
         assert_eq!(panel.nav.row, want);

@@ -218,7 +218,7 @@ fn lay(
 ) -> Arc<Galley> {
     let mut job = LayoutJob::simple(text.to_owned(), style.font(), color, width.max(1.0));
     for section in &mut job.sections {
-        section.format.line_height = Some(style.size * leading);
+        section.format.line_height = Some(style.px() * leading);
         section.format.extra_letter_spacing = style.tracking;
     }
     painter.layout_job(job)

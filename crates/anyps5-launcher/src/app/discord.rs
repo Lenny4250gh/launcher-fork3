@@ -13,6 +13,48 @@ use anyps5_core::online::{Online, unix_now};
 use anyps5_core::settings::Preferences;
 
 use crate::app::LauncherApp;
+use crate::app::model::Model;
+use crate::screens::notification_strings::NotifyText;
+use crate::ui::icons::Icon;
+
+/// How long "Copy Invite Link" waits for the network to issue the code.
+const INVITE_LINK_PATIENCE: f64 = 12.0;
+
+/// The invite link the player asked for. A code is held for as long as there is a session or a
+/// party to join (and given back after that), whether or not the Discord button is on, so the link
+/// that was copied keeps working while the player plays.
+#[derive(Debug, Default)]
+pub struct InviteLink {
+    /// Hold a join code for the player's session or party.
+    pub hold: bool,
+    /// The link is copied as soon as the code is there, or dropped at this UI time.
+    pub copy_before: Option<f64>,
+}
+
+impl Model {
+    /// "Copy Invite Link": asks the network for a code; the panel host copies the link when it is
+    /// there (`PanelHost::copy_invite_link`).
+    pub fn request_invite_link(&mut self) {
+        let language = self.language();
+        if !self.online.is_online() {
+            self.toast(NotifyText::InviteLinkOffline.text(language), Icon::WARNING);
+            return;
+        }
+        self.invite_link.hold = true;
+        self.invite_link.copy_before = Some(self.now + INVITE_LINK_PATIENCE);
+        self.toast(NotifyText::InviteLinkWaiting.text(language), Icon::LINK);
+    }
+
+    /// The code is asked for while the player wants it, and given back when nothing is left to join.
+    fn invite_link_wanted(&mut self) -> bool {
+        let online = &self.online;
+        let joinable = online.session.is_some() || online.social.party.is_some();
+        if self.invite_link.hold && !(online.is_signed_in() && joinable) {
+            self.invite_link = InviteLink::default();
+        }
+        self.invite_link.hold
+    }
+}
 
 /// The game Discord is told about, and since when.
 pub struct Played {
@@ -66,7 +108,8 @@ impl LauncherApp {
         let playing = self.discord && self.playing.is_some();
         let button =
             playing && self.model.prefs.discord_presence && self.model.prefs.discord_join_button;
-        let _ = self.model.online.sync_join_offer(button);
+        let hold = self.model.invite_link_wanted();
+        let _ = self.model.online.sync_join_offer(button || hold);
         let wanted = if self.discord {
             wanted(
                 self.playing.as_ref(),

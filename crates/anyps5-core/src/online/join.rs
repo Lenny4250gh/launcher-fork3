@@ -40,6 +40,7 @@ pub enum Step {
 #[derive(Clone, PartialEq, Eq)]
 struct Issued {
     url: String,
+    code: String,
     expires: u64,
 }
 
@@ -103,6 +104,7 @@ impl JoinOffer {
         self.refused = None;
         self.issued = Some(Issued {
             url: code.url,
+            code: code.code,
             expires: code.expires,
         });
     }
@@ -126,6 +128,14 @@ impl JoinOffer {
             .as_ref()
             .filter(|i| i.expires > now)
             .map(|i| i.url.as_str())
+    }
+
+    /// The code itself, while it is alive: the deep link is made from it.
+    pub fn code(&self, now: u64) -> Option<&str> {
+        self.issued
+            .as_ref()
+            .filter(|i| i.expires > now)
+            .map(|i| i.code.as_str())
     }
 
     /// The player signs out: whether a code is held that must go back first. It is forgotten

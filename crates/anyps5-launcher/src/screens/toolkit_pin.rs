@@ -79,10 +79,29 @@ impl Pin {
         }
     }
 
+    pub const fn german(self) -> &'static str {
+        match self {
+            Pin::Title => "Toolkit für dieses Spiel",
+            Pin::FollowGlobal => "Globaler Einstellung folgen",
+            Pin::Recommended => "Empfohlen: %@",
+            Pin::NotInstalled => "%@ (nicht installiert)",
+            Pin::Pinned => "%@ (festgelegt)",
+            Pin::MissingAsk => {
+                "Dieses Spiel bleibt bei Toolkit %@, das nicht installiert ist. Lade es noch einmal herunter oder lass das Spiel der globalen Einstellung folgen."
+            }
+            Pin::Download => "%@ herunterladen",
+            Pin::Remove => "%@ entfernen",
+            Pin::RemoveDetail => "%@ · Kein Spiel nutzt es",
+            Pin::Removed => "%@ entfernt",
+            Pin::RemoveFailed => "Das Toolkit konnte nicht entfernt werden.",
+        }
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => self.german(),
         }
     }
 

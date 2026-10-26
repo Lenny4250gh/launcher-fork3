@@ -12,6 +12,7 @@ use std::time::Duration;
 use anyps5_core::theme_song::{ThemePlayer, ThemeSong};
 use rodio::Source;
 
+use super::Volumes;
 use super::cues::{Cue, render};
 use super::music::Music;
 use super::synth::db_to_gain;
@@ -22,7 +23,12 @@ pub enum Command {
     Music(bool),
     /// Play this theme song in place of the home music, or fade the theme out (`None`).
     Theme(Option<Arc<ThemeSong>>),
+    /// The volume of each kind of sound.
+    Volumes(Volumes),
 }
+
+/// How much of the distance to a new volume one frame covers (about 25 ms to settle at 48 kHz).
+const GAIN_SLEW: f32 = 0.002;
 
 /// Cues playing at once; a cue beyond that fades the oldest out over 5 ms.
 const VOICES: usize = 8;
@@ -45,6 +51,8 @@ struct Voice {
     gain: f32,
     /// Per-frame gain step while it is being cut.
     fade: f32,
+    /// The volume of its kind when it started.
+    level: f32,
 }
 
 impl Voice {
@@ -55,7 +63,8 @@ impl Voice {
         }
         self.frame += 1;
         self.gain = (self.gain - self.fade).max(0.0);
-        (self.samples[i] * self.gain, self.samples[i + 1] * self.gain)
+        let gain = self.gain * self.level;
+        (self.samples[i] * gain, self.samples[i + 1] * gain)
     }
 
     fn done(&self) -> bool {
@@ -121,7 +130,7 @@ impl Duck {
         let (depth_db, hold) = match cue {
             Cue::Move => (1.5, 0.12),
             // A pointer sweeping a row must not make the music pump.
-            Cue::Hover => return,
+            Cue::Hover | Cue::TalkOn | Cue::TalkOff => return,
             Cue::Select | Cue::Back | Cue::Error => (3.0, 0.25),
             Cue::Unlocked => (6.0, 1.2),
             Cue::Boot => (6.0, 1.5),
@@ -218,6 +227,10 @@ pub struct Engine {
     theme_next: Option<Arc<ThemeSong>>,
     theme_fader: Fader,
     duck: Duck,
+    volumes: Volumes,
+    /// What the music and the theme song are scaled by now, moving toward the volumes.
+    music_gain: f32,
+    theme_gain: f32,
     poll: u32,
     right: Option<f32>,
     ended: bool,
@@ -241,6 +254,9 @@ impl Engine {
             theme_next: None,
             theme_fader: Fader::new(rate as f32, THEME_IN_SECONDS, THEME_OUT_SECONDS),
             duck: Duck::new(rate as f32),
+            volumes: Volumes::default(),
+            music_gain: 1.0,
+            theme_gain: 1.0,
             poll: 0,
             right: None,
             ended: false,
@@ -253,6 +269,7 @@ impl Engine {
                 Ok(Command::Cue(cue)) => self.start(cue),
                 Ok(Command::Music(on)) => self.music_on = on,
                 Ok(Command::Theme(song)) => self.theme(song),
+                Ok(Command::Volumes(volumes)) => self.volumes = volumes,
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     self.ended = true;
@@ -318,6 +335,11 @@ impl Engine {
             frame: 0,
             gain: 1.0,
             fade: 0.0,
+            level: if cue.is_notification() {
+                self.volumes.notifications
+            } else {
+                self.volumes.interface
+            },
         });
         self.duck.trigger(cue);
     }
@@ -330,8 +352,11 @@ impl Engine {
             right += r;
         }
         let duck = self.duck.next();
+        // A change of volume glides over a few milliseconds instead of stepping.
+        self.music_gain += (self.volumes.music - self.music_gain) * GAIN_SLEW;
+        self.theme_gain += (self.volumes.game_music - self.theme_gain) * GAIN_SLEW;
         if !self.fader.silent() {
-            let level = self.fader.next() * duck;
+            let level = self.fader.next() * duck * self.music_gain;
             let (l, r) = self.music.next();
             left += l * level;
             right += r * level;
@@ -347,7 +372,8 @@ impl Engine {
             }
         }
         if let Some(theme) = &mut self.theme {
-            let level = self.theme_fader.next() * duck * db_to_gain(THEME_GAIN_DB);
+            let level =
+                self.theme_fader.next() * duck * db_to_gain(THEME_GAIN_DB) * self.theme_gain;
             let (l, r) = theme.next();
             left += l * level;
             right += r * level;

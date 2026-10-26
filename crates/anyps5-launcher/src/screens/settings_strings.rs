@@ -6,6 +6,8 @@ use crate::ui::i18n::Language;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SettingsText {
+    /// Broadcast: the page on a system without the recorder.
+    NoBroadcast,
     /// Connected Apps: nothing to connect on this system.
     NoApps,
     /// The tab: start-up, the Home button, updates.
@@ -37,10 +39,11 @@ pub enum SettingsText {
 }
 
 impl SettingsText {
-    pub const ALL: [SettingsText; 14] = [
+    pub const ALL: [SettingsText; 15] = [
         SettingsText::General,
         SettingsText::Online,
         SettingsText::NoApps,
+        SettingsText::NoBroadcast,
         SettingsText::Sound,
         SettingsText::Captures,
         SettingsText::Controllers,
@@ -59,6 +62,7 @@ impl SettingsText {
             SettingsText::General => "General",
             SettingsText::Online => "Online",
             SettingsText::NoApps => "Nothing to connect on this system.",
+            SettingsText::NoBroadcast => "Live streaming needs Windows.",
             SettingsText::Sound => "Sound",
             SettingsText::Captures => "Captures",
             SettingsText::Controllers => "Controllers",
@@ -78,6 +82,7 @@ impl SettingsText {
             SettingsText::General => "Genel",
             SettingsText::Online => "Çevrim İçi",
             SettingsText::NoApps => "Bu sistemde bağlanacak bir uygulama yok.",
+            SettingsText::NoBroadcast => "Canlı yayın yalnızca Windows'ta var.",
             SettingsText::Sound => "Ses",
             SettingsText::Captures => "Yakalamalar",
             SettingsText::Controllers => "Kollar",
@@ -92,10 +97,37 @@ impl SettingsText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            SettingsText::Sound => "Ton",
+            SettingsText::Captures => "Aufnahmen",
+            SettingsText::General => "Allgemein",
+            SettingsText::Online => "Online",
+            SettingsText::Controllers => "Controller",
+            SettingsText::NoApps => "Auf diesem System gibt es nichts zu verbinden.",
+            SettingsText::NoBroadcast => "Live-Übertragung gibt es nur unter Windows.",
+            SettingsText::ConnectedApps => "Verbundene Apps",
+            SettingsText::Fonts => "Schriften",
+            SettingsText::ShareScreen => "Bildschirm teilen",
+            SettingsText::Updates => "Updates",
+            SettingsText::Unused => "Von keinem Spiel genutzt",
+            SettingsText::Installed => "Installiertes Toolkit",
+            SettingsText::NotCheckedYet => "Noch nicht geprüft",
+            SettingsText::ScreenshotHint => "F12 im Spiel speichert einen Screenshot.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 }

@@ -396,6 +396,20 @@ pub fn paint_glass_on(
     // The shader and the stroke share one pixel-aligned rect and one whole-dp radius.
     let rect = rect.round_to_pixels(ctx.pixels_per_point());
     style.radius = style.radius.round();
+    if theme::high_contrast() {
+        // High Contrast: no frosted glass, a dark plate with a clear edge.
+        // The painter applies its own opacity again; the rest of the fade is in the alpha.
+        let fade = style.alpha / painter.opacity().max(0.001);
+        let plate = black((style.black + 0.22).clamp(0.82, 0.94) * fade.min(1.0));
+        painter.rect_filled(rect, style.radius, plate);
+        painter.add(RectShape::stroke(
+            rect,
+            style.radius,
+            Stroke::new(1.0 / ctx.pixels_per_point(), color::hairline_glass()),
+            StrokeKind::Inside,
+        ));
+        return;
+    }
     painter.add(egui_wgpu::Callback::new_paint_callback(
         rect,
         GlassCallback {

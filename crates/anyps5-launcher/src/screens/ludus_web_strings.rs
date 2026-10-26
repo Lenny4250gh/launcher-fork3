@@ -161,10 +161,63 @@ impl BrowserText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            BrowserText::Status => "Browser",
+            BrowserText::StartFailed => {
+                "Der Browser-Client konnte nicht starten. Den Grund findest du im Protokoll."
+            }
+            BrowserText::Waiting => "Warte auf einen Browser",
+            BrowserText::ConnectedTo => "Mit einem Browser auf %@ verbunden",
+            BrowserText::ConnectedDevice => "Mit einem Browser auf %@ verbunden (%@)",
+            BrowserText::QrLabel => "QR-Code des Browser-Links",
+            BrowserText::QrHint => {
+                "Scanne den Code mit der Kamera des Handys, um die Seite zu öffnen, und drücke dann eine Taste am Controller."
+            }
+            BrowserText::Link => "Link",
+            BrowserText::Copy => "Link kopieren",
+            BrowserText::CopyDetail => "Öffne ihn auf einem Handy im selben Netzwerk.",
+            BrowserText::Other => "Weitere Adressen",
+            BrowserText::OtherNote => {
+                "Ist das Handy in einem anderen Netzwerk dieses PCs, öffne den Link dieses Netzwerks."
+            }
+            BrowserText::CertNote => {
+                "Das Handy warnt einmal, dass die Verbindung nicht privat ist, weil dieser PC sein Zertifikat selbst signiert. Wähle auf dem iPhone Details einblenden und dann Webseite besuchen; wähle in Chrome auf Android Erweitert und dann Weiter."
+            }
+            BrowserText::Reissued => {
+                "Die Adresse dieses PCs hat sich geändert, deshalb warnt das Handy noch einmal."
+            }
+            BrowserText::PortBusy => {
+                "Port %d ist belegt, vielleicht durch den LudusCtrl-Empfänger. Der Link nutzt stattdessen Port %d."
+            }
+            BrowserText::NewLink => "Neuer Link",
+            BrowserText::NewLinkDetail => {
+                "Erstellt einen neuen Link und trennt den Browser. Der alte QR-Code funktioniert nicht mehr."
+            }
+            BrowserText::ShareNote => {
+                "Mit dem Link kann jeder die Seite öffnen. Wähle Neuer Link, nachdem du diesen Bildschirm geteilt hast."
+            }
+            BrowserText::NoAddress => {
+                "Dieser PC ist in keinem Netzwerk, das ein Handy erreichen kann. Verbinde ihn mit deinem Heimnetzwerk und wähle dann Neuer Link."
+            }
+            BrowserText::ToastConnected => "Ein Browser ist als Controller verbunden",
+            BrowserText::ToastCopied => "Link kopiert",
+            BrowserText::BarName => "Browser",
+            BrowserText::BarLabel => "Browser verbunden: %@",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
@@ -242,7 +295,8 @@ mod tests {
             BrowserText::Other,
             BrowserText::NewLink,
         ] {
-            for language in Language::ALL {
+            // German capitalises nouns, not every word.
+            for language in Language::ALL.into_iter().filter(|l| *l != Language::German) {
                 for word in text.text(language).split(' ') {
                     let first = word.chars().next().unwrap();
                     assert!(first.is_uppercase(), "{text:?} {language:?}: {word}");
@@ -255,7 +309,7 @@ mod tests {
             BrowserText::ToastConnected,
             BrowserText::ToastCopied,
         ] {
-            for language in Language::ALL {
+            for language in Language::ALL.into_iter().filter(|l| *l != Language::German) {
                 let rest: Vec<&str> = text.text(language).split(' ').skip(1).collect();
                 assert!(
                     rest.iter().all(|w| !w.starts_with(char::is_uppercase)),

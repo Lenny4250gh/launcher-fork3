@@ -29,7 +29,6 @@ pub const ANYPLAY_APPLICATION_ID: &str = "1563714917998133288";
 /// The large image of an activity shown under AnyPlay's application: an asset of that
 /// application, named by its key.
 const IMAGE_KEY: &str = "anyplay";
-const IMAGE_TEXT: &str = "AnyPlay";
 /// The buttons of an activity: the first opens the join link, the second tells a friend without
 /// the launcher where to get it. Discord shows two at most, each label up to 32 characters and
 /// each address up to 512, both over https.
@@ -251,7 +250,8 @@ pub fn activity(playing: &Playing, games: &DiscordGames) -> (Value, String) {
     match known {
         Some(id) => (activity, id.to_owned()),
         None => {
-            activity["assets"] = json!({"large_image": IMAGE_KEY, "large_text": IMAGE_TEXT});
+            // The picture is AnyPlay's (no game art leaves the PC); hovering it names the game.
+            activity["assets"] = json!({"large_image": IMAGE_KEY, "large_text": playing.game});
             (activity, ANYPLAY_APPLICATION_ID.to_owned())
         }
     }
@@ -518,7 +518,7 @@ mod tests {
         let (other, application) = activity(&offline("Hollow Orchard"), &DiscordGames::default());
         assert_eq!(application, "1563714917998133288");
         assert_eq!(other["assets"]["large_image"], "anyplay");
-        assert_eq!(other["assets"]["large_text"], "AnyPlay");
+        assert_eq!(other["assets"]["large_text"], "Hollow Orchard");
     }
 
     #[test]

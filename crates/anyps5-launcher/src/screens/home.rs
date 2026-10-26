@@ -12,12 +12,15 @@ use egui::{
 
 use crate::app::model::{GameState, Model, SizeState};
 use crate::screens::glibc_strings::shortfall_text;
+use crate::screens::hub_strings::HubText;
 use crate::screens::ludus_strings::LudusText;
 use crate::screens::ludus_web_strings::BrowserText;
+use crate::screens::notification_strings::NotifyText;
 use crate::screens::online_social_strings::SocialText;
 use crate::screens::online_strings::OnlineText;
 use crate::screens::phone_strings::PhoneText;
 use crate::screens::run_strings::{RunText, friends_line};
+use crate::screens::shelves;
 use crate::screens::strings::{Extra, playtime_text};
 use crate::screens::together_strings::TogetherText;
 use crate::screens::toolkit_pin;
@@ -86,18 +89,23 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
     let ctx = cx.ctx.clone();
     let screen = ctx.content_rect();
     let mut presses = Vec::new();
+    let mut shelf_presses = Vec::new();
     crate::ui::shade::paint(ui.painter(), screen, !cx.model.games.is_empty());
     // At launch the parts rise into place one after another (ui::intro).
     staged(ui, &ctx, intro::TOP_BAR, screen, |ui, screen| {
         top_bar(ui, cx, screen, &mut presses);
     });
     if cx.model.games.is_empty() {
+        cx.model.shelf_count = 0;
         staged(ui, &ctx, intro::HERO, screen, |ui, screen| {
             empty_library(ui, cx, screen, &mut presses);
         });
     } else {
         staged(ui, &ctx, intro::TILES, screen, |ui, screen| {
             tile_row(ui, cx, screen, &mut presses);
+        });
+        staged(ui, &ctx, intro::HERO, screen, |ui, screen| {
+            shelf_band(ui, cx, screen, &mut shelf_presses);
         });
         staged(ui, &ctx, intro::HERO, screen, |ui, screen| {
             hero(ui, cx, screen, &mut presses);
@@ -111,6 +119,9 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
             hints(ui, language, set, screen);
         });
     }
+    for focus in shelf_presses {
+        cx.model.click(focus);
+    }
     for press in presses {
         match press {
             Press::Tile { index, double } => cx.model.click_tile(index, double),
@@ -118,6 +129,54 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
             Press::ChooseFolder => cx.model.request_folder_dialog(),
         }
     }
+}
+
+/// What the shelves show and how many games each takes, when the window has room for them.
+struct ShelfPlan {
+    shelves: Vec<crate::app::library_view::Shelf>,
+    cap: usize,
+}
+
+/// The shelves fit between the tile row and the hero's title (a one-line title, with its state
+/// above it); a low or narrow window shows none, and the hero keeps its place.
+fn shelf_plan(
+    model: &Model,
+    painter: &egui::Painter,
+    screen: Rect,
+    language: Language,
+) -> Option<ShelfPlan> {
+    let all = model.shelves();
+    if all.is_empty() {
+        return None;
+    }
+    let cap = shelves::cap(screen, all.len());
+    if cap == 0 {
+        return None;
+    }
+    let (_, hint_height) = hint_bar_size(painter, language, true);
+    let geometry = hero_geometry(screen, hint_height, 0.0);
+    let state_height = ty::STATE_LABEL.line_height() + STATE_GAP;
+    let bottom = shelves::top(screen) + shelves::height();
+    if geometry.title_bottom - ty::HERO_TITLE.line_height() - state_height - shelves::BELOW < bottom
+    {
+        return None;
+    }
+    Some(ShelfPlan {
+        shelves: model.shelves_with(cap),
+        cap,
+    })
+}
+
+fn shelf_band(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<HomeFocus>) {
+    let painter = ui.painter().clone();
+    let language = cx.language();
+    let Some(plan) = shelf_plan(cx.model, &painter, screen, language) else {
+        cx.model.shelf_count = 0;
+        return;
+    };
+    cx.model.shelf_cap = plan.cap;
+    cx.model.shelf_count = plan.shelves.iter().map(|s| s.items.len()).sum();
+    shelves::show(ui, cx, shelves::top(screen), &plan.shelves, presses);
 }
 
 /// Draws one part of the screen at its intro stage: faded and lowered while it arrives, directly
@@ -244,7 +303,27 @@ fn top_bar(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<P
     if response.clicked() {
         presses.push(Press::Focus(HomeFocus::SETTINGS));
     }
-    // Friends sit between the library and the settings; the count is the friends online now.
+    // The bell sits between the friends and the settings; its badge counts what was not read.
+    let unread_notes = cx.model.notes.unread();
+    let bell_name = if unread_notes == 0 {
+        NotifyText::Title.text(language).to_owned()
+    } else {
+        NotifyText::BellUnread.format(language, &[Arg::Int(unread_notes as i64)])
+    };
+    let bell = IconButton::new(Icon::BELL, bell_name)
+        .focused(focused(HomeFocus::NOTIFICATIONS))
+        .show(&mut row);
+    if unread_notes > 0 {
+        paint_count_badge(
+            &painter,
+            bell.rect.right_top() + vec2(-8.0, 8.0),
+            unread_notes,
+        );
+    }
+    if bell.clicked() {
+        presses.push(Press::Focus(HomeFocus::NOTIFICATIONS));
+    }
+    // Friends sit between the library and the bell; the count is the friends online now.
     let friends_online = online.friends_online();
     let label = match friends_online {
         0 => OnlineText::Friends.text(language).to_owned(),
@@ -490,9 +569,9 @@ fn paint_clock(painter: &egui::Painter, right: f32, mid: f32) -> f32 {
         ink,
     );
     // Digits are as tall as capitals: 0.727 em in Inter.
-    let reach = style.size * 0.727 * 0.5 * 0.52;
+    let reach = style.px() * 0.727 * 0.5 * 0.52;
     for dy in [-reach, reach] {
-        painter.circle_filled(pos2(colon_x, mid + dy), style.size * 0.075, ink);
+        painter.circle_filled(pos2(colon_x, mid + dy), style.px() * 0.075, ink);
     }
     left
 }
@@ -885,6 +964,30 @@ fn friends_button(
     it.response
 }
 
+/// A small count in ink on the corner of a button: the number, "9+" past nine. The number is dark
+/// on the ink disc, so it reads on any picture behind it.
+fn paint_count_badge(painter: &egui::Painter, centre: egui::Pos2, count: usize) {
+    let label = if count > 9 {
+        "9+".to_owned()
+    } else {
+        count.to_string()
+    };
+    let width = if count > 9 { 24.0 } else { 18.0 };
+    let rect = Rect::from_center_size(centre, vec2(width, 18.0));
+    painter.rect_filled(rect.expand(2.0), 11.0, color::mark_halo());
+    painter.rect_filled(rect, 9.0, color::text());
+    text::paint_tabular(
+        painter,
+        pos2(
+            rect.min.x + (width - text::tabular_width(painter, ty::MICRO, &label)) * 0.5,
+            rect.center().y - ty::MICRO.line_height() * 0.5,
+        ),
+        ty::MICRO,
+        &label,
+        egui::Color32::BLACK,
+    );
+}
+
 /// Where the friends icon ends inside its 44 dp circle (the glyph is 20 dp, centred).
 const FRIENDS_ICON_END: f32 = (size::ICON_BUTTON + size::ICON_BUTTON_GLYPH) * 0.5;
 /// The online dot, its distance from the icon and from the number.
@@ -1041,7 +1144,7 @@ fn tile_row(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<
                 ui.interact(rect, Id::unique(("tile", game.id.as_str())), Sense::click());
             response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label.as_str()));
             crate::ui::a11y::follow(&ctx, response.id, ring_on && is_selected);
-            if input::hovered(&ctx, &response) {
+            if under_pointer && response.contains_pointer() {
                 ctx.set_cursor_icon(CursorIcon::PointingHand);
             }
             if response.double_clicked() {
@@ -1200,8 +1303,12 @@ fn paint_hero(
     }
     // A low window must not push a two-line title (and the state above it) over the tile row.
     let state_height = ty::STATE_LABEL.line_height() + STATE_GAP;
-    let tiles_bottom =
+    let mut tiles_bottom =
         screen.min.y + pad::HOME_TOP + size::ICON_BUTTON + 34.0 + size::TILE_LARGE + 24.0;
+    // The shelves, when they are drawn, are part of what the title must not run into.
+    if shelf_plan(cx.model, &painter, screen, language).is_some() {
+        tiles_bottom = shelves::top(screen) + shelves::height() + shelves::BELOW;
+    }
     if geometry.title_bottom - title.size().y - state_height < tiles_bottom {
         title = wrapped(
             &painter,
@@ -1237,10 +1344,11 @@ fn paint_hero(
     let has_trophies = cx.model.trophies.get(&game.id);
     let trophy_text =
         has_trophies.map(|set| format!("{}/{}", set.unlocked_count(), set.trophies.len()));
-    // Play, then Play Together when the game can be played together, then trophies, then "...".
+    // Play, then Play Together when the game can be played together, then trophies, then the Game Hub, then "...".
     let together = crate::app::together::hostable(cx.model).is_some();
     let trophies_index = 1 + usize::from(together);
-    let settings_index = trophies_index + usize::from(trophy_text.is_some());
+    let hub_index = trophies_index + usize::from(trophy_text.is_some());
+    let settings_index = hub_index + 1;
     let (primary_title, primary_icon, primary_fill) = primary_look(&state, language);
     let mut pressed = None;
     let after_buttons = place(ui, row, |ui| {
@@ -1272,11 +1380,18 @@ fn paint_hero(
                 .icon(Icon::TROPHY)
                 .icon_fill(true)
                 .tabular(true)
+                .size(ControlSize::Small)
                 .focused(focused(trophies_index))
                 .show(ui);
             if response.clicked() {
                 pressed = Some(HomeFocus::Actions(trophies_index));
             }
+        }
+        let hub = ConsoleButton::icon_only(Icon::SQUARES_FOUR, HubText::Overline.text(language))
+            .focused(focused(hub_index))
+            .show(ui);
+        if hub.clicked() {
+            pressed = Some(HomeFocus::Actions(hub_index));
         }
         let more = ConsoleButton::icon_only(Icon::DOTS_THREE, language.text(Key::Options))
             .focused(focused(settings_index))
@@ -1463,7 +1578,7 @@ fn ask_line(
     }
 }
 
-fn primary_look(state: &GameState, language: Language) -> (&'static str, Icon, bool) {
+pub fn primary_look(state: &GameState, language: Language) -> (&'static str, Icon, bool) {
     match state {
         GameState::Installed { .. } => (language.text(Key::Play), Icon::PLAY, true),
         GameState::Preparing { .. } => (language.text(Key::Play), Icon::PLAY, true),
@@ -1726,7 +1841,7 @@ fn baseline_offset(painter: &egui::Painter, style: theme::TextStyle, text_: &str
         .rows
         .first()
         .and_then(|row| row.glyphs.first().map(|glyph| row.pos.y + glyph.pos.y))
-        .unwrap_or(style.size)
+        .unwrap_or(style.px())
 }
 
 /// Paints `text` with its baseline at `at.y` and its left edge at `at.x`.

@@ -13,6 +13,7 @@ use std::time::Instant;
 
 use anyps5_core::events::CoreEvent;
 use anyps5_core::library::{ExecutableKind, Game};
+use anyps5_core::notifications::{Act, Kind, Notifications};
 use anyps5_core::online::Online;
 use anyps5_core::paths::{AppPaths, GameId};
 use anyps5_core::settings::{self, Preferences};
@@ -77,10 +78,14 @@ pub enum SizeState {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Toast {
     pub id: u64,
+    /// A game whose icon the toast shows in place of its glyph.
+    pub art: Option<std::path::PathBuf>,
     pub text: String,
     pub icon: Icon,
     /// UI-clock time at which it starts to leave; infinite while it stays until dismissed.
     pub until: f64,
+    /// A game ended in trouble: the toast offers "Send Report" for it (Options, or the button).
+    pub report: Option<GameId>,
 }
 
 impl Toast {
@@ -149,6 +154,8 @@ pub enum Effect {
     RelayOnlyChanged,
     /// Save the last seconds of the running game as a clip (`app::clips`).
     SaveClip,
+    /// Start or stop the live broadcast of the running game (`app::broadcast`).
+    ToggleBroadcast,
     /// The player came online: read what they earned in every unlocked game for the network.
     SyncTrophies,
     /// Look at the unlocked games location (is the drive there, how much is free).
@@ -179,6 +186,7 @@ pub fn ui_language(language: settings::Language) -> Language {
     match language {
         settings::Language::Turkish => Language::Turkish,
         settings::Language::English => Language::English,
+        settings::Language::German => Language::German,
     }
 }
 
@@ -186,6 +194,7 @@ pub fn core_language(language: Language) -> settings::Language {
     match language {
         Language::Turkish => settings::Language::Turkish,
         Language::English => settings::Language::English,
+        Language::German => settings::Language::German,
     }
 }
 
@@ -194,6 +203,7 @@ pub fn ui_theme(theme: settings::Theme) -> Theme {
         settings::Theme::Cosmic => Theme::Cosmic,
         settings::Theme::Aurora => Theme::Aurora,
         settings::Theme::Sunset => Theme::Sunset,
+        settings::Theme::GameColors => Theme::GameColors,
     }
 }
 
@@ -202,6 +212,7 @@ pub fn core_theme(theme: Theme) -> settings::Theme {
         Theme::Cosmic => settings::Theme::Cosmic,
         Theme::Aurora => settings::Theme::Aurora,
         Theme::Sunset => settings::Theme::Sunset,
+        Theme::GameColors => settings::Theme::GameColors,
     }
 }
 
@@ -250,6 +261,8 @@ pub struct Model {
     pub panel: PanelNav,
     /// The focused tile of the library grid.
     pub library_index: usize,
+    /// What the player typed to search the library page; empty shows every game.
+    pub library_query: String,
     /// The focused row of the trophy list.
     pub trophy_index: usize,
     pub onboarding: Onboarding,
@@ -271,6 +284,10 @@ pub struct Model {
     /// The game from the press of Play until its first window shows.
     pub starting: Option<GameId>,
     pub running: Option<GameId>,
+    /// Where the live broadcast of the running game stands.
+    pub broadcast: anyps5_core::broadcast::Phase,
+    /// A stream key is kept (the key itself is never held here).
+    pub broadcast_key_set: bool,
     /// The Home button brought the launcher in front of the running game: Back returns to the
     /// game (`Model::show_in_game`).
     pub summoned: bool,
@@ -279,6 +296,13 @@ pub struct Model {
     /// Why each game stopped the last time it was started, when it stopped on an error.
     pub diagnoses: HashMap<GameId, String>,
     pub toast: Option<Toast>,
+    /// The history of what the launcher told the player on its own (`Overlay::Notifications`).
+    pub notes: Notifications,
+    /// The invite link the player asked for (`app::discord`).
+    pub invite_link: crate::app::discord::InviteLink,
+    /// A handle a link asked to befriend: the Friends screen opens on the request with it typed
+    /// in, and the player sends it.
+    pub friend_request: Option<String>,
     /// Where the launcher's own update stands, copied in every frame by the panel host.
     pub update: crate::screens::settings::LauncherUpdate,
     /// The version whose notice the player sent away with "Later" (until the next start).
@@ -288,6 +312,10 @@ pub struct Model {
     /// The notice fits in the top bar as drawn last frame. The focus order reads it, so the pad
     /// never lands on a notice that is not there.
     pub notice_fits: bool,
+    /// How many games the shelves on the home screen show now; the screen sets it each frame.
+    pub shelf_count: usize,
+    /// The most games a shelf shows at this window width, set by the home screen.
+    pub shelf_cap: usize,
     /// This launcher must update before it goes online: the signed manifest or the cloud said so
     /// (copied in every frame by the panel host). Offline play is never affected.
     pub update_required: bool,
@@ -332,6 +360,10 @@ pub struct Model {
     pub profile: Option<crate::app::profile::Target>,
     /// The comparison the trophy compare screen is on (`app::compare`).
     pub compare: Option<crate::app::compare::Target>,
+    /// Where Back leads from the Game Hub, when it was not opened from Home (`app::hub`).
+    pub hub_back: Option<Overlay>,
+    /// Where Back leads from the trophy overview (`app::hub`).
+    pub overview_back: Option<Overlay>,
     /// The profile screen opens again from the comparison: its focus stays where it was.
     pub profile_returning: bool,
     /// The Friends screen opens on the page it was left on, not on its first one: the player
@@ -352,11 +384,14 @@ pub struct Model {
     cards_asked: f64,
     started_without_window: bool,
     toast_counter: u64,
+    /// A crash report the player asked for on the toast; the panels take it ([`Model::send_crash_report`]).
+    pub report_request: Option<GameId>,
 }
 
 impl Model {
     /// `persist` is off for the previews and tests, which must not touch the user's settings.
     pub fn new(prefs: Preferences, paths: AppPaths, persist: bool) -> Self {
+        let notes = Notifications::open(paths.notifications_file(), persist);
         Self {
             prefs,
             paths,
@@ -371,6 +406,7 @@ impl Model {
             overlay: None,
             panel: PanelNav::single(0),
             library_index: 0,
+            library_query: String::new(),
             trophy_index: 0,
             onboarding: Onboarding::default(),
             sign_in_after_onboarding: None,
@@ -382,15 +418,22 @@ impl Model {
             failures: HashMap::new(),
             starting: None,
             running: None,
+            broadcast: Default::default(),
+            broadcast_key_set: false,
             summoned: false,
             sizes: HashMap::new(),
             trophies: HashMap::new(),
             diagnoses: HashMap::new(),
             toast: None,
+            notes,
+            invite_link: Default::default(),
+            friend_request: None,
             update: Default::default(),
             update_dismissed: None,
             update_request: None,
             notice_fits: true,
+            shelf_count: 0,
+            shelf_cap: crate::app::library_view::SHELF_MAX,
             update_required: false,
             required_seen: false,
             required_online: false,
@@ -410,6 +453,8 @@ impl Model {
             together: Default::default(),
             profile: None,
             compare: None,
+            hub_back: None,
+            overview_back: None,
             profile_returning: false,
             online_resume: false,
             friends_back: None,
@@ -421,6 +466,7 @@ impl Model {
             cards_asked: f64::NEG_INFINITY,
             started_without_window: false,
             toast_counter: 0,
+            report_request: None,
         }
     }
 
@@ -475,6 +521,7 @@ impl Model {
     /// Call first thing in every frame.
     pub fn tick(&mut self, now: f64) {
         self.now = now;
+        self.notes.save_if_dirty();
         self.checkpoint(Instant::now());
         self.prepare_tick();
         self.resume_move_tick();
@@ -545,6 +592,42 @@ impl Model {
         }
     }
 
+    /// Writes an entry into the notification history (no toast): the center keeps what the
+    /// launcher said, and the bell counts what was not read yet.
+    pub fn note(&mut self, kind: Kind, text: impl Into<String>, act: Act) {
+        self.notes.push(
+            kind,
+            text.into(),
+            act,
+            u64::try_from(clock::unix_seconds()).unwrap_or(0),
+        );
+    }
+
+    /// [`note`](Self::note) unless the history already holds this sentence (an update that waits
+    /// is found again at every start).
+    pub fn note_once(&mut self, kind: Kind, text: impl Into<String>, act: Act) {
+        let text = text.into();
+        if self.notes.newest_first().any(|e| e.text == text) {
+            return;
+        }
+        self.note(kind, text, act);
+    }
+
+    /// An event nobody asked for: a toast with its cue and an entry in the history. The entry is
+    /// kept even when a failure toast keeps this one from showing.
+    pub fn announce(
+        &mut self,
+        kind: Kind,
+        act: Act,
+        text: impl Into<String>,
+        icon: Icon,
+        cue: Cue,
+    ) {
+        let text = text.into();
+        self.note(kind, text.clone(), act);
+        self.toast_with(text, icon, cue);
+    }
+
     /// A toast with its own cue: a message, an invitation.
     pub fn toast_with(&mut self, text: impl Into<String>, icon: Icon, cue: Cue) {
         if self.failure_toast_up() {
@@ -570,13 +653,33 @@ impl Model {
         }
     }
 
+    /// A failure toast of a game that ended in trouble, with "Send Report" for that game.
+    pub fn toast_crash(&mut self, text: impl Into<String>, game: GameId) {
+        self.toast_failure(text);
+        if let Some(toast) = self.toast.as_mut() {
+            toast.report = Some(game);
+        }
+    }
+
+    /// The player asked for the report of the game on the toast (Options, or its button). The
+    /// toast goes; the panels pick the request up in their next frame.
+    pub fn send_crash_report(&mut self) {
+        let game = self.toast.as_ref().and_then(|t| t.report.clone());
+        if let Some(game) = game {
+            self.dismiss_toast();
+            self.report_request = Some(game);
+        }
+    }
+
     fn toast_silent(&mut self, text: impl Into<String>, icon: Icon) {
         self.toast_counter += 1;
         self.toast = Some(Toast {
             id: self.toast_counter,
+            art: None,
             text: text.into(),
             icon,
             until: self.now + TOAST_SECONDS,
+            report: None,
         });
     }
 
@@ -702,6 +805,7 @@ impl Model {
             card: crate::app::together::card(self).map_or(0, |card| {
                 crate::screens::together::card_actions(&card).len() as u8
             }),
+            shelf: self.shelf_count,
         }
     }
 
@@ -826,10 +930,11 @@ impl Model {
                 self.games = games;
                 self.scanning = false;
                 self.library_loaded = true;
-                self.note_new_games();
+                let fresh = self.note_new_games();
                 self.selected = current
                     .and_then(|id| self.games.iter().position(|g| g.id == id))
                     .unwrap_or_else(|| self.selected.min(self.games.len().saturating_sub(1)));
+                self.announce_new_games(&fresh);
                 self.library_index = self.library_index.min(self.games.len().saturating_sub(1));
                 self.measure_selected();
             }
@@ -969,7 +1074,7 @@ impl Model {
                 match diagnosis {
                     Some(summary) => {
                         let name = self.game(&game).map(|g| g.name.clone()).unwrap_or_default();
-                        self.toast_failure(format!("{name}: {summary}"));
+                        self.toast_crash(format!("{name}: {summary}"), game.clone());
                         self.diagnoses.insert(game, summary);
                     }
                     None if without_window => {
@@ -1251,6 +1356,14 @@ impl Model {
             self.dismiss_toast();
             return Routed::Done;
         }
+        // The same toast offers the report of the game that ended in trouble: Options sends it.
+        if command == Command::Options
+            && self.toast_visible()
+            && self.toast.as_ref().is_some_and(|t| t.report.is_some())
+        {
+            self.send_crash_report();
+            return Routed::Done;
+        }
         if !self.onboarded() {
             self.onboarding_command(command);
             return Routed::Done;
@@ -1282,6 +1395,14 @@ impl Model {
         // The notice may have gone (sent away, installed) while the focus was on it.
         if matches!(self.focus, HomeFocus::Update(_)) && self.update_notice().is_none() {
             self.focus = HomeFocus::Tiles;
+        }
+        // The shelves may have gone (the window got low, the friend left) while the focus was
+        // on one, or have fewer games now.
+        if let HomeFocus::Shelf(i) = self.focus {
+            self.focus = match self.shelf_count {
+                0 => HomeFocus::Tiles,
+                n => HomeFocus::Shelf(i.min(n - 1)),
+            };
         }
         // The same for the Play Together card, which goes when it is answered or put away, or
         // comes back with fewer buttons.
@@ -1331,15 +1452,18 @@ impl Model {
             HomeIntent::AnswerRun(i) => self.answer_run(i),
             HomeIntent::UpdateAction(i) => self.update_action(i),
             HomeIntent::CardAction(i) => self.card_action(i),
+            HomeIntent::ShelfItem(i) => self.shelf_action(i),
             HomeIntent::PlayTogether => {
                 if let Some(id) = crate::app::together::hostable(self).map(|g| g.id.clone()) {
                     crate::app::together::host_game(self, &id);
                 }
             }
             HomeIntent::OpenTrophies => self.open(Overlay::Trophies),
+            HomeIntent::OpenHub => self.open_hub(),
             HomeIntent::OpenGameSettings => self.open(Overlay::GameSettings),
             HomeIntent::OpenLibrary => self.open(Overlay::Library),
             HomeIntent::OpenCaptures => self.open(Overlay::Captures),
+            HomeIntent::OpenNotifications => self.open(Overlay::Notifications),
             HomeIntent::OpenSettings => self.open(Overlay::Settings),
             // The online panel opens on the friends list once signed in, else on sign-in.
             HomeIntent::OpenFriends => self.open(Overlay::Friends),
@@ -1429,6 +1553,7 @@ impl Model {
             HomeFocus::Ask(i) => HomeIntent::AnswerRun(i),
             HomeFocus::Update(i) => HomeIntent::UpdateAction(usize::from(i)),
             HomeFocus::Card(i) => HomeIntent::CardAction(usize::from(i)),
+            HomeFocus::Shelf(i) => HomeIntent::ShelfItem(i),
         };
         self.apply_intent(intent);
     }
@@ -1521,7 +1646,7 @@ impl Model {
         let choice = self.onboarding_choice();
         match self.onboarding.step {
             0 => {
-                let language = core_language(Language::ALL[choice.min(1)]);
+                let language = core_language(Language::ALL[choice.min(Language::ALL.len() - 1)]);
                 self.edit_prefs(|p| p.language = language);
             }
             1 => {

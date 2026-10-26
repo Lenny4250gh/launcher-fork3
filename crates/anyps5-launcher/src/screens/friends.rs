@@ -70,6 +70,11 @@ impl FriendsScreen {
         self.land(data);
     }
 
+    /// Types `text` into the field of the request page (a friend link names the handle).
+    pub fn set_friend_text(&mut self, text: String) {
+        self.panel.friend_text = text;
+    }
+
     /// Shows `page` (a profile sent the player to one; previews jump straight to one).
     pub fn show_page(&mut self, page: Page, data: &OnlineData<'_>) {
         self.panel.show_page(page, data);

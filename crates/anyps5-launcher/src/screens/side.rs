@@ -328,7 +328,7 @@ fn panel<R>(
             let galley = text::layout_font_pretty(
                 &painter,
                 style.font(),
-                style.size * leading,
+                style.px() * leading,
                 style.tracking,
                 subtitle,
                 ink,

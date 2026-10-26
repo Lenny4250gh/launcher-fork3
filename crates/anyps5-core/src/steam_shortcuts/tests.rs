@@ -381,6 +381,20 @@ fn places_are_found_once_each() {
 }
 
 #[test]
+fn the_steam_folder_of_a_mac_is_found() {
+    let home = TempDir::new().unwrap();
+    let mac = home.path().join("Library/Application Support/Steam");
+    fs::create_dir_all(mac.join("userdata")).unwrap();
+    assert_eq!(
+        places(Some(home.path()), None),
+        vec![Place {
+            root: mac,
+            flatpak: false
+        }]
+    );
+}
+
+#[test]
 fn a_game_entry_starts_the_launcher_with_a_link_the_launcher_understands() {
     let shortcut = game("PPSA01234", "A Game");
     assert!(crate::links::parse(&shortcut.arguments).is_ok());
