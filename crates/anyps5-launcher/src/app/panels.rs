@@ -576,7 +576,9 @@ impl PanelHost {
                 model.switch_overlay(Overlay::WhatsNew);
             }
             SettingsAction::OpenControllers => {
-                self.settings_return = Category::ALL.iter().position(|c| *c == Category::Behaviour);
+                self.settings_return = Category::ALL
+                    .iter()
+                    .position(|c| *c == Category::Controllers);
                 model.switch_overlay(Overlay::Controllers);
             }
             SettingsAction::RestartNow => self.restart_launcher(model, cx.ctx),

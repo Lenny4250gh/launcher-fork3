@@ -50,9 +50,21 @@ pub enum Link {
 /// The pages of the settings a link can name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsPage {
+    /// Start-up behaviour, the Home button, updates.
+    General,
     Appearance,
     Library,
+    Sound,
+    Controllers,
+    /// Screenshots and Clips.
+    Captures,
+    Broadcast,
+    /// Account, privacy, voice, Show Game on Discord.
+    Online,
+    /// Steam and Discord.
+    ConnectedApps,
     Language,
+    /// The old catch-all page; it opens General (its rows now live on several pages).
     Behavior,
     /// Phone as Controller.
     Phone,
@@ -64,8 +76,15 @@ pub enum SettingsPage {
 impl SettingsPage {
     fn from_name(name: &str) -> Option<SettingsPage> {
         Some(match name {
+            "general" => SettingsPage::General,
             "appearance" => SettingsPage::Appearance,
             "library" => SettingsPage::Library,
+            "sound" => SettingsPage::Sound,
+            "controllers" | "controller" => SettingsPage::Controllers,
+            "captures" | "clips" => SettingsPage::Captures,
+            "broadcast" => SettingsPage::Broadcast,
+            "online" => SettingsPage::Online,
+            "apps" | "connected-apps" => SettingsPage::ConnectedApps,
             "language" => SettingsPage::Language,
             "behavior" | "behaviour" => SettingsPage::Behavior,
             "phone" => SettingsPage::Phone,
@@ -540,6 +559,14 @@ x",
         assert_eq!(
             parse("anyps5://settings/toolkit"),
             Ok(Link::Settings(Some(SettingsPage::Toolkit)))
+        );
+        assert_eq!(
+            parse("anyps5://settings/Clips"),
+            Ok(Link::Settings(Some(SettingsPage::Captures)))
+        );
+        assert_eq!(
+            parse("anyps5://settings/connected-apps"),
+            Ok(Link::Settings(Some(SettingsPage::ConnectedApps)))
         );
         assert_eq!(
             parse("anyps5://settings/wallet"),
