@@ -348,6 +348,45 @@ jobs:
           path: launcher/dist/*
           if-no-files-found: error
 
+  # The Flatpak, built from the Linux binary of the `linux` job (nothing is compiled again). It is
+  # an extra: continue-on-error makes the job count as passed when it fails, and the release
+  # takes the file only if it exists, so a Flatpak problem never holds back a release. The file is
+  # not in the signed update manifest.
+  flatpak:
+    needs: [notices, linux]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-linux
+          path: linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-notices
+          path: notices
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream
+      - name: Flatpak
+        run: |
+          set -euo pipefail
+          tarball=$(ls linux/AnyPlay-Launcher-*-linux-x86_64.tar.gz)
+          version=$(basename "$tarball" -linux-x86_64.tar.gz)
+          version=${version#AnyPlay-Launcher-}
+          tar -xzf "$tarball" -C linux --strip-components=1 --wildcards '*/anyplay-launcher'
+          bash tools/linux/flatpak.sh "$version" linux/anyplay-launcher notices/THIRD-PARTY-LICENSES.txt dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: flatpak
+          path: dist/*.flatpak
+          if-no-files-found: error
+
   # Apple silicon app, signed ad hoc. No Developer ID or notarization secret is used.
   macos:
     needs: notices
@@ -613,7 +652,7 @@ jobs:
   # The release itself (tags only): provenance for every file, then the GitHub release.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, sign]
+    needs: [windows, sign, flatpak]
     runs-on: ubuntu-latest
     permissions:
       contents: write # the release and its files
@@ -637,6 +676,12 @@ jobs:
         with:
           name: signed-manifest
           path: dist
+      # Optional: missing when the flatpak job failed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: flatpak
+          path: dist
 
       # Signed provenance for every file of the release: which workflow, from which commit, built
       # it. `gh attestation verify <file> --repo anyplaynet/launcher` checks it (docs/UPDATES.md).
@@ -650,6 +695,7 @@ jobs:
             dist/SHA256SUMS.txt
             ${{ needs.sign.outputs.signed == 'true' && 'dist/latest.json' || '' }}
             ${{ needs.sign.outputs.signed == 'true' && 'dist/latest.json.sig' || '' }}
+            ${{ hashFiles('dist/*.flatpak') != '' && format('dist/AnyPlay-Launcher-{0}-x86_64.flatpak', needs.windows.outputs.version) || '' }}
 
       - id: gh-release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -677,6 +723,7 @@ jobs:
             dist/SHA256SUMS.txt
             ${{ needs.sign.outputs.signed == 'true' && 'dist/latest.json' || '' }}
             ${{ needs.sign.outputs.signed == 'true' && 'dist/latest.json.sig' || '' }}
+            ${{ hashFiles('dist/*.flatpak') != '' && format('dist/AnyPlay-Launcher-{0}-x86_64.flatpak', needs.windows.outputs.version) || '' }}
 
       # The release, announced on Discord: its title, text and link, through the webhook in the
       # repository secret DISCORD_RELEASES_WEBHOOK. Without the secret the step is skipped. A release

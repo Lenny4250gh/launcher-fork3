@@ -2059,6 +2059,16 @@ while a game is in front (6.6, "The PS button reader"). The cases that make a pa
 HID readers as well, so the pad is still not found for everything else by it.
 Not verified on hardware: a DualSense or DualShock over USB and Bluetooth through WGI, the battery reading of a Bluetooth DualSense through WGI, the A/B hints on a real Xbox pad.
 
+### 5.22 Steam Deck, Gaming Mode, the on-screen keyboard and linked copies (0.3.0, `ui::osk`)
+
+*Gaming Mode.* `platform::gaming_mode` is true when `SteamDeck` or `SteamGamepadUI` is set (and not `0`), when `GAMESCOPE_WAYLAND_DISPLAY` is set, or when the desktop or the Wayland display is gamescope. There the window always opens full screen (whatever was chosen before) and the pad counts as the device in use from the first frame, so the hints show pad glyphs and the ring is on. The panels and the home screen are laid out for the 1280x800 of the Deck (the window never goes below `MIN_WINDOW` 1100x650); nothing relies on a wider window.
+
+*On-screen keyboard.* Every text row (the cloud address, a friend's handle, a restriction note, a voice key note; `RowControl::Text`) opens a keyboard card instead of the caret when the pad is the device in use or the launcher is in Gaming Mode: select on the row, or a click or tap on the field. The card is a centred question card (scrim 0.55, glass, `radius::LARGE`, 24 padding): the row's title, the typed text in a capsule (its last 64 characters and a caret), three rows of ten keys (letters, or digits and symbols with `123`; Shift makes one capital), and a row of five: Shift, `123`/`abc`, Space, Delete, Done (the one primary). Keys are `ConsoleButton`s of the medium size with the 12 dp control gap. The pad walks the grid (left and right wrap, up and down wrap, the row of five keeps its place by proportion), Select types, Options deletes, Back cancels and keeps the row as it was. Every key plays the move cue, Done the select cue, Back the back cue. The row gets the text after every key (like typing) and `Submit` on Done. The messages' own keyboard (5.x, Friends) is a page of the panel and stays.
+
+*Linked copies across drives.* When the unlocked copy lives on another drive than the dump, hard links are impossible. The unlock then makes a symbolic link to each unchanged file of the dump instead of copying it, when the system lets the launcher create symbolic links (Linux: always; Windows: Developer Mode or an elevated launcher; probed once in the space check with a file that is removed again). Without that, files are copied as before. Only the dump's files are linked this way, never the toolkit's. The dump is only read: removing a copy removes the links, the read-only flags of a linked file are never touched, and the finished copy replaces the old one through the same swap as before. The log says how many files were linked, symbolically linked and copied. The space check counts a symbolically linked dump like a hard-linked one.
+
+*Flatpak.* `packaging/flatpak/` holds the manifest of `net.anyplay.Launcher` (freedesktop runtime, network, display, audio, all devices for pads, home for the games). The release workflow builds the `.flatpak` bundle as an extra asset; a failure of that job never blocks a release.
+
 ## 7. Sounds and media
 
 ### 7.1 Sounds (`Sounds.swift`): synthesized, nothing bundled

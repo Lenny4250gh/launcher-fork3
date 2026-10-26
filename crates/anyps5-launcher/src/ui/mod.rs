@@ -50,6 +50,7 @@ pub mod lightbar;
 pub mod nav_bindings;
 pub mod nudge;
 pub mod os_emoji;
+pub mod osk;
 pub mod pad_hub;
 pub mod pad_info;
 pub mod press;
@@ -136,7 +137,7 @@ impl Shell {
         home_button::spawn_xinput(home.clone());
         ps_button::spawn(home.clone());
         let language = Language::system();
-        Self {
+        let mut shell = Self {
             input: Input::new(Some(pad)),
             home,
             sounds: Sounds::new(),
@@ -155,7 +156,10 @@ impl Shell {
             nudge: Nudge::default(),
             reduced: false,
             bumped_in_hold: false,
-        }
+        };
+        // Gaming Mode has no keyboard or mouse: start with the pad's hints and keyboard.
+        shell.input.pad_in_use = osk::gaming_mode();
+        shell
     }
 
     /// A shell for tests and the gallery: no gamepad, silent.
@@ -213,6 +217,7 @@ impl Shell {
         if !self.nudge.is_settled() {
             ctx.request_repaint();
         }
+        osk::set_wanted(ctx, self.input.pad_in_use || osk::gaming_mode());
         let events = self.input.poll(ctx);
         // A select from a key or the pad presses the focused control in, like a click does.
         if events
