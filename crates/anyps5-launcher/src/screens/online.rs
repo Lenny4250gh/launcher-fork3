@@ -20,7 +20,7 @@ pub use voice::talk_key;
 
 use std::collections::BTreeSet;
 
-use anyps5_core::online::api::{AccountId, Audience, Count, Reaction, ReportReason};
+use anyps5_core::online::api::{AccountId, Audience, Count, ReportReason};
 use anyps5_core::online::{
     self, Cloud, DeviceKind, FriendRequestOutcome, FriendRequestResult, Link, Online, Pending,
     Purpose, ScreenCommand, VoiceMode, VoiceProvider,
@@ -94,6 +94,8 @@ pub enum OnlineAction {
     Dialog(Option<Vec<AccountId>>),
     /// Keep every tunnel on a relay, or let them go direct again.
     RelayOnly(bool),
+    /// Make a party of one; the player invites friends from inside it.
+    PartyCreate,
     /// Invite friends to the party; a party is made when the player is in none.
     PartyInvite(Vec<AccountId>),
     PartyAnswer {
@@ -162,8 +164,6 @@ pub enum OnlineAction {
     FeedRefresh,
     /// Read the next older items of the feed.
     FeedOlder,
-    /// Set the player's reaction to a feed item, or take it back.
-    React(u64, Option<Reaction>),
     /// Read the profile of this account (the profile screen asks again).
     Profile(AccountId),
     /// Open the profile screen on this account.
@@ -560,7 +560,7 @@ impl OnlinePanel {
             return false;
         }
         if self.feed_is_list(data) {
-            return self.feed_focus.slot.is_none();
+            return true;
         }
         if self.room_is_page() {
             return self.room_left_leaves();
@@ -598,9 +598,9 @@ impl OnlinePanel {
         self.local = local;
     }
 
-    /// Puts the feed's focus on a card, or on one of its reactions (previews).
-    pub fn set_feed_focus(&mut self, item: usize, slot: Option<usize>) {
-        self.feed_focus = feed::FeedFocus { item, slot };
+    /// Puts the feed's focus on a card (previews).
+    pub fn set_feed_focus(&mut self, item: usize) {
+        self.feed_focus = feed::FeedFocus { item };
     }
 
     /// Treats the last friend request answer as news (previews show one without a visit before).
@@ -3104,7 +3104,7 @@ mod tests {
         assert_eq!(panel.page, Page::Home);
     }
 
-    fn feed_item(id: u64, reaction: Option<Reaction>) -> online::api::FeedItem {
+    fn feed_item(id: u64) -> online::api::FeedItem {
         online::api::FeedItem {
             id,
             account: account(2, "Lumen"),
@@ -3113,7 +3113,7 @@ mod tests {
                 title_id: "GAME00001".into(),
             },
             reactions: online::api::ReactionCounts::default(),
-            mine: reaction,
+            mine: None,
         }
     }
 
@@ -3190,10 +3190,10 @@ mod tests {
     }
 
     #[test]
-    fn a_reaction_press_sets_it_and_the_own_one_takes_it_back() {
+    fn a_card_opens_its_profile_and_the_row_after_the_cards_reads_older_items() {
         let mut online = signed_in();
         online.feed.merge_newest(online::api::Feed {
-            items: vec![feed_item(9, None), feed_item(8, Some(Reaction::Gg))],
+            items: vec![feed_item(9), feed_item(8)],
             next: Some(8),
         });
         let mut panel = OnlinePanel::default();
@@ -3201,24 +3201,13 @@ mod tests {
         assert!(panel.feed_is_list(&data(&online)));
         assert!(panel.rows(&data(&online)).2.is_empty());
         let mut actions = Vec::new();
-        let focus = |item, slot| feed::FeedFocus { item, slot };
-        panel.feed_press(focus(0, Some(1)), &data(&online), &mut actions);
-        panel.feed_press(focus(1, Some(1)), &data(&online), &mut actions);
-        panel.feed_press(focus(1, Some(2)), &data(&online), &mut actions);
+        let focus = |item| feed::FeedFocus { item };
         // The row after the cards reads older items.
-        panel.feed_press(focus(2, None), &data(&online), &mut actions);
-        assert_eq!(
-            actions,
-            [
-                OnlineAction::React(9, Some(Reaction::Gg)),
-                OnlineAction::React(8, None),
-                OnlineAction::React(8, Some(Reaction::Wow)),
-                OnlineAction::FeedOlder,
-            ]
-        );
+        panel.feed_press(focus(2), &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::FeedOlder]);
         // A card opens its account's profile screen; the panel stays on the feed.
         panel.queued.clear();
-        panel.feed_press(focus(0, None), &data(&online), &mut actions);
+        panel.feed_press(focus(0), &data(&online), &mut actions);
         assert_eq!(panel.page, Page::Feed);
         assert_eq!(panel.queued, [OnlineAction::OpenProfile(AccountId(2))]);
     }

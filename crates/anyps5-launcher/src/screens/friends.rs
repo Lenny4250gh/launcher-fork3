@@ -124,9 +124,9 @@ impl FriendsScreen {
         self.panel.set_local(local);
     }
 
-    /// Puts the focus of the activity page on a card, or on one of its reactions (previews).
-    pub fn set_feed_focus(&mut self, item: usize, slot: Option<usize>) {
-        self.panel.set_feed_focus(item, slot);
+    /// Puts the focus of the activity page on a card (previews).
+    pub fn set_feed_focus(&mut self, item: usize) {
+        self.panel.set_feed_focus(item);
     }
 
     /// Puts the focus on a message of the open thread (previews).

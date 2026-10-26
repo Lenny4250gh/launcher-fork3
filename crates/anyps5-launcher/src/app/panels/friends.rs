@@ -72,7 +72,7 @@ impl PanelHost {
                     if let Some(index) =
                         item.and_then(|id| data.online.feed.items.iter().position(|i| i.id == id))
                     {
-                        self.friends.set_feed_focus(index, None);
+                        self.friends.set_feed_focus(index);
                     }
                 } else if resume {
                     // Back from the profile screen: the page the player left.
@@ -132,7 +132,6 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
         }
         OnlineAction::FeedRefresh => online.request_feed(),
         OnlineAction::FeedOlder => online.request_older_feed(),
-        OnlineAction::React(item, reaction) => online.react(item, reaction),
         OnlineAction::Profile(account) => online.request_profile(account),
         OnlineAction::OpenProfile(account) => {
             model.open_profile(account, crate::app::profile::Back::Friends);
@@ -276,6 +275,9 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
                     },
                 );
             }
+        }
+        OnlineAction::PartyCreate => {
+            online.send(Purpose::PartyCreate, Command::PartyCreate);
         }
         OnlineAction::PartyInvite(accounts) => {
             // Adding to a call rings; inviting to a party does not.

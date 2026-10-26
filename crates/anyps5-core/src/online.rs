@@ -443,6 +443,8 @@ pub enum Purpose {
     },
     // Parties and messages
     Party,
+    /// A party of one, made without an invitation.
+    PartyCreate,
     PartyInvite,
     PartyAnswer {
         id: String,
@@ -1050,7 +1052,7 @@ impl Online {
                 }
             }
             Purpose::Call(friend) => self.call_placed(*friend, value, notices),
-            Purpose::Party => {
+            Purpose::Party | Purpose::PartyCreate => {
                 if let Ok(state) = serde_json::from_value::<control::PartyState>(value.clone()) {
                     self.party_changed(state.party);
                 }

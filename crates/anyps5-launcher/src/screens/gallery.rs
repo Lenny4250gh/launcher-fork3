@@ -35,7 +35,7 @@
 //!                           compare|compare-secret|compare-revealed|compare-numbers|
 //!                           compare-loading|compare-offline|compare-error|compare-hidden|
 //!                           compare-empty|
-//!                           feed|feed-reaction|feed-empty|feed-loading|feed-error
+//!                           feed|feed-empty|feed-loading|feed-error
 //!                           incoming-call|incoming-call-discord|in-call|in-call-open|in-call-discord|calling|
 //!                           missed-call|party-discord
 //!                 [--screenshot=out.png] [--size=WxH] [--tr]
@@ -452,8 +452,6 @@ pub enum OnlineLook {
     Banned,
     /// The feed with items of every kind, the focus on a card.
     Feed,
-    /// The feed with the focus on a reaction.
-    FeedReaction,
     FeedEmpty,
     FeedLoading,
     FeedError,
@@ -934,7 +932,6 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "profile-error" => ScreenPage::Profile(ProfileLook::Error),
         "profile-offline" => ScreenPage::Profile(ProfileLook::Offline),
         "friends-activity" => ScreenPage::Online(OnlineLook::Feed),
-        "friends-activity-reaction" => ScreenPage::Online(OnlineLook::FeedReaction),
         "friends-activity-empty" => ScreenPage::Online(OnlineLook::FeedEmpty),
         "friends-activity-loading" => ScreenPage::Online(OnlineLook::FeedLoading),
         "friends-activity-error" => ScreenPage::Online(OnlineLook::FeedError),
@@ -3333,15 +3330,12 @@ impl ScreenGallery {
                         .show_page(Page::Conversation("c-lumen".into()), &data),
                     OnlineLook::Banned => self.friends.show_page(Page::Start, &data),
                     OnlineLook::Feed
-                    | OnlineLook::FeedReaction
                     | OnlineLook::FeedEmpty
                     | OnlineLook::FeedLoading
                     | OnlineLook::FeedError => {
                         self.friends.show_page(Page::Feed, &data);
-                        match look {
-                            OnlineLook::Feed => self.friends.set_feed_focus(1, None),
-                            OnlineLook::FeedReaction => self.friends.set_feed_focus(1, Some(1)),
-                            _ => {}
+                        if look == OnlineLook::Feed {
+                            self.friends.set_feed_focus(1);
                         }
                     }
                     _ => {}
