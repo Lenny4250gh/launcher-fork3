@@ -625,6 +625,16 @@ pub struct Preferences {
     /// The hotkey that saves a clip, like `Alt+F12`; `None` is [`crate::clips::DEFAULT_HOTKEY`].
     #[serde(default)]
     pub clips_hotkey: Option<String>,
+    /// Broadcast: the service (`twitch`, `youtube` or `custom`; see [`crate::broadcast::Service`]).
+    /// The stream key is not a preference: it is kept by [`crate::broadcast::save_key`].
+    #[serde(default)]
+    pub broadcast_service: String,
+    /// Broadcast: the server address of a custom service.
+    #[serde(default)]
+    pub broadcast_server: String,
+    /// Broadcast: the index of the quality preset ([`crate::broadcast::QUALITIES`]).
+    #[serde(default)]
+    pub broadcast_quality: u32,
     /// The run-report questions already answered or dismissed, by [`run_question_key`]: each is
     /// asked once.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
@@ -688,6 +698,9 @@ impl Default for Preferences {
             phone_ludusctrl: false,
             clips_seconds: 0,
             clips_hotkey: None,
+            broadcast_service: String::new(),
+            broadcast_server: String::new(),
+            broadcast_quality: 0,
             run_asked: BTreeSet::new(),
             extra: Map::new(),
         }

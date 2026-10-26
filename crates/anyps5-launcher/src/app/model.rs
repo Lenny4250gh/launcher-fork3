@@ -149,6 +149,8 @@ pub enum Effect {
     RelayOnlyChanged,
     /// Save the last seconds of the running game as a clip (`app::clips`).
     SaveClip,
+    /// Start or stop the live broadcast of the running game (`app::broadcast`).
+    ToggleBroadcast,
     /// The player came online: read what they earned in every unlocked game for the network.
     SyncTrophies,
     /// Look at the unlocked games location (is the drive there, how much is free).
@@ -271,6 +273,10 @@ pub struct Model {
     /// The game from the press of Play until its first window shows.
     pub starting: Option<GameId>,
     pub running: Option<GameId>,
+    /// Where the live broadcast of the running game stands.
+    pub broadcast: anyps5_core::broadcast::Phase,
+    /// A stream key is kept (the key itself is never held here).
+    pub broadcast_key_set: bool,
     /// The Home button brought the launcher in front of the running game: Back returns to the
     /// game (`Model::show_in_game`).
     pub summoned: bool,
@@ -382,6 +388,8 @@ impl Model {
             failures: HashMap::new(),
             starting: None,
             running: None,
+            broadcast: Default::default(),
+            broadcast_key_set: false,
             summoned: false,
             sizes: HashMap::new(),
             trophies: HashMap::new(),

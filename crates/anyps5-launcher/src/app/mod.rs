@@ -17,6 +17,7 @@
 #![allow(dead_code)]
 
 pub mod avatars;
+pub mod broadcast;
 pub mod captures;
 pub mod clips;
 pub mod clock;
@@ -152,6 +153,8 @@ pub struct LauncherApp {
     pub ludus: ludus::LudusService,
     /// The recorder and the hotkey of Clips.
     clips: clips::ClipsService,
+    /// The live broadcast of the running game.
+    broadcast: broadcast::BroadcastService,
     applied: Applied,
     focused: bool,
     /// Frames drawn since the last rate line: window start, count, last frame.
@@ -215,6 +218,7 @@ impl LauncherApp {
             ),
             ludus: ludus::LudusService::new(wake.clone(), simulated, shared_pad),
             clips: clips::ClipsService::new(wake.clone(), simulated),
+            broadcast: broadcast::BroadcastService::new(wake.clone(), simulated),
             online: online::OnlineService::new(wake, simulated),
             shell,
             model,
@@ -342,6 +346,7 @@ impl LauncherApp {
         self.sync_phone(ctx);
         self.ludus.sync(&mut self.model);
         self.clips.frame(&mut self.model, &*self.pipeline);
+        self.broadcast.frame(&mut self.model);
         self.watch_trophies();
 
         self.services.set_busy(self.model.busy());
@@ -640,6 +645,7 @@ impl LauncherApp {
             }
             Effect::Pipeline(command) => self.submit(command, None),
             Effect::SaveClip => self.clips.save(&mut self.model),
+            Effect::ToggleBroadcast => self.broadcast.toggle(&mut self.model, &*self.pipeline),
             Effect::StartOnline => self.online.start(&mut self.model),
             Effect::StopOnline => self.online.stop(&mut self.model),
             Effect::RelayOnlyChanged => self.online.relay_only_changed(&mut self.model),
@@ -1143,6 +1149,7 @@ impl eframe::App for App {
         }
         self.app.step(&ctx);
         self.app.paint(ui);
+        self.app.broadcast.paint(&ctx, &self.app.model);
         self.app.finish_frame(&ctx);
         crate::ui::latency::frame_done();
     }

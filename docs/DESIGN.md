@@ -2698,6 +2698,16 @@ Screenshots and clips have a place of their own: a full-screen gallery, like a c
 - **Gallery.** `--gallery=captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|captures-clip-plain|captures-confirm|captures-missing|captures-loading`. All names, times and pictures are invented.
 - **Not yet.** Video playback inside the launcher, a picture for a clip on Linux, a recycle bin, sharing.
 
+### 9.11 Broadcast
+
+Live streaming of the running game to Twitch, YouTube or any RTMP server (network `spec/broadcast.md`). Windows only for now: the capture is the share worker's window capture, which Linux does not have without the portal's picker.
+
+- **Settings, Behaviour, Broadcast** (under Clips): *Broadcast To* (Twitch, YouTube, Custom RTMP), *Server Address* (only for Custom, must start with `rtmp://`), *Stream Key* and *Broadcast Quality* (720p 30, 720p 60, 1080p 60). The key row is a text field that always shows eight dots when a key is kept and nothing otherwise; pasting a key replaces it, emptying the field removes it. The key is a secret: it is kept in the Windows Credential Manager (elsewhere in an owner-only file), never in the preferences, never on a command line and never in a log. The worker gets it as the first line on its standard input.
+- **Home button panel** (while a game runs): *Start Broadcast* / *Stop Broadcast* after *Game Settings*; the row's detail line says *Connecting to the broadcast server* or *Live*. Starting without a key or (for Custom) an address toasts what is missing.
+- **LIVE mark**: while the server has accepted the stream, a small dark pill with a red dot, `LIVE` and the running time sits in the top right corner of the launcher window. It shows when the launcher is in front; the game window does not carry it.
+- **Errors in plain words** (failure toasts that stay): the service did not accept the key; the server could not be reached; the connection was lost; no video encoder; the game's window was not found. The broadcast ends with its game.
+- **Not yet**: the game's sound (the stream carries silence so that services see an audio track), `rtmps://`, Linux.
+
 ## 10. Asset list
 
 | Asset in the ARM repo | Reuse? | Notes |
