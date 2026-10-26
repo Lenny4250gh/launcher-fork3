@@ -27,6 +27,7 @@
 pub mod about_strings;
 pub mod advanced;
 pub mod banner;
+pub mod broadcast_strings;
 pub mod calls;
 pub mod captures;
 pub mod captures_strings;

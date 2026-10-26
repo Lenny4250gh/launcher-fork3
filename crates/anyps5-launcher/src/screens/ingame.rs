@@ -5,6 +5,7 @@
 use egui::Color32;
 use egui::Context;
 
+use crate::screens::broadcast_strings::BroadcastText;
 use crate::screens::captures_strings::CapturesText;
 use crate::screens::dialog;
 use crate::screens::rows::{self, Change, Row};
@@ -98,6 +99,8 @@ pub enum InGameAction {
     Resume,
     Trophies,
     Captures,
+    /// Start or stop the live broadcast.
+    Broadcast,
     GameSettings,
     Friends,
     /// Ask whether to close the game.
@@ -117,6 +120,8 @@ pub struct InGameData<'a> {
     pub accent: Color32,
     /// The player is signed in: the friends row shows.
     pub online: bool,
+    /// Where the live broadcast stands; `None` where this system cannot broadcast.
+    pub broadcast: Option<anyps5_core::broadcast::Phase>,
 }
 
 fn rows_of(data: &InGameData<'_>) -> Vec<Row> {
@@ -127,6 +132,19 @@ fn rows_of(data: &InGameData<'_>) -> Vec<Row> {
         Row::command("captures", CapturesText::Title.text(language)).icon(Icon::IMAGES),
         Row::command("settings", language.text(Key::GameSettings)).icon(Icon::SLIDERS_HORIZONTAL),
     ];
+    if let Some(phase) = data.broadcast {
+        use anyps5_core::broadcast::Phase;
+        let (title, detail) = match phase {
+            Phase::Off => (BroadcastText::Start, None),
+            Phase::Connecting => (BroadcastText::Stop, Some(BroadcastText::Connecting)),
+            Phase::Live => (BroadcastText::Stop, Some(BroadcastText::Live)),
+        };
+        let mut row = Row::command("broadcast", title.text(language)).icon(Icon::WIFI_HIGH);
+        if let Some(detail) = detail {
+            row = row.detail(detail.text(language));
+        }
+        rows.push(row);
+    }
     if data.online {
         rows.push(Row::command("friends", InGameText::Friends.text(language)).icon(Icon::USERS));
     }
@@ -175,6 +193,7 @@ impl InGamePanel {
             "resume" => InGameAction::Resume,
             "trophies" => InGameAction::Trophies,
             "captures" => InGameAction::Captures,
+            "broadcast" => InGameAction::Broadcast,
             "settings" => InGameAction::GameSettings,
             "friends" => InGameAction::Friends,
             _ => InGameAction::AskClose,
@@ -357,9 +376,29 @@ mod tests {
             language: Language::English,
             accent: Color32::WHITE,
             online: false,
+            broadcast: None,
         };
         assert_eq!(rows_of(&data).len(), 5);
         data.online = true;
         assert_eq!(rows_of(&data).len(), 6);
+    }
+
+    #[test]
+    fn the_broadcast_row_follows_the_phase() {
+        use anyps5_core::broadcast::Phase;
+        let mut data = InGameData {
+            title: "Astro",
+            language: Language::English,
+            accent: Color32::WHITE,
+            online: false,
+            broadcast: Some(Phase::Off),
+        };
+        let rows = rows_of(&data);
+        assert_eq!(rows.len(), 6);
+        assert_eq!(rows[4].title, "Start Broadcast");
+        data.broadcast = Some(Phase::Live);
+        let rows = rows_of(&data);
+        assert_eq!(rows[4].title, "Stop Broadcast");
+        assert_eq!(rows[4].detail.as_deref(), Some("Live"));
     }
 }

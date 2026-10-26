@@ -2490,6 +2490,7 @@ impl ScreenGallery {
             clips: crate::screens::settings::ClipsEnv {
                 count: if self.prefs.clips_seconds > 0 { 3 } else { 0 },
                 capturing: matches!(self.page, ScreenPage::BehaviourClipsKey),
+                broadcast_key: false,
             },
             location: match self.page {
                 ScreenPage::UnlockedLocation(look) => look.env(),

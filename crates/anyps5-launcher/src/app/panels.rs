@@ -390,6 +390,7 @@ impl PanelHost {
             clips: crate::screens::settings::ClipsEnv {
                 count: clips_count,
                 capturing: self.settings.clips_capturing(),
+                broadcast_key: cx.model.broadcast_key_set,
             },
             location: cx.model.location_env(),
             windows_rows: cfg!(windows),
@@ -441,6 +442,7 @@ impl PanelHost {
                 let _ = std::fs::create_dir_all(&folder);
                 open_folder(&folder);
             }
+            SettingsAction::BroadcastKey(key) => super::broadcast::set_key(model, key.as_deref()),
             SettingsAction::CheckForUpdates => self.check_toolkit(model),
             SettingsAction::InstallToolkit if model.prefs.toolkit_engine => {
                 self.install_engine(model);
@@ -860,6 +862,7 @@ impl PanelHost {
             language: cx.model.language(),
             accent: cx.shell.accent_color(),
             online: cx.model.online.is_signed_in(),
+            broadcast: cfg!(windows).then_some(cx.model.broadcast),
         };
         for action in self.in_game.show(cx.shell, cx.ctx, &events, &data) {
             let model = &mut *cx.model;
@@ -867,6 +870,7 @@ impl PanelHost {
                 InGameAction::Resume | InGameAction::Dismiss => model.return_to_game(),
                 InGameAction::Trophies => model.open(Overlay::Trophies),
                 InGameAction::Captures => model.open(Overlay::Captures),
+                InGameAction::Broadcast => model.effects.push(Effect::ToggleBroadcast),
                 InGameAction::GameSettings => model.open(Overlay::GameSettings),
                 InGameAction::Friends => model.open(Overlay::Friends),
                 InGameAction::AskClose => model.switch_overlay(Overlay::ConfirmCloseGame),
