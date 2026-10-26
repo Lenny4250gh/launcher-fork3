@@ -230,7 +230,7 @@ pub fn rarity_text(percent: f32, language: Language) -> String {
         Rarity::Common => F::RarityCommon,
     };
     let mut number = format!("{percent:.1}");
-    if language == Language::Turkish {
+    if matches!(language, Language::Turkish | Language::German) {
         number = number.replace('.', ",");
     }
     F::RarityFact.format(

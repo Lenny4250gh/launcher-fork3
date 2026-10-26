@@ -11,6 +11,10 @@ const MONTHS_TR: [&str; 12] = [
     "Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara",
 ];
 
+const MONTHS_DE: [&str; 12] = [
+    "Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez.",
+];
+
 /// Year, month (1..=12) and day for a count of days since 1970-01-01 (Howard Hinnant's
 /// `civil_from_days`).
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
@@ -54,6 +58,10 @@ pub fn date_text(unix_micros: i64, offset_seconds: i32, language: Language) -> S
             "{day} {} {year} {hour:02}:{minute:02}",
             MONTHS_TR[month as usize - 1]
         ),
+        Language::German => format!(
+            "{day}. {} {year}, {hour:02}:{minute:02}",
+            MONTHS_DE[month as usize - 1]
+        ),
     }
 }
 
@@ -91,6 +99,7 @@ pub fn message_time(unix: i64, now: i64, offset_seconds: i32, language: Language
     match language {
         Language::English => format!("{} {day}, {clock}", MONTHS_EN[month as usize - 1]),
         Language::Turkish => format!("{day} {} {clock}", MONTHS_TR[month as usize - 1]),
+        Language::German => format!("{day}. {}, {clock}", MONTHS_DE[month as usize - 1]),
     }
 }
 
@@ -117,8 +126,10 @@ pub fn day_label(unix: i64, now: i64, offset_seconds: i32, language: Language) -
     match (today - days, language) {
         (0, Language::English) => "Today".to_owned(),
         (0, Language::Turkish) => "Bugün".to_owned(),
+        (0, Language::German) => "Heute".to_owned(),
         (1, Language::English) => "Yesterday".to_owned(),
         (1, Language::Turkish) => "Dün".to_owned(),
+        (1, Language::German) => "Gestern".to_owned(),
         _ => {
             let year =
                 |u: i64| civil_from_days((u + i64::from(offset_seconds)).div_euclid(86_400)).0;
@@ -149,6 +160,7 @@ pub fn day_text(unix: i64, offset_seconds: i32, language: Language) -> String {
     match language {
         Language::English => format!("{} {day}, {year}", MONTHS_EN[month as usize - 1]),
         Language::Turkish => format!("{day} {} {year}", MONTHS_TR[month as usize - 1]),
+        Language::German => format!("{day}. {} {year}", MONTHS_DE[month as usize - 1]),
     }
 }
 
@@ -160,6 +172,7 @@ pub fn short_date(unix: i64, offset_seconds: i32, language: Language) -> String 
     match language {
         Language::English => format!("{} {day}", MONTHS_EN[month as usize - 1]),
         Language::Turkish => format!("{day} {}", MONTHS_TR[month as usize - 1]),
+        Language::German => format!("{day}. {}", MONTHS_DE[month as usize - 1]),
     }
 }
 
@@ -168,7 +181,7 @@ pub fn grouped(n: u64, language: Language) -> String {
     let digits = n.to_string();
     let separator = match language {
         Language::English => ',',
-        Language::Turkish => '.',
+        Language::Turkish | Language::German => '.',
     };
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (i, c) in digits.chars().enumerate() {

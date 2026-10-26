@@ -179,6 +179,7 @@ pub fn ui_language(language: settings::Language) -> Language {
     match language {
         settings::Language::Turkish => Language::Turkish,
         settings::Language::English => Language::English,
+        settings::Language::German => Language::German,
     }
 }
 
@@ -186,6 +187,7 @@ pub fn core_language(language: Language) -> settings::Language {
     match language {
         Language::Turkish => settings::Language::Turkish,
         Language::English => settings::Language::English,
+        Language::German => settings::Language::German,
     }
 }
 
@@ -1521,7 +1523,7 @@ impl Model {
         let choice = self.onboarding_choice();
         match self.onboarding.step {
             0 => {
-                let language = core_language(Language::ALL[choice.min(1)]);
+                let language = core_language(Language::ALL[choice.min(Language::ALL.len() - 1)]);
                 self.edit_prefs(|p| p.language = language);
             }
             1 => {

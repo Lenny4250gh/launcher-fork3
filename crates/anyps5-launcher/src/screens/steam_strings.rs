@@ -94,10 +94,50 @@ impl SteamText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            SteamText::Add => "Zu Steam hinzufügen",
+            SteamText::AddDetail => {
+                "Fügt den Launcher deiner Steam-Bibliothek für Big Picture und das Steam Deck hinzu. Schließe Steam zuerst."
+            }
+            SteamText::AddGames => "Meine Spiele zu Steam hinzufügen",
+            SteamText::AddGamesDetail => {
+                "Fügt jedes Spiel deiner Bibliothek mit eigenem Artwork zu Steam hinzu. Schließe Steam zuerst."
+            }
+            SteamText::Added => "Zu Steam hinzugefügt. Starte Steam neu, um es zu sehen.",
+            SteamText::Updated => {
+                "In Steam aktualisiert. Starte Steam neu, um die Änderung zu sehen."
+            }
+            SteamText::GameAdded => "1 Spiel ist in Steam. Starte Steam neu, um es zu sehen.",
+            SteamText::GamesAdded => "%@ Spiele sind in Steam. Starte Steam neu, um sie zu sehen.",
+            SteamText::Running => "Steam läuft. Schließe Steam und versuche es erneut.",
+            SteamText::NoSteam => {
+                "Steam wurde auf diesem PC nicht gefunden. Installiere Steam und melde dich einmal an, dann versuche es erneut."
+            }
+            SteamText::NoUsers => {
+                "Steam hat auf diesem PC noch kein Konto. Melde dich einmal bei Steam an, dann versuche es erneut."
+            }
+            SteamText::Unreadable => {
+                "Die Verknüpfungsliste von Steam konnte nicht gelesen werden, deshalb wurde nichts geändert."
+            }
+            SteamText::Failed => {
+                "Im Steam-Ordner konnte nicht gespeichert werden. Prüfe, dass er nicht schreibgeschützt ist, dann versuche es erneut."
+            }
+            SteamText::NoGames => "Noch keine Spiele in der Bibliothek.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

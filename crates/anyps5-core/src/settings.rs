@@ -362,13 +362,18 @@ pub enum Language {
     #[default]
     #[serde(rename = "en")]
     English,
+    #[serde(rename = "de")]
+    German,
 }
 
 impl Language {
-    /// Turkish for any locale tag starting with `tr`, English otherwise.
+    /// Turkish for any locale tag starting with `tr`, German for `de`, English otherwise.
     pub fn from_locale(tag: &str) -> Language {
-        if tag.to_ascii_lowercase().starts_with("tr") {
+        let tag = tag.to_ascii_lowercase();
+        if tag.starts_with("tr") {
             Language::Turkish
+        } else if tag.starts_with("de") {
+            Language::German
         } else {
             Language::English
         }
@@ -379,6 +384,7 @@ impl Language {
         match self {
             Language::Turkish => 19,
             Language::English => 1,
+            Language::German => 4,
         }
     }
 }
@@ -1178,7 +1184,10 @@ mod tests {
     fn language_from_locale() {
         assert_eq!(Language::from_locale("tr-TR"), Language::Turkish);
         assert_eq!(Language::from_locale("TR"), Language::Turkish);
-        assert_eq!(Language::from_locale("de-DE"), Language::English);
+        assert_eq!(Language::from_locale("de-DE"), Language::German);
+        assert_eq!(Language::from_locale("de"), Language::German);
+        assert_eq!(Language::from_locale("fr-FR"), Language::English);
+        assert_eq!(Language::German.console_language(), 4);
         assert_eq!(Language::Turkish.console_language(), 19);
         assert_eq!(Language::English.console_language(), 1);
     }

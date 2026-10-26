@@ -235,10 +235,13 @@ impl Accent {
     /// Localised name (not part of the string table in the original either).
     pub fn title(self, language: Language) -> &'static str {
         let tr = language == Language::Turkish;
+        let de = language == Language::German;
         match self {
             Accent::Blue => {
                 if tr {
                     "Mavi"
+                } else if de {
+                    "Blau"
                 } else {
                     "Blue"
                 }
@@ -246,6 +249,8 @@ impl Accent {
             Accent::Mint => {
                 if tr {
                     "Nane"
+                } else if de {
+                    "Minze"
                 } else {
                     "Mint"
                 }
@@ -253,6 +258,8 @@ impl Accent {
             Accent::Coral => {
                 if tr {
                     "Mercan"
+                } else if de {
+                    "Koralle"
                 } else {
                     "Coral"
                 }
@@ -260,6 +267,8 @@ impl Accent {
             Accent::Violet => {
                 if tr {
                     "Mor"
+                } else if de {
+                    "Violett"
                 } else {
                     "Violet"
                 }
@@ -274,6 +283,8 @@ impl Accent {
             Accent::White => {
                 if tr {
                     "Beyaz"
+                } else if de {
+                    "Weiß"
                 } else {
                     "White"
                 }

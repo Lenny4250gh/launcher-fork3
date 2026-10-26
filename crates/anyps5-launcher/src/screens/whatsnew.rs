@@ -113,30 +113,31 @@ impl Line<'_> {
 fn area_title(scope: &str, language: Language) -> String {
     let scope = scope.to_ascii_lowercase();
     let has = |parts: &[&str]| parts.iter().any(|part| scope.contains(part));
-    let (english, turkish) = if has(&["trophy"]) {
-        ("Trophies", "Kupalar")
+    let (english, turkish, german) = if has(&["trophy"]) {
+        ("Trophies", "Kupalar", "Trophäen")
     } else if has(&["savedata", "save"]) {
-        ("Saves", "Kayıtlar")
+        ("Saves", "Kayıtlar", "Spielstände")
     } else if has(&[
         "agc", "gnm", "gpu", "vulkan", "shader", "videoout", "graphics",
     ]) {
-        ("Graphics", "Grafik")
+        ("Graphics", "Grafik", "Grafik")
     } else if has(&["audio", "sound", "ngs"]) {
-        ("Sound", "Ses")
+        ("Sound", "Ses", "Ton")
     } else if has(&["pad", "input", "mouse", "keyboard"]) {
-        ("Controllers", "Kontrolcüler")
+        ("Controllers", "Kontrolcüler", "Controller")
     } else if has(&["net", "np", "http", "ssl"]) {
-        ("Online", "Çevrimiçi")
+        ("Online", "Çevrimiçi", "Online")
     } else if has(&["relink", "loader", "elf", "module"]) {
-        ("Starting games", "Oyunları başlatma")
+        ("Starting games", "Oyunları başlatma", "Spielstart")
     } else if has(&["libc", "kernel", "system", "thread"]) {
-        ("System", "Sistem")
+        ("System", "Sistem", "System")
     } else {
         return scope;
     };
     match language {
         Language::Turkish => turkish.to_owned(),
         Language::English => english.to_owned(),
+        Language::German => german.to_owned(),
     }
 }
 
