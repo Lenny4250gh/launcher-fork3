@@ -184,6 +184,12 @@ impl LfgPanel {
         self.side.open_at(0);
     }
 
+    /// Opens straight on a page (the gallery shows the post and own-listing pages this way).
+    pub fn open_on(&mut self, page: Page) {
+        self.page = page;
+        self.side.open_at(0);
+    }
+
     pub fn close(&mut self) {
         self.side.close();
     }

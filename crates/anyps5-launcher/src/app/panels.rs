@@ -24,8 +24,8 @@
 mod captures;
 mod compare;
 mod friends;
-pub(crate) mod lfg;
 mod hub;
+pub(crate) mod lfg;
 mod notifications;
 mod profile;
 
