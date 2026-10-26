@@ -26,9 +26,11 @@ defaults:
 
 jobs:
   build:
-    # GitHub's Windows runner, not Blacksmith's: some core tests need an interactive desktop
-    # (a global hotkey, real window sizes, the phone receiver), which Blacksmith's headless VM lacks.
-    runs-on: windows-latest
+    runs-on: blacksmith-16vcpu-windows-2025
+    env:
+      # Three core tests need an interactive desktop session (a global hotkey, real window sizes,
+      # the phone receiver); Blacksmith's Windows VM is headless, so they skip here.
+      ANYPLAY_HEADLESS_CI: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,7 +73,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
