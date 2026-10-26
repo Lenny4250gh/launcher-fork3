@@ -459,9 +459,11 @@ jobs:
           # The time inside the file is the commit's, so the same commit gives the same file.
           SOURCE_DATE_EPOCH=$(git -C launcher log -1 --format=%ct)
           export SOURCE_DATE_EPOCH
-          sbom() { # workspace, crate folder, file the tool writes, platform, rust target, name suffix
+          sbom() { # workspace, crate folder, output file, platform, rust target, suffix, optional features
+            local features=()
+            if [ -n "${7:-}" ]; then features=(--features "$7"); fi
             (cd "$1" && cargo cyclonedx --manifest-path "crates/$2/Cargo.toml" --format json --spec-version 1.5 \
-              --describe binaries --no-build-deps --target "$5")
+              --describe binaries --no-build-deps --target "$5" "${features[@]}")
             cp "$1/crates/$2/$3" "dist/AnyPlay-Launcher-$VERSION-$4$6.cdx.json"
           }
           sbom launcher anyps5-launcher anyplay-launcher_bin.cdx.json windows-x86_64 x86_64-pc-windows-msvc .sbom
@@ -471,7 +473,10 @@ jobs:
           sbom network net anyplay-net_bin.cdx.json linux-x86_64 x86_64-unknown-linux-gnu .net-service.sbom
           sbom network share-worker anyplay-share_bin.cdx.json linux-x86_64 x86_64-unknown-linux-gnu .share-worker.sbom
           sbom launcher anyps5-launcher anyplay-launcher_bin.cdx.json macos-arm64 aarch64-apple-darwin .sbom
-          sbom network net anyplay-net_bin.cdx.json macos-arm64 aarch64-apple-darwin .net-service.sbom
+          sbom network net anyplay-net_bin.cdx.json macos-arm64 aarch64-apple-darwin .net-service.sbom devices
+          # The Mac service is built with devices: the SBOM must include its actual audio backend.
+          jq -e '[.components[].name] | index("cpal") != null and index("coreaudio-rs") != null' \
+            "dist/AnyPlay-Launcher-$VERSION-macos-arm64.net-service.sbom.cdx.json" > /dev/null
           for sbom in dist/*.cdx.json; do
             jq -e '.bomFormat == "CycloneDX" and (.components | length) > 0' "$sbom" > /dev/null
             echo "$sbom: $(jq '.components | length' "$sbom") components"
