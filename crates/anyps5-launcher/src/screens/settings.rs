@@ -703,7 +703,7 @@ pub fn build_categories(
         );
     }
     // Steam keeps its shortcuts in files of the user folder; the rows write them (DESIGN.md 9.9).
-    if cfg!(any(windows, target_os = "linux")) {
+    if cfg!(any(windows, target_os = "linux", target_os = "macos")) {
         behaviour.push(
             Row::command("addToSteam", SteamText::Add.text(language))
                 .detail(SteamText::AddDetail.text(language))
