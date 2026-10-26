@@ -145,6 +145,15 @@ const SECTIONS: &[Section] = &[
                 ),
             },
             Item {
+                icon: Icon::SLIDERS_HORIZONTAL,
+                title: ("Settings pages", "Ayar sayfaları", "Einstellungsseiten"),
+                note: (
+                    "Settings has a page for every feature, with Broadcast, Controllers and Sound pages.",
+                    "Ayarlarda her özellik için bir sayfa var; Yayın, Kontrolcüler ve Ses sayfaları dahil.",
+                    "Die Einstellungen haben für jede Funktion eine Seite, darunter Übertragung, Controller und Ton.",
+                ),
+            },
+            Item {
                 icon: Icon::TRANSLATE,
                 title: ("German", "Almanca", "Deutsch"),
                 note: (
