@@ -1041,7 +1041,7 @@ fn tile_row(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<
                 ui.interact(rect, Id::unique(("tile", game.id.as_str())), Sense::click());
             response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label.as_str()));
             crate::ui::a11y::follow(&ctx, response.id, ring_on && is_selected);
-            if input::hovered(&ctx, &response) {
+            if under_pointer && response.contains_pointer() {
                 ctx.set_cursor_icon(CursorIcon::PointingHand);
             }
             if response.double_clicked() {
@@ -1272,6 +1272,7 @@ fn paint_hero(
                 .icon(Icon::TROPHY)
                 .icon_fill(true)
                 .tabular(true)
+                .size(ControlSize::Small)
                 .focused(focused(trophies_index))
                 .show(ui);
             if response.clicked() {

@@ -466,6 +466,9 @@ fn one() -> u32 {
 }
 
 /// The launcher's own settings (`%APPDATA%\AnyPS5\preferences.json`).
+/// The release whose "What's New" showcase is shown once after an update (and again from About).
+pub const WHATS_NEW_RELEASE: &str = "0.3.0";
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Preferences {
@@ -473,6 +476,10 @@ pub struct Preferences {
     pub version: u32,
     #[serde(default)]
     pub onboarded: bool,
+    /// The release whose showcase the player has seen. A file without it is from an older
+    /// launcher, so the showcase shows once; a first start has nothing to catch up on.
+    #[serde(default)]
+    pub whats_new_seen: String,
     #[serde(default, deserialize_with = "lenient")]
     pub language: Language,
     #[serde(default, deserialize_with = "lenient")]
@@ -649,6 +656,7 @@ impl Default for Preferences {
         Preferences {
             version: 1,
             onboarded: false,
+            whats_new_seen: WHATS_NEW_RELEASE.to_owned(),
             language: Language::English,
             theme: Theme::Cosmic,
             accent: None,

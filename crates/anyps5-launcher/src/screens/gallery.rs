@@ -2059,7 +2059,7 @@ impl ScreenGallery {
                 notes: ReleaseNotes::parse(SAMPLE_NOTES),
             },
             launcher_notes: Published {
-                tag: "0.1.4".into(),
+                tag: "0.3.0".into(),
                 date: String::new(),
                 notes: ReleaseNotes::parse_launcher(LAUNCHER_SAMPLE_NOTES),
             },
@@ -2603,10 +2603,12 @@ impl ScreenGallery {
                 NotesView::Ready(&self.notes)
             };
             let data = WhatsNewData {
-                tag: if launcher { "0.1.4" } else { "0.1.3" },
+                tag: if launcher { "0.3.0" } else { "0.1.3" },
                 view,
                 language,
                 launcher,
+                showcase: launcher,
+                accent,
             };
             self.whats_new.show(shell, &ctx, &events, &data);
         }
@@ -2969,8 +2971,7 @@ impl ScreenGallery {
                 });
             }
             ScreenPage::WhatsNewLauncher => {
-                self.whats_new
-                    .open_launcher(&self.launcher_notes.notes, shell.language);
+                self.whats_new.open_showcase();
             }
             ScreenPage::BehaviourLinks => {
                 self.settings.open_at(3, true);
