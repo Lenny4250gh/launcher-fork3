@@ -462,6 +462,11 @@ mod tests {
 
     #[test]
     fn window_rules_size_and_visibility() {
+        // Needs an interactive desktop session, which a headless CI machine (Blacksmith's Windows VM)
+        // lacks; GitHub's Windows runner and players' PCs have one.
+        if std::env::var_os("ANYPLAY_HEADLESS_CI").is_some() {
+            return;
+        }
         let _serial = WINDOWS.lock().unwrap_or_else(|e| e.into_inner());
         // SAFETY: plain query.
         let pid = unsafe { GetCurrentProcessId() };

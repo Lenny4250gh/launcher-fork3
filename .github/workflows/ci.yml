@@ -26,7 +26,11 @@ defaults:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: blacksmith-16vcpu-windows-2025
+    env:
+      # Three core tests need an interactive desktop session (a global hotkey, real window sizes,
+      # the phone receiver); Blacksmith's Windows VM is headless, so they skip here.
+      ANYPLAY_HEADLESS_CI: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,7 +73,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -139,7 +143,7 @@ jobs:
   # deadlock where a release build only hangs (0.2.8 shipped one in the chat composer). A panic,
   # a hang (60 s per scene) or a missing picture fails the job and names the scene.
   scenes:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -173,10 +177,10 @@ jobs:
       - name: Debug build
         run: cargo build -p anyps5-launcher
       - name: Render every scene
-        run: tools/gallery-sweep.sh target/debug/anyplay-launcher 4 60
+        run: tools/gallery-sweep.sh target/debug/anyplay-launcher 8 60
 
   macos:
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

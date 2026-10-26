@@ -764,6 +764,11 @@ fn the_phone_pairs_with_a_receiver_that_allows_on_its_own() {
 
 #[test]
 fn the_reference_receiver_passes_conformance() {
+    // Needs an interactive desktop session, which a headless CI machine (Blacksmith's Windows VM)
+    // lacks; GitHub's Windows runner and players' PCs have one.
+    if std::env::var_os("ANYPLAY_HEADLESS_CI").is_some() {
+        return;
+    }
     let beacon = beacon_listener(0).unwrap();
     let mut pc = ReferencePc::start(Some(beacon), false, Quirk::None).unwrap();
     let report = run_conformance(&mut pc).unwrap_or_else(|failure| panic!("{failure}"));

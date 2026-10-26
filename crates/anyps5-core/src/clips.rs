@@ -569,6 +569,11 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_hotkey_can_be_taken_once_and_is_given_back() {
+        // Needs an interactive desktop session, which a headless CI machine (Blacksmith's Windows VM)
+        // lacks; GitHub's Windows runner and players' PCs have one.
+        if std::env::var_os("ANYPLAY_HEADLESS_CI").is_some() {
+            return;
+        }
         let key = Hotkey::parse("Ctrl+Alt+Shift+F23").unwrap();
         let first = HotkeyListener::start(&key, || {}).expect("the keys are free");
         assert!(HotkeyListener::start(&key, || {}).is_err());
