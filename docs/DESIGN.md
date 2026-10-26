@@ -787,9 +787,22 @@ The launcher keeps the port's structure but trims what read as noise next to the
   backdrop still drew at 60 Hz while focused then (it draws at about 30 Hz since the idle-rate change; the figures above come from the demo). A window without focus, and a game
   running, stop all drawing (0.2 to 2 % of a core). The gamepad thread polls every 100 ms while no
   pad is connected (4 ms with one). `ANYPS5_GPU=dx12|vulkan|both` and `ANYPS5_POWER=high` undo the
-  choice for diagnosis; the log carries `startup t=...ms <step>` lines and the launcher an `idle ...
+  choice for diagnosis; `ANYPS5_GPU_PROBE=1` lists every GPU again (see below); the log carries `startup t=...ms <step>` lines and the launcher an `idle ...
   frames/s` line every 10 s (the window restarts after a gap, so the first line after a refocus is a true rate). The demo no longer forces a repaint every frame (it idled at 40 % of a
   core, unlike the launcher).
+- **One GPU listed, not three (start-up).** Asking for the low-power GPU did not keep the
+  discrete one asleep: wgpu's DirectX 12 backend creates a D3D12 device on every adapter it lists, and
+  the RTX 5070 of the test laptop needs about 3 s to wake (the log line "3 GPUs listed" came 2.9 to
+  3.5 s after the window was requested; 0.25 s when the GPU happened to be awake). The launcher now asks
+  DXGI, which creates no device, for the adapter Windows would pick for the power preference
+  (`EnumAdapterByGpuPreference`, software adapters skipped) and a patched wgpu-hal
+  (`vendor/README.md`) lists that one only; the log says `GPU preselected: <name>`. If the window
+  cannot start on it, the launcher starts again once with every GPU listed (`ANYPS5_GPU_PROBE=all`),
+  then on Vulkan as before. The selection itself (low-power first, `ANYPS5_POWER=high`) is unchanged.
+  Release build, same laptop, isolated profile, `main` to "frame 1 begins": median 4251 ms before
+  (4153 to 4269), 364 ms after (352 to 767; the first run after a build is the slow one). The log
+  also names the steps of the app build now (`shell: fonts and visuals`, `shell: GPU pipelines`,
+  `app built`); the pipelines are the largest piece left, about 125 ms.
 
 ### 3.8 A toolkit for one game
 

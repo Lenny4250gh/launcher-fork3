@@ -40,3 +40,7 @@ panic = "abort"
 # Dependencies (image decoding, egui, wgpu) run at a usable speed in debug builds.
 [profile.dev.package."*"]
 opt-level = 2
+
+# wgpu-hal with an adapter filter for DirectX 12 (vendor/README.md).
+[patch.crates-io]
+wgpu-hal = { path = "vendor/wgpu-hal" }
