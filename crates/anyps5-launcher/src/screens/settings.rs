@@ -77,8 +77,6 @@ pub struct Tab {
     pub category: Category,
     pub icon: Icon,
     pub title: fn(Language) -> &'static str,
-    /// A little more air above the tab: the rail is grouped by subject without captions.
-    pub starts_group: bool,
 }
 
 /// The rail: the app itself, then the things the launcher does for the player, then the network
@@ -88,85 +86,71 @@ pub const TABS: [Tab; 14] = [
         category: Category::General,
         icon: Icon::GEAR_SIX,
         title: |l| words::General.text(l),
-        starts_group: false,
     },
     Tab {
         category: Category::Appearance,
         icon: Icon::PAINT_BRUSH,
         title: |l| l.text(Key::Appearance),
-        starts_group: false,
     },
     Tab {
         category: Category::Library,
         icon: Icon::SQUARES_FOUR,
         title: |l| l.text(Key::Storage),
-        starts_group: false,
     },
     Tab {
         category: Category::Sound,
         icon: Icon::SPEAKER_HIGH,
         title: |l| words::Sound.text(l),
-        starts_group: true,
     },
     Tab {
         category: Category::Controllers,
         icon: Icon::GAME_CONTROLLER,
         title: |l| words::Controllers.text(l),
-        starts_group: false,
     },
     Tab {
         category: Category::Captures,
         icon: Icon::CAMERA,
         title: |l| words::Captures.text(l),
-        starts_group: false,
     },
     Tab {
         category: Category::Broadcast,
         icon: Icon::PLAY_CIRCLE,
         title: |l| BroadcastText::Title.text(l),
-        starts_group: false,
     },
     Tab {
         category: Category::Phone,
         icon: Icon::DEVICE_MOBILE,
         title: |l| PhoneText::Title.text(l),
-        starts_group: false,
     },
     Tab {
         category: Category::Online,
         icon: Icon::WIFI_HIGH,
         title: |l| words::Online.text(l),
-        starts_group: true,
     },
     Tab {
         category: Category::ConnectedApps,
         icon: Icon::LINK,
         title: |l| words::ConnectedApps.text(l),
-        starts_group: false,
     },
     Tab {
         category: Category::Language,
         icon: Icon::GLOBE,
         title: |l| l.text(Key::Language),
-        starts_group: true,
     },
     Tab {
         category: Category::Toolkit,
         icon: Icon::HARD_DRIVE,
         title: |l| Extra::Toolkit.text(l),
-        starts_group: false,
     },
     Tab {
         category: Category::Advanced,
         icon: Icon::WRENCH,
         title: |l| l.text(Key::Advanced),
-        starts_group: false,
     },
     Tab {
         category: Category::About,
         icon: Icon::INFO,
         title: |l| l.text(Key::About),
-        starts_group: false,
     },
 ];
 
@@ -2294,9 +2278,6 @@ fn draw(
             ui.add_space(RING_ROOM);
             let painter = ui.painter().clone();
             for (index, cat) in cats.iter().enumerate() {
-                if index > 0 && TABS[index].starts_group {
-                    ui.add_space(space::M);
-                }
                 let (_, slot) = ui.allocate_space(vec2(
                     column_w + 2.0 * RING_ROOM,
                     size::SETTINGS_CATEGORY_ROW,
@@ -3220,8 +3201,7 @@ mod tests {
     fn the_pages_are_in_groups_and_none_starts_with_a_caption() {
         let prefs = Preferences::first_run();
         let cats = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
-        // Sound, the pad, the apps and the status are pages of their own: no captions to tell
-        // groups apart, a gap does.
+        // Sound, the pad, the apps and the status are pages of their own: no captions.
         for category in [
             Category::General,
             Category::Sound,

@@ -1222,8 +1222,7 @@ Row sketch (S-home):
 
 1. Title: game name, 58 light white, max 2 lines, shrinks to 60 %.
 2. Action row (gap 16): primary button (`Play`/`Unlock`/`Retry`/`Cancel`/...: prominent = white 0.20 fill, min width 210, symbol
-   and text as in 5.1); the **trophy chip** if the game has a trophy list (`"unlocked/total"` with the trophy glyph, a 32 high
-   chip, 14 medium tabular, vertically centred on the row; it opens the trophies, and it is the only place the count is shown, the
+   and text as in 5.1); the **trophy chip** if the game has a trophy list (`"unlocked/total"` with the trophy glyph, as high as the Play button (54 dp, 0.3.1: one line with Play and the round buttons), 14 medium tabular; it opens the trophies, and it is the only place the count is shown, the
    game settings carry no trophies row); the "..." button (glyph: three dots, icon only), which opens game settings. To the right, depending on state:
    - installing: a 340-wide block (leading pad 10): row with step title (15 medium, white 0.85) and `"NN%"` (15 semibold, tabular)
      where NN = `Int(step.overall(fraction) * 100)`; under it the progress line (accent), or the **indeterminate** sweep while step ==
@@ -1271,7 +1270,7 @@ rescans if more than 3 s passed and reloads trophies of the selected game.
 
 #### 5.3.1 Shelves (0.3.0)
 
-Below the tile row, at most **two** quiet shelves: *Friends Playing Now* (friends who play a game the player owns; *Join* under the game when their session can be joined, else their name), *Recently Played* (by the last play) and *New* (found after the first scan, not played yet). Friends first, then Recently Played, then New; a shelf without games is not there. A shelf is a label (overline) over up to six 56 dp game icons with a one-line name and, for friends, a second line. The shelves only draw when they fit between the tile row and the hero's title with a one-line title (16 dp kept free); a low or narrow window shows none and the hero keeps its place. The hero stays the focus: the shelves use the overline and the 12 dp caption, no cards.
+Below the tile row, at most **two** quiet shelves: *Friends Playing Now* (friends who play a game the player owns; *Join* under the game when their session can be joined, else their name), *Recently Played* (by the last play) and *New* (found after the first scan, not played yet). Friends first, then Recently Played, then New; a shelf without games is not there. A shelf is a label (overline) over up to six game icons with a one-line name and, for friends, a second line. The shelves only draw when they fit between the tile row and the hero's title with a one-line title (16 dp kept free); a low or narrow window shows none and the hero keeps its place. 0.3.1: the icons are as large as the room under the tile row allows (96, else 80, 68 or 56 dp), 24 dp apart, the first one on the hero's left edge, and a caption is never wider than its icon plus 16 dp; a narrow window shows fewer games per shelf rather than a squeezed row, a low one a smaller icon or none. The hero stays the focus: the shelves use the overline and the 12 dp caption, no cards.
 
 Focus: the shelves are one stop between the tile row and the action row. Down from the tiles lands on the first game, Left and Right walk the games of both shelves, Down goes on to the action row, Up from the action row returns to the shelf, Up or Back from the shelf to the tiles. Tab walks them after the tiles. Select selects the game on the tile row, or joins the friend's session where there is a *Join* (the same checks as Play Together). A click does the same. Preview scenes: `home-shelves`, `home-new`.
 
@@ -1342,7 +1341,7 @@ invalid, "game: diagnosis".
 ### 5.7 Settings (global)
 
 Two columns on a black 0.74 blurred panel (S-settings). Left (`size::SETTINGS_CATEGORY_WIDTH` 330, then `space::XXL` before the rows): title `settings` (40 light) with `space::XXL` below, then
-the category rows (fourteen, see "The tabs" below; height 52, gap `space::S`, radius 12, glyph `size::ROW_ICON` in a `size::ROW_ICON_BOX` box, `space::M` gap, title 19). Selected category: `color::surface` fill, text
+the category rows (fourteen, see "The tabs" below; height 52, one even gap `space::S` between every row (0.3.1: no group gaps), radius 12, glyph `size::ROW_ICON` in a `size::ROW_ICON_BOX` box, `space::M` gap, title 19). Selected category: `color::surface` fill, text
 semibold; **focused** (keyboard focus in the category list): the focus ring. Unselected text `color::text_detail`, selected `color::text`. Right: the
 category's rows (5.8).
 
@@ -1361,7 +1360,7 @@ talks to. Rules for rows:
 
 | Category (key) | Glyph | Groups and rows (id, kind, key, notes) |
 |---|---|---|
-| General (`general`) | gear | *(no heading)* `prepare` toggle (Prepare New Games Automatically), `hide` toggle `hideWhilePlaying`, `hiddenTrophies` toggle (the trophy list's only option, 5.11), `homeButton` toggle (6.6), then, after a group gap, `updateCheck` toggle (Check for Updates: the launcher's own update and the toolkit's) |
+| General (`general`) | gear | *(no heading)* `prepare` toggle (Prepare New Games Automatically), `hide` toggle `hideWhilePlaying`, `hiddenTrophies` toggle (the trophy list's only option, 5.11), `homeButton` toggle (6.6), then `updateCheck` toggle (Check for Updates: the launcher's own update and the toolkit's) |
 | Appearance (`appearance`) | brush | `theme` choice (Cosmic/Aurora/Sunset), `accent` choice (six), `backdrop` choice (`backgroundTheme` / `backgroundImage` / `backgroundVideo`; picking image/video opens a file dialog when no file is set or the kind changed), `file` action `chooseFile` (only when backdrop is not theme; detail = file name), `artwork` toggle `gameArtwork`, on the Mac `glass` toggle (19), `motion` choice (`motionFull` / `motionReduced`) |
 | Library (`storage`) | 2x2 grid | `folder` action (detail = path or an em dash; opens the folder dialog), `rescan` action (detail `gamesFound`; sound `select`), then the rows of the unlocked games location ("Unlocked Games Location" below): `unlockedLocation` with its note, `unlockedDefault`, and while copies move `moveCancel`, `moveContinue`, `moveLeave` |
 | Sound (`sound`) | speaker | `sounds`, `music` (Home Screen Music, 7.3), `gameMusic` (Game Music, 7.3), `notifSounds`; each with its volume stepper (`volInterface`, `volMusic`, `volGameMusic`, `volNotif`) under it while the switch is on |
@@ -1377,10 +1376,10 @@ talks to. Rules for rows:
 | About (`about`) | info circle | info `aboutText`, info `version` (app version), the launcher update rows (9.5), then `aboutWebsite`, `aboutDiscord`; `aboutPrivacy`, `aboutTerms`; info `credits`, info `creditsLudus` attached under it ("LudusCtrl protocol and app by Josip Parlov (@parl0v)"); `quit` command (ink) |
 
 **The tabs (0.3.0).** Behavior had grown into a catch-all, so every sub-feature has a page of its own. The rail is the table `TABS` in
-`screens/settings.rs` (category, glyph, title, "starts a group"): adding a tab is one entry there, one variant of `Category` and one page in
-`build_categories`. Order: **General, Appearance, Library** (the app itself); gap; **Sound, Controllers, Captures, Broadcast, Phone as Controller**
-(what the launcher does for the player); gap; **Online, Connected Apps** (the network and the programs around it); gap; **Language,
-Toolkit, Advanced, About** (maintenance). The gaps are `space::M` of extra air above the tab, with no captions: a caption in a
+`screens/settings.rs` (category, glyph, title): adding a tab is one entry there, one variant of `Category` and one page in
+`build_categories`. Order: **General, Appearance, Library** (the app itself); **Sound, Controllers, Captures, Broadcast, Phone as Controller**
+(what the launcher does for the player); **Online, Connected Apps** (the network and the programs around it); **Language,
+Toolkit, Advanced, About** (maintenance). There are no group gaps and no captions (0.3.1: one even gap between every tab, so the list reads as one): a caption in a
 list of tabs would be one more thing to skip with the pad. Fourteen tabs do not fit under the title on a small window, so the rail
 scrolls (a vertical scroll area without a bar; the wheel scrolls it, and the tab that is selected by key or pad is brought into view
 whenever it changes; `RING_ROOM` of space around the rows keeps the focus ring from being clipped). The selected tab is
@@ -1852,7 +1851,7 @@ Original: `Input.swift`, `AppModel.handle`, `panelCommand`, `onboardingCommand`.
 
 ### 5.21 The state page (0.2.8, `ui::state_page`)
 
-The page that has no cards: loading, offline, failed, private, hidden, empty. A 56 dp disc (`surface_row`) with a 24 dp glyph (a 2.5 dp spinner arc while loading, a still glyph under reduced motion), 16 under it the headline (`ty::STATE_TITLE`, one line, 520 wide), 8 under that the note (`ty::NOTE`, centred, 420 wide, leading 1.45, `text_detail`), and, when the state has a way out, 24 under the note one primary button (Try Again after a failure, Add Friend on a private profile). The block stands centred in its room, 24 dp above the middle. Profile, Compare and the feed use it, so the same state looks the same everywhere; the screen reader hears headline and note as one label. Profile and compare put the button in the focus (it is the only stop).
+The page that has no cards: loading, offline, failed, private, hidden, empty. A 56 dp disc (`surface_row`) with a 24 dp glyph (a 2.5 dp spinner arc while loading, a still glyph under reduced motion), 16 under it the headline (`ty::STATE_TITLE`, one line, 520 wide), 8 under that the note (`ty::NOTE`, centred, 420 wide, leading 1.45, `text_detail`), and, when the state has a way out, 24 under the note one primary button (Try Again after a failure, Add Friend on a private profile). The block stands centred on the page (0.3.1: horizontally on the window, whatever column or rail the caller lays its list in; vertically in the caller's room, 24 dp above the middle), the button centred under the note by its own width. Notifications, the trophy list of a game without trophies, Captures (empty, missing, failed, filtered, loading), Friends, Messages and Party all stand this way. Profile, Compare and the feed use it, so the same state looks the same everywhere; the screen reader hears headline and note as one label. Profile and compare put the button in the focus (it is the only stop).
 
 Profile 0.2.8: a private profile of a stranger offers Add Friend while the player is online (`ProfileView::state_action`). A new player's own profile shows one line under the header ("Play a game and your hours, trophies and activity show up here.") in place of three empty sections. The figures: the level shows its points and a 120 x 6 track (`paint_progress`), the trophies their grade counts (`paint_grade_counts`, a cup in the grade's colour and the count in ink). Activity: a reaction pill with no count that is not yours rests as text and takes its shape with the card under the pointer or with focus.
 
