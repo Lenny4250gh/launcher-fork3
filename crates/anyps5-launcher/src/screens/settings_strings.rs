@@ -6,18 +6,22 @@ use crate::ui::i18n::Language;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SettingsText {
-    /// Behavior: sounds and music.
+    /// Connected Apps: nothing to connect on this system.
+    NoApps,
+    /// The tab: start-up, the Home button, updates.
+    General,
+    /// The tab: account, privacy, Discord status.
+    Online,
+    /// The tab: sounds and music.
     Sound,
-    /// Behavior (Windows): the clips.
+    /// The tab: screenshots and clips.
     Captures,
-    /// Behavior: the pad.
-    Controller,
-    /// Behavior: Discord, Steam and links from websites.
+    /// The tab: the pad.
+    Controllers,
+    /// The tab: Steam and links from websites.
     ConnectedApps,
     /// Language: the fonts games use.
     Fonts,
-    /// Advanced: what the network recording is for.
-    Diagnostics,
     /// Advanced (Linux): the video codec.
     ShareScreen,
     /// Toolkit: the update check.
@@ -33,13 +37,15 @@ pub enum SettingsText {
 }
 
 impl SettingsText {
-    pub const ALL: [SettingsText; 12] = [
+    pub const ALL: [SettingsText; 14] = [
+        SettingsText::General,
+        SettingsText::Online,
+        SettingsText::NoApps,
         SettingsText::Sound,
         SettingsText::Captures,
-        SettingsText::Controller,
+        SettingsText::Controllers,
         SettingsText::ConnectedApps,
         SettingsText::Fonts,
-        SettingsText::Diagnostics,
         SettingsText::ShareScreen,
         SettingsText::Updates,
         SettingsText::Unused,
@@ -50,12 +56,14 @@ impl SettingsText {
 
     pub const fn english(self) -> &'static str {
         match self {
+            SettingsText::General => "General",
+            SettingsText::Online => "Online",
+            SettingsText::NoApps => "Nothing to connect on this system.",
             SettingsText::Sound => "Sound",
             SettingsText::Captures => "Captures",
-            SettingsText::Controller => "Controller",
+            SettingsText::Controllers => "Controllers",
             SettingsText::ConnectedApps => "Connected Apps",
             SettingsText::Fonts => "Fonts",
-            SettingsText::Diagnostics => "Diagnostics",
             SettingsText::ShareScreen => "Share Screen",
             SettingsText::Updates => "Updates",
             SettingsText::Unused => "Not Used by Any Game",
@@ -67,12 +75,14 @@ impl SettingsText {
 
     pub const fn turkish(self) -> &'static str {
         match self {
+            SettingsText::General => "Genel",
+            SettingsText::Online => "Çevrim İçi",
+            SettingsText::NoApps => "Bu sistemde bağlanacak bir uygulama yok.",
             SettingsText::Sound => "Ses",
             SettingsText::Captures => "Yakalamalar",
-            SettingsText::Controller => "Kol",
+            SettingsText::Controllers => "Kollar",
             SettingsText::ConnectedApps => "Bağlı Uygulamalar",
             SettingsText::Fonts => "Yazı Tipleri",
-            SettingsText::Diagnostics => "Tanılama",
             SettingsText::ShareScreen => "Ekran Paylaşımı",
             SettingsText::Updates => "Güncellemeler",
             SettingsText::Unused => "Hiçbir Oyunun Kullanmadığı Sürümler",

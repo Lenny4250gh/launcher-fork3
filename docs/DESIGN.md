@@ -1299,7 +1299,7 @@ invalid, "game: diagnosis".
 ### 5.7 Settings (global)
 
 Two columns on a black 0.74 blurred panel (S-settings). Left (`size::SETTINGS_CATEGORY_WIDTH` 330, then `space::XXL` before the rows): title `settings` (40 light) with `space::XXL` below, then
-eight category rows (height 52, gap `space::S`, radius 12, glyph `size::ROW_ICON` in a `size::ROW_ICON_BOX` box, `space::M` gap, title 19). Selected category: `color::surface` fill, text
+the category rows (thirteen, see "The tabs" below; height 52, gap `space::S`, radius 12, glyph `size::ROW_ICON` in a `size::ROW_ICON_BOX` box, `space::M` gap, title 19). Selected category: `color::surface` fill, text
 semibold; **focused** (keyboard focus in the category list): the focus ring. Unselected text `color::text_detail`, selected `color::text`. Right: the
 category's rows (5.8).
 
@@ -1318,14 +1318,42 @@ talks to. Rules for rows:
 
 | Category (key) | Glyph | Groups and rows (id, kind, key, notes) |
 |---|---|---|
+| General (`general`) | gear | *(no heading)* `prepare` toggle (Prepare New Games Automatically), `hide` toggle `hideWhilePlaying`, `hiddenTrophies` toggle (the trophy list's only option, 5.11), `homeButton` toggle (6.6), then, after a group gap, `updateCheck` toggle (Check for Updates: the launcher's own update and the toolkit's) |
 | Appearance (`appearance`) | brush | `theme` choice (Cosmic/Aurora/Sunset), `accent` choice (six), `backdrop` choice (`backgroundTheme` / `backgroundImage` / `backgroundVideo`; picking image/video opens a file dialog when no file is set or the kind changed), `file` action `chooseFile` (only when backdrop is not theme; detail = file name), `artwork` toggle `gameArtwork`, on the Mac `glass` toggle (19), `motion` choice (`motionFull` / `motionReduced`) |
 | Library (`storage`) | 2x2 grid | `folder` action (detail = path or an em dash; opens the folder dialog), `rescan` action (detail `gamesFound`; sound `select`), then the rows of the unlocked games location ("Unlocked Games Location" below): `unlockedLocation` with its note, `unlockedDefault`, and while copies move `moveCancel`, `moveContinue`, `moveLeave` |
+| Sound (`sound`) | speaker | `sounds`, `music` (Home Screen Music, 7.3), `gameMusic` (Game Music, 7.3). Volumes go here |
+| Controllers (`controllers`) | game controller | `vibration` choice (6.8), info `controllerHelp` (what to do when the pad does not react). The Controller Center row and the remap rows go first here |
+| Captures (`captures`) | camera | `screenshots` action `screenshotsFolder` (detail = path, `~` abbreviated; an info row naming the toolkit it needs while the toolkit is too old), `showScreenshots` command, info `screenshotHint` (F12). Windows, after a group gap: the Clips rows (9.8) |
 | Language (`language`) | globe | `language` choice (Türkçe, English; shown in their own language). Caption **Fonts**: `fonts` action `fontsFolder` (detail = the picked path, else the built-in Noto set and whether Japanese, Chinese and Korean are included, not downloaded or downloading), `fontsReset` (only when a fonts folder is set), `fontsCjk` command (download the Japanese, Chinese and Korean fonts; only without a picked folder and while they are missing), info `fontsHint` |
-| Behavior (`behaviour`) | sliders | *(no heading)* `name` text field `profileName` (live edit), `prepare` toggle (Prepare New Games Automatically), `hide` toggle `hideWhilePlaying`, `hiddenTrophies` toggle (the trophy list's only option, 5.11). **Sound**: `sounds`, `music` (Home Screen Music, 7.3), `gameMusic` (Game Music, 7.3). **Controller**: `vibration` choice (6.8), `homeButton` toggle (6.6), info `controllerHelp` (what to do when the pad does not react). Windows, after the pad: caption **Captures** with the Clips rows (9.8). **Connected Apps**: `discord` toggle (7.4) and its `discordJoin` toggle while the status is on, Windows `links` toggle (9.6), `addToSteam` and `addGamesToSteam` (9.9) |
-| Phone as Controller (`phone`) | phone | Windows and Linux addition, section 18. Sits between Behavior and Toolkit. `phone` toggle `phoneRemote` with the phone server's rows, then, while it is on, `ludusctrl` toggle `phoneLudusctrl` (game controller glyph) with the LudusCtrl rows (18, "LudusCtrl"), which take in the browser client's (18, "LudusCtrl browser client": its QR code, link, Copy Link, status, notes, Other Addresses, New Link; it has no switch of its own and runs with LudusCtrl). |
+| Phone as Controller (`phone`) | phone | Windows and Linux addition, section 18. Sits after Captures. `phone` toggle `phoneRemote` with the phone server's rows, then, while it is on, `ludusctrl` toggle `phoneLudusctrl` (game controller glyph) with the LudusCtrl rows (18, "LudusCtrl"), which take in the browser client's (18, "LudusCtrl browser client": its QR code, link, Copy Link, status, notes, Other Addresses, New Link; it has no switch of its own and runs with LudusCtrl). |
+| Online (`online`) | wifi | `name` text field `profileName` (live edit), then, after a group gap, `discord` toggle (Show Game on Discord, 7.4) and its `discordJoin` toggle while the status is on. Account, privacy and voice rows go here |
+| Connected Apps (`apps`) | link | Windows `links` toggle (9.6), `addToSteam` and `addGamesToSteam` (9.9). On a system with none of these, the info row `appsNone` |
 | Toolkit (`toolkit`) | drive | info *Installed Toolkit* (version), notes for a toolkit newer or older than this launcher was tested with and for a glibc that is too old (Linux), `channel` choice (Stable, AnyPlay Engine, Pinned, Local Build) with its detail, `pinned` choice or `toolkitFolder` action for the last two, `whatsNew` action, `install` command while the toolkit is missing or an update waits. Caption **Updates** (Stable and AnyPlay Engine only): `updateCheck` toggle, `checkNow` command whose detail is what the last look found ("Up to date · Last checked 2026-10-22 09:30"). `cpu` choice (CPU Conversion). Caption **Not Used by Any Game** and one `Remove v0.1.2` command (detail: size) for each installed release nothing uses |
-| Advanced (`advanced`) | wrench+screwdriver | *(no heading)* `screenshots` action `screenshotsFolder` (detail = path, `~` abbreviated), `showScreenshots` command, info `screenshotHint` (F12). **Diagnostics**: `recordNetwork` toggle. **Share Screen** (Linux, share screen on): `openh264` toggle *Video for Share Screen* (detail: off and what turning it on does, downloading, downloaded, not downloaded yet, the download failed, or what the share worker made of the file) with the info row `openh264Notice` attached under it, Cisco's text unchanged in every language |
+| Advanced (`advanced`) | wrench+screwdriver | *(no heading)* `recordNetwork` toggle (Diagnostics). **Share Screen** (Linux, share screen on): `openh264` toggle *Video for Share Screen* (detail: off and what turning it on does, downloading, downloaded, not downloaded yet, the download failed, or what the share worker made of the file) with the info row `openh264Notice` attached under it, Cisco's text unchanged in every language |
 | About (`about`) | info circle | info `aboutText`, info `version` (app version), the launcher update rows (9.5), then `aboutWebsite`, `aboutDiscord`; `aboutPrivacy`, `aboutTerms`; info `credits`, info `creditsLudus` attached under it ("LudusCtrl protocol and app by Josip Parlov (@parl0v)"); `quit` command (ink) |
+
+**The tabs (0.3.0).** Behavior had grown into a catch-all, so every sub-feature has a page of its own. The rail is the table `TABS` in
+`screens/settings.rs` (category, glyph, title, "starts a group"): adding a tab is one entry there, one variant of `Category` and one page in
+`build_categories`. Order: **General, Appearance, Library** (the app itself); gap; **Sound, Controllers, Captures, Phone as Controller**
+(what the launcher does for the player); gap; **Online, Connected Apps** (the network and the programs around it); gap; **Language,
+Toolkit, Advanced, About** (maintenance). The gaps are `space::M` of extra air above the tab, with no captions: a caption in a
+list of tabs would be one more thing to skip with the pad. Thirteen tabs do not fit under the title on a small window, so the rail
+scrolls (a vertical scroll area without a bar; the wheel scrolls it, and the tab that is selected by key or pad is brought into view
+whenever it changes; `RING_ROOM` of space around the rows keeps the focus ring from being clipped). The selected tab is
+remembered: the next plain open starts on it, and the way back from What's New returns to its tab (Toolkit or About).
+The rule of the first group stays: a page starts with a row, never a caption. A page is never empty (Connected Apps says so on a system
+without Steam or links).
+
+Where the rows of the old Behavior page went: `prepare`, `hide`, `hiddenTrophies`, `homeButton` to General (with `updateCheck`, from Toolkit,
+because the switch also covers the launcher's own update); `sounds`, `music`, `gameMusic` to Sound; `vibration`, `controllerHelp` to
+Controllers; the Clips rows and the screenshot rows (from Advanced) to Captures; `name`, `discord`, `discordJoin` to Online;
+`links`, `addToSteam`, `addGamesToSteam` to Connected Apps. The Toolkit page keeps `checkNow`, because its answer depends on the channel.
+Live streaming is added as its own tab (Broadcast) by the broadcast settings.
+
+**Links and old paths.** `anyps5://settings/<page>` takes `general`, `appearance`, `library`, `sound`, `controllers`, `captures` (also `clips`),
+`broadcast`, `phone`, `online`, `apps` (also `connected-apps`), `language`, `toolkit`, `advanced`, `about`. The old `behavior` / `behaviour` still
+parses and opens General. "Open Clip Settings" and "Screenshot folder" in Captures (9.8) open the Captures tab. The gallery scenes
+`settings0..settings12` are the tabs in rail order.
 
 Settings are persisted per user (`Preferences`): `onboarded`, `language` (system default: Turkish if the OS UI language starts with
 `tr`, else English), `theme` (Cosmic), `accent` (nil = theme default), `backdrop` (theme), `backdropFile`, `gameArtwork` (true),
@@ -1511,7 +1539,7 @@ column, 26 from it; the click area reaches 5 past the pill. Click on the pill or
 reveals the trophy until the list closes: the lock tile and the placeholder words fade out and the greyscale icon, name and
 description fade in (`Motion.focus`, opacity only; reduced motion follows the usual rule). A revealed trophy reads like any
 unearned one (no "Show"). Every secret keeps the pill's room in its text column, so focus never reflows it. The setting
-`showHiddenTrophies` (5.7, Behaviour; default off) shows all of them from the start. Nothing is sent anywhere; the cloud and friends
+`showHiddenTrophies` (5.7, General; default off) shows all of them from the start. Nothing is sent anywhere; the cloud and friends
 see the same as before. Select on any other row does nothing. The focused row: fill white 0.13 (else 0.05) and focus ring width 2. Dates use the
 launcher language's locale, medium date + short time (`Oct 17, 2026 at 9:14 PM`, Turkish similar with the Turkish month name **(estimate)**). Keys: up/down move
 (sound `move`), back/options close; select reveals a secret (sound `select`), otherwise it and left/right do nothing. Clicking a row focuses it.
@@ -2623,7 +2651,7 @@ The launcher answers `anyps5://` links and runs once per user. The grammar (`cra
 |---|---|
 | `anyps5://game/<TITLEID>` | the game on the home screen |
 | `anyps5://game/<TITLEID>/unlock` | the game, with its Unlock button focused and a hint; the unlock starts only when the player presses it |
-| `anyps5://settings[/<page>]` | the settings, on `appearance`, `library`, `language`, `behavior`, `toolkit`, `advanced` or `about` |
+| `anyps5://settings[/<page>]` | the settings, on `general`, `appearance`, `library`, `sound`, `controllers`, `captures`, `broadcast`, `phone`, `online`, `apps`, `language`, `toolkit`, `advanced` or `about` (`behavior` still works and opens `general`; 5.7 "The tabs") |
 | `anyps5://open?path=<folder>` | a dump folder: selected when it is in the games folder, otherwise the launcher says it is outside and opens the library page |
 | `anyps5://join/<code>` | the invitation a join code stands for (the Join button on a friend's Discord, 7.4): signed in, the launcher redeems the code and opens the Online panel, whose Home page lists the invitation with Join Game and Decline (or Join Party); signed out, a toast and the sign-in page, and the code waits to be redeemed after the sign-in |
 
@@ -2731,7 +2759,7 @@ Screenshots and clips have a place of their own: a full-screen gallery, like a c
   `ANYPS5_PREVIEW_LANGUAGE=en`, `ANYPS5_PREVIEW_SELECT=<title id>`, `ANYPS5_PREVIEW_BANNER_BACKDROP=<png>`). Build the same for visual
   regression, with these states: `home-theme0..2` (artwork off), `home-artwork`, `home-actions` (focus on actions 0), `home-unlocking`
   (copy step, 40 %), `starting`, `game-settings` (row 1), `controls` (row 1), `controls-capture` (row 3 waiting, "Square"), `advanced`
-  (row 4), `home-trophies` (focus on actions 1), `trophies` (index 1), `settings` (row 0) and `settings1..5` (each category), `library`
+  (row 4), `home-trophies` (focus on actions 1), `trophies` (index 1), `settings` (row 0) and `settings1..12` (each tab, in rail order), `library`
   (index 1), `trophy-banner` (settled card over a backdrop picture), `onboarding0..2`. Theme stills are rendered at `time = 260` (full
   frame) and `time = 200` (660 x 372 cards); the selected game in previews is index 1.
 - **Checks against the original**: compare each preview with the matching screenshot from the table at the top: tile row x positions
@@ -2794,7 +2822,7 @@ controls|controls-capture|advanced|trophies|trophies-hidden|trophies-revealed|ba
 
 | Module | Screen | Notes |
 |---|---|---|
-| `settings` | 5.7 app settings | Categories: Appearance, Library, Language, Behaviour, **Toolkit** (new), Advanced, About |
+| `settings` | 5.7 app settings | Categories: General, Appearance, Library, Sound, Controllers, Captures, Phone as Controller, Online, Connected Apps, Language, **Toolkit** (new), Advanced, About (5.7, "The tabs") |
 | `game_settings` | 5.9 "..." panel, uninstall confirm | `GameSettings` of the core edited in place |
 | `controls` | 5.9 controls panel | key capture by physical key (egui `physical_key`), modifiers capture as Left Shift/Ctrl/Alt/GUI |
 | `advanced` | 5.9 advanced panel | export/import through native dialogs, `SharedSettings` of the core |
