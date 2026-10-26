@@ -1169,7 +1169,11 @@ impl App {
                 (Some(overlay), _, _) => format!("{overlay:?}"),
                 (None, _, _) => "home".to_owned(),
             };
-            let game = if key.2 { ", game starting or running" } else { "" };
+            let game = if key.2 {
+                ", game starting or running"
+            } else {
+                ""
+            };
             crate::watchdog::set_screen(format!("{place}{game}"));
         }
     }

@@ -459,6 +459,7 @@ fn watch(
     let started = Instant::now();
     let mut had_window = false;
     let mut reported = false;
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut window_closed = false;
     loop {
         if running.stop.load(Ordering::SeqCst) {
@@ -542,8 +543,12 @@ fn watch(
     let ending = info.describe();
     tracing::info!(target: "game", "{}: {ending}", request.title_id);
     if let Ok(mut file) = fs::OpenOptions::new().append(true).open(&request.log_file) {
-        let _ = writeln!(file, "
-[anyps5-launcher] end {} {ending}", now_utc());
+        let _ = writeln!(
+            file,
+            "
+[anyps5-launcher] end {} {ending}",
+            now_utc()
+        );
     }
     (sink)(LaunchEvent::Exited {
         game: request.game.clone(),

@@ -226,8 +226,7 @@ impl LogView {
                     actions.push(LogAction::Close);
                 }
                 Some(
-                    action
-                    @ (LogAction::MakeReport
+                    action @ (LogAction::MakeReport
                     | LogAction::SaveReport
                     | LogAction::OpenReport
                     | LogAction::OpenOnlineLog),

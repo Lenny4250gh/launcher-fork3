@@ -48,7 +48,10 @@ impl ExitInfo {
     /// window was closed, the launcher stopped it, or it crashed (with the exception or signal).
     pub fn describe(&self) -> String {
         if let Some(signal) = self.crashed_by_signal() {
-            return format!("the game crashed (signal {signal}, {})", signal_name(signal));
+            return format!(
+                "the game crashed (signal {signal}, {})",
+                signal_name(signal)
+            );
         }
         if self.killed {
             return "the launcher stopped the game".into();

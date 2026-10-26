@@ -175,9 +175,15 @@ mod tests {
         // The window passes: one notice with the count, then the line is written again.
         let later = t0 + WINDOW + Duration::from_secs(1);
         let after = text(filter.push(b"other line\n", later));
-        assert_eq!(after.matches("repeated 150 more times").count(), 1, "{after}");
-        assert!(after.starts_with("other line
-"));
+        assert_eq!(
+            after.matches("repeated 150 more times").count(),
+            1,
+            "{after}"
+        );
+        assert!(after.starts_with(
+            "other line
+"
+        ));
     }
 
     #[test]
