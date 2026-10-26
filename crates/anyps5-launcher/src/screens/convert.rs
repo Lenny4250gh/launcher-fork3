@@ -55,6 +55,7 @@ pub fn theme(value: core::Theme) -> Theme {
         core::Theme::Cosmic => Theme::Cosmic,
         core::Theme::Aurora => Theme::Aurora,
         core::Theme::Sunset => Theme::Sunset,
+        core::Theme::GameColors => Theme::GameColors,
     }
 }
 
@@ -63,6 +64,7 @@ pub fn theme_to_core(value: Theme) -> core::Theme {
         Theme::Cosmic => core::Theme::Cosmic,
         Theme::Aurora => core::Theme::Aurora,
         Theme::Sunset => core::Theme::Sunset,
+        Theme::GameColors => core::Theme::GameColors,
     }
 }
 
@@ -112,7 +114,7 @@ mod tests {
 
     #[test]
     fn enums_round_trip() {
-        for t in Theme::ALL {
+        for t in Theme::CHOICES {
             assert_eq!(theme(theme_to_core(t)), t);
         }
         for a in Accent::ALL {

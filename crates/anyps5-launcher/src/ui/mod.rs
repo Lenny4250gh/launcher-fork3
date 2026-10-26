@@ -35,6 +35,7 @@ pub mod components;
 mod contrast;
 pub mod focus;
 pub mod gallery;
+pub mod gamecolors;
 pub mod gamepad;
 pub mod glass;
 pub mod gpu;
@@ -45,8 +46,12 @@ pub mod icons;
 pub mod input;
 pub mod intro;
 pub mod latency;
+pub mod lightbar;
+pub mod nav_bindings;
 pub mod nudge;
 pub mod os_emoji;
+pub mod osk;
+pub mod pad_hub;
 pub mod pad_info;
 pub mod press;
 pub mod ps_button;
@@ -88,10 +93,14 @@ pub struct Shell {
     now: f64,
     /// A cue other than the hover tick played since the last [`Shell::finish_frame`].
     cue_played: bool,
+    /// Until when content may still glide under a resting pointer after a drag of a list.
+    glide_until: f64,
     pub backdrop: Backdrop,
     pub language: Language,
     /// The accent colour in use (the theme's default unless the user picked one).
     pub accent: Accent,
+    /// A colour that stands in for the accent: Game Colors takes it from the selected game.
+    pub accent_override: Option<egui::Color32>,
     scale: f32,
     /// The edge bump of the focus ring (see [`nudge`]).
     nudge: Nudge,
@@ -128,7 +137,7 @@ impl Shell {
         home_button::spawn_xinput(home.clone());
         ps_button::spawn(home.clone());
         let language = Language::system();
-        Self {
+        let mut shell = Self {
             input: Input::new(Some(pad)),
             home,
             sounds: Sounds::new(),
@@ -136,16 +145,21 @@ impl Shell {
             alerts: AlertGate::default(),
             now: 0.0,
             cue_played: false,
+            glide_until: f64::NEG_INFINITY,
             haptics: Haptics::new(),
             had_pad: true,
             backdrop: Backdrop::new(Theme::Cosmic),
             language,
             accent: Theme::Cosmic.default_accent(),
+            accent_override: None,
             scale: 1.0,
             nudge: Nudge::default(),
             reduced: false,
             bumped_in_hold: false,
-        }
+        };
+        // Gaming Mode has no keyboard or mouse: start with the pad's hints and keyboard.
+        shell.input.pad_in_use = osk::gaming_mode();
+        shell
     }
 
     /// A shell for tests and the gallery: no gamepad, silent.
@@ -169,11 +183,13 @@ impl Shell {
             alerts: AlertGate::default(),
             now: 0.0,
             cue_played: false,
+            glide_until: f64::NEG_INFINITY,
             haptics: Haptics::silent(),
             had_pad: true,
             backdrop: Backdrop::new(theme),
             language: Language::English,
             accent: theme.default_accent(),
+            accent_override: None,
             scale: 1.0,
             nudge: Nudge::default(),
             reduced: false,
@@ -201,6 +217,7 @@ impl Shell {
         if !self.nudge.is_settled() {
             ctx.request_repaint();
         }
+        osk::set_wanted(ctx, self.input.pad_in_use || osk::gaming_mode());
         let events = self.input.poll(ctx);
         // A select from a key or the pad presses the focused control in, like a click does.
         if events
@@ -298,6 +315,12 @@ impl Shell {
                         .any(|e| matches!(e, egui::Event::MouseWheel { .. })),
             )
         });
+        // A list let go of keeps gliding for a moment: nothing under it has "arrived".
+        let dragging = ctx.input(|i| i.pointer.is_decidedly_dragging());
+        if dragging {
+            self.glide_until = now + GLIDE_SECONDS;
+        }
+        let scrolling = scrolling || now < self.glide_until;
         let other_cue = std::mem::take(&mut self.cue_played);
         let allowed = allowed && self.sounds.enabled;
         if allowed {
@@ -324,9 +347,12 @@ impl Shell {
 
     /// The accent as a colour.
     pub fn accent_color(&self) -> egui::Color32 {
-        self.accent.color()
+        self.accent_override.unwrap_or_else(|| self.accent.color())
     }
 }
+
+/// How long the hover tick stays quiet after a drag of a list ends: the momentum of the content.
+const GLIDE_SECONDS: f64 = 0.8;
 
 /// The environment variable that picks the graphics API (`metal`, `dx12`, `vulkan` or `both`); the launcher
 /// sets it to `vulkan` itself when DirectX 12 has no usable GPU.
@@ -376,6 +402,9 @@ pub fn restrict_backends(options: &mut eframe::NativeOptions) {
                 _ => Some(2),
             }
         };
+        // The start-up log splits the wait for the GPU here: before this line the adapters were
+        // enumerated, after it the device and the surface are made.
+        crate::startup::mark(&format!("{} GPUs listed", adapters.len()));
         adapters
             .iter()
             .filter_map(|adapter| rank(adapter).map(|rank| (rank, adapter)))
@@ -404,11 +433,13 @@ impl Shell {
             alerts: AlertGate::default(),
             now: 0.0,
             cue_played: false,
+            glide_until: f64::NEG_INFINITY,
             haptics: Haptics::silent(),
             had_pad: true,
             backdrop: Backdrop::new(theme),
             language: Language::English,
             accent: theme.default_accent(),
+            accent_override: None,
             scale: 1.0,
             nudge: Nudge::default(),
             reduced: false,

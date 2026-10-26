@@ -225,7 +225,7 @@ impl Talk {
         self.gilrs_down.load(Ordering::Relaxed) || self.xinput_down.load(Ordering::Relaxed)
     }
 
-    fn button(&self) -> Option<PadButton> {
+    pub fn button(&self) -> Option<PadButton> {
         PadButton::from_code(self.button.load(Ordering::Relaxed))
     }
 

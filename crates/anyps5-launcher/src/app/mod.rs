@@ -24,6 +24,8 @@ pub mod clock;
 pub mod compare;
 pub mod core_pipeline;
 mod discord;
+pub mod game_colors;
+pub mod hub;
 pub mod library_panels;
 pub mod library_view;
 pub mod links;
@@ -158,6 +160,8 @@ pub struct LauncherApp {
     /// The live broadcast of the running game.
     broadcast: broadcast::BroadcastService,
     applied: Applied,
+    /// The colours of the selected game's art, for the Game Colors theme.
+    game_colors: game_colors::GameColors,
     focused: bool,
     /// Frames drawn since the last rate line: window start, count, last frame.
     rate: (std::time::Instant, u32, std::time::Instant),
@@ -229,6 +233,7 @@ impl LauncherApp {
             pipeline: config.pipeline,
             panels: config.panels,
             applied: Applied::default(),
+            game_colors: game_colors::GameColors::new(),
             focused: true,
             rate: (std::time::Instant::now(), 0, std::time::Instant::now()),
             overlays_shown: Vec::new(),
@@ -463,6 +468,24 @@ impl LauncherApp {
         if self.shell.backdrop.theme() != theme || self.shell.accent != wanted_accent {
             self.shell.set_theme(theme, accent);
         }
+        if theme == crate::ui::theme::Theme::GameColors {
+            let game = self.model.selected_game();
+            let art = game.and_then(|g| g.background.as_deref().or(g.icon.as_deref()));
+            let (palette, colour) = self.game_colors.update(
+                ctx,
+                game.map(|g| g.id.as_str()).zip(Some(art)),
+                self.model.prefs.reduced_motion,
+            );
+            self.shell.backdrop.set_game_palette(palette);
+            self.shell.accent_override = accent.is_none().then_some(colour);
+        } else {
+            self.shell.accent_override = None;
+        }
+        crate::ui::theme::set_larger_text(self.model.prefs.larger_text);
+        crate::ui::theme::set_high_contrast(self.model.prefs.high_contrast);
+        self.shell
+            .sounds
+            .set_volumes(screens::settings::volumes_of(&self.model.prefs));
         let reduced = self.model.prefs.reduced_motion;
         if self.applied.reduced_motion != Some(reduced) {
             self.applied.reduced_motion = Some(reduced);
@@ -471,6 +494,7 @@ impl LauncherApp {
         self.shell.sounds.enabled = self.model.prefs.sounds;
         self.shell
             .set_vibration(screens::convert::vibration(self.model.prefs.vibration));
+        crate::ui::nav_bindings::apply(&self.model.prefs);
         if !self.model.prefs.discord_presence {
             self.clear_presence();
         }
@@ -538,7 +562,14 @@ impl LauncherApp {
         {
             self.shell.input.last_direction = Some(*command);
         }
+        crate::watchdog::set_action(action_name(&event));
         match event {
+            // The on-screen keyboard takes every command while it is open.
+            InputEvent::Command(command) if crate::ui::osk::is_open(ctx) => {
+                if let Some(cue) = crate::ui::osk::command(ctx, command) {
+                    self.shell.play(cue);
+                }
+            }
             InputEvent::Command(command) => match self.model.handle(command) {
                 Routed::Overlay(overlay) => {
                     let mut cx = OverlayCx {
@@ -828,6 +859,10 @@ impl LauncherApp {
         self.paint_toast(&ctx);
         self.calls.show(&ctx, &mut self.model, &mut self.shell);
         self.together.show(&ctx, &mut self.model, &mut self.shell);
+        crate::ui::osk::show(&ctx, self.model.language());
+        if let Some(cue) = crate::ui::osk::take_cue(&ctx) {
+            self.shell.play(cue);
+        }
         let mut cx = OverlayCx {
             model: &mut self.model,
             shell: &mut self.shell,
@@ -931,6 +966,7 @@ impl LauncherApp {
             Motion::Overlay,
         );
         let mut closed = false;
+        let mut acted = false;
         // A toast about a game carries the game's icon; the chrome reads it from the context.
         let art = self
             .model
@@ -947,17 +983,26 @@ impl LauncherApp {
             let close = toast
                 .stays()
                 .then(|| self.model.language().text(Key::Close));
-            closed = chrome::toast(
+            let send = toast
+                .report
+                .is_some()
+                .then(|| crate::screens::strings::Extra::SendReport.text(self.model.language()));
+            let (shut, sent) = chrome::toast_with_action(
                 ctx,
                 "launcher-toast",
                 toast.icon,
                 &toast.text,
                 close,
+                send,
                 visible,
                 v,
             );
+            closed = shut;
+            acted = sent;
         }
-        if closed && visible {
+        if acted && visible {
+            self.model.send_crash_report();
+        } else if closed && visible {
             self.model.dismiss_toast();
         }
         if visible
@@ -1099,7 +1144,9 @@ pub fn run(inbox: Option<crate::instance::Inbox>, arguments: Vec<String>) -> efr
     // Read before the window exists: it opens filling its screen unless the player chose a window.
     let fullscreen = AppPaths::from_env()
         .map(|paths| Preferences::load(&paths).fullscreen)
-        .unwrap_or(true);
+        .unwrap_or(true)
+        // Gaming Mode shows one full-screen window, whatever was chosen before.
+        || crate::ui::osk::gaming_mode();
     let viewport = egui::ViewportBuilder::default()
         .with_title("AnyPlay Launcher")
         // The launcher draws its own caption (ui::caption).
@@ -1121,6 +1168,7 @@ pub fn run(inbox: Option<crate::instance::Inbox>, arguments: Vec<String>) -> efr
     };
     crate::ui::restrict_backends(&mut options);
     crate::startup::mark("window requested");
+    crate::watchdog::start();
     let result = eframe::run_native(
         "AnyPlay Launcher",
         options,
@@ -1134,6 +1182,7 @@ pub fn run(inbox: Option<crate::instance::Inbox>, arguments: Vec<String>) -> efr
                 chrome_applied: false,
                 frames: 0,
                 start_fullscreen: fullscreen,
+                watched: None,
             }))
         }),
     );
@@ -1171,6 +1220,19 @@ fn relaunch_on_vulkan() -> eframe::Result {
     Ok(())
 }
 
+/// What the watchdog notes about an input: the kind, never the key the player typed.
+fn action_name(event: &InputEvent) -> String {
+    match event {
+        InputEvent::Command(command) => format!("{command:?}"),
+        InputEvent::Tab { backwards } => format!("Tab (backwards: {backwards})"),
+        InputEvent::Scroll(command) => format!("Scroll {command:?}"),
+        InputEvent::Create => "Create".into(),
+        InputEvent::OpenSettings => "OpenSettings".into(),
+        InputEvent::ToggleFullscreen => "ToggleFullscreen".into(),
+        InputEvent::CapturedKey { .. } => "CapturedKey".into(),
+    }
+}
+
 /// The eframe wrapper of [`LauncherApp`].
 pub struct App {
     pub app: LauncherApp,
@@ -1180,10 +1242,39 @@ pub struct App {
     /// Fill the screen once the window is shown: asked for at creation, while eframe still keeps
     /// the window hidden, Windows ignores it (and egui would believe it took).
     start_fullscreen: bool,
+    /// What the watchdog was last told the player is looking at.
+    watched: Option<(Option<Overlay>, bool, bool)>,
+}
+
+impl App {
+    /// Tells the watchdog the screen when it changes (a short string, not on every frame).
+    fn note_screen(&mut self) {
+        let model = &self.app.model;
+        let key = (
+            model.overlay,
+            model.onboarded(),
+            model.running.is_some() || model.starting.is_some(),
+        );
+        if self.watched != Some(key) {
+            self.watched = Some(key);
+            let place = match key {
+                (_, false, _) => "onboarding".to_owned(),
+                (Some(overlay), _, _) => format!("{overlay:?}"),
+                (None, _, _) => "home".to_owned(),
+            };
+            let game = if key.2 {
+                ", game starting or running"
+            } else {
+                ""
+            };
+            crate::watchdog::set_screen(format!("{place}{game}"));
+        }
+    }
 }
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
+        crate::watchdog::frame_begin();
         if !self.chrome_applied {
             self.chrome_applied = true;
             window_chrome::apply(frame);
@@ -1203,6 +1294,9 @@ impl eframe::App for App {
         self.app.broadcast.paint(&ctx, &self.app.model);
         self.app.finish_frame(&ctx);
         crate::ui::latency::frame_done();
+        self.note_screen();
+        // Frames are due every few milliseconds while the window has focus and the backdrop moves.
+        crate::watchdog::frame_end(self.app.focused && !self.app.shell.backdrop.paused);
     }
 
     #[cfg(target_os = "macos")]

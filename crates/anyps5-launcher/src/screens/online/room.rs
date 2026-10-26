@@ -21,6 +21,7 @@ use super::social::free_places;
 use super::{OnlineAction, OnlineData, OnlinePanel, Page};
 use crate::screens::clamped;
 use crate::screens::friends_strings::FriendsText as FX;
+use crate::screens::notification_strings::NotifyText;
 use crate::screens::online_call_strings::CallText as CT;
 use crate::screens::online_screen_strings::ScreenText as X;
 use crate::screens::online_social_strings::SocialText as S;
@@ -83,6 +84,8 @@ pub(super) enum Stop {
     VoiceSettings,
     OpenDiscord,
     Invite,
+    /// Copy a link that invites to the session or party.
+    InviteLink,
     Chat,
     Share,
     Leave,
@@ -427,6 +430,12 @@ impl Room {
         // The party's actions.
         let mut actions = Vec::new();
         actions.extend(invite);
+        actions.push(Button {
+            stop: Stop::InviteLink,
+            label: NotifyText::CopyInviteLink.text(language).to_owned(),
+            icon: Icon::LINK,
+            destructive: false,
+        });
         actions.push(Button {
             stop: Stop::Chat,
             label: S::PartyChat.text(language).to_owned(),
@@ -789,6 +798,7 @@ impl OnlinePanel {
             Stop::VoiceOn => actions.push(OnlineAction::Voice(true)),
             Stop::VoiceSettings => self.run("voiceSettings", data, actions),
             Stop::OpenDiscord => self.run("openDiscord", data, actions),
+            Stop::InviteLink => actions.push(OnlineAction::InviteLink),
             Stop::Chat => self.run("partyChat", data, actions),
             Stop::Share => actions.push(OnlineAction::Screen(ScreenCommand::Start)),
             Stop::Leave => self.run("leaveParty", data, actions),
@@ -859,6 +869,7 @@ fn draw(
     };
     let mut geometry: Vec<(f32, f32)> = Vec::with_capacity(plan.rows.len());
     let mut area = ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden);

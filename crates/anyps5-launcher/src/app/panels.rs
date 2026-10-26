@@ -24,6 +24,8 @@
 mod captures;
 mod compare;
 mod friends;
+mod hub;
+mod notifications;
 mod profile;
 
 use std::collections::HashMap;
@@ -37,6 +39,7 @@ use anyps5_core::gamefiles::GameInput;
 use anyps5_core::issue;
 use anyps5_core::library::Game;
 use anyps5_core::linkreg::{self, Handler as LinkHandler};
+use anyps5_core::notifications::{Act, Kind as NoteKind};
 use anyps5_core::paths::{AppPaths, GameId};
 use anyps5_core::recommended::{self, Catalog, Kind, Plan};
 use anyps5_core::report::{self, ReportInput, SystemInfo};
@@ -59,6 +62,7 @@ use crate::app::steam;
 use crate::app::toolkit::{EngineFailure, NotesState, ToolkitEvent, ToolkitService};
 use crate::screens::advanced::{AdvancedAction, AdvancedData, AdvancedPanel};
 use crate::screens::banner::{BannerHost, BannerTrophy};
+use crate::screens::controllers::{ControllersAction, ControllersData, ControllersPanel};
 use crate::screens::controls::{ControlsAction, ControlsData, ControlsPanel};
 use crate::screens::game_settings::{
     GameSettingsAction, GameSettingsData, GameSettingsPanel, RecommendedRow, UninstallAction,
@@ -146,6 +150,10 @@ pub struct PanelHost {
     /// The tags of the releases on this PC, read when the game sheet opens and after a change.
     pin_installed: Option<Vec<String>>,
     controls: ControlsPanel,
+    controllers: ControllersPanel,
+    /// DualSense pads seen last frame, and the saved light bar colour is due on the next idle one.
+    lightbar_seen: usize,
+    lightbar_due: bool,
     advanced: AdvancedPanel,
     trophies: TrophyListPanel,
     library: LibraryGrid,
@@ -158,10 +166,17 @@ pub struct PanelHost {
     recommended: RecommendedPanel,
     saves: SavesPanel,
     friends: crate::screens::friends::FriendsScreen,
+    /// The Notification Center (`Overlay::Notifications`).
+    notifications: crate::screens::notifications::NotificationsScreen,
     /// The profile screen (`Overlay::Profile`).
     profile: crate::screens::profile::ProfileScreen,
     /// The trophy comparison (`Overlay::Compare`).
     compare: crate::screens::compare::CompareScreen,
+    /// The Game Hub (`Overlay::GameHub`) and its own reading of the captures folder.
+    hub: crate::screens::hub::HubScreen,
+    hub_service: crate::app::captures::CaptureService,
+    /// The trophies of all games (`Overlay::TrophyOverview`).
+    overview: crate::screens::overview::OverviewScreen,
     /// The page the Friends screen opens on when the profile screen sent the player there: the
     /// page, and a feed item to put the focus on.
     online_start: Option<(crate::screens::online::Page, Option<u64>)>,
@@ -222,6 +237,8 @@ pub struct PanelHost {
     launcher_published: Option<anyps5_core::releases::Published>,
     /// The first-start download of the toolkit was tried (once per session; the settings retry).
     toolkit_auto_tried: bool,
+    /// The staged launcher version that has its entry in the Notification Center.
+    update_noted: Option<String>,
     /// Who answers `anyps5://` links, read when the settings open and after a change.
     links: LinkHandler,
     /// The demo and the tests keep the registration in memory and never touch the registry.
@@ -251,6 +268,9 @@ impl PanelHost {
             close_game: CloseGamePanel::default(),
             pin_installed: None,
             controls: ControlsPanel::default(),
+            controllers: ControllersPanel::default(),
+            lightbar_seen: 0,
+            lightbar_due: false,
             advanced: AdvancedPanel::default(),
             trophies: TrophyListPanel::default(),
             library: LibraryGrid::default(),
@@ -261,8 +281,12 @@ impl PanelHost {
             recommended: RecommendedPanel::default(),
             saves: SavesPanel::default(),
             friends: crate::screens::friends::FriendsScreen::default(),
+            notifications: crate::screens::notifications::NotificationsScreen::default(),
             profile: crate::screens::profile::ProfileScreen::default(),
             compare: crate::screens::compare::CompareScreen::default(),
+            hub: crate::screens::hub::HubScreen::default(),
+            hub_service: crate::app::captures::CaptureService::new(ctx),
+            overview: crate::screens::overview::OverviewScreen::default(),
             online_start: None,
             restore: RestorePanel::default(),
             save_view: None,
@@ -299,6 +323,7 @@ impl PanelHost {
             launcher: SelfUpdateService::new(ctx, simulated),
             launcher_published: None,
             toolkit_auto_tried: simulated,
+            update_noted: None,
             links: LinkHandler::Absent,
             simulated,
         }
@@ -549,6 +574,10 @@ impl PanelHost {
                 self.whats_new_tag = tag;
                 self.settings_return = Category::ALL.iter().position(|c| *c == Category::Toolkit);
                 model.switch_overlay(Overlay::WhatsNew);
+            }
+            SettingsAction::OpenControllers => {
+                self.settings_return = Category::ALL.iter().position(|c| *c == Category::Behaviour);
+                model.switch_overlay(Overlay::Controllers);
             }
             SettingsAction::RestartNow => self.restart_launcher(model, cx.ctx),
             SettingsAction::CancelRestart => self.launcher.cancel_hold(),
@@ -890,6 +919,7 @@ impl PanelHost {
                 InGameAction::Resume | InGameAction::Dismiss => model.return_to_game(),
                 InGameAction::Trophies => model.open(Overlay::Trophies),
                 InGameAction::Captures => model.open(Overlay::Captures),
+                InGameAction::Notifications => model.open(Overlay::Notifications),
                 InGameAction::Broadcast => model.effects.push(Effect::ToggleBroadcast),
                 InGameAction::GameSettings => model.open(Overlay::GameSettings),
                 InGameAction::Friends => model.open(Overlay::Friends),
@@ -1408,6 +1438,70 @@ impl PanelHost {
         }
     }
 
+    /// The light bar colour the player chose, put on a DualSense when it is connected (and at
+    /// start), but never while a game runs or starts: the game owns the pad then.
+    fn apply_saved_lightbar(&mut self, model: &Model) {
+        let seen = crate::ui::pad_hub::snapshot()
+            .pads
+            .iter()
+            .filter(|p| p.dualsense)
+            .count();
+        if seen != self.lightbar_seen {
+            self.lightbar_due = seen > 0;
+            self.lightbar_seen = seen;
+        }
+        if !self.lightbar_due || model.running.is_some() || model.starting.is_some() {
+            return;
+        }
+        self.lightbar_due = false;
+        if let Some(rgb) = model
+            .prefs
+            .lightbar
+            .as_deref()
+            .and_then(crate::ui::lightbar::parse)
+        {
+            let spawned = std::thread::Builder::new()
+                .name("lightbar".into())
+                .spawn(move || {
+                    if let Err(err) = crate::ui::lightbar::set(rgb) {
+                        tracing::warn!("saved light bar colour not set: {err}");
+                    }
+                });
+            if let Err(err) = spawned {
+                tracing::warn!("light bar thread not started: {err}");
+            }
+        }
+    }
+
+    /// Settings, Controllers.
+    fn controllers_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
+        let events = self.take_events(wanted);
+        if wanted && !self.controllers.is_active() {
+            self.controllers.open();
+        } else if !wanted && self.controllers.is_active() {
+            self.controllers.close(cx.shell);
+        }
+        let language = cx.model.language();
+        let accent = cx.shell.accent_color();
+        let game_running = cx.model.running.is_some() || cx.model.starting.is_some();
+        let mut data = ControllersData {
+            prefs: &mut cx.model.prefs,
+            language,
+            accent,
+            game_running,
+        };
+        let out = self.controllers.show(cx.shell, cx.ctx, &events, &mut data);
+        if out.changed {
+            cx.model.mark_prefs_dirty();
+        }
+        for action in out.actions {
+            match action {
+                ControllersAction::Back => cx.model.switch_overlay(Overlay::Settings),
+                ControllersAction::Toast(ToastRequest { icon, text }) => cx.model.toast(text, icon),
+            }
+        }
+    }
+
     fn whats_new_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
         let events = self.take_events(wanted);
         let language = cx.model.language();
@@ -1617,6 +1711,16 @@ impl PanelHost {
                     }
                     model.dismiss_overlay();
                 }
+                LibraryAction::Hub(index) => {
+                    if let Some(&index) = order.get(index) {
+                        model.selected = index;
+                        model.focus = HomeFocus::Tiles;
+                        model.measure_selected();
+                        model.open_hub();
+                    } else {
+                        model.dismiss_overlay();
+                    }
+                }
                 LibraryAction::Close => model.dismiss_overlay(),
                 LibraryAction::NextSort => {
                     let next = model.library_sort().next();
@@ -1690,6 +1794,15 @@ impl PanelHost {
                         self.make_report(cx.model, game);
                     }
                 }
+                LogAction::OpenOnlineLog => {
+                    let path = cx.model.paths.network_log();
+                    if let Some(dir) = path.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    if let Err(error) = report::reveal_in_explorer(&path) {
+                        tracing::warn!("cannot show the online log: {error}");
+                    }
+                }
             }
         }
     }
@@ -1745,6 +1858,7 @@ impl PanelHost {
                 settings,
                 crash: Diagnosis::crash_name(&session, None),
                 session,
+                controllers: connected_controllers(),
                 now: clock::rfc3339_utc(clock::unix_seconds()),
             };
             (paths, input)
@@ -1904,6 +2018,7 @@ impl PanelHost {
                             Extra::ToolkitAvailable
                                 .format(language, &[Arg::Str(&format!("v{tag}"))])
                         };
+                        model.note_once(NoteKind::Update, text.clone(), Act::OpenToolkit);
                         model.toast(text, Icon::DOWNLOAD_SIMPLE);
                     }
                 }
@@ -1984,6 +2099,16 @@ impl PanelHost {
         if model.update != self.launcher.state {
             model.update.clone_from(&self.launcher.state);
         }
+        // A launcher update that is staged is worth an entry in the Notification Center.
+        let staged = self.launcher.staged_version().map(str::to_owned);
+        if staged != self.update_noted
+            && let Some(version) = staged.as_deref()
+        {
+            let text = crate::screens::update_strings::UpdateText::NoticeReady
+                .format(model.language(), &[Arg::Str(version)]);
+            model.note_once(NoteKind::Update, text, Act::OpenUpdate);
+        }
+        self.update_noted = staged;
         // The cloud turned this launcher away: the update is required, whatever the manifest said.
         if std::mem::take(&mut model.cloud_too_old) && !self.launcher.required() {
             self.launcher.require_from_cloud();
@@ -2050,7 +2175,41 @@ impl PanelHost {
         let earned = std::mem::take(&mut cx.model.trophy_banners);
         let mut refresh: Vec<GameId> = Vec::new();
         for (game, trophy) in earned {
-            self.banners.push(BannerTrophy::from_core(&trophy));
+            let game_name = cx
+                .model
+                .game(&game)
+                .map(|g| g.name.clone())
+                .unwrap_or_default();
+            cx.model.note(
+                NoteKind::Trophy,
+                format!("{game_name}: {}", trophy.name),
+                Act::OpenTrophies(game.as_str().to_owned()),
+            );
+            let mut banner = BannerTrophy::from_core(&trophy);
+            // The share of players is known when the network has told the feed of this trophy.
+            let title_id = cx
+                .model
+                .games
+                .iter()
+                .find(|g| g.id == game)
+                .map(|g| g.title_id.clone());
+            banner.rarity = title_id.and_then(|title| {
+                cx.model
+                    .online
+                    .feed
+                    .items
+                    .iter()
+                    .find_map(|item| match &item.event {
+                        anyps5_core::online::api::FeedEvent::Trophy {
+                            title_id,
+                            number,
+                            rarity,
+                            ..
+                        } if *title_id == title && u32::from(*number) == trophy.number => *rarity,
+                        _ => None,
+                    })
+            });
+            self.banners.push(banner);
             if !refresh.contains(&game) {
                 refresh.push(game);
             }
@@ -2107,9 +2266,13 @@ impl OverlayHost for PanelHost {
             Overlay::Recommended => self.recommended_ui(cx, wanted),
             Overlay::WhatsNew => self.whats_new_ui(cx, wanted),
             Overlay::Required => self.required_ui(cx, wanted),
+            Overlay::Controllers => self.controllers_ui(cx, wanted),
             Overlay::Friends => self.friends_ui(cx, wanted),
+            Overlay::Notifications => self.notifications_ui(cx, wanted),
             Overlay::Profile => self.profile_ui(cx, wanted),
             Overlay::Compare => self.compare_ui(cx, wanted),
+            Overlay::GameHub => self.hub_ui(cx, wanted),
+            Overlay::TrophyOverview => self.overview_ui(cx, wanted),
         }
     }
 
@@ -2135,16 +2298,29 @@ impl OverlayHost for PanelHost {
     }
 
     fn frame(&mut self, cx: &mut OverlayCx<'_>) {
+        self.apply_saved_lightbar(cx.model);
         // Keys that arrived while no overlay was open belong to nobody.
         if cx.model.overlay.is_none() {
             self.events.clear();
         }
         self.poll_work(cx.model);
+        // "Send Report" on the toast of a game that ended in trouble: the log view opens on the
+        // report, which shows the player what would be sent.
+        if let Some(id) = cx.model.report_request.take()
+            && let Some(index) = cx.model.games.iter().position(|g| g.id == id)
+        {
+            cx.model.selected = index;
+            let game = cx.model.games[index].clone();
+            self.prepare_log(cx.model, &game);
+            self.prepare_upstream(cx.model, &game);
+            cx.model.switch_overlay(Overlay::Log);
+        }
         self.library_extras.poll(cx.model);
         self.poll_toolkit(cx.model);
         let paths = cx.model.paths.clone();
         self.launcher.tick(&paths, cx.model.prefs.check_for_updates);
         self.poll_launcher(cx);
+        self.copy_invite_link(cx);
         // A retired version meets "Update required" once, as soon as nothing else is going on.
         if cx.model.required_screen_due() {
             cx.model.show_required();
@@ -2235,6 +2411,19 @@ fn store_game_settings(model: &mut Model, id: &GameId, settings: GameSettings) {
 
 /// Opens the issue form of a report in the browser. A report too long for the link is copied
 /// first, to be pasted into the form; when the browser does not open, the link is copied instead.
+/// The names of the controllers connected now, for the report. Reads the system on the caller's
+/// thread: call it from the report worker.
+fn connected_controllers() -> Vec<String> {
+    match gilrs::Gilrs::new() {
+        Ok(gilrs) => gilrs
+            .gamepads()
+            .filter(|(_, pad)| pad.is_connected())
+            .map(|(_, pad)| pad.name().to_owned())
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
 fn open_upstream(ctx: &Context, model: &mut Model, prepared: &issue::Prepared) {
     let language = model.language();
     if let Some(text) = &prepared.clipboard {
@@ -2501,6 +2690,9 @@ mod tests {
             Overlay::Settings,
             Overlay::Library,
             Overlay::Captures,
+            Overlay::Notifications,
+            Overlay::GameHub,
+            Overlay::TrophyOverview,
             Overlay::GameSettings,
             Overlay::Controls,
             Overlay::Advanced,
@@ -2549,6 +2741,8 @@ mod tests {
             (HomeIntent::OpenSettings, Overlay::Settings),
             (HomeIntent::OpenLibrary, Overlay::Library),
             (HomeIntent::OpenCaptures, Overlay::Captures),
+            (HomeIntent::OpenNotifications, Overlay::Notifications),
+            (HomeIntent::OpenHub, Overlay::GameHub),
             (HomeIntent::OpenOnline, Overlay::Friends),
             (HomeIntent::OpenFriends, Overlay::Friends),
             (HomeIntent::OpenGameSettings, Overlay::GameSettings),

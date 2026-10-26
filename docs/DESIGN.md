@@ -1070,6 +1070,39 @@ at the same durations (120, 100, 350, 120 ms): the answer to a touch is seen at 
 tuned with. The initial in the call card and the Play Together card (24 bold before) is `ty::ITEM_TITLE` (22 semibold) in `readable_ink` of the gradient's middle
 (`home::avatar_middle`), not white: white on Mint, Gold or White was 1.2 to 2.2:1.
 
+### 3.13 Game Colors (0.3.0)
+
+A fourth theme, "Game Colors" (Settings, Appearance, Theme; stored as theme 3). Its backdrop is Cosmic's
+pattern in the colours of the selected game's art, and its accent is one of those colours unless the player
+picked an accent.
+
+- **Where the colours come from.** The game's background art, else its icon, is read on a worker thread
+  (`app::game_colors`, two at a time), reduced to 64 px, and `ui::gamecolors::dominant` takes up to three
+  colours: twelve hue buckets of the colourful pixels weighted by saturation and brightness, at least 60 degrees
+  apart. The look of each game is remembered for the session; art that cannot be read or has no colour gives
+  Cosmic's look.
+- **Palette.** Deep from the first colour (brightest channel 0.08), middle from the first and second (0.46), bright
+  from the second and third (1.0), then clamped (`clamp_palette`).
+- **Contrast.** The lit tone (the middle tone a third of the way to the bright one, as the contrast table has it) may have at most the relative luminance of Aurora's
+  lit tone (0.21), the brightest built-in ground the table of `ui::contrast` measures; the deep tone stays under
+  0.10 per channel. The accent is lifted toward white until it has the luminance of Blue (0.33), the darkest built-in
+  accent, so every ink that passes on a built-in theme passes here; its ink comes from `readable_ink`.
+- **Motion.** The current colours ease to the wanted ones with a time constant of 0.30 s (`Backdrop::set_game_palette`
+  every frame, the shader pass re-runs while they move). With "Animations: Reduced" they jump. While the picture of a
+  new game is being read the colours stay.
+
+### 3.14 Larger Text and High Contrast (0.3.0)
+
+Two switches in Settings, Appearance, next to Animations.
+
+- **Larger Text** multiplies every role of the type scale by 1.12 (`theme::LARGER_TEXT`; 16 becomes 18, 22 becomes 25),
+  in `TextStyle::font`, `line_height` and `px`. Code that derives a size or a leading from a role uses `px()`, never
+  `size`.
+- **High Contrast** raises the ink levels (0.78 to 0.94, 0.55 to 0.86, 0.4 to 0.7, 0.9 to 1), the hairlines (0.08 and
+  0.12 to 0.5 and 0.55, hover 0.32 to 0.85), the surfaces one step and the focus ring to full white, and draws glass
+  as a dark plate (black 0.82 to 0.94) with a clear edge instead of the blurred backdrop. The blur is not even made.
+- Both are read from process-wide switches that the shell sets from the preferences each frame.
+
 ## 4. Materials and blur on the GPU
 
 SwiftUI `.ultraThinMaterial` is a backdrop blur with a light tint and some saturation; it is used under every panel. egui has no
@@ -1794,6 +1827,16 @@ The page that has no cards: loading, offline, failed, private, hidden, empty. A 
 
 Profile 0.2.8: a private profile of a stranger offers Add Friend while the player is online (`ProfileView::state_action`). A new player's own profile shows one line under the header ("Play a game and your hours, trophies and activity show up here.") in place of three empty sections. The figures: the level shows its points and a 120 x 6 track (`paint_progress`), the trophies their grade counts (`paint_grade_counts`, a cup in the grade's colour and the count in ink). Activity: a reaction pill with no count that is not yours rests as text and takes its shape with the card under the pointer or with focus.
 
+### 5.22 Game Hub, trophy overview and play time (0.3.0, `screens::hub`, `screens::overview`)
+
+**Game Hub** (`Overlay::GameHub`): one full-screen page for the selected game, opened from the home hero (the icon button between the trophies and "...", `HomeIntent::OpenHub`) and from the library (Options on a tile selects the game and opens its hub; Select still picks and closes). The frame is that of Friends and Captures: the Back button top left, the hint bar bottom right, `fullscreen_panel`. Header: the game's icon as a 144 dp tile, over it the caption "Game Hub" (`TROPHIES_OVERLINE`), the name (`TROPHY_LIST_TITLE`, one line), the version and state in one line (`ROW_INFO`), and 16 under that the one primary action (Play, Unlock, Retry, or Back to Game while it runs; the same look as the hero, `home::primary_look`). Playing closes the hub so Home shows the start. Under the header a grid of four columns with 24 dp between blocks: row one, Trophies (figure `12 of 40`, a progress bar, grade counts, the latest trophy with its grade, buttons Trophy List and All Games), Play Time (total; this week and last played under it) and Captures (two columns: how many, up to four thumbnails of this game's captures, See All); row two, Friends (who plays it now), Play Together (the most players, from the LAN list data), Compatibility (the run-report verdict the cloud gave) and Game Music (on or off, only for games with a music file). Every block is a caption (`OVERLINE`, `text_overline`), a value (`ITEM_TITLE` or `PANEL_TITLE`) and a note (`NOTE`, `text_detail`, at most three rows); there are no card surfaces, space groups the blocks. The focus walks the buttons in reading order (Primary, Trophy List, All Games, See All); arrows move, Select presses, Back and Options leave, a click does the same. Back leads home, or to the trophy overview when the hub was opened from there (`Model::hub_back`).
+
+**Trophy overview** (`Overlay::TrophyOverview`): the trophies of every game together, opened from the hub (All Games) and from the own profile (a Trophies button when the player has earned any). A head (caption, "Trophies", the total `120 trophies in 8 games`) and one row per game with a trophy list, newest trophy first, then by name: the game's icon, its name, "Latest on 3 Oct" (or "Nothing earned yet"), at the trailing edge the count, grade counts and a bar. Select or a click opens that game's hub. Back leads to where it was opened from (`Model::overview_back`). Games whose trophy file is still being read are left out until it is, and a state page says so while nothing is known.
+
+**Trophy banner**: its label now names the grade and, once the feed holds the share of players who earned it, the rarity: "Trophy Earned . Gold . Rare, 2.3%". The colour is no longer the only cue.
+
+**Play time**: the sessions were already counted (`app::playtime`, `Preferences::playtime` and `playtime_days`); 0.3.0 reads them. `Preferences::playtime_recent` and `playtime_recent_total` sum the last seven UTC days (this week). The hub shows total, this week and last played; the own profile adds a "This Week" figure beside Hours.
+
 ### 6.1 Keyboard
 
 | Key (original macOS) | Command | Windows / egui key |
@@ -2026,6 +2069,16 @@ while a game is in front (6.6, "The PS button reader"). The cases that make a pa
 HID readers as well, so the pad is still not found for everything else by it.
 Not verified on hardware: a DualSense or DualShock over USB and Bluetooth through WGI, the battery reading of a Bluetooth DualSense through WGI, the A/B hints on a real Xbox pad.
 
+### 5.22 Steam Deck, Gaming Mode, the on-screen keyboard and linked copies (0.3.0, `ui::osk`)
+
+*Gaming Mode.* `platform::gaming_mode` is true when `SteamDeck` or `SteamGamepadUI` is set (and not `0`), when `GAMESCOPE_WAYLAND_DISPLAY` is set, or when the desktop or the Wayland display is gamescope. There the window always opens full screen (whatever was chosen before) and the pad counts as the device in use from the first frame, so the hints show pad glyphs and the ring is on. The panels and the home screen are laid out for the 1280x800 of the Deck (the window never goes below `MIN_WINDOW` 1100x650); nothing relies on a wider window.
+
+*On-screen keyboard.* Every text row (the cloud address, a friend's handle, a restriction note, a voice key note; `RowControl::Text`) opens a keyboard card instead of the caret when the pad is the device in use or the launcher is in Gaming Mode: select on the row, or a click or tap on the field. The card is a centred question card (scrim 0.55, glass, `radius::LARGE`, 24 padding): the row's title, the typed text in a capsule (its last 64 characters and a caret), three rows of ten keys (letters, or digits and symbols with `123`; Shift makes one capital), and a row of five: Shift, `123`/`abc`, Space, Delete, Done (the one primary). Keys are `ConsoleButton`s of the medium size with the 12 dp control gap. The pad walks the grid (left and right wrap, up and down wrap, the row of five keeps its place by proportion), Select types, Options deletes, Back cancels and keeps the row as it was. Every key plays the move cue, Done the select cue, Back the back cue. The row gets the text after every key (like typing) and `Submit` on Done. The messages' own keyboard (5.x, Friends) is a page of the panel and stays.
+
+*Linked copies across drives.* When the unlocked copy lives on another drive than the dump, hard links are impossible. The unlock then makes a symbolic link to each unchanged file of the dump instead of copying it, when the system lets the launcher create symbolic links (Linux: always; Windows: Developer Mode or an elevated launcher; probed once in the space check with a file that is removed again). Without that, files are copied as before. Only the dump's files are linked this way, never the toolkit's. The dump is only read: removing a copy removes the links, the read-only flags of a linked file are never touched, and the finished copy replaces the old one through the same swap as before. The log says how many files were linked, symbolically linked and copied. The space check counts a symbolically linked dump like a hard-linked one.
+
+*Flatpak.* `packaging/flatpak/` holds the manifest of `net.anyplay.Launcher` (freedesktop runtime, network, display, audio, all devices for pads, home for the games). The release workflow builds the `.flatpak` bundle as an extra asset; a failure of that job never blocks a release.
+
 ## 7. Sounds and media
 
 ### 7.1 Sounds (`Sounds.swift`): synthesized, nothing bundled
@@ -2207,6 +2260,23 @@ calls. Screens never choose a sound and a vibration separately.
 
 **Alerts do not chatter.** `notify` and `message` answer something the player did not do, so a burst (a group chat, three requests at sign-in) sounds once: `ui::sound::alert::AlertGate` drops every `notify` or `message` (the two share one window) that comes within 2.5 s of the last one that sounded (and its vibration with it). The toast and the badge still show. A dropped cue does not extend the quiet, so a steady trickle chimes once per 2.5 s. Invitations, errors, rings and everything the player caused are never held back.
 
+### 6.10 The Controllers page and the launcher's own buttons (0.3.0)
+
+Settings, Behaviour, **Controllers** opens a full-screen page (`screens::controllers`, overlay `Controllers`; Back returns to Behaviour). It has four groups.
+
+- **Connected.** One row per pad (up to four): name, "In use" on the pad the launcher listens to, and under it the connection (USB, Bluetooth, or unknown where the system does not say), the battery and the backend: `gilrs (WGI | evdev | HID)`, with `+ HID` for Sony pads, which the launcher can also reach through `hidapi`. The pad thread publishes all of it to `ui::pad_hub`; the link comes from the HID bus type (`hidapi`), else from a wired power state.
+- **Test and Tune.**
+  - *Test Buttons* opens the live test: a pad drawing in which every button lights while it is held, the triggers fill, and the sticks show a dot and the dead zone ring; the numbers stand under it. While it runs (and while a binding waits) the pad sends the launcher no commands (`nav_bindings::set_capturing`); Home and Create still work. It is left with Esc, the page's Back button, or by holding the pad's Back button for a second (a thin line fills).
+  - *Test Vibration* plays a light-motor then heavy-motor pattern at medium strength whatever the vibration setting says (`Haptics::test`). Refused while a game runs or starts, and without a pad that can rumble.
+  - *Stick Dead Zone* (5 to 50 percent, default 25, preference `padDeadzone`) is for the launcher's own pad navigation only: the left stick engages 30 points above it and lets go 13 above it, which is the old 0.55 and 0.38 at 25. Games keep their own.
+  - *Light Bar Colour* (only with a DualSense connected): seven colours (`lightbar`, `RRGGBB`). `ui::lightbar` writes the output report over `hidapi` (USB report 0x02, 63 bytes; Bluetooth 0x31, 78 bytes with the CRC-32 over 0xA2 and the report; offsets from the kernel's `hid-playstation.c` and SDL's `SDL_hidapi_ps5.c`, listed in the module). Only the lightbar bits are set, so rumble and the player lamps stay as they are. This is the one place the launcher writes to a pad's HID output; it happens only on the player's choice, and never while a game runs or starts (the game owns the pad; its next report replaces the colour anyway).
+- **Launcher Controls.** *Confirm with Circle* swaps Select and Back on the pad. Below it one row per job, each showing its keys and its pad button: Select, Back, Options, Previous Section, Next Section. Choosing a row waits for a key or a pad button (10 seconds, Esc cancels); the press replaces that device's binding for the job. A button or key already used by another job **swaps**: the other job lets go of it and, left with nothing, takes what the first job had, so no job is left without a button, and a toast says what moved. The directions (D-pad, left stick, arrow keys), Home (PS), Create, Tab and F11 are fixed and refused with a toast. *Reset to Default* puts everything back. Games keep their own bindings (the Controls panel of a game); this is the launcher only.
+  - Defaults: Select Cross, Enter, Space; Back Circle, Esc, Backspace; Options Triangle, Menu, O; Previous and Next Section L1 and R1 (a step through the sections, like Shift+Tab and Tab: the home screen's sections, a row up or down in a panel). Stored as the differences only: `navPad` and `navKeys` map a job (`select`, `back`, `options`, `previous`, `next`) to button or key names. Names a version does not know are ignored.
+  - The hint bars follow the bindings: the first pad button and key of Select, Back and Options (a face button draws its glyph, a bumper, trigger or Menu a cap with its name), through `HintAction`. The saved light bar colour is put on a DualSense when it connects and at start, never while a game runs or starts.
+- **Troubleshooter.** Plain answers, with an OK or Check status where the launcher can tell: pad not found; every press counts twice (two pads, one of them the virtual Xbox pad 045E:028E or next to a Sony pad); Steam's PlayStation Configuration Support; DS4Windows and HidHide; the PS button (the udev rule on Linux); Linux permissions (Linux only); a low battery (20 percent or less, not charging).
+
+Preferences: `padDeadzone`, `navPad`, `navKeys`, `lightbar`.
+
 ### 6.5 Key binding names (controls panel)
 
 Bindings are stored as `KEY:<SDL scancode name>`, `MOUSE:<Left|Right|Middle|X1|X2>`, `WHEEL:<Up|Down>`. The original maps macOS virtual key
@@ -2238,6 +2308,15 @@ any source is written as `KEY:F24`, "unbound"), followed by the changed tuning l
 in `docs/user/INPUT_MAPPING.md` of AnyPS5-ARM.
 
 ---
+
+### 7.7 Volumes by kind of sound (0.3.0)
+
+Settings, Behavior, Sound: each switch (Interface Sounds, Home Screen Music, Game Music, Notification Sounds) has a
+volume row under it while it is on, a stepper from Off to 100% in steps of 10 (`volume_*` preferences, 100 by default,
+so nothing is quieter than before). Notification Sounds is a new switch: off mutes the notification cues (a notice, a
+message, an invitation, a call: `Cue::is_notification`) while the interface sounds go on. The engine scales each cue by
+the volume of its kind when it starts and the two musics continuously, gliding over about 25 ms so a change does not
+click. A volume of zero never reaches the device.
 
 ### 7.4 Discord presence (AnyPS5-ARM `4a29777` to `14ef671`, after the pinned commit)
 
@@ -2294,6 +2373,15 @@ through the AnyPlay network also gets "on AnyPlay", the size of the party and a 
   Discord status can get an invitation. They choose whether to join." (the joiner is
   asked, not the player; the text says who can use the button). Presence off sends nothing at all,
   buttons included, and hides the join row. Texts: `screens/discord_strings.rs`.
+
+### 6.x Lists drag like a phone (0.3.0)
+
+The vertical lists and grids (panel rows, library, trophies, compare, captures, activity, what's new, the profile) take
+a mouse drag on their content and carry on with momentum when it is let go (`scroll::drag_scroll`, egui's drag scroll
+with its kinetic physics). Rows and tiles still click, because egui cancels a click once the pointer has travelled.
+The pointer passing over items never moves the keyboard or pad focus: the focus moves on a click only, and a hover only
+lights the item under the pointer. The hover tick stays quiet during a drag and for 0.8 s after it, while the content
+glides.
 
 ## 8. Localization
 
@@ -2720,7 +2808,7 @@ Screenshots and clips have a place of their own: a full-screen gallery, like a c
 - **States.** *Loading* (a spinner and the words), *empty* ("No captures yet", how to take a screenshot, F12, and on Windows how to turn Clips on, with **Open Clips Settings**), a filter that hides everything ("No screenshots yet" / "No clips yet", **Show All Captures**), *folder missing* (the folder's path, **Open Folder Settings**) and *unreadable* (**Try Again**). Each has the chips above it and at most one button.
 - **Thousands of files.** Only the rows on screen and one more are laid out and drawn; the scroll follows the focus as in the library. Pictures are decoded by two workers (and the clip thumbnails by a third) off the interface thread; what a frame asks for is the queue (what was scrolled past leaves it); the texture cache holds at most 160 MiB and gives up the ones drawn longest ago; a file that does not decode is asked for once and shows as a plain tile; a picture of more than 64 million pixels is not opened. Closing the area frees the textures.
 - **Never.** Nothing is uploaded or shared, nothing is moved or edited, no game dump is touched; the only write is the delete the player confirmed.
-- **Gallery.** `--gallery=captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|captures-clip-plain|captures-confirm|captures-missing|captures-loading`. All names, times and pictures are invented.
+- **Gallery.** `--gallery=captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|captures-clip-plain|captures-confirm|captures-missing|captures-loading`. The Game Hub and the trophy overview (5.22): `--gallery=game-hub|game-hub-running|game-hub-empty|trophies-all`. All names, times and pictures are invented.
 - **Not yet.** Video playback inside the launcher, a picture for a clip on Linux, a recycle bin, sharing.
 
 ### 9.11 Broadcast
@@ -2732,6 +2820,21 @@ Live streaming of the running game to Twitch, YouTube or any RTMP server (networ
 - **LIVE mark**: while the server has accepted the stream, a small dark pill with a red dot, `LIVE` and the running time sits in the top right corner of the launcher window. It shows when the launcher is in front; the game window does not carry it.
 - **Errors in plain words** (failure toasts that stay): the service did not accept the key; the server could not be reached; the connection was lost; no video encoder; the game's window was not found. The broadcast ends with its game.
 - **Not yet**: the game's sound (the stream carries silence so that services see an audio track), `rtmps://`, Linux.
+
+### 9.12 Notification Center
+
+Everything the launcher tells the player on its own is kept in one list, so a toast that was missed is not lost. The data is `anyps5_core::notifications` (the entries, the cap of 200, the file `notifications.json` next to the preferences, written when something changed); the screen is `screens/notifications.rs`; the glue is `app/panels/notifications.rs`; the texts are `screens/notification_strings.rs`. The overlay is `Overlay::Notifications`, a full-screen panel with the library's glass.
+
+- **Reached from.** The bell in the top bar (between friends and settings; `HomeIntent::OpenNotifications`), with a count badge of what was not read ("9+" past nine), and the row **Notifications** in the quick panel the Home button opens in front of a running game. Back leaves.
+- **What is recorded.** Only events nobody asked for, in one place (`Model::announce`, `Model::note`): a friend request, a Play Together invitation, a party invitation, a message or message request that arrives while the Friends screen is not open, a missed call, the end of a Play Together session, a trophy earned, a launcher update that is ready, a toolkit update that is available. The answer to the player's own press stays a toast and is not recorded. An update that waits is recorded once per version.
+- **An entry** has a kind (the glyph in the disc and the small label), the sentence as it was shown, when ("5 min ago"), its own button (**Accept** for a friend request, **Join** for an invitation, **Open** for the rest) and **Dismiss**. A button shows only while it still has something to do: a request answered elsewhere or an invitation that ran out keeps its sentence and **Dismiss** only. **Accept** and **Join** take the entry with them, **Open** keeps it. The buttons use the answers of the Friends screen (`online_action`), so a notification has no path of its own.
+- **Read.** Opening the area marks everything read; the entries that were new carry a dot and the brighter ink until the area closes. **Clear All** (top right of the list) empties the history.
+- **Focus.** Up and down walk the entries, up from the first reaches Clear All, left and right move between the buttons of an entry, select runs the focused one. Every step plays `move`, an end `bump`, back `close`. Tab walks like a column of rows. The list scrolls to the focus as in the trophies.
+- **Empty.** The state page (5.21): "No notifications", and what shows up here.
+- **Invite link.** The party page has **Copy Invite Link**. It asks the network for a join code (the one the Discord button uses) and puts `anyps5://v1/join/<code>` on the clipboard. The link only asks: whoever opens it gets the invitation like any other and decides (ADR 0022). The code is held while there is a session or party to join, and given back after. The Discord **Join on AnyPlay** button opens the web page of the same code, which hands over to the same link, so both lead into the same invitation flow, which also lands in the Notification Center.
+- **Friend link.** `anyps5://v1/friend/<handle>` (the "Add friend in AnyPlay" button of a web profile) opens the Friends screen on the request page with the handle typed in. The player sends it; the link never sends anything. Signed out, it opens the sign-in page.
+- **Friends' presence.** A friend who plays in a session of the network reads "Playing <game> · Online" (and "· You can join" when the session is open); a Play Together session reads "Playing <game> together (2/4)". Presence and the games are the cloud's; no title is special.
+- **Discord.** "Show Game on Discord" stays off by default. A game Discord detects shows with Discord's own art; any other under AnyPlay's mark with the game's name on hover. The start time shows as elapsed time. No game art leaves the PC: an external picture would need a public source of art, which does not exist yet.
 
 ## 10. Asset list
 
@@ -3199,3 +3302,15 @@ Keys: wherever Windows and Linux use Ctrl, a Mac uses Cmd. There is one such sho
 ### 19.5 What is checked where
 
 Compiled and linted for `aarch64-apple-darwin` on the build laptop (`cargo check` and `clippy`, with the C build steps of dependencies stubbed) and in the CI job `macos`. The job `macos-style` renders a few scenes with and without the glass (`--solid`) on the Metal runner and saves the launcher's own frame and a `screencapture` of the screen with the window on it. What needs a real Mac (the system blur's look over real wallpapers, Liquid Glass, the traffic light positions, dragging, native full screen, Reduce Transparency, the menu) is listed in the pull request that added this section.
+
+## 20. Stability and diagnostics (0.3.0)
+
+**Every scene is rendered in CI by a debug build.** The CI job `scenes` builds the launcher without optimisation for the app code, then `tools/gallery-sweep.sh` renders every gallery scene (the names are read from the source, so a new scene is swept without touching the script) headless under Xvfb with lavapipe, four at a time. egui's debug lock panics after 10 s on a deadlock where a release build only hangs, so a panic, an exit code, a missing picture or a scene that takes more than 60 s fails the job and names the scene.
+
+**UI watchdog** (`watchdog.rs`). The UI thread stamps the start and end of each frame. A thread wakes every second; when a frame has run for more than 5 s, or the window is focused and animating (frames are due every 30 ms) yet none has ended for 5 s, it writes one line to `launcher.log`: `the interface is frozen: ... screen: <overlay>; last action: <command>`. The action is the kind of input (`Down`, `Tab`), never typed text. On Windows (x86-64) a second line lists the UI thread's call stack as `module+offset`: the thread is suspended only while its registers are read and the unwind tables walked into a fixed array, then resumed, and the names are looked up afterwards. A third line says when the interface moves again. The watchdog never ends the process.
+
+**The game's log.** A line a game repeats more than 50 times within 10 s is written 50 times; the copies after that are dropped, and one line `[anyps5-launcher] a line repeated N more times within 10 s and the copies were dropped: <line>` says how many (`anyps5_core::logflood`). When a game ends, the launcher appends `[anyps5-launcher] end <time> <how>` to its log and writes the same sentence to `launcher.log`: `the game quit (exit code N)`, `the game's window was closed (exit code N)` (Windows: the window went while the process still ran), `the game crashed (exception NAME = 0xCODE)` or `(signal 11, SIGSEGV)`, `the launcher stopped the game`. A fault signal also gives the diagnosis "The game crashed (SIGSEGV)".
+
+**Send Report on the crash toast.** The failure toast of a game that ended in trouble (5.13) carries one more action beside Close: with the mouse a small `Send Report` button; with keys or the pad the hint `Options Send Report` (Options is taken by the toast while it is up; Back closes it). It selects the game and opens the log view on the report to AnyPS5 (5.12): the player reads the exact text first, then chooses Open on GitHub or Save Report. Nothing is sent before that, and no game file is ever part of it. The report also lists the connected controllers (by name) and ends with the last 100 KiB of `launcher.log` and of `network.log`. The log view has `Open Online Log` next to `Report a Problem`; it shows `network.log` in the file manager.
+
+**Start-up.** `launcher.log` has `startup: t=...ms` lines. On the test PC `window and GPU ready` is at 1.2 to 2.9 s (all of it inside the graphics start-up, before the app exists), building the app takes 0.1 to 0.3 s. A line `N GPUs listed` marks the end of adapter enumeration inside that wait.

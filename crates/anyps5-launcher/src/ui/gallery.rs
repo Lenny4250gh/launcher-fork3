@@ -279,6 +279,19 @@ impl eframe::App for Gallery {
             }
         }
 
+        // `--osk`: the on-screen keyboard over the page, as a pad opens it on a text row.
+        if std::env::args().any(|a| a == "--osk") {
+            if self.frames == 2 {
+                crate::ui::osk::open(
+                    &ctx,
+                    egui::Id::unique("gallery-osk"),
+                    "Cloud address",
+                    "https://cloud.example.org",
+                );
+            }
+            crate::ui::osk::show(&ctx, self.shell.language);
+        }
+
         self.frames += 1;
         ctx.request_repaint();
         if let Some(path) = self.options.screenshot.clone()

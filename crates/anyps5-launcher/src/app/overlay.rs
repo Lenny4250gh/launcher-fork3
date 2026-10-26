@@ -38,10 +38,16 @@ pub enum Overlay {
     /// Friends, party, messages, activity and the online settings of the AnyPlay network, and
     /// signing in to it (a full-screen panel).
     Friends,
+    /// What the launcher told the player on its own, newest first (a full-screen panel).
+    Notifications,
     /// A player's profile, the player's own or another's (a full-screen panel).
     Profile,
     /// The player's trophies in a game next to another player's (a full-screen panel).
     Compare,
+    /// One game's page: art, trophies, play time, captures, friends and more (a full-screen panel).
+    GameHub,
+    /// The trophies of all games together (a full-screen panel).
+    TrophyOverview,
     /// The release a game stays on is gone: download it again or follow the global toolkit
     /// (a panel of the game frame).
     ToolkitMissing,
@@ -58,6 +64,9 @@ pub enum Overlay {
     /// "Update required": this version is retired, so the update comes before the online area.
     /// Offline play stays open (a full-screen panel, docs/DESIGN.md 9.5.1).
     Required,
+    /// Settings, Controllers: the pads, their tests and the launcher's own buttons (a
+    /// full-screen panel, docs/DESIGN.md 6.10).
+    Controllers,
 }
 
 impl Overlay {

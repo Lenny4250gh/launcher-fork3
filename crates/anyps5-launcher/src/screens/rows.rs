@@ -627,6 +627,7 @@ pub fn list_with_header(
     // move the caret out of the field below.
     let mut seen: std::collections::HashMap<RowId, usize> = std::collections::HashMap::new();
     let mut area = ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden);

@@ -83,6 +83,8 @@ pub enum OnlineAction {
     Join(AccountId),
     /// Invite a friend to the player's session.
     Invite(AccountId),
+    /// Copy a link that asks whoever opens it to join the player's session or party.
+    InviteLink,
     AnswerInvitation {
         id: String,
         accept: bool,
@@ -2067,11 +2069,12 @@ pub fn presence_text_for(
             if let Some(line) = super::together_strings::presence_line(&together, language) {
                 return line;
             }
+            // In a session of the network the line says so; a game with no session is just played.
             let joinable = can_join && activity.session.as_ref().is_some_and(|s| s.joinable);
-            let text = if joinable {
-                T::PlayingJoinable
-            } else {
-                T::Playing
+            let text = match (activity.session.is_some(), joinable) {
+                (true, true) => T::PlayingOnlineJoinable,
+                (true, false) => T::PlayingOnline,
+                (false, _) => T::Playing,
             };
             text.format(language, &[Arg::Str(&activity.title)])
         }
@@ -2264,7 +2267,7 @@ mod tests {
         );
         assert_eq!(
             rows[4].detail.as_deref(),
-            Some("Playing Test Game · You can join")
+            Some("Playing Test Game · Online · You can join")
         );
         // The first row that takes focus, not a caption.
         assert_eq!(panel.side.nav.row, 1);

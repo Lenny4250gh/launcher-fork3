@@ -58,7 +58,7 @@ fn model_of(vendor: u16, product: u16) -> Option<Model> {
 }
 
 /// CRC-32 (zlib) of the bytes, continuing from `seed`.
-fn crc32(seed: u32, bytes: &[u8]) -> u32 {
+pub(crate) fn crc32(seed: u32, bytes: &[u8]) -> u32 {
     let mut crc = !seed;
     for &byte in bytes {
         crc ^= u32::from(byte);

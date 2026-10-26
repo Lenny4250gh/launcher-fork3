@@ -117,6 +117,7 @@ impl PanelHost {
                 self.online_start = Some((Page::Feed, Some(item)));
                 model.open_friends_from_profile();
             }
+            Press::OpenTrophies => model.open_overview(Some(crate::app::overlay::Overlay::Profile)),
             Press::OpenGame(title_id) => {
                 if let Some(index) = model.games.iter().position(|g| g.title_id == title_id) {
                     model.selected = index;
@@ -143,7 +144,15 @@ fn ask(online: &mut net::Online, account: AccountId) {
 fn own_library(cx: &mut OverlayCx<'_>) -> OwnLibrary {
     let ids: Vec<GameId> = cx.model.games.iter().map(|g| g.id.clone()).collect();
     cx.model.read_trophies_of(&ids);
-    let mut library = OwnLibrary::default();
+    let mut library = OwnLibrary {
+        week_seconds: cx.model.prefs.playtime_recent_total(
+            7,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs() as i64),
+        ),
+        ..OwnLibrary::default()
+    };
     for game in &cx.model.games {
         let art = game
             .icon
