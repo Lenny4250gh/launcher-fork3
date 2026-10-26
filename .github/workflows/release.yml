@@ -474,6 +474,8 @@ jobs:
           sbom network share-worker anyplay-share_bin.cdx.json linux-x86_64 x86_64-unknown-linux-gnu .share-worker.sbom
           sbom launcher anyps5-launcher anyplay-launcher_bin.cdx.json macos-arm64 aarch64-apple-darwin .sbom
           sbom network net anyplay-net_bin.cdx.json macos-arm64 aarch64-apple-darwin .net-service.sbom devices
+          node --test launcher/tools/sbom.test.mjs
+          node launcher/tools/sbom.mjs dist/*.cdx.json
           # The Mac service is built with devices: the SBOM must include its actual audio backend.
           jq -e '[.components[].name] | index("cpal") != null and index("coreaudio-rs") != null' \
             "dist/AnyPlay-Launcher-$VERSION-macos-arm64.net-service.sbom.cdx.json" > /dev/null
