@@ -2339,7 +2339,7 @@ fn draw(
                     &painter,
                     rect,
                     radius::ROW,
-                    color::surface().gamma_multiply(t_sel),
+                    color::surface().gamma_multiply(t_sel.clamp(0.0, 1.0)),
                     hover_t,
                     t_focus,
                     0.0,
@@ -2523,7 +2523,9 @@ mod tests {
         let mut prefs = Preferences::first_run();
         let rows_of = |prefs: &Preferences| {
             build_categories(prefs, &env(None, UpdateState::Unknown), Language::English)
-                .remove(0)
+                .into_iter()
+                .find(|page| page.category == Category::Appearance)
+                .unwrap()
                 .rows
                 .into_iter()
                 .find(|r| r.id == "backdrop")
