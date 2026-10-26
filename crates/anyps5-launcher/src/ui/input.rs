@@ -70,6 +70,8 @@ pub enum PadMessage {
     Button(Command),
     /// The Create (Share, View) button went down.
     Create,
+    /// A shoulder button went down: the previous or the next section (`ui::nav_bindings`).
+    Tab { backwards: bool },
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -86,16 +88,26 @@ pub fn command_for_key(key: Key, modifiers: Modifiers) -> Option<Command> {
         Key::ArrowRight => Some(Command::Right),
         Key::ArrowUp => Some(Command::Up),
         Key::ArrowDown => Some(Command::Down),
-        Key::Enter | Key::Space => Some(Command::Select),
-        Key::Escape | Key::Backspace => Some(Command::Back),
-        Key::O => Some(Command::Options),
-        _ => None,
+        // Select, Back and Options are the player's to move (ui::nav_bindings).
+        _ => crate::ui::nav_bindings::command_for_key(key),
     }
 }
 
 /// Tab or Shift+Tab; Ctrl, Alt and Command with Tab belong to the system.
 pub fn is_tab_press(modifiers: Modifiers) -> bool {
     !(modifiers.ctrl || modifiers.alt || modifiers.command || modifiers.mac_cmd)
+}
+
+/// Whether a key press is a step through the sections, and which way: Tab and Shift+Tab, or a key
+/// the player gave to a shoulder job (`ui::nav_bindings`).
+pub fn tab_press(key: Key, modifiers: Modifiers) -> Option<bool> {
+    if key == Key::Tab {
+        return is_tab_press(modifiers).then_some(modifiers.shift);
+    }
+    if modifiers.ctrl || modifiers.alt || modifiers.command || modifiers.mac_cmd {
+        return None;
+    }
+    crate::ui::nav_bindings::tab_for_key(key)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -383,6 +395,12 @@ impl Input {
                         reveal_focus(ctx);
                         out.push(InputEvent::Create);
                     }
+                    PadMessage::Tab { backwards } => {
+                        crate::ui::latency::pad_event_seen();
+                        if !reveal_focus(ctx) {
+                            out.push(InputEvent::Tab { backwards });
+                        }
+                    }
                 }
             }
         }
@@ -459,7 +477,7 @@ impl Input {
                     let mut revealed = false;
                     if !in_text_field
                         && (command_for_key(key, modifiers).is_some()
-                            || (key == Key::Tab && is_tab_press(modifiers)))
+                            || tab_press(key, modifiers).is_some())
                     {
                         set_keys_steer(ctx, true);
                         revealed = reveal_focus(ctx);
@@ -482,10 +500,10 @@ impl Input {
                         }
                         continue;
                     }
-                    if key == Key::Tab && is_tab_press(modifiers) && !self.tab_for_egui {
-                        out.push(InputEvent::Tab {
-                            backwards: modifiers.shift,
-                        });
+                    if let Some(backwards) =
+                        tab_press(key, modifiers).filter(|_| !self.tab_for_egui)
+                    {
+                        out.push(InputEvent::Tab { backwards });
                         crate::ui::a11y::consume_tab(ctx);
                     } else if key == Key::F11 {
                         out.push(InputEvent::ToggleFullscreen);

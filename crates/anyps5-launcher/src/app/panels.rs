@@ -57,6 +57,7 @@ use crate::app::steam;
 use crate::app::toolkit::{EngineFailure, NotesState, ToolkitEvent, ToolkitService};
 use crate::screens::advanced::{AdvancedAction, AdvancedData, AdvancedPanel};
 use crate::screens::banner::{BannerHost, BannerTrophy};
+use crate::screens::controllers::{ControllersAction, ControllersData, ControllersPanel};
 use crate::screens::controls::{ControlsAction, ControlsData, ControlsPanel};
 use crate::screens::game_settings::{
     GameSettingsAction, GameSettingsData, GameSettingsPanel, RecommendedRow, UninstallAction,
@@ -144,6 +145,7 @@ pub struct PanelHost {
     /// The tags of the releases on this PC, read when the game sheet opens and after a change.
     pin_installed: Option<Vec<String>>,
     controls: ControlsPanel,
+    controllers: ControllersPanel,
     advanced: AdvancedPanel,
     trophies: TrophyListPanel,
     library: LibraryGrid,
@@ -243,6 +245,7 @@ impl PanelHost {
             close_game: CloseGamePanel::default(),
             pin_installed: None,
             controls: ControlsPanel::default(),
+            controllers: ControllersPanel::default(),
             advanced: AdvancedPanel::default(),
             trophies: TrophyListPanel::default(),
             library: LibraryGrid::default(),
@@ -534,6 +537,10 @@ impl PanelHost {
                 self.whats_new_tag = tag;
                 self.settings_return = Category::ALL.iter().position(|c| *c == Category::Toolkit);
                 model.switch_overlay(Overlay::WhatsNew);
+            }
+            SettingsAction::OpenControllers => {
+                self.settings_return = Category::ALL.iter().position(|c| *c == Category::Behaviour);
+                model.switch_overlay(Overlay::Controllers);
             }
             SettingsAction::RestartNow => self.restart_launcher(model, cx.ctx),
             SettingsAction::CancelRestart => self.launcher.cancel_hold(),
@@ -1384,6 +1391,35 @@ impl PanelHost {
         }
     }
 
+    /// Settings, Controllers.
+    fn controllers_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
+        let events = self.take_events(wanted);
+        if wanted && !self.controllers.is_active() {
+            self.controllers.open();
+        } else if !wanted && self.controllers.is_active() {
+            self.controllers.close(cx.shell);
+        }
+        let language = cx.model.language();
+        let accent = cx.shell.accent_color();
+        let game_running = cx.model.running.is_some() || cx.model.starting.is_some();
+        let mut data = ControllersData {
+            prefs: &mut cx.model.prefs,
+            language,
+            accent,
+            game_running,
+        };
+        let out = self.controllers.show(cx.shell, cx.ctx, &events, &mut data);
+        if out.changed {
+            cx.model.mark_prefs_dirty();
+        }
+        for action in out.actions {
+            match action {
+                ControllersAction::Back => cx.model.switch_overlay(Overlay::Settings),
+                ControllersAction::Toast(ToastRequest { icon, text }) => cx.model.toast(text, icon),
+            }
+        }
+    }
+
     fn whats_new_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
         let events = self.take_events(wanted);
         let language = cx.model.language();
@@ -2013,6 +2049,7 @@ impl OverlayHost for PanelHost {
             Overlay::Recommended => self.recommended_ui(cx, wanted),
             Overlay::WhatsNew => self.whats_new_ui(cx, wanted),
             Overlay::Required => self.required_ui(cx, wanted),
+            Overlay::Controllers => self.controllers_ui(cx, wanted),
             Overlay::Friends => self.friends_ui(cx, wanted),
             Overlay::Profile => self.profile_ui(cx, wanted),
             Overlay::Compare => self.compare_ui(cx, wanted),

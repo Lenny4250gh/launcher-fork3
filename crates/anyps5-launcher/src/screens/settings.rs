@@ -20,6 +20,7 @@ use egui::{Align2, Color32, Context, Rect, Sense, Ui, UiBuilder, pos2, vec2};
 use crate::app::ludus::LudusState;
 use crate::app::phone::PhoneState;
 use crate::screens::clips_strings::ClipsText;
+use crate::screens::controllers_strings::Pads;
 use crate::screens::convert;
 use crate::screens::dialogs;
 use crate::screens::discord_strings::DiscordText;
@@ -310,6 +311,8 @@ pub enum SettingsAction {
     AddToSteam,
     /// "Add My Games to Steam": one entry for each game.
     AddGamesToSteam,
+    /// "Controllers": the full-screen page of the pads.
+    OpenControllers,
     /// A row of the Phone as Controller page asks for something.
     Phone(PhoneAction),
     /// A LudusCtrl row of the same page asks for something.
@@ -655,6 +658,9 @@ pub fn build_categories(
         )
         .detail(InGameText::SettingDetail.text(language))
         .icon(Icon::GAME_CONTROLLER),
+        Row::action("controllers", Pads::Entry.text(language))
+            .detail(Pads::EntryDetail.text(language))
+            .icon(Icon::GAME_CONTROLLER),
         // Where a player looks when the launcher does not react to the pad: the end of its group.
         Row::info("controllerHelp", Extra::ControllerHelp.text(language), None),
     ];
@@ -1248,6 +1254,7 @@ pub fn apply_preferences(shell: &mut Shell, ctx: &Context, prefs: &Preferences) 
     shell.set_reduced_motion(ctx, prefs.reduced_motion);
     shell.sounds.enabled = prefs.sounds;
     shell.set_vibration(convert::vibration(prefs.vibration));
+    crate::ui::nav_bindings::apply(prefs);
 }
 
 /// Writes one change into the preferences. Dialogs (a picture, a folder) are the caller's
@@ -1615,6 +1622,7 @@ impl SettingsPanel {
                 ctx.data_mut(|d| d.insert_temp(egui::Id::unique("panel-text-focus"), true));
                 ctx.request_repaint();
             }
+            Change::Run { row: "controllers" } => out.actions.push(SettingsAction::OpenControllers),
             Change::Run { row: "rescan" } => out.actions.push(SettingsAction::Rescan),
             Change::Run {
                 row: "unlockedLocation",

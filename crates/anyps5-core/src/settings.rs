@@ -465,6 +465,13 @@ fn one() -> u32 {
     1
 }
 
+/// The stick dead zone of the launcher's pad navigation, in percent.
+pub const DEFAULT_PAD_DEADZONE: u8 = 25;
+
+fn default_pad_deadzone() -> u8 {
+    DEFAULT_PAD_DEADZONE
+}
+
 /// The launcher's own settings (`%APPDATA%\AnyPS5\preferences.json`).
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -523,6 +530,21 @@ pub struct Preferences {
     /// How strongly the controller vibrates to answer an action; never while a game has the pad.
     #[serde(default)]
     pub vibration: Vibration,
+    /// How far the left stick must lean before the launcher's own pad navigation hears it, in
+    /// percent (Controllers page). 25 is the long-standing feel.
+    #[serde(default = "default_pad_deadzone")]
+    pub pad_deadzone: u8,
+    /// The pad buttons the player moved off their default jobs in the launcher's own navigation
+    /// (`select`, `back`, `options`, `previous`, `next` to button names); a role that is not
+    /// listed keeps its default. Games keep their own bindings.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub nav_pad: BTreeMap<String, Vec<String>>,
+    /// The same for the keyboard (key names).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub nav_keys: BTreeMap<String, Vec<String>>,
+    /// The DualSense light bar colour the player chose (`RRGGBB`); `None` leaves it alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lightbar: Option<String>,
     /// Hidden trophies that are not earned show their name and description in the trophy list.
     /// Local only: the network never sees it.
     #[serde(default)]
@@ -657,6 +679,10 @@ impl Default for Preferences {
             prepare_pending: BTreeSet::new(),
             ps_button: true,
             vibration: Vibration::Medium,
+            pad_deadzone: default_pad_deadzone(),
+            nav_pad: BTreeMap::new(),
+            nav_keys: BTreeMap::new(),
+            lightbar: None,
             show_hidden_trophies: false,
             fullscreen: fills_screen(),
             glass_window: true,

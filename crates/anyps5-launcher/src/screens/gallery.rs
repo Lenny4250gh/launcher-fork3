@@ -2,7 +2,7 @@
 //! be screenshotted and compared with the original (`docs/DESIGN.md` screenshot table).
 //!
 //! ```text
-//! anyplay-launcher --gallery=settings|settings1..6|game-settings|game-settings-foot|confirm|controls|controls-capture|
+//! anyplay-launcher --gallery=controllers|controllers-test|settings|settings1..6|game-settings|game-settings-foot|confirm|controls|controls-capture|
 //!                           controls-end|advanced|trophies|trophies-hidden|trophies-revealed|banner|start|unlocking|log|report|library|
 //!                           captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
@@ -60,6 +60,7 @@ use crate::app::preview::{HomeStand, Scene};
 use crate::screens::advanced::{AdvancedData, AdvancedPanel};
 use crate::screens::banner::{self, BannerLook, BannerTrophy};
 use crate::screens::captures::sample::CapturesLook;
+use crate::screens::controllers::{ControllersData, ControllersPanel};
 use crate::screens::controls::{ControlsData, ControlsPanel};
 use crate::screens::game_settings::{
     GameSettingsData, GameSettingsPanel, RecommendedRow, UninstallPanel,
@@ -95,6 +96,8 @@ pub enum ScreenPage {
     /// The game sheet on "Toolkit for This Game", the game staying on its own release.
     GameToolkit,
     Confirm,
+    Controllers,
+    ControllersTest,
     Controls,
     ControlsCapture,
     /// The last rows: import, export, reset.
@@ -708,6 +711,8 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "game-settings-foot" => ScreenPage::GameSettingsFoot,
         "game-toolkit" => ScreenPage::GameToolkit,
         "confirm" => ScreenPage::Confirm,
+        "controllers" => ScreenPage::Controllers,
+        "controllers-test" => ScreenPage::ControllersTest,
         "controls" => ScreenPage::Controls,
         "controls-capture" => ScreenPage::ControlsCapture,
         "controls-end" => ScreenPage::ControlsEnd,
@@ -1979,6 +1984,7 @@ pub struct ScreenGallery {
     phone: crate::app::phone::PhoneState,
     ludus: crate::app::ludus::LudusState,
     controls: ControlsPanel,
+    controllers: ControllersPanel,
     /// A game whose files name its controls, for the controls page.
     game_input: GameInput,
     /// Layouts the community shares for the invented game.
@@ -2099,6 +2105,7 @@ impl ScreenGallery {
                 _ => anyps5_core::online::Online::default(),
             },
             controls: ControlsPanel::default(),
+            controllers: ControllersPanel::default(),
             game_input: sample_game_input(),
             community: sample_community(),
             advanced: AdvancedPanel::default(),
@@ -2638,6 +2645,15 @@ impl ScreenGallery {
             self.controls.show(shell, &ctx, &events, &mut data);
         }
         {
+            let mut data = ControllersData {
+                prefs: &mut self.prefs,
+                language,
+                accent,
+                game_running: false,
+            };
+            self.controllers.show(shell, &ctx, &events, &mut data);
+        }
+        {
             let game = &self.games[1];
             let mut data = AdvancedData {
                 game,
@@ -2927,6 +2943,8 @@ impl ScreenGallery {
                     _ => {}
                 }
             }
+            ScreenPage::Controllers => self.controllers.open(),
+            ScreenPage::ControllersTest => self.controllers.open_test(),
             ScreenPage::Controls => self.controls.open(),
             ScreenPage::ControlsCapture => {
                 self.controls.open_row(3);
