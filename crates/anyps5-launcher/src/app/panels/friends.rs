@@ -8,7 +8,7 @@ use super::PanelHost;
 use crate::app::model::{Effect, Model};
 use crate::app::online::OnlineService;
 use crate::app::overlay::OverlayCx;
-use crate::screens::online::{OnlineAction, OnlineData};
+use crate::screens::online::{OnlineAction, OnlineData, Page};
 use crate::screens::online_call_strings::CallText as CT;
 use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
@@ -40,6 +40,13 @@ impl PanelHost {
         } else {
             None
         };
+        // A friend link: the request page with the handle typed in.
+        let prefill = if opening {
+            cx.model.friend_request.take()
+        } else {
+            None
+        };
+        let start = start.or_else(|| prefill.as_ref().map(|_| (Page::AddFriend, None)));
         let actions = {
             let data = OnlineData {
                 online: &cx.model.online,
@@ -58,6 +65,9 @@ impl PanelHost {
                 if let Some((page, item)) = start {
                     // The profile screen sent the player to a page.
                     self.friends.show_page(page, &data);
+                    if let Some(handle) = prefill {
+                        self.friends.set_friend_text(handle);
+                    }
                     if let Some(index) =
                         item.and_then(|id| data.online.feed.items.iter().position(|i| i.id == id))
                     {
@@ -213,6 +223,7 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
             }
         }
         OnlineAction::Join(friend) => crate::app::together::join_friend(model, friend),
+        OnlineAction::InviteLink => model.request_invite_link(),
         OnlineAction::Invite(account) => {
             online.send(
                 Purpose::Invite,

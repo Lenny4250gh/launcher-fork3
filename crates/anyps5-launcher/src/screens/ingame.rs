@@ -8,6 +8,7 @@ use egui::Context;
 use crate::screens::broadcast_strings::BroadcastText;
 use crate::screens::captures_strings::CapturesText;
 use crate::screens::dialog;
+use crate::screens::notification_strings::NotifyText;
 use crate::screens::rows::{self, Change, Row};
 use crate::screens::side::{self, Frame, Leave, SideState, SideView};
 use crate::ui::Shell;
@@ -118,6 +119,8 @@ pub enum InGameAction {
     Resume,
     Trophies,
     Captures,
+    /// The Notification Center.
+    Notifications,
     /// Start or stop the live broadcast.
     Broadcast,
     GameSettings,
@@ -164,6 +167,7 @@ fn rows_of(data: &InGameData<'_>) -> Vec<Row> {
         }
         rows.push(row);
     }
+    rows.push(Row::command("notifications", NotifyText::Title.text(language)).icon(Icon::BELL));
     if data.online {
         rows.push(Row::command("friends", InGameText::Friends.text(language)).icon(Icon::USERS));
     }
@@ -212,6 +216,7 @@ impl InGamePanel {
             "resume" => InGameAction::Resume,
             "trophies" => InGameAction::Trophies,
             "captures" => InGameAction::Captures,
+            "notifications" => InGameAction::Notifications,
             "broadcast" => InGameAction::Broadcast,
             "settings" => InGameAction::GameSettings,
             "friends" => InGameAction::Friends,
@@ -397,9 +402,9 @@ mod tests {
             online: false,
             broadcast: None,
         };
-        assert_eq!(rows_of(&data).len(), 5);
-        data.online = true;
         assert_eq!(rows_of(&data).len(), 6);
+        data.online = true;
+        assert_eq!(rows_of(&data).len(), 7);
     }
 
     #[test]
@@ -413,7 +418,7 @@ mod tests {
             broadcast: Some(Phase::Off),
         };
         let rows = rows_of(&data);
-        assert_eq!(rows.len(), 6);
+        assert_eq!(rows.len(), 7);
         assert_eq!(rows[4].title, "Start Broadcast");
         data.broadcast = Some(Phase::Live);
         let rows = rows_of(&data);

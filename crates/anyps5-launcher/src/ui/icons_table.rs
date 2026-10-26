@@ -113,5 +113,6 @@ impl Icon {
     pub const PLUG: Icon = Icon('\u{e946}');
     pub const STEAM_LOGO: Icon = Icon('\u{ead4}');
     pub const BROOM: Icon = Icon('\u{ec54}');
+    pub const BELL: Icon = Icon('\u{e0ce}');
     pub const SMILEY: Icon = Icon('\u{e436}');
 }

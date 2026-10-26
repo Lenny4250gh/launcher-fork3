@@ -24,6 +24,7 @@
 mod captures;
 mod compare;
 mod friends;
+mod notifications;
 mod profile;
 
 use std::collections::HashMap;
@@ -37,6 +38,7 @@ use anyps5_core::gamefiles::GameInput;
 use anyps5_core::issue;
 use anyps5_core::library::Game;
 use anyps5_core::linkreg::{self, Handler as LinkHandler};
+use anyps5_core::notifications::{Act, Kind as NoteKind};
 use anyps5_core::paths::{AppPaths, GameId};
 use anyps5_core::recommended::{self, Catalog, Kind, Plan};
 use anyps5_core::report::{self, ReportInput, SystemInfo};
@@ -158,6 +160,8 @@ pub struct PanelHost {
     recommended: RecommendedPanel,
     saves: SavesPanel,
     friends: crate::screens::friends::FriendsScreen,
+    /// The Notification Center (`Overlay::Notifications`).
+    notifications: crate::screens::notifications::NotificationsScreen,
     /// The profile screen (`Overlay::Profile`).
     profile: crate::screens::profile::ProfileScreen,
     /// The trophy comparison (`Overlay::Compare`).
@@ -222,6 +226,8 @@ pub struct PanelHost {
     launcher_published: Option<anyps5_core::releases::Published>,
     /// The first-start download of the toolkit was tried (once per session; the settings retry).
     toolkit_auto_tried: bool,
+    /// The staged launcher version that has its entry in the Notification Center.
+    update_noted: Option<String>,
     /// Who answers `anyps5://` links, read when the settings open and after a change.
     links: LinkHandler,
     /// The demo and the tests keep the registration in memory and never touch the registry.
@@ -261,6 +267,7 @@ impl PanelHost {
             recommended: RecommendedPanel::default(),
             saves: SavesPanel::default(),
             friends: crate::screens::friends::FriendsScreen::default(),
+            notifications: crate::screens::notifications::NotificationsScreen::default(),
             profile: crate::screens::profile::ProfileScreen::default(),
             compare: crate::screens::compare::CompareScreen::default(),
             online_start: None,
@@ -299,6 +306,7 @@ impl PanelHost {
             launcher: SelfUpdateService::new(ctx, simulated),
             launcher_published: None,
             toolkit_auto_tried: simulated,
+            update_noted: None,
             links: LinkHandler::Absent,
             simulated,
         }
@@ -890,6 +898,7 @@ impl PanelHost {
                 InGameAction::Resume | InGameAction::Dismiss => model.return_to_game(),
                 InGameAction::Trophies => model.open(Overlay::Trophies),
                 InGameAction::Captures => model.open(Overlay::Captures),
+                InGameAction::Notifications => model.open(Overlay::Notifications),
                 InGameAction::Broadcast => model.effects.push(Effect::ToggleBroadcast),
                 InGameAction::GameSettings => model.open(Overlay::GameSettings),
                 InGameAction::Friends => model.open(Overlay::Friends),
@@ -1904,6 +1913,7 @@ impl PanelHost {
                             Extra::ToolkitAvailable
                                 .format(language, &[Arg::Str(&format!("v{tag}"))])
                         };
+                        model.note_once(NoteKind::Update, text.clone(), Act::OpenToolkit);
                         model.toast(text, Icon::DOWNLOAD_SIMPLE);
                     }
                 }
@@ -1984,6 +1994,16 @@ impl PanelHost {
         if model.update != self.launcher.state {
             model.update.clone_from(&self.launcher.state);
         }
+        // A launcher update that is staged is worth an entry in the Notification Center.
+        let staged = self.launcher.staged_version().map(str::to_owned);
+        if staged != self.update_noted
+            && let Some(version) = staged.as_deref()
+        {
+            let text = crate::screens::update_strings::UpdateText::NoticeReady
+                .format(model.language(), &[Arg::Str(version)]);
+            model.note_once(NoteKind::Update, text, Act::OpenUpdate);
+        }
+        self.update_noted = staged;
         // The cloud turned this launcher away: the update is required, whatever the manifest said.
         if std::mem::take(&mut model.cloud_too_old) && !self.launcher.required() {
             self.launcher.require_from_cloud();
@@ -2050,6 +2070,16 @@ impl PanelHost {
         let earned = std::mem::take(&mut cx.model.trophy_banners);
         let mut refresh: Vec<GameId> = Vec::new();
         for (game, trophy) in earned {
+            let game_name = cx
+                .model
+                .game(&game)
+                .map(|g| g.name.clone())
+                .unwrap_or_default();
+            cx.model.note(
+                NoteKind::Trophy,
+                format!("{game_name}: {}", trophy.name),
+                Act::OpenTrophies(game.as_str().to_owned()),
+            );
             self.banners.push(BannerTrophy::from_core(&trophy));
             if !refresh.contains(&game) {
                 refresh.push(game);
@@ -2108,6 +2138,7 @@ impl OverlayHost for PanelHost {
             Overlay::WhatsNew => self.whats_new_ui(cx, wanted),
             Overlay::Required => self.required_ui(cx, wanted),
             Overlay::Friends => self.friends_ui(cx, wanted),
+            Overlay::Notifications => self.notifications_ui(cx, wanted),
             Overlay::Profile => self.profile_ui(cx, wanted),
             Overlay::Compare => self.compare_ui(cx, wanted),
         }
@@ -2145,6 +2176,7 @@ impl OverlayHost for PanelHost {
         let paths = cx.model.paths.clone();
         self.launcher.tick(&paths, cx.model.prefs.check_for_updates);
         self.poll_launcher(cx);
+        self.copy_invite_link(cx);
         // A retired version meets "Update required" once, as soon as nothing else is going on.
         if cx.model.required_screen_due() {
             cx.model.show_required();
@@ -2501,6 +2533,7 @@ mod tests {
             Overlay::Settings,
             Overlay::Library,
             Overlay::Captures,
+            Overlay::Notifications,
             Overlay::GameSettings,
             Overlay::Controls,
             Overlay::Advanced,
@@ -2549,6 +2582,7 @@ mod tests {
             (HomeIntent::OpenSettings, Overlay::Settings),
             (HomeIntent::OpenLibrary, Overlay::Library),
             (HomeIntent::OpenCaptures, Overlay::Captures),
+            (HomeIntent::OpenNotifications, Overlay::Notifications),
             (HomeIntent::OpenOnline, Overlay::Friends),
             (HomeIntent::OpenFriends, Overlay::Friends),
             (HomeIntent::OpenGameSettings, Overlay::GameSettings),

@@ -13,6 +13,7 @@ use std::time::Instant;
 
 use anyps5_core::events::CoreEvent;
 use anyps5_core::library::{ExecutableKind, Game};
+use anyps5_core::notifications::{Act, Kind, Notifications};
 use anyps5_core::online::Online;
 use anyps5_core::paths::{AppPaths, GameId};
 use anyps5_core::settings::{self, Preferences};
@@ -291,6 +292,13 @@ pub struct Model {
     /// Why each game stopped the last time it was started, when it stopped on an error.
     pub diagnoses: HashMap<GameId, String>,
     pub toast: Option<Toast>,
+    /// The history of what the launcher told the player on its own (`Overlay::Notifications`).
+    pub notes: Notifications,
+    /// The invite link the player asked for (`app::discord`).
+    pub invite_link: crate::app::discord::InviteLink,
+    /// A handle a link asked to befriend: the Friends screen opens on the request with it typed
+    /// in, and the player sends it.
+    pub friend_request: Option<String>,
     /// Where the launcher's own update stands, copied in every frame by the panel host.
     pub update: crate::screens::settings::LauncherUpdate,
     /// The version whose notice the player sent away with "Later" (until the next start).
@@ -373,6 +381,7 @@ pub struct Model {
 impl Model {
     /// `persist` is off for the previews and tests, which must not touch the user's settings.
     pub fn new(prefs: Preferences, paths: AppPaths, persist: bool) -> Self {
+        let notes = Notifications::open(paths.notifications_file(), persist);
         Self {
             prefs,
             paths,
@@ -406,6 +415,9 @@ impl Model {
             trophies: HashMap::new(),
             diagnoses: HashMap::new(),
             toast: None,
+            notes,
+            invite_link: Default::default(),
+            friend_request: None,
             update: Default::default(),
             update_dismissed: None,
             update_request: None,
@@ -496,6 +508,7 @@ impl Model {
     /// Call first thing in every frame.
     pub fn tick(&mut self, now: f64) {
         self.now = now;
+        self.notes.save_if_dirty();
         self.checkpoint(Instant::now());
         self.prepare_tick();
         self.resume_move_tick();
@@ -564,6 +577,42 @@ impl Model {
         } else {
             self.toast_silent(text, icon);
         }
+    }
+
+    /// Writes an entry into the notification history (no toast): the center keeps what the
+    /// launcher said, and the bell counts what was not read yet.
+    pub fn note(&mut self, kind: Kind, text: impl Into<String>, act: Act) {
+        self.notes.push(
+            kind,
+            text.into(),
+            act,
+            u64::try_from(clock::unix_seconds()).unwrap_or(0),
+        );
+    }
+
+    /// [`note`](Self::note) unless the history already holds this sentence (an update that waits
+    /// is found again at every start).
+    pub fn note_once(&mut self, kind: Kind, text: impl Into<String>, act: Act) {
+        let text = text.into();
+        if self.notes.newest_first().any(|e| e.text == text) {
+            return;
+        }
+        self.note(kind, text, act);
+    }
+
+    /// An event nobody asked for: a toast with its cue and an entry in the history. The entry is
+    /// kept even when a failure toast keeps this one from showing.
+    pub fn announce(
+        &mut self,
+        kind: Kind,
+        act: Act,
+        text: impl Into<String>,
+        icon: Icon,
+        cue: Cue,
+    ) {
+        let text = text.into();
+        self.note(kind, text.clone(), act);
+        self.toast_with(text, icon, cue);
     }
 
     /// A toast with its own cue: a message, an invitation.
@@ -1373,6 +1422,7 @@ impl Model {
             HomeIntent::OpenGameSettings => self.open(Overlay::GameSettings),
             HomeIntent::OpenLibrary => self.open(Overlay::Library),
             HomeIntent::OpenCaptures => self.open(Overlay::Captures),
+            HomeIntent::OpenNotifications => self.open(Overlay::Notifications),
             HomeIntent::OpenSettings => self.open(Overlay::Settings),
             // The online panel opens on the friends list once signed in, else on sign-in.
             HomeIntent::OpenFriends => self.open(Overlay::Friends),

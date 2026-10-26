@@ -17,8 +17,9 @@ use crate::ui::sound::Cue;
 /// Where focus sits on the home screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum HomeFocus {
-    /// Top bar, left to right: [`HomeFocus::LIBRARY`], [`HomeFocus::FRIENDS`],
-    /// [`HomeFocus::SETTINGS`], [`HomeFocus::PROFILE`].
+    /// Top bar, left to right: [`HomeFocus::LIBRARY`], [`HomeFocus::CAPTURES`],
+    /// [`HomeFocus::FRIENDS`], [`HomeFocus::NOTIFICATIONS`], [`HomeFocus::SETTINGS`],
+    /// [`HomeFocus::PROFILE`].
     Top(u8),
     /// The tile row.
     #[default]
@@ -107,6 +108,8 @@ pub enum HomeIntent {
     /// The captures button: the screenshots and clips.
     OpenCaptures,
     OpenSettings,
+    /// The bell: the Notification Center.
+    OpenNotifications,
     /// The friends button: the online area on the friends list, or on sign-in while signed out.
     OpenFriends,
     /// The profile: sign-in, or the account's online area.
@@ -130,10 +133,11 @@ impl HomeFocus {
     pub const LIBRARY: HomeFocus = HomeFocus::Top(0);
     pub const CAPTURES: HomeFocus = HomeFocus::Top(1);
     pub const FRIENDS: HomeFocus = HomeFocus::Top(2);
-    pub const SETTINGS: HomeFocus = HomeFocus::Top(3);
-    pub const PROFILE: HomeFocus = HomeFocus::Top(4);
+    pub const NOTIFICATIONS: HomeFocus = HomeFocus::Top(3);
+    pub const SETTINGS: HomeFocus = HomeFocus::Top(4);
+    pub const PROFILE: HomeFocus = HomeFocus::Top(5);
     /// The last stop of the top bar.
-    const LAST_TOP: u8 = 4;
+    const LAST_TOP: u8 = 5;
 
     /// What a press on stop `index` of the top bar does.
     pub fn top_intent(index: u8) -> HomeIntent {
@@ -141,7 +145,8 @@ impl HomeFocus {
             0 => HomeIntent::OpenLibrary,
             1 => HomeIntent::OpenCaptures,
             2 => HomeIntent::OpenFriends,
-            3 => HomeIntent::OpenSettings,
+            3 => HomeIntent::OpenNotifications,
+            4 => HomeIntent::OpenSettings,
             _ => HomeIntent::OpenOnline,
         }
     }
@@ -600,6 +605,7 @@ mod tests {
                 HomeFocus::Top(2),
                 HomeFocus::Top(3),
                 HomeFocus::Top(4),
+                HomeFocus::Top(5),
                 HomeFocus::Tiles,
                 HomeFocus::Actions(0),
                 HomeFocus::Actions(1),
@@ -674,11 +680,12 @@ mod tests {
     fn top_bar_navigation() {
         let c = ctx(3, 1, false);
         let nav = |from: HomeFocus, command| from.navigate(command, c);
-        // Left to right: library, captures, friends, settings, profile; no wrap at either end.
+        // Left to right: library, captures, friends, bell, settings, profile; no wrap at either end.
         let order = [
             HomeFocus::LIBRARY,
             HomeFocus::CAPTURES,
             HomeFocus::FRIENDS,
+            HomeFocus::NOTIFICATIONS,
             HomeFocus::SETTINGS,
             HomeFocus::PROFILE,
         ];
@@ -700,6 +707,7 @@ mod tests {
             (HomeFocus::LIBRARY, HomeIntent::OpenLibrary),
             (HomeFocus::CAPTURES, HomeIntent::OpenCaptures),
             (HomeFocus::FRIENDS, HomeIntent::OpenFriends),
+            (HomeFocus::NOTIFICATIONS, HomeIntent::OpenNotifications),
             (HomeFocus::SETTINGS, HomeIntent::OpenSettings),
             (HomeFocus::PROFILE, HomeIntent::OpenOnline),
         ] {
