@@ -25,8 +25,6 @@
 #![allow(dead_code)]
 
 pub mod about_strings;
-#[cfg(test)]
-mod german_coverage;
 pub mod advanced;
 pub mod banner;
 pub mod broadcast_strings;
@@ -52,6 +50,8 @@ pub mod gallery;
 pub mod gallery_feed;
 pub mod gallery_together;
 pub mod game_settings;
+#[cfg(test)]
+mod german_coverage;
 pub mod glibc_strings;
 pub mod home;
 pub mod hub;
