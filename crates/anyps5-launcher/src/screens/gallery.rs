@@ -392,6 +392,8 @@ pub enum OnlineLook {
     Friends,
     /// The account page while the player appears offline.
     AccountAppearing,
+    /// The account page with the public profile switch on and focused.
+    AccountPublic,
     /// Five friend requests wait (three are answered in place), friends play, one is online.
     FriendsBusy,
     /// Signed in with nobody yet.
@@ -962,6 +964,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-friend" => ScreenPage::Online(OnlineLook::Friend),
         "friends-settings" => ScreenPage::Online(OnlineLook::Account),
         "friends-settings-appearing" => ScreenPage::Online(OnlineLook::AccountAppearing),
+        "friends-settings-public" => ScreenPage::Online(OnlineLook::AccountPublic),
         "friends-picker" => ScreenPage::Online(OnlineLook::Picker),
         "friends-party" => ScreenPage::Online(OnlineLook::Party),
         "friends-party-picker" => ScreenPage::Online(OnlineLook::PartyPicker),
@@ -1277,6 +1280,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         (AccountId(4), Some(count(0, 0, 0, 0))),
     ]);
     state.privacy = Some(Privacy::default());
+    state.public_profile = Some(look == OnlineLook::AccountPublic);
     if look == OnlineLook::AccountAppearing
         && let Some(account) = state.account.as_mut()
     {
@@ -3319,6 +3323,10 @@ impl ScreenGallery {
                     OnlineLook::Account | OnlineLook::AccountAppearing => {
                         self.friends.show_page(Page::Account, &data);
                     }
+                    OnlineLook::AccountPublic => {
+                        self.friends.show_page(Page::Account, &data);
+                        self.friends.focus_row("publicProfile", 0, &data);
+                    }
                     OnlineLook::Party
                     | OnlineLook::PartyPair
                     | OnlineLook::PartyFour
@@ -3827,6 +3835,7 @@ fn sample_compat(index: usize, language: crate::ui::i18n::Language) -> Option<St
     use crate::app::library_view::Compat;
     let tags: &[Compat] = match index {
         0 => &[Compat::RunsWell, Compat::Lan],
+        1 => &[Compat::RunsWithIssues, Compat::Lan],
         2 => &[Compat::RunsWithIssues],
         3 => &[Compat::NoStart],
         4 => &[Compat::Lan],

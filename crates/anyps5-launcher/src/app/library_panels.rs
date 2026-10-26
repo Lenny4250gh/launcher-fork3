@@ -37,11 +37,14 @@ pub fn compat_line(tags: &[Compat], language: Language) -> Option<StateText> {
     };
     let words: Vec<&str> = tags
         .iter()
-        .map(|tag| {
+        .enumerate()
+        .map(|(i, tag)| {
             match tag {
                 Compat::RunsWell => LibraryText::RunsWell,
                 Compat::RunsWithIssues => LibraryText::RunsWithIssues,
                 Compat::NoStart => LibraryText::NoStart,
+                // After another tag the line has less room, so the shorter word stands in.
+                Compat::Lan if i > 0 => LibraryText::LanShort,
                 Compat::Lan => LibraryText::Lan,
             }
             .text(language)

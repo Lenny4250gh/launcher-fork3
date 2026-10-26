@@ -158,6 +158,10 @@ pub enum OnlineAction {
     CopyText(String),
     /// Appear offline to every other player, or show again.
     AppearOffline(bool),
+    /// Show the player's page on the web to everyone, or only to friends again.
+    PublicProfile(bool),
+    /// The account page opened: read the public profile switch if it is not known.
+    PublicProfileRefresh,
     /// Who sees the player's trophies.
     TrophyAudience(Audience),
     /// The Feed page opened or asks again: read its newest items.
@@ -671,6 +675,7 @@ impl OnlinePanel {
                     self.queued.push(OnlineAction::Profile(me.id));
                 }
             }
+            Page::Account => self.queued.push(OnlineAction::PublicProfileRefresh),
             _ => {}
         }
         // A message and its chat are one place: going between them is no step away from where
@@ -1069,6 +1074,10 @@ impl OnlinePanel {
                 row: "appearOffline",
                 on,
             } => actions.push(OnlineAction::AppearOffline(*on)),
+            Change::Toggle {
+                row: "publicProfile",
+                on,
+            } => actions.push(OnlineAction::PublicProfile(*on)),
             Change::Toggle {
                 row: "pickParty",
                 on,
@@ -1585,6 +1594,20 @@ impl OnlinePanel {
                     t(T::TrophyAudienceNote),
                     None,
                 ));
+                // Unknown until the cloud answers: the row is not drawn on a guess.
+                if let Some(public) = online.public_profile {
+                    rows.push(
+                        Row::toggle("publicProfile", t(T::PublicProfile), public)
+                            .icon(Icon::USER_CIRCLE)
+                            .detail(t(T::PublicProfileDetail))
+                            .group_start(),
+                    );
+                    rows.push(Row::info(
+                        "publicProfileNote",
+                        t(T::PublicProfileNote),
+                        None,
+                    ));
+                }
                 if !online.friends.blocked.is_empty() {
                     rows.push(Row::caption("blockedCaption", t(T::Blocked)).group_start());
                     for blocked in &online.friends.blocked {
@@ -2168,9 +2191,11 @@ pub fn presence_text_for(
 ) -> String {
     match &friend.presence.activity {
         Some(activity) => {
-            // A Play Together session reads "Playing Minecraft together (2/4)".
+            // A Play Together session reads "Playing Minecraft together · 2 of 4 players".
             let together = anyps5_core::play_together::presence(activity);
-            if let Some(line) = super::together_strings::presence_line(&together, language) {
+            if let Some(line) =
+                super::together_strings::presence_line(&together, language, can_join)
+            {
                 return line;
             }
             // In a session of the network the line says so; a game with no session is just played.
@@ -3022,6 +3047,35 @@ mod tests {
         assert_eq!(row.control, Control::Toggle(true));
         // The header of the Friends screen says it under the name.
         assert_eq!(status_line(&data(&online)), "Appearing offline");
+    }
+
+    #[test]
+    fn the_public_profile_switch_is_drawn_only_once_the_cloud_said() {
+        use crate::screens::rows::Control;
+        let mut online = signed_in();
+        let mut panel = OnlinePanel::default();
+        panel.open(&data(&online));
+        panel.go(Page::Account, &data(&online));
+        // Opening the page asks for the setting.
+        assert!(panel.queued.contains(&OnlineAction::PublicProfileRefresh));
+        let rows = panel.rows(&data(&online)).2;
+        assert!(rows.iter().all(|r| r.id != "publicProfile"));
+        online.public_profile = Some(false);
+        let rows = panel.rows(&data(&online)).2;
+        let row = rows.iter().find(|r| r.id == "publicProfile").unwrap();
+        assert_eq!(row.title, "Public Profile");
+        assert_eq!(row.control, Control::Toggle(false));
+        let mut actions = Vec::new();
+        panel.handle(
+            &Context::default(),
+            &Change::Toggle {
+                row: "publicProfile",
+                on: true,
+            },
+            &data(&online),
+            &mut actions,
+        );
+        assert_eq!(actions, [OnlineAction::PublicProfile(true)]);
     }
 
     #[test]
