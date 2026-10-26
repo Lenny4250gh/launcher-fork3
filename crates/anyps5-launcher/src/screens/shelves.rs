@@ -78,7 +78,8 @@ pub fn cap(screen: Rect, shelves: usize, tile: f32) -> usize {
     }
     let width = screen.width() - 2.0 * pad::HERO_X - SHELF_GAP * (shelves - 1) as f32;
     let pitch = tile + ICON_GAP;
-    (((width / shelves as f32 + ICON_GAP) / pitch).floor() as usize).min(crate::app::library_view::SHELF_MAX)
+    (((width / shelves as f32 + ICON_GAP) / pitch).floor() as usize)
+        .min(crate::app::library_view::SHELF_MAX)
 }
 
 fn label(kind: ShelfKind) -> T {
