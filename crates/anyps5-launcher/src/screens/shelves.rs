@@ -18,12 +18,13 @@ use crate::ui::input;
 use crate::ui::text;
 use crate::ui::theme::{color, pad, size, ty};
 
-/// The icon of a game on a shelf.
-pub const TILE: f32 = 56.0;
-/// From one icon to the next; the caption under an icon may be as wide as the icon plus the room
-/// to its right, less a gap.
-const PITCH: f32 = 108.0;
-const CAPTION_WIDTH: f32 = 96.0;
+/// The sizes an icon on a shelf can have, largest first: the shelf takes the largest the room under
+/// the tile row allows, so it never looks squeezed (the tile row's own icons are 118 dp).
+const TILES: [f32; 4] = [96.0, 80.0, 68.0, 56.0];
+/// The room between two icons.
+const ICON_GAP: f32 = 24.0;
+/// How much wider than its icon a caption may be (it stays inside the room between two icons).
+const CAPTION_EXTRA: f32 = 16.0;
 /// Between the label and the icons, and between the icons and their captions.
 const LABEL_GAP: f32 = 10.0;
 const CAPTION_GAP: f32 = 8.0;
@@ -34,13 +35,34 @@ const ABOVE: f32 = 18.0;
 /// The room kept free between the shelves and the hero's title.
 pub const BELOW: f32 = 16.0;
 
+/// One line of a caption: cut where the width ends, not at the last word that fits, so a long name
+/// keeps as much of itself as the icon is wide ("Ember Cartogra...", not "Ember ...").
+fn one_line(
+    painter: &egui::Painter,
+    text: &str,
+    color: egui::Color32,
+    width: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let style = ty::STATE_LABEL_SMALL;
+    let mut job = egui::text::LayoutJob::simple(text.to_owned(), style.font(), color, width);
+    job.wrap.max_rows = 1;
+    job.wrap.break_anywhere = true;
+    job.sections[0].format.line_height = Some(style.line_height());
+    painter.layout_job(job)
+}
+
 fn caption_line() -> f32 {
     ty::STATE_LABEL_SMALL.line_height()
 }
 
 /// The height of the shelves: the label, the icons and two lines of captions.
-pub fn height() -> f32 {
-    ty::INFO_OVERLINE.line_height() + LABEL_GAP + TILE + CAPTION_GAP + 2.0 * caption_line()
+pub fn height(tile: f32) -> f32 {
+    ty::INFO_OVERLINE.line_height() + LABEL_GAP + tile + CAPTION_GAP + 2.0 * caption_line()
+}
+
+/// The largest icon size whose shelves fit in `room` (dp, from [`top`] down), if any does.
+pub fn tile_for(room: f32) -> Option<f32> {
+    TILES.into_iter().find(|tile| height(*tile) <= room)
 }
 
 /// Where the shelves start, from the top of the window.
@@ -48,13 +70,15 @@ pub fn top(screen: Rect) -> f32 {
     screen.min.y + pad::HOME_TOP + size::ICON_BUTTON + 34.0 + size::TILE_LARGE + 24.0 + ABOVE
 }
 
-/// The most games one shelf shows when `shelves` of them share the width of the window.
-pub fn cap(screen: Rect, shelves: usize) -> usize {
+/// The most games one shelf shows when `shelves` of them share the width of the window; fewer
+/// rather than a squeezed row.
+pub fn cap(screen: Rect, shelves: usize, tile: f32) -> usize {
     if shelves == 0 {
         return 0;
     }
     let width = screen.width() - 2.0 * pad::HERO_X - SHELF_GAP * (shelves - 1) as f32;
-    ((width / shelves as f32 + (PITCH - CAPTION_WIDTH)) / PITCH).floor() as usize
+    let pitch = tile + ICON_GAP;
+    (((width / shelves as f32 + ICON_GAP) / pitch).floor() as usize).min(crate::app::library_view::SHELF_MAX)
 }
 
 fn label(kind: ShelfKind) -> T {
@@ -70,6 +94,7 @@ pub fn show(
     ui: &mut Ui,
     cx: &mut ScreenCx<'_>,
     top: f32,
+    tile: f32,
     shelves: &[Shelf],
     presses: &mut Vec<HomeFocus>,
 ) {
@@ -80,6 +105,8 @@ pub fn show(
     let interactive = cx.model.overlay.is_none() && cx.model.starting.is_none();
     let ring_on = interactive && matches!(cx.model.focus, HomeFocus::Shelf(_));
     let line = caption_line();
+    let pitch = tile + ICON_GAP;
+    let caption_width = tile + CAPTION_EXTRA;
     let mut x = ctx.content_rect().min.x + pad::HERO_X;
     let mut flat = 0usize;
     for shelf in shelves {
@@ -99,12 +126,12 @@ pub fn show(
             let Some(game) = cx.model.game(&item.game).cloned() else {
                 continue;
             };
-            let rect = Rect::from_min_size(pos2(x, icons_top), vec2(TILE, TILE));
+            let rect = Rect::from_min_size(pos2(x, icons_top), vec2(tile, tile));
             let cell = Rect::from_min_size(
                 rect.min,
-                vec2(CAPTION_WIDTH, TILE + CAPTION_GAP + 2.0 * line),
+                vec2(caption_width, tile + CAPTION_GAP + 2.0 * line),
             );
-            x += PITCH;
+            x += pitch;
             let focused = ring_on && cx.model.focus == HomeFocus::Shelf(index);
             let ring_t = ctx.focus_t(("shelf-ring", index), focused);
             let response = ui.interact(cell, Id::unique(("shelf-item", index)), Sense::click());
@@ -131,7 +158,7 @@ pub fn show(
             if interactive && response.clicked() {
                 presses.push(HomeFocus::Shelf(index));
             }
-            let mut style = tile_style(cx, &game, TILE, accent);
+            let mut style = tile_style(cx, &game, tile, accent);
             // A row of padlocks would be noise; the state of a game is on its page.
             style.overlay = TileOverlay::None;
             style.focus = ring_t;
@@ -145,14 +172,7 @@ pub fn show(
             } else {
                 color::text_detail()
             };
-            let name = clamped(
-                &painter,
-                ty::STATE_LABEL_SMALL,
-                &game.name,
-                ink,
-                CAPTION_WIDTH,
-                1,
-            );
+            let name = one_line(&painter, &game.name, ink, caption_width);
             let name_y = rect.max.y + CAPTION_GAP;
             painter.galley(pos2(rect.min.x, name_y), name, ink);
             let second_y = name_y + line;
@@ -170,7 +190,7 @@ pub fn show(
                         ty::STATE_LABEL_SMALL,
                         T::Join.text(language),
                         color::text_active(),
-                        CAPTION_WIDTH - 20.0,
+                        caption_width - 20.0,
                         1,
                     );
                     painter.galley(
@@ -179,18 +199,11 @@ pub fn show(
                         color::text_active(),
                     );
                 } else {
-                    let who = clamped(
-                        &painter,
-                        ty::STATE_LABEL_SMALL,
-                        friend,
-                        color::state_neutral(),
-                        CAPTION_WIDTH,
-                        1,
-                    );
+                    let who = one_line(&painter, friend, color::state_neutral(), caption_width);
                     painter.galley(pos2(rect.min.x, second_y), who, color::state_neutral());
                 }
             }
         }
-        x += SHELF_GAP - (PITCH - CAPTION_WIDTH);
+        x += SHELF_GAP - ICON_GAP;
     }
 }

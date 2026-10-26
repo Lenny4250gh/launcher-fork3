@@ -427,15 +427,16 @@ impl TrophyListPanel {
         shown: &mut Option<usize>,
     ) {
         if data.set.trophies.is_empty() {
-            let at = ui.max_rect().center();
-            text::paint(
-                ui.painter(),
-                at,
-                Align2::CENTER_CENTER,
-                ty::BODY,
-                Extra::TrophiesNone.text(data.language),
-                color::text_empty(),
-            );
+            // The shared state page, like every other empty page.
+            let room = ui.max_rect();
+            let page = crate::ui::state_page::StatePage {
+                icon: Icon::TROPHY,
+                title: Extra::TrophiesNone.text(data.language),
+                note: None,
+                loading: false,
+                action: None,
+            };
+            crate::ui::state_page::show(ui, room, &page, false);
             return;
         }
         let ctx = ui.ctx().clone();

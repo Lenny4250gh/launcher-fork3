@@ -1,14 +1,14 @@
 //! The page that has no cards (docs/DESIGN.md 5.21): loading, offline, failed, private, hidden or
 //! empty. A quiet disc with a glyph (a spinner while it loads), the headline, a note that says
 //! what to do, and at most one primary button that does it. Profile, Compare and the feed share
-//! it, so a state looks and stands the same on every page.
+//! it, so a state looks and stands the same on every page: centred on the page (horizontally on
+//! the window, vertically in the room the caller leaves).
 
 use egui::{Align, Align2, Id, Layout, Rect, Role, Sense, Ui, UiBuilder, WidgetInfo, pos2, vec2};
 
 use crate::ui::anim::AnimExt;
 use crate::ui::components::{ConsoleButton, paint_spinner_arc};
 use crate::ui::icons::Icon;
-use crate::ui::text;
 use crate::ui::theme::{color, size, space, ty};
 
 /// The disc behind the glyph, and the glyph.
@@ -91,7 +91,9 @@ pub fn show(ui: &mut Ui, room: Rect, page: &StatePage<'_>, focused: bool) -> boo
     } = lay_out(&painter, page);
     let button = size::BUTTON_MIN_HEIGHT;
     let top = room.min.y + ((room.height() - height) * 0.5 - LIFT).max(space::M);
-    let centre = room.center().x;
+    // Centred on the page, not on the column the caller lays its list in: a state page stands in
+    // the middle of the window whatever rail or margin sits beside the room.
+    let centre = ctx.content_rect().center().x;
 
     // The words of the page, for a screen reader: they are only painted.
     let said = match page.note {
@@ -137,14 +139,15 @@ pub fn show(ui: &mut Ui, room: Rect, page: &StatePage<'_>, focused: bool) -> boo
         return false;
     };
     y += space::XL;
-    let width = text::width(&painter, ty::BUTTON, label) + 2.0 * size::BUTTON_PADDING;
+    // A centred column: the button's own width (and its ring) puts it in the middle, whatever the
+    // label says.
     let mut row = ui.new_child(
         UiBuilder::new()
             .max_rect(Rect::from_min_size(
-                pos2(centre - width * 0.5 - space::XS, y),
-                vec2(width + 2.0 * space::XS, button + space::S),
+                pos2(centre - TITLE_WIDTH * 0.5, y),
+                vec2(TITLE_WIDTH, button + space::S),
             ))
-            .layout(Layout::left_to_right(Align::Min)),
+            .layout(Layout::top_down(Align::Center)),
     );
     ConsoleButton::new(label)
         .prominent(true)
