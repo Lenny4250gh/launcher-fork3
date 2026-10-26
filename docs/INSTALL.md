@@ -36,6 +36,14 @@ What games need from your system is up to AnyPS5:
 - a Vulkan 1.1 GPU. With Mesa drivers (AMD, Intel) games import memory through `/dev/udmabuf`: join the `kvm` group (`sudo usermod -aG kvm $USER`) and log in again. The launcher tells you when a game fails for this reason;
 - on Wayland a game's window cannot be found or placed from outside, so the launcher counts a game as shown after a few seconds, and fullscreen and size follow the game's own settings (F11 in the game).
 
+## macOS
+
+Apple silicon with macOS 11 or newer. Download `AnyPlay-Launcher-<version>-macos-arm64.zip`, unzip it, and move **AnyPlay Launcher.app** to Applications before opening it. Games may need Rosetta; macOS offers to install it when needed.
+
+The app is ad hoc signed, without an Apple Developer ID or notarization. If macOS says the developer cannot be verified, open **System Settings → Privacy & Security** and choose **Open Anyway**. On macOS 11 and 12 this is in **System Preferences → Security & Privacy**. Repeat after an update if macOS asks. Do not remove quarantine with a terminal command.
+
+The Mac toolkit currently comes from AnyPS5-ARM. Playing a game through AnyPlay's network bridge needs a macOS toolkit from AnyPlay's engine fork; the current toolkit does not provide it.
+
 ## First start
 
 1. Choose a language and a look.
