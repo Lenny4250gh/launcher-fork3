@@ -1,6 +1,7 @@
 //! The launcher's own update: a background check at the start and then every few hours while the
 //! launcher stays open, the download and its verification, and the swap when the launcher closes
-//! (or "Restart Now"). The work is in `anyps5_core::selfupdate`; this module owns the threads, the
+//! (or "Restart Now"). A launcher that a package manager owns (Flatpak, the AUR) only checks and
+//! never downloads or swaps: it tells the player to update with the package manager. The work is in `anyps5_core::selfupdate`; this module owns the threads, the
 //! timing and the state the interface shows (docs/DESIGN.md 9.5).
 //!
 //! Simulated services (the demo, the previews and the tests) never touch the network or the disk.
@@ -49,6 +50,10 @@ pub enum SelfUpdateEvent {
     /// A newer release exists but this launcher cannot replace itself (a Linux `.tar.gz`): the
     /// player takes it from the releases page. Nothing is downloaded.
     Manual(String),
+    /// A newer release exists but a package manager owns this launcher's files (Flatpak, the
+    /// AUR): the version, and the package manager's name. Nothing is downloaded or staged; the
+    /// player updates with the package manager.
+    Packaged { version: String, by: String },
     /// The check or the download failed. The text is for the log only.
     Failed(Failure, String),
 }
@@ -173,8 +178,10 @@ impl SelfUpdateService {
 
     fn start(&mut self, paths: &AppPaths) {
         // The file to replace; none for a launcher that cannot (the Linux `.tar.gz`), which is
-        // only told that a newer version exists.
+        // only told that a newer version exists. A launcher a package manager owns never has one
+        // and is told which package manager updates it.
         let exe = selfupdate::install_path();
+        let by = selfupdate::package_manager();
         self.busy = true;
         self.last_started = Some(Instant::now());
         let (tx, ctx, paths) = (self.tx.clone(), self.ctx.clone(), paths.clone());
@@ -184,9 +191,9 @@ impl SelfUpdateService {
                 let _ = tx.send(event);
                 ctx.request_repaint();
             };
-            match exe {
-                Some(exe) => work(&paths, &exe, have, &cancel, &send),
-                None => notice_only(&paths, &send),
+            match (exe, by) {
+                (Some(exe), None) => work(&paths, &exe, have, &cancel, &send),
+                (_, by) => notice_only(&paths, by.as_deref(), &send),
             }
         });
     }
@@ -258,6 +265,15 @@ impl SelfUpdateService {
                 self.busy = false;
                 if idle {
                     self.state = LauncherUpdate::Manual(version.clone());
+                }
+            }
+            SelfUpdateEvent::Packaged { version, by } => {
+                self.busy = false;
+                if idle {
+                    self.state = LauncherUpdate::Packaged {
+                        version: version.clone(),
+                        by: by.clone(),
+                    };
                 }
             }
             SelfUpdateEvent::Failed(failure, error) => {
@@ -422,7 +438,7 @@ fn work(
     let release = match selfupdate::check_cached(paths, current) {
         Ok(Some(release)) => release,
         Ok(None) => return send(SelfUpdateEvent::UpToDate),
-        Err(error) => return send_failure(&error, send),
+        Err(error) => return send_failure(&error, None, send),
     };
     if release.required() {
         send(SelfUpdateEvent::Required);
@@ -460,28 +476,40 @@ fn work(
 
 /// The worker of a launcher that cannot replace itself: the check alone, so About can say that a
 /// newer version is on the releases page.
-fn notice_only(paths: &AppPaths, send: &dyn Fn(SelfUpdateEvent)) {
+fn notice_only(paths: &AppPaths, by: Option<&str>, send: &dyn Fn(SelfUpdateEvent)) {
     send(SelfUpdateEvent::Checking);
     match selfupdate::check_cached(paths, env!("CARGO_PKG_VERSION")) {
         Ok(Some(release)) => {
             if release.required() {
                 send(SelfUpdateEvent::Required);
             }
-            send(SelfUpdateEvent::Manual(release.version().to_owned()));
+            send(newer_release(release.version(), by));
         }
         Ok(None) => send(SelfUpdateEvent::UpToDate),
-        Err(error) => send_failure(&error, send),
+        Err(error) => send_failure(&error, by, send),
+    }
+}
+
+/// What a newer release is to a launcher that cannot replace itself: a package manager's to
+/// install when one owns it, else the player's from the releases page.
+fn newer_release(version: &str, by: Option<&str>) -> SelfUpdateEvent {
+    match by {
+        Some(by) => SelfUpdateEvent::Packaged {
+            version: version.to_owned(),
+            by: by.to_owned(),
+        },
+        None => SelfUpdateEvent::Manual(version.to_owned()),
     }
 }
 
 /// A failed check. The one refusal that is a message to the player and not a quiet log line: the
 /// manifest requires an update and this launcher is too old to take it by itself, so it is
 /// required and comes from the releases page, like the `.tar.gz`.
-fn send_failure(error: &SelfUpdateError, send: &dyn Fn(SelfUpdateEvent)) {
+fn send_failure(error: &SelfUpdateError, by: Option<&str>, send: &dyn Fn(SelfUpdateEvent)) {
     match error.required_by_hand() {
         Some(version) => {
             send(SelfUpdateEvent::Required);
-            send(SelfUpdateEvent::Manual(version.to_owned()));
+            send(newer_release(version, by));
         }
         None => send(SelfUpdateEvent::Failed(error.failure(), error.to_string())),
     }
@@ -634,7 +662,11 @@ mod tests {
     fn a_launcher_too_old_to_update_itself_gets_a_download_link() {
         let seen = std::cell::RefCell::new(Vec::new());
         let send = |event| seen.borrow_mut().push(event);
-        send_failure(&SelfUpdateError::RequiredByHand("0.3.0".into()), &send);
+        send_failure(
+            &SelfUpdateError::RequiredByHand("0.3.0".into()),
+            None,
+            &send,
+        );
         let mut s = service();
         for event in seen.take() {
             s.apply(&event);
@@ -642,13 +674,68 @@ mod tests {
         assert!(s.required());
         assert_eq!(s.state, LauncherUpdate::Manual("0.3.0".into()));
         // Any other refusal stays what it was: quiet, and nothing is required.
-        send_failure(&SelfUpdateError::Digest, &send);
+        send_failure(&SelfUpdateError::Digest, None, &send);
         let mut s = service();
         for event in seen.take() {
             s.apply(&event);
         }
         assert!(!s.required());
         assert_eq!(s.state, LauncherUpdate::Failed(UpdateFailure::Refused));
+    }
+
+    #[test]
+    fn a_packaged_launcher_is_told_which_package_manager_updates_it() {
+        let mut s = service();
+        s.busy = true;
+        feed(&mut s, SelfUpdateEvent::Checking);
+        feed(&mut s, newer_release("0.3.0", Some("Flatpak")));
+        let packaged = LauncherUpdate::Packaged {
+            version: "0.3.0".into(),
+            by: "Flatpak".into(),
+        };
+        assert_eq!(s.state, packaged);
+        // Never a download: nothing staged, nothing for the exit to swap, the worker is free.
+        assert!(s.staged.is_none() && !s.busy);
+        assert!(s.finish().is_ok());
+        assert_eq!(s.state, packaged);
+        // Without a package manager the same release is the player's to download.
+        assert!(matches!(
+            newer_release("0.3.0", None),
+            SelfUpdateEvent::Manual(v) if v == "0.3.0"
+        ));
+        // A later check that finds nothing says so.
+        feed(&mut s, SelfUpdateEvent::UpToDate);
+        assert_eq!(s.state, LauncherUpdate::UpToDate);
+    }
+
+    #[test]
+    fn a_required_update_of_a_packaged_launcher_is_required_and_packaged() {
+        let seen = std::cell::RefCell::new(Vec::new());
+        let send = |event| seen.borrow_mut().push(event);
+        // The manifest retires this version and it is too old to update itself.
+        send_failure(
+            &SelfUpdateError::RequiredByHand("0.3.0".into()),
+            Some("AUR"),
+            &send,
+        );
+        let mut s = service();
+        for event in seen.take() {
+            s.apply(&event);
+        }
+        assert!(s.required());
+        assert_eq!(
+            s.state,
+            LauncherUpdate::Packaged {
+                version: "0.3.0".into(),
+                by: "AUR".into()
+            }
+        );
+        // A check that finds a newer, required release does the same.
+        let mut s = service();
+        feed(&mut s, SelfUpdateEvent::Required);
+        feed(&mut s, newer_release("0.4.0", Some("AUR")));
+        assert!(s.required());
+        assert!(matches!(s.state, LauncherUpdate::Packaged { .. }));
     }
 
     #[test]

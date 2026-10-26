@@ -244,6 +244,10 @@ pub enum LauncherUpdate {
     /// A newer version exists but this launcher cannot install it itself (the Linux `.tar.gz`):
     /// its version. The player takes it from the releases page.
     Manual(String),
+    /// A newer version exists but a package manager owns this launcher's files (Flatpak, the AUR):
+    /// the version, and the package manager's name as players know it. Nothing is downloaded; the
+    /// player updates with the package manager.
+    Packaged { version: String, by: String },
     /// The check or the download failed.
     Failed(UpdateFailure),
 }
@@ -1482,6 +1486,10 @@ fn launcher_update_rows(
             note(U::NoteManual.text(language).to_owned()),
             download(),
         ],
+        LauncherUpdate::Packaged { version: v, by } => vec![
+            status(U::Available.format(language, &version(v))),
+            note(U::NotePackaged.format(language, &[Arg::Str(v), Arg::Str(by)])),
+        ],
         LauncherUpdate::Failed(UpdateFailure::Offline) => vec![
             status(U::NotReachable.text(language).to_owned()),
             note(U::NoteOffline.text(language).to_owned()),
@@ -2641,6 +2649,26 @@ mod tests {
             assert!(rows.contains(&"launcherDownload"), "{rows:?}");
             assert!(!rows.contains(&"restartNow"));
         }
+        // A package manager owns the files: the note names it, and there is no download.
+        let packaged = LauncherUpdate::Packaged {
+            version: "0.2.0".into(),
+            by: "Flatpak".into(),
+        };
+        let ids = row_ids(&about_rows(packaged.clone()));
+        assert!(!ids.contains(&"launcherDownload") && !ids.contains(&"restartNow"));
+        let mut e = env(None, UpdateState::Unknown);
+        e.launcher = packaged;
+        let cats = build_categories(&Preferences::first_run(), &e, Language::English);
+        let about = cats.iter().find(|c| c.category == Category::About).unwrap();
+        let note = about
+            .rows
+            .iter()
+            .find(|r| r.id == "launcherUpdateNote")
+            .unwrap();
+        assert_eq!(
+            note.title,
+            "Version 0.2.0 is available. Flatpak updates the launcher."
+        );
         // Offline: a retry, never a download.
         let offline = row_ids(&about_rows(LauncherUpdate::Failed(UpdateFailure::Offline)));
         assert!(offline.contains(&"launcherCheck") && !offline.contains(&"launcherDownload"));

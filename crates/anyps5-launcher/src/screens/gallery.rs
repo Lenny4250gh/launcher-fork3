@@ -12,7 +12,8 @@
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
 //!                           update-required|update-required-downloading|update-required-failed|
-//!                           update-required-download|update-required-offline|
+//!                           update-required-download|update-required-packaged|
+//!                           update-required-packaged-long|update-required-offline|
 //!                           saves|saves-empty|restore|toolkit-missing|
 //!                           online|online-browser|online-friends|online-friends-busy|
 //!                           online-friends-empty|online-requests|online-friend|
@@ -496,6 +497,10 @@ pub enum RequiredLook {
     Failed,
     /// This launcher cannot install itself: Download from GitHub.
     Download,
+    /// A package manager owns this launcher: the screen says to update with it, no download.
+    Packaged,
+    /// The same with a package manager name as long as one may be.
+    PackagedLong,
     /// The player asked for the online area and was turned back: the reason says so, and the
     /// focus is on Play Offline.
     OnlineClosed,
@@ -513,9 +518,20 @@ impl RequiredLook {
             },
             RequiredLook::Failed => LauncherUpdate::Failed(UpdateFailure::Offline),
             RequiredLook::Download => LauncherUpdate::Manual(version),
+            RequiredLook::Packaged => LauncherUpdate::Packaged {
+                version,
+                by: "Flatpak".into(),
+            },
+            RequiredLook::PackagedLong => LauncherUpdate::Packaged {
+                version,
+                by: LONG_PACKAGE_MANAGER.into(),
+            },
         }
     }
 }
+
+/// The longest name a package manager may have (32 characters): the marker file allows no more.
+const LONG_PACKAGE_MANAGER: &str = "Distribution Package Manager X12";
 
 /// Where the launcher's own update stands on the About page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -527,6 +543,10 @@ pub enum UpdateLook {
     Ready,
     Holding,
     ReadOnly,
+    /// A package manager updates the launcher.
+    Packaged,
+    /// The same with the longest package manager name there can be.
+    PackagedLong,
     Offline,
     Refused,
 }
@@ -546,6 +566,14 @@ impl UpdateLook {
             UpdateLook::Ready => LauncherUpdate::Ready(version),
             UpdateLook::Holding => LauncherUpdate::Holding(version),
             UpdateLook::ReadOnly => LauncherUpdate::ReadOnly(version),
+            UpdateLook::Packaged => LauncherUpdate::Packaged {
+                version,
+                by: "Flatpak".into(),
+            },
+            UpdateLook::PackagedLong => LauncherUpdate::Packaged {
+                version,
+                by: LONG_PACKAGE_MANAGER.into(),
+            },
             UpdateLook::Offline => LauncherUpdate::Failed(UpdateFailure::Offline),
             UpdateLook::Refused => LauncherUpdate::Failed(UpdateFailure::Refused),
         }
@@ -787,6 +815,8 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "about-update-downloading" => ScreenPage::AboutUpdate(UpdateLook::Downloading),
         "about-update-holding" => ScreenPage::AboutUpdate(UpdateLook::Holding),
         "about-update-readonly" => ScreenPage::AboutUpdate(UpdateLook::ReadOnly),
+        "about-update-packaged" => ScreenPage::AboutUpdate(UpdateLook::Packaged),
+        "about-update-packaged-long" => ScreenPage::AboutUpdate(UpdateLook::PackagedLong),
         "about-update-offline" => ScreenPage::AboutUpdate(UpdateLook::Offline),
         "about-update-refused" => ScreenPage::AboutUpdate(UpdateLook::Refused),
         "whats-new-launcher" => ScreenPage::WhatsNewLauncher,
@@ -794,6 +824,8 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "update-required-downloading" => ScreenPage::Required(RequiredLook::Downloading),
         "update-required-failed" => ScreenPage::Required(RequiredLook::Failed),
         "update-required-download" => ScreenPage::Required(RequiredLook::Download),
+        "update-required-packaged" => ScreenPage::Required(RequiredLook::Packaged),
+        "update-required-packaged-long" => ScreenPage::Required(RequiredLook::PackagedLong),
         "update-required-offline" => ScreenPage::Required(RequiredLook::OnlineClosed),
         "behavior-links" => ScreenPage::BehaviourLinks,
         "settings-codec" => ScreenPage::SettingsCodec(true),

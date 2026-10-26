@@ -55,6 +55,11 @@
 //! file is copied to a sibling temp file, hash-checked against the manifest, made executable
 //! and renamed over the original, which Linux allows while the old image runs. A launcher
 //! that is not an AppImage (the `.tar.gz`) has no install path and stays manual.
+//!
+//! A launcher that a package manager installed (Flatpak, the AUR) never replaces its own files: the
+//! package manager owns them. The package says so with a marker file ([`package_manager`]), not the
+//! binary, because the packages reuse the release binary. Such a launcher only checks, and tells
+//! the player to update with their package manager.
 
 use std::fs;
 use std::io;
@@ -923,10 +928,56 @@ fn hash_file(path: &Path) -> io::Result<String> {
     Ok(toolkit::hex(&hasher.finalize()))
 }
 
+/// Where a package puts the marker file, from the folder above the one the program is in. Flatpak
+/// installs the program at `/app/bin`, so the marker is `/app/share/anyplay-launcher/package-manager`;
+/// an Arch package at `/usr/bin` has `/usr/share/anyplay-launcher/package-manager`.
+const PACKAGE_MARKER: &str = "share/anyplay-launcher/package-manager";
+/// How much of the marker is read. Only its first line counts, and a short one.
+const PACKAGE_MARKER_READ: u64 = 256;
+/// The longest name a package manager may have, in characters.
+const PACKAGE_MANAGER_NAME_MAX: usize = 32;
+
+/// The package manager that installed this launcher, as players know it (`Flatpak`, `AUR`), or
+/// `None` for a launcher that did not come from one. The package says so by writing a marker file
+/// when it is built (see [`package_manager_at`]); the binary is the release binary and does not
+/// know. Only Linux has packages; Windows and macOS never read a marker.
+pub fn package_manager() -> Option<String> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    package_manager_at(&std::env::current_exe().ok()?)
+}
+
+/// The package manager named by the marker file beside the program `exe`: the first line of
+/// `<folder of exe>/../share/anyplay-launcher/package-manager`. `None` when the file is missing or
+/// unreadable, or the line is empty, longer than 32 characters or has a control character: the
+/// name is shown to the player, so a file that is not a plain short name is not trusted.
+fn package_manager_at(exe: &Path) -> Option<String> {
+    use std::io::Read;
+    let marker = exe.parent()?.parent()?.join(PACKAGE_MARKER);
+    let mut bytes = Vec::new();
+    fs::File::open(marker)
+        .ok()?
+        .take(PACKAGE_MARKER_READ)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    let line = bytes.split(|byte| *byte == b'\n').next()?;
+    let name = std::str::from_utf8(line).ok()?.trim();
+    let plain = !name.is_empty()
+        && name.chars().count() <= PACKAGE_MANAGER_NAME_MAX
+        && !name.chars().any(char::is_control);
+    plain.then(|| name.to_owned())
+}
+
 /// The file the launcher would replace with an update, `None` when it cannot update itself in
 /// place and an update stays manual: on Windows the running exe; on Linux the AppImage that is
-/// running (see [`appimage_path`]), so a launcher started from the `.tar.gz` has none.
+/// running (see [`appimage_path`]), so a launcher started from the `.tar.gz` has none. A launcher
+/// that a package manager installed never has one, whatever else says so: its files are the
+/// package manager's.
 pub fn install_path() -> Option<PathBuf> {
+    if package_manager().is_some() {
+        return None;
+    }
     match Platform::current()? {
         Platform::Windows => std::env::current_exe().ok(),
         Platform::MacosArm64 => {
@@ -1289,6 +1340,72 @@ mod tests {
 
     fn v(text: &str) -> Version {
         Version::parse(text).unwrap_or_else(|| panic!("{text} should parse"))
+    }
+
+    /// A layout like a package's: `<root>/bin/anyplay-launcher` and, when `marker` is given,
+    /// `<root>/share/anyplay-launcher/package-manager` with those bytes.
+    fn packaged(marker: Option<&[u8]>) -> (tempfile::TempDir, PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let exe = root.path().join("bin").join("anyplay-launcher");
+        fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        fs::write(&exe, b"binary").unwrap();
+        if let Some(bytes) = marker {
+            let file = root.path().join(PACKAGE_MARKER);
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(file, bytes).unwrap();
+        }
+        (root, exe)
+    }
+
+    #[test]
+    fn no_marker_means_no_package_manager() {
+        let (_root, exe) = packaged(None);
+        assert_eq!(package_manager_at(&exe), None);
+    }
+
+    #[test]
+    fn the_first_line_of_the_marker_names_the_package_manager() {
+        for (bytes, name) in [
+            (&b"Flatpak\n"[..], "Flatpak"),
+            (b"AUR\nignored", "AUR"),
+            (b"  AUR \r\n", "AUR"),
+            (b"Flatpak", "Flatpak"),
+            (b"Nix Store\n", "Nix Store"),
+        ] {
+            let (_root, exe) = packaged(Some(bytes));
+            assert_eq!(package_manager_at(&exe).as_deref(), Some(name), "{bytes:?}");
+        }
+    }
+
+    #[test]
+    fn a_marker_that_is_not_a_plain_short_name_is_ignored() {
+        let long = "x".repeat(33);
+        let fits = "x".repeat(32);
+        let unreadable = [0xff, 0xfe, b'\n'];
+        for (bytes, expected) in [
+            (&b""[..], None),
+            (b"\n", None),
+            (b"  \t \n", None),
+            (b"\nFlatpak\n", None),
+            (long.as_bytes(), None),
+            (b"Flat\x1b[31mpak\n", None),
+            (b"Flat\0pak\n", None),
+            (&unreadable, None),
+            (fits.as_bytes(), Some(fits.as_str())),
+        ] {
+            let (_root, exe) = packaged(Some(bytes));
+            assert_eq!(package_manager_at(&exe).as_deref(), expected, "{bytes:?}");
+        }
+        // Far more than is read, with no end of line: not a name.
+        let (_root, exe) = packaged(Some(&[b'a'; 4096]));
+        assert_eq!(package_manager_at(&exe), None);
+    }
+
+    #[test]
+    fn a_marker_that_is_a_folder_is_ignored() {
+        let (root, exe) = packaged(None);
+        fs::create_dir_all(root.path().join(PACKAGE_MARKER)).unwrap();
+        assert_eq!(package_manager_at(&exe), None);
     }
 
     #[test]

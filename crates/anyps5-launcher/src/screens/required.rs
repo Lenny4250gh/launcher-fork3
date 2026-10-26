@@ -97,7 +97,9 @@ pub fn plan(update: &LauncherUpdate) -> Primary {
         | LauncherUpdate::Checking
         | LauncherUpdate::Available(_)
         | LauncherUpdate::Downloading { .. }
-        | LauncherUpdate::Holding(_) => Primary::UpdateNow { enabled: false },
+        | LauncherUpdate::Holding(_)
+        // The package manager does the update; there is nothing to press here.
+        | LauncherUpdate::Packaged { .. } => Primary::UpdateNow { enabled: false },
         LauncherUpdate::UpToDate | LauncherUpdate::Failed(UpdateFailure::Offline) => {
             Primary::TryAgain
         }
@@ -117,7 +119,9 @@ pub fn target(update: &LauncherUpdate) -> Option<&str> {
         | LauncherUpdate::Holding(v)
         | LauncherUpdate::ReadOnly(v)
         | LauncherUpdate::Manual(v) => Some(v),
-        LauncherUpdate::Downloading { version, .. } => Some(version),
+        LauncherUpdate::Downloading { version, .. } | LauncherUpdate::Packaged { version, .. } => {
+            Some(version)
+        }
         _ => None,
     }
 }
@@ -145,6 +149,10 @@ pub fn status(update: &LauncherUpdate, language: Language) -> (String, Option<f3
         LauncherUpdate::UpToDate => (U::RequiredNoNewer.text(language).to_owned(), None),
         LauncherUpdate::ReadOnly(_) => (U::NoteReadOnly.text(language).to_owned(), None),
         LauncherUpdate::Manual(_) => (U::RequiredNoteManual.text(language).to_owned(), None),
+        LauncherUpdate::Packaged { by, .. } => (
+            U::RequiredNotePackaged.format(language, &[Arg::Str(by)]),
+            None,
+        ),
         LauncherUpdate::Failed(UpdateFailure::Offline) => {
             (U::RequiredOffline.text(language).to_owned(), None)
         }
@@ -625,6 +633,21 @@ mod tests {
         ] {
             assert_eq!(plan(&state), Primary::Download, "{state:?}");
         }
+    }
+
+    #[test]
+    fn a_packaged_launcher_is_told_to_update_with_its_package_manager() {
+        let state = LauncherUpdate::Packaged {
+            version: v("0.3.0"),
+            by: v("Flatpak"),
+        };
+        // Nothing to press, so never a download; the way out has the focus.
+        assert_eq!(plan(&state), Primary::UpdateNow { enabled: false });
+        assert_eq!(target(&state), Some("0.3.0"));
+        let (text, fraction) = status(&state, Language::English);
+        assert_eq!(text, "Update the launcher with Flatpak.");
+        assert_eq!(fraction, None);
+        assert!(reason_line(Reason::Retired, &state, Language::English).contains("0.3.0"));
     }
 
     #[test]

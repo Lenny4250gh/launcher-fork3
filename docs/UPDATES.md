@@ -84,6 +84,14 @@ The same signed manifest updates the AppImage. Every rule above (signature, expi
 - **No AppImage, no swap.** A launcher from the `.tar.gz` (no `APPIMAGE`) cannot replace itself. It still checks the signed manifest, and About shows "<v> available" with *Download from GitHub*; nothing is downloaded.
 - **The download** must be a 64-bit ELF with the AppImage type 2 magic after its header, on top of the hash and the size.
 
+## Linux: installed by a package manager
+
+A launcher that Flatpak or the AUR installed never replaces its own files: the package manager owns them. The package says so with a marker file, written when the package is built, because the packages reuse the release binary and the binary itself cannot know (`selfupdate::package_manager`):
+
+- **The marker.** `<folder of the running program>/../share/anyplay-launcher/package-manager`, a small text file whose first line names the package manager as players know it: `Flatpak` (the program is at `/app/bin`, the marker at `/app/share/anyplay-launcher/package-manager`) or `AUR` (`/usr/bin` and `/usr/share/anyplay-launcher/package-manager`). Only the first 256 bytes are read. A missing or unreadable file, an empty first line, a name longer than 32 characters or one with a control character means the launcher is not packaged: the name is shown to the player, so only a plain short one is trusted.
+- **No install path.** `install_path` returns nothing for a packaged launcher, whatever `APPIMAGE` or the platform says, so nothing can be staged or swapped. The launcher still checks the signed manifest and nothing else: About shows "<v> available" with "Version <v> is available. <manager> updates the launcher." and no download button.
+- **A required update** (the manifest's `minimum_version`, or the cloud turning the launcher away) still shows the "Update required" screen, but its note says "Update the launcher with <manager>." and it has no *Download from GitHub* button; *Play Offline* is the only button that acts.
+
 ## Retiring a version
 
 Retiring means: a launcher below some version must update before it goes online. It can still play offline (DESIGN.md [9.5.1](DESIGN.md#951-a-required-update)). Two independent switches do it, alone or together. Both are **off** by default, and nothing in the repositories sets them.
