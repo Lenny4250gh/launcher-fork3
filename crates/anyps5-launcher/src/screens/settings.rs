@@ -23,6 +23,7 @@ use crate::screens::clips_strings::ClipsText;
 use crate::screens::convert;
 use crate::screens::dialogs;
 use crate::screens::discord_strings::DiscordText;
+use crate::screens::feel_strings::{FeelText, volume_text};
 use crate::screens::format::{abbreviate_path, home_dir};
 use crate::screens::ingame::InGameText;
 use crate::screens::ludus::{self, LudusAction};
@@ -493,11 +494,11 @@ pub fn build_categories(
         Row::choice(
             "theme",
             t(Key::Theme),
-            Theme::ALL
+            Theme::CHOICES
                 .iter()
                 .map(|x| x.title(language).to_owned())
                 .collect(),
-            Theme::ALL
+            Theme::CHOICES
                 .iter()
                 .position(|x| *x == convert::theme(prefs.theme))
                 .unwrap_or(0),
@@ -553,6 +554,24 @@ pub fn build_categories(
             usize::from(prefs.reduced_motion),
         )
         .icon(Icon::WIND),
+    );
+    appearance.push(
+        Row::toggle(
+            "largerText",
+            FeelText::LargerText.text(language),
+            prefs.larger_text,
+        )
+        .detail(FeelText::LargerTextDetail.text(language))
+        .icon(Icon::TEXT_AA),
+    );
+    appearance.push(
+        Row::toggle(
+            "highContrast",
+            FeelText::HighContrast.text(language),
+            prefs.high_contrast,
+        )
+        .detail(FeelText::HighContrastDetail.text(language))
+        .icon(Icon::CIRCLE_HALF),
     );
 
     // Library
@@ -623,17 +642,71 @@ pub fn build_categories(
         .detail(Extra::ShowHiddenTrophiesDetail.text(language))
         .icon(Icon::TROPHY),
         Row::caption("soundCaption", words::Sound.text(language)).group_start(),
-        Row::toggle("sounds", t(Key::Sounds), prefs.sounds).icon(Icon::SPEAKER_HIGH),
-        Row::toggle("music", Extra::HomeMusic.text(language), prefs.music)
-            .detail(Extra::HomeMusicDetail.text(language))
-            .icon(Icon::MUSIC_NOTES),
-        Row::toggle(
-            "gameMusic",
-            Extra::GameMusic.text(language),
+    ];
+    // Each kind of sound: its switch, and its volume while it is on.
+    let sound_rows = [
+        (
+            Row::toggle("sounds", t(Key::Sounds), prefs.sounds).icon(Icon::SPEAKER_HIGH),
+            prefs.sounds,
+            volume_row(
+                "volInterface",
+                FeelText::VolumeInterface,
+                prefs.volume_interface,
+                language,
+            ),
+        ),
+        (
+            Row::toggle("music", Extra::HomeMusic.text(language), prefs.music)
+                .detail(Extra::HomeMusicDetail.text(language))
+                .icon(Icon::MUSIC_NOTES),
+            prefs.music,
+            volume_row(
+                "volMusic",
+                FeelText::VolumeMusic,
+                prefs.volume_music,
+                language,
+            ),
+        ),
+        (
+            Row::toggle(
+                "gameMusic",
+                Extra::GameMusic.text(language),
+                prefs.game_music,
+            )
+            .detail(Extra::GameMusicDetail.text(language))
+            .icon(Icon::GAME_CONTROLLER),
             prefs.game_music,
-        )
-        .detail(Extra::GameMusicDetail.text(language))
-        .icon(Icon::GAME_CONTROLLER),
+            volume_row(
+                "volGameMusic",
+                FeelText::VolumeGameMusic,
+                prefs.volume_game_music,
+                language,
+            ),
+        ),
+        (
+            Row::toggle(
+                "notifSounds",
+                FeelText::NotificationSounds.text(language),
+                prefs.notification_sounds,
+            )
+            .detail(FeelText::NotificationSoundsDetail.text(language))
+            .icon(Icon::HEADPHONES),
+            prefs.notification_sounds,
+            volume_row(
+                "volNotif",
+                FeelText::VolumeNotifications,
+                prefs.volume_notifications,
+                language,
+            ),
+        ),
+    ];
+    for (switch, on, volume) in sound_rows {
+        behaviour.push(switch);
+        if on {
+            behaviour.push(volume);
+        }
+    }
+    behaviour.extend([
         Row::caption("controllerCaption", words::Controller.text(language)).group_start(),
         Row::choice(
             "vibration",
@@ -657,7 +730,7 @@ pub fn build_categories(
         .icon(Icon::GAME_CONTROLLER),
         // Where a player looks when the launcher does not react to the pad: the end of its group.
         Row::info("controllerHelp", Extra::ControllerHelp.text(language), None),
-    ];
+    ]);
     // The recorder is the share worker, which captures windows on Windows only.
     if env.windows_rows {
         behaviour
@@ -1237,6 +1310,36 @@ fn about_page(row: &str) -> Option<&'static str> {
     })
 }
 
+/// A volume row: 0 to 100 percent in steps of ten, Off at zero.
+fn volume_row(id: rows::RowId, title: FeelText, percent: u8, language: Language) -> Row {
+    Row::stepper(
+        id,
+        title.text(language),
+        i32::from(percent),
+        (0, 100),
+        10,
+        volume_text(percent, language),
+    )
+}
+
+fn percent(value: i32) -> u8 {
+    value.clamp(0, 100) as u8
+}
+
+/// The volumes the sound engine is given.
+pub fn volumes_of(prefs: &Preferences) -> crate::ui::sound::Volumes {
+    crate::ui::sound::Volumes {
+        interface: f32::from(prefs.volume_interface) / 100.0,
+        music: f32::from(prefs.volume_music) / 100.0,
+        game_music: f32::from(prefs.volume_game_music) / 100.0,
+        notifications: if prefs.notification_sounds {
+            f32::from(prefs.volume_notifications) / 100.0
+        } else {
+            0.0
+        },
+    }
+}
+
 /// Applies the preferences that the shell shows: theme and accent, language, motion, sounds. The
 /// host calls it once after loading the preferences; the panel calls it after every change.
 pub fn apply_preferences(shell: &mut Shell, ctx: &Context, prefs: &Preferences) {
@@ -1247,6 +1350,9 @@ pub fn apply_preferences(shell: &mut Shell, ctx: &Context, prefs: &Preferences) 
     shell.language = convert::language(prefs.language);
     shell.set_reduced_motion(ctx, prefs.reduced_motion);
     shell.sounds.enabled = prefs.sounds;
+    shell.sounds.set_volumes(volumes_of(prefs));
+    crate::ui::theme::set_larger_text(prefs.larger_text);
+    crate::ui::theme::set_high_contrast(prefs.high_contrast);
     shell.set_vibration(convert::vibration(prefs.vibration));
 }
 
@@ -1259,7 +1365,7 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             row: "theme",
             index,
         } => {
-            if let Some(theme) = Theme::ALL.get(*index) {
+            if let Some(theme) = Theme::CHOICES.get(*index) {
                 prefs.theme = convert::theme_to_core(*theme);
             }
         }
@@ -1272,6 +1378,34 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             }
         }
         Change::Toggle { row: "artwork", on } => prefs.game_artwork = *on,
+        Change::Toggle {
+            row: "largerText",
+            on,
+        } => prefs.larger_text = *on,
+        Change::Toggle {
+            row: "highContrast",
+            on,
+        } => prefs.high_contrast = *on,
+        Change::Toggle {
+            row: "notifSounds",
+            on,
+        } => prefs.notification_sounds = *on,
+        Change::Stepper {
+            row: "volInterface",
+            value,
+        } => prefs.volume_interface = percent(*value),
+        Change::Stepper {
+            row: "volMusic",
+            value,
+        } => prefs.volume_music = percent(*value),
+        Change::Stepper {
+            row: "volGameMusic",
+            value,
+        } => prefs.volume_game_music = percent(*value),
+        Change::Stepper {
+            row: "volNotif",
+            value,
+        } => prefs.volume_notifications = percent(*value),
         Change::Toggle { row: "glass", on } => prefs.glass_window = *on,
         Change::Choice {
             row: "motion",
@@ -2033,13 +2167,30 @@ mod tests {
         let cats = build_categories(&prefs, &e, Language::English);
         assert_eq!(
             ids(&cats, Category::Appearance),
-            ["theme", "accent", "backdrop", "artwork", "motion"]
+            [
+                "theme",
+                "accent",
+                "backdrop",
+                "artwork",
+                "motion",
+                "largerText",
+                "highContrast"
+            ]
         );
         prefs.backdrop = Backdrop::Image;
         let cats = build_categories(&prefs, &e, Language::English);
         assert_eq!(
             ids(&cats, Category::Appearance),
-            ["theme", "accent", "backdrop", "file", "artwork", "motion"],
+            [
+                "theme",
+                "accent",
+                "backdrop",
+                "file",
+                "artwork",
+                "motion",
+                "largerText",
+                "highContrast"
+            ],
             "the file row appears with a picture backdrop"
         );
     }

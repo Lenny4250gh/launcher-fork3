@@ -427,6 +427,7 @@ impl TrophyListPanel {
         let id = ui.make_persistent_id("trophy-rows");
         let (follow, scroll_to) = Follow::begin(&ctx, id, Some(self.index));
         let mut area = egui::ScrollArea::vertical()
+            .scroll_source(crate::screens::scroll::drag_scroll())
             .id_salt(id)
             .auto_shrink([false, false])
             .scroll_bar_visibility(

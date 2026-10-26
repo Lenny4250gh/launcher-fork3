@@ -1206,6 +1206,7 @@ fn list(ui: &mut Ui, entries: &[Entry], focus: Option<usize>, language: Language
     let mut events = Vec::new();
     let mut geometry: Vec<(f32, f32)> = Vec::with_capacity(entries.len());
     let mut area = ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden);
@@ -1548,7 +1549,7 @@ fn wrapped(
     let mut job =
         egui::text::LayoutJob::simple(text.to_owned(), style.font(), Color32::PLACEHOLDER, width);
     job.wrap.break_anywhere = true;
-    job.sections[0].format.line_height = Some(style.size * leading);
+    job.sections[0].format.line_height = Some(style.px() * leading);
     painter.layout_job(job)
 }
 

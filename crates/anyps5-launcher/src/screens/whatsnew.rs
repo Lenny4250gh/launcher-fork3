@@ -492,6 +492,7 @@ impl WhatsNewPanel {
         let follow = std::mem::take(&mut self.follow);
         let cursor = self.cursor;
         ScrollArea::vertical()
+            .scroll_source(crate::screens::scroll::drag_scroll())
             .id_salt("whats-new-list")
             .auto_shrink([false, false])
             .show_viewport(ui, |ui, viewport| {

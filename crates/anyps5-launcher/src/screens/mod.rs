@@ -39,6 +39,7 @@ pub mod dialog;
 pub mod dialogs;
 pub mod discord_strings;
 pub mod failure_strings;
+pub mod feel_strings;
 pub mod format;
 pub mod friends;
 pub mod friends_strings;

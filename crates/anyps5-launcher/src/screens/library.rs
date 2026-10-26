@@ -303,6 +303,7 @@ fn draw(
     let focus_row = focus / columns;
     let (follow, scroll_to) = Follow::begin(&ctx, id, Some(focus_row));
     let mut area_scroll = egui::ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden);

@@ -76,6 +76,11 @@ fn yes() -> bool {
     true
 }
 
+/// A volume that has not been touched: full, as the sounds always were.
+fn hundred() -> u8 {
+    100
+}
+
 fn default_window_size() -> u32 {
     75
 }
@@ -390,6 +395,8 @@ pub enum Theme {
     Cosmic,
     Aurora,
     Sunset,
+    /// The colours of the selected game's art (0.3.0).
+    GameColors,
 }
 
 impl Serialize for Theme {
@@ -398,6 +405,7 @@ impl Serialize for Theme {
             Theme::Cosmic => 0,
             Theme::Aurora => 1,
             Theme::Sunset => 2,
+            Theme::GameColors => 3,
         })
     }
 }
@@ -407,6 +415,7 @@ impl<'de> Deserialize<'de> for Theme {
         Ok(match u64::deserialize(d)? {
             1 => Theme::Aurora,
             2 => Theme::Sunset,
+            3 => Theme::GameColors,
             _ => Theme::Cosmic,
         })
     }
@@ -496,6 +505,27 @@ pub struct Preferences {
     /// The selected game's own music (`sce_sys/snd0.at9`) in place of the home screen music.
     #[serde(default = "yes")]
     pub game_music: bool,
+    /// How loud the interface sounds are, 0 to 100 percent.
+    #[serde(default = "hundred")]
+    pub volume_interface: u8,
+    /// How loud the home screen music is, 0 to 100 percent.
+    #[serde(default = "hundred")]
+    pub volume_music: u8,
+    /// How loud the selected game's own music is, 0 to 100 percent.
+    #[serde(default = "hundred")]
+    pub volume_game_music: u8,
+    /// How loud notification sounds (a message, a request, an invitation, a call) are, 0 to 100.
+    #[serde(default = "hundred")]
+    pub volume_notifications: u8,
+    /// Notification sounds are on; off mutes them while the interface sounds go on.
+    #[serde(default = "yes")]
+    pub notification_sounds: bool,
+    /// Larger Text: the type scale one step up.
+    #[serde(default)]
+    pub larger_text: bool,
+    /// High Contrast: brighter ink and edges, no glass blur.
+    #[serde(default)]
+    pub high_contrast: bool,
     /// The running game on the player's Discord profile. Off until the player turns it on: it
     /// tells other people what they play (7.4).
     #[serde(default)]
@@ -649,6 +679,13 @@ impl Default for Preferences {
             sounds: true,
             music: true,
             game_music: true,
+            volume_interface: 100,
+            volume_music: 100,
+            volume_game_music: 100,
+            volume_notifications: 100,
+            notification_sounds: true,
+            larger_text: false,
+            high_contrast: false,
             discord_presence: false,
             discord_join_button: true,
             hide_while_playing: false,
@@ -1431,6 +1468,8 @@ mod tests {
         assert_eq!(prefs.theme, Theme::Cosmic);
         assert_eq!(prefs.accent, None);
         assert_eq!(prefs.backdrop, Backdrop::Theme);
+        assert_eq!(prefs.volume_music, 100);
+        assert!(prefs.notification_sounds && !prefs.larger_text && !prefs.high_contrast);
         assert_eq!(prefs.language, Language::English);
         assert_eq!(prefs.cpu_conversion, CpuConversion::Auto);
     }

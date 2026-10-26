@@ -55,7 +55,7 @@ fn lay_out(painter: &egui::Painter, page: &StatePage<'_>) -> Laid {
             NOTE_WIDTH,
         );
         job.halign = Align::Center;
-        job.sections[0].format.line_height = Some(1.45 * ty::NOTE.size);
+        job.sections[0].format.line_height = Some(1.45 * ty::NOTE.px());
         painter.layout_job(job)
     });
     let height = DISC

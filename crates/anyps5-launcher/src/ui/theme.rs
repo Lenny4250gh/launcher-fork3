@@ -6,6 +6,7 @@
 //! multiplies by one global scale). Widgets therefore use these numbers as they are.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use egui::epaint::Shadow;
 use egui::{Color32, Context, FontData, FontDefinitions, FontFamily, FontId, FontTweak, RichText};
@@ -105,24 +106,70 @@ pub fn mix(from: Color32, to: Color32, t: f32) -> Color32 {
     Color32::from_rgba_unmultiplied(l(a[0], b[0]), l(a[1], b[1]), l(a[2], b[2]), l(a[3], b[3]))
 }
 
-/// The three built-in looks: an animated background plus a default accent.
+/// High Contrast (docs/DESIGN.md 3.14): brighter ink and edges and no frosted glass. Set by the
+/// shell from the preference; read by the colour tokens and the glass.
+static HIGH_CONTRAST: AtomicBool = AtomicBool::new(false);
+
+pub fn set_high_contrast(on: bool) {
+    HIGH_CONTRAST.store(on, Ordering::Relaxed);
+}
+
+pub fn high_contrast() -> bool {
+    HIGH_CONTRAST.load(Ordering::Relaxed)
+}
+
+/// Larger Text: every size of the type scale times this, one step up the scale (16 to 18, 17 to 19,
+/// 19 to 21, 22 to 25).
+pub const LARGER_TEXT: f32 = 1.12;
+static TEXT_SCALE: AtomicU32 = AtomicU32::new(0x3f80_0000);
+
+pub fn set_larger_text(on: bool) {
+    let scale: f32 = if on { LARGER_TEXT } else { 1.0 };
+    TEXT_SCALE.store(scale.to_bits(), Ordering::Relaxed);
+}
+
+/// The factor every text role is drawn at: 1, or [`LARGER_TEXT`].
+pub fn text_scale() -> f32 {
+    f32::from_bits(TEXT_SCALE.load(Ordering::Relaxed))
+}
+
+/// The built-in looks: an animated background plus a default accent. The fourth takes its colours
+/// from the selected game's art ([`crate::ui::gamecolors`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum Theme {
     #[default]
     Cosmic,
     Aurora,
     Sunset,
+    GameColors,
 }
 
 impl Theme {
+    /// The fixed looks, which the onboarding cards and the gallery show.
     pub const ALL: [Theme; 3] = [Theme::Cosmic, Theme::Aurora, Theme::Sunset];
+    /// What Settings offers: the fixed looks, then Game Colors.
+    pub const CHOICES: [Theme; 4] = [
+        Theme::Cosmic,
+        Theme::Aurora,
+        Theme::Sunset,
+        Theme::GameColors,
+    ];
 
-    /// 0 = Cosmic, 1 = Aurora, 2 = Sunset (also the shader's theme index).
+    /// 0 = Cosmic, 1 = Aurora, 2 = Sunset, 3 = Game Colors.
     pub const fn index(self) -> u32 {
         match self {
             Theme::Cosmic => 0,
             Theme::Aurora => 1,
             Theme::Sunset => 2,
+            Theme::GameColors => 3,
+        }
+    }
+
+    /// The pattern the backdrop shader paints: Game Colors paints Cosmic's, in its own colours.
+    pub const fn shader_index(self) -> u32 {
+        match self {
+            Theme::GameColors => 0,
+            other => other.index(),
         }
     }
 
@@ -130,6 +177,7 @@ impl Theme {
         match index {
             1 => Theme::Aurora,
             2 => Theme::Sunset,
+            3 => Theme::GameColors,
             _ => Theme::Cosmic,
         }
     }
@@ -140,13 +188,17 @@ impl Theme {
             Theme::Cosmic => Key::ThemeCosmic,
             Theme::Aurora => Key::ThemeAurora,
             Theme::Sunset => Key::ThemeSunset,
+            Theme::GameColors => {
+                return crate::screens::feel_strings::FeelText::ThemeGameColors.text(language);
+            }
         })
     }
 
     /// Deep, middle and bright tones the shader blends (display-referred sRGB floats).
     pub const fn palette(self) -> Palette {
         match self {
-            Theme::Cosmic => Palette {
+            // Game Colors has none of its own until a game gives it one: Cosmic's.
+            Theme::Cosmic | Theme::GameColors => Palette {
                 deep: [0.012, 0.024, 0.090],
                 middle: [0.040, 0.150, 0.420],
                 bright: [0.420, 0.640, 1.000],
@@ -166,7 +218,7 @@ impl Theme {
 
     pub const fn default_accent(self) -> Accent {
         match self {
-            Theme::Cosmic => Accent::Blue,
+            Theme::Cosmic | Theme::GameColors => Accent::Blue,
             Theme::Aurora => Accent::Mint,
             Theme::Sunset => Accent::Coral,
         }
@@ -335,6 +387,11 @@ pub fn trophy_percent(unlocked_points: u32, total_points: u32) -> u32 {
 pub mod color {
     use super::*;
 
+    /// The ink or edge level `normal`, or `high` with High Contrast on.
+    fn hc(normal: f32, high: f32) -> f32 {
+        if super::high_contrast() { high } else { normal }
+    }
+
     pub fn window_background() -> Color32 {
         Color32::BLACK
     }
@@ -343,10 +400,10 @@ pub mod color {
         white(1.0)
     }
     pub fn text_label() -> Color32 {
-        white(0.9)
+        white(hc(0.9, 1.0))
     }
     pub fn text_value() -> Color32 {
-        white(0.90)
+        white(hc(0.90, 1.0))
     }
     /// The key name or face button inside a hint keycap.
     pub fn text_hint_key() -> Color32 {
@@ -357,48 +414,48 @@ pub mod color {
         black(0.62)
     }
     pub fn text_hint() -> Color32 {
-        white(0.78)
+        white(hc(0.78, 0.94))
     }
     pub fn text_subtitle() -> Color32 {
-        white(0.78)
+        white(hc(0.78, 0.94))
     }
     pub fn text_empty() -> Color32 {
-        white(0.78)
+        white(hc(0.78, 0.94))
     }
     pub fn text_detail() -> Color32 {
-        white(0.78)
+        white(hc(0.78, 0.94))
     }
     pub fn text_overline() -> Color32 {
-        white(0.78)
+        white(hc(0.78, 0.94))
     }
     /// The line under a row's title.
     pub fn text_row_detail() -> Color32 {
-        white(0.78)
+        white(hc(0.78, 0.94))
     }
     /// A note under rows, bare on the panel.
     pub fn text_note() -> Color32 {
-        white(0.55)
+        white(hc(0.55, 0.86))
     }
     /// A section caption over a group of rows.
     pub fn text_caption() -> Color32 {
-        white(0.55)
+        white(hc(0.55, 0.86))
     }
     /// The title of a row that cannot be focused (a fact, not a control).
     pub fn text_inert() -> Color32 {
-        white(0.78)
+        white(hc(0.78, 0.94))
     }
     /// The clock in the top bar: a status, quieter than the controls beside it.
     pub fn text_clock() -> Color32 {
-        white(0.90)
+        white(hc(0.90, 1.0))
     }
     pub fn text_count() -> Color32 {
-        white(0.55)
+        white(hc(0.55, 0.86))
     }
     pub fn text_path() -> Color32 {
-        white(0.55)
+        white(hc(0.55, 0.86))
     }
     pub fn text_inactive() -> Color32 {
-        white(0.4)
+        white(hc(0.4, 0.7))
     }
     /// The light ground of a QR code (5.8): a camera wants dark modules on white, whatever the
     /// theme. A picture, not text: exempt from the ink table, and 21:1 against its modules.
@@ -410,10 +467,10 @@ pub mod color {
     }
     // Surfaces
     pub fn surface() -> Color32 {
-        white(0.10)
+        white(hc(0.10, 0.16))
     }
     pub fn surface_row() -> Color32 {
-        white(0.07)
+        white(hc(0.07, 0.12))
     }
     pub fn surface_trophy_row() -> Color32 {
         white(0.07)
@@ -422,27 +479,27 @@ pub mod color {
         white(0.07)
     }
     pub fn surface_hover() -> Color32 {
-        white(0.16)
+        white(hc(0.16, 0.24))
     }
     /// A control that has the focus: one step above hover (the ring is the indicator, DESIGN.md 3.9).
     pub fn surface_focus() -> Color32 {
-        white(0.20)
+        white(hc(0.20, 0.3))
     }
     /// A control under the pointer button.
     pub fn surface_pressed() -> Color32 {
-        white(0.26)
+        white(hc(0.26, 0.36))
     }
     /// The focus ring of keyboard and gamepad focus: thin and quiet, 3:1 or more on every panel
     /// (`ui::contrast` measures it); the fill one step lighter carries the rest of the cue.
     pub fn focus_ring() -> Color32 {
-        white(0.50)
+        white(hc(0.50, 1.0))
     }
     /// The edge of a secondary control at rest and under the pointer or focus.
     pub fn hairline_control() -> Color32 {
-        white(0.12)
+        white(hc(0.12, 0.55))
     }
     pub fn hairline_hover() -> Color32 {
-        white(0.32)
+        white(hc(0.32, 0.85))
     }
     /// The primary button: ink, not accent (one per view).
     pub fn primary() -> Color32 {
@@ -460,16 +517,16 @@ pub mod color {
     }
     // Hairlines
     pub fn hairline_card() -> Color32 {
-        white(0.12)
+        white(hc(0.12, 0.55))
     }
     pub fn hairline_glass() -> Color32 {
-        white(0.08)
+        white(hc(0.08, 0.5))
     }
     pub fn hairline_panel_edge() -> Color32 {
-        white(0.08)
+        white(hc(0.08, 0.5))
     }
     pub fn track() -> Color32 {
-        white(0.16)
+        white(hc(0.16, 0.3))
     }
     pub fn keycap() -> Color32 {
         white(0.16)
@@ -491,7 +548,7 @@ pub mod color {
         white(0.10)
     }
     pub fn switch_track_off() -> Color32 {
-        white(0.16)
+        white(hc(0.16, 0.34))
     }
     /// The off track of a switch whose row has the focus: one step above the lifted row.
     pub fn switch_track_off_on_focus() -> Color32 {
@@ -518,16 +575,16 @@ pub mod color {
     }
     /// Secondary state label colour ("ready", "locked", "queued").
     pub fn state_neutral() -> Color32 {
-        white(0.78)
+        white(hc(0.78, 0.94))
     }
     /// A state in progress ("Starting", "Installing", "Playing"): ink, not the accent. The accent
     /// is the player's pick and can sit on its own colour; the glyph and the word are the cue.
     pub fn text_active() -> Color32 {
-        white(0.90)
+        white(hc(0.90, 1.0))
     }
     /// Window caption glyphs (minimise, maximise, close) at rest; white on hover.
     pub fn caption_glyph() -> Color32 {
-        white(0.6)
+        white(hc(0.6, 0.9))
     }
     /// Behind a hovered minimise or maximise button.
     pub fn caption_hover() -> Color32 {
@@ -847,13 +904,18 @@ impl TextStyle {
         }
     }
 
+    /// The size as drawn: the role's size times the Larger Text factor.
+    pub fn px(&self) -> f32 {
+        self.size * text_scale()
+    }
+
     pub fn font(&self) -> FontId {
-        font(self.size, self.weight)
+        font(self.px(), self.weight)
     }
 
     /// Natural line height: 1.2 * size.
     pub fn line_height(&self) -> f32 {
-        1.2 * self.size
+        1.2 * self.px()
     }
 
     pub fn rich(&self, text: impl Into<String>) -> RichText {
