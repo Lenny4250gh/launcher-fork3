@@ -64,6 +64,8 @@ pub enum LibraryAction {
     ChooseFolder,
     /// Close without a pick.
     Close,
+    /// Select this game and open its Game Hub (options on a tile).
+    Hub(usize),
     /// The bar: the next order, the next filter, the search page, the storage page, and
     /// "show all games" from the empty page.
     NextSort,
@@ -253,6 +255,11 @@ impl LibraryGrid {
                         actions.push(LibraryAction::ChooseFolder);
                     }
                     Command::Select => {}
+                    Command::Options if count > 0 => {
+                        shell.play(Cue::Select);
+                        self.close();
+                        actions.push(LibraryAction::Hub(self.index));
+                    }
                     Command::Back | Command::Options => {
                         shell.play(Cue::Close);
                         self.close();
@@ -520,6 +527,7 @@ fn draw(
     let focus_row = focus / columns;
     let (follow, scroll_to) = Follow::begin(&ctx, id, Some(focus_row));
     let mut area_scroll = egui::ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden);

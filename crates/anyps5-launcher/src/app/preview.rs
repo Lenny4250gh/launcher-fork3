@@ -89,6 +89,12 @@ pub enum Scene {
     HomeFriendsFocus,
     /// Signed out with the sign-in button focused.
     HomeSignInFocus,
+    /// Three entries not read yet: the count on the bell, the bell focused.
+    HomeNotifyBadge,
+    /// The Notification Center with a mix of entries, each with its action.
+    Notifications,
+    /// The Notification Center with nothing in it.
+    NotificationsEmpty,
     /// Signed in, the session just ended: the question "How did it run?" below the facts.
     HomeAsk,
     /// Signed in, enough players reported: the Runs fact.
@@ -114,6 +120,8 @@ pub enum Scene {
     Toast,
     /// A failure toast: it stays until dismissed, with its Close button.
     ToastError,
+    /// A game crashed: the failure toast offers Send Report.
+    ToastCrash,
     /// A long failure message: the toast shows all of it and keeps off the top bar's buttons.
     ToastErrorLong,
     /// A verified launcher update waits: the notice after the title.
@@ -168,6 +176,9 @@ impl Scene {
             "home-browser" => Scene::HomeBrowser,
             "home-friends-focus" => Scene::HomeFriendsFocus,
             "home-signin-focus" => Scene::HomeSignInFocus,
+            "home-notify-badge" => Scene::HomeNotifyBadge,
+            "notifications" => Scene::Notifications,
+            "notifications-empty" => Scene::NotificationsEmpty,
             "home-ask" => Scene::HomeAsk,
             "home-runs" => Scene::HomeRuns,
             "home-friends-playing" => Scene::HomeFriendsPlaying,
@@ -185,6 +196,7 @@ impl Scene {
             "starting" => Scene::Starting,
             "toast" => Scene::Toast,
             "toast-error" => Scene::ToastError,
+            "toast-crash" => Scene::ToastCrash,
             "toast-error-long" => Scene::ToastErrorLong,
             "home-update" => Scene::HomeUpdate,
             "home-update-narrow" => Scene::HomeUpdateNarrow,
@@ -198,7 +210,7 @@ impl Scene {
         })
     }
 
-    pub const ALL_NAMES: [&'static str; 50] = [
+    pub const ALL_NAMES: [&'static str; 53] = [
         "onboarding0",
         "onboarding1",
         "onboarding2",
@@ -231,6 +243,9 @@ impl Scene {
         "home-browser",
         "home-friends-focus",
         "home-signin-focus",
+        "home-notify-badge",
+        "notifications",
+        "notifications-empty",
         "home-ask",
         "home-runs",
         "home-friends-playing",
@@ -794,6 +809,15 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
             m.focus = HomeFocus::FRIENDS;
         }
         Scene::HomeSignInFocus => m.focus = HomeFocus::PROFILE,
+        Scene::HomeNotifyBadge => {
+            notify_sample(m, &ids[at(1)], 3);
+            m.focus = HomeFocus::NOTIFICATIONS;
+        }
+        Scene::Notifications => {
+            notify_sample(m, &ids[at(1)], 6);
+            m.switch_overlay(crate::app::overlay::Overlay::Notifications);
+        }
+        Scene::NotificationsEmpty => m.switch_overlay(crate::app::overlay::Overlay::Notifications),
         Scene::HomeMessages => {
             use anyps5_core::online::api::{
                 Account, AccountId, Conversation, ConversationKind, Conversations,
@@ -945,6 +969,11 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
         Scene::ToastError => m.toast_failure(
             "Could not start Lanternfall. The game closed during start-up. Open the log from Game Settings for the details.",
         ),
+        Scene::ToastCrash => {
+            if let Some(id) = m.games.first().map(|g| g.id.clone()) {
+                m.toast_crash("Lanternfall: The game crashed (EXCEPTION_ACCESS_VIOLATION).", id);
+            }
+        }
         Scene::ToastErrorLong => m.toast_failure(
             "Could not start Lanternfall. The game closed right after it opened, before it showed a window. The log from the last start has the technical details, and the launcher can open it from Game Settings. Try again once the toolkit is up to date, or close other programs that use the graphics card.",
         ),
@@ -955,6 +984,79 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
 }
 
 /// Signs the preview in as Mira, the cloud answering.
+/// The newest `count` of six made-up notifications, each with something to do: a request that
+/// waits, a Play Together invitation, a message, a trophy, an update and a missed call.
+fn notify_sample(m: &mut crate::app::model::Model, game: &GameId, count: usize) {
+    use anyps5_core::notifications::{Act, Kind};
+    use anyps5_core::online::api::{Account, AccountId, Invitation, Request, SessionKind};
+    sign_in(m);
+    let now = u64::try_from(crate::app::clock::unix_seconds()).unwrap_or(0);
+    let mira = Account {
+        id: AccountId(2),
+        handle: "Mira".into(),
+    };
+    m.online.friends.incoming.push(Request {
+        account: mira.clone(),
+        since: now,
+    });
+    m.online.invitations.push(Invitation {
+        id: "invite-1".into(),
+        from: Account {
+            id: AccountId(3),
+            handle: "Jonas".into(),
+        },
+        session: "session-1".into(),
+        kind: SessionKind::Game,
+        title_id: "PPSA00000".into(),
+        title: "Hollow Orchard".into(),
+        version: "01.000.000".into(),
+        expires: now + 3600,
+    });
+    let all = [
+        (
+            Kind::System,
+            "Missed call from Jonas",
+            Act::None,
+            3 * 86_400,
+        ),
+        (
+            Kind::Update,
+            "Launcher 0.3.0 is ready",
+            Act::OpenUpdate,
+            20 * 3600,
+        ),
+        (
+            Kind::Trophy,
+            "Hollow Orchard: Night Harvest",
+            Act::OpenTrophies(game.as_str().to_owned()),
+            3 * 3600,
+        ),
+        (
+            Kind::Message,
+            "Mira: are you free tonight? We could finish the last chapter",
+            Act::OpenMessages(Some("c1".into())),
+            25 * 60,
+        ),
+        (
+            Kind::Together,
+            "Jonas invited you to Hollow Orchard",
+            Act::JoinInvitation("invite-1".into()),
+            6 * 60,
+        ),
+        (
+            Kind::FriendRequest,
+            "Mira wants to be your friend",
+            Act::AcceptFriend(mira.id.0),
+            40,
+        ),
+    ];
+    let skip = all.len() - count;
+    for (kind, text, act, ago) in all.into_iter().skip(skip) {
+        m.notes
+            .push(kind, text.to_owned(), act, now.saturating_sub(ago));
+    }
+}
+
 fn sign_in(m: &mut crate::app::model::Model) {
     use anyps5_core::online::api::AccountId;
     use anyps5_core::online::{Cloud, SignedIn, Status};

@@ -17,8 +17,9 @@ use crate::ui::sound::Cue;
 /// Where focus sits on the home screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum HomeFocus {
-    /// Top bar, left to right: [`HomeFocus::LIBRARY`], [`HomeFocus::FRIENDS`],
-    /// [`HomeFocus::SETTINGS`], [`HomeFocus::PROFILE`].
+    /// Top bar, left to right: [`HomeFocus::LIBRARY`], [`HomeFocus::CAPTURES`],
+    /// [`HomeFocus::FRIENDS`], [`HomeFocus::NOTIFICATIONS`], [`HomeFocus::SETTINGS`],
+    /// [`HomeFocus::PROFILE`].
     Top(u8),
     /// The tile row.
     #[default]
@@ -60,9 +61,9 @@ pub struct HomeContext {
 
 impl HomeContext {
     /// Number of buttons in the action row: primary, Play Together (optional), trophies
-    /// (optional), "...".
+    /// (optional), the Game Hub, "...".
     pub fn action_count(&self) -> usize {
-        2 + usize::from(self.has_trophies) + usize::from(self.together)
+        3 + usize::from(self.has_trophies) + usize::from(self.together)
     }
 
     /// What a press on button `index` of the action row does.
@@ -77,8 +78,14 @@ impl HomeContext {
             }
             slot += 1;
         }
-        if self.has_trophies && index == slot {
-            return HomeIntent::OpenTrophies;
+        if self.has_trophies {
+            if index == slot {
+                return HomeIntent::OpenTrophies;
+            }
+            slot += 1;
+        }
+        if index == slot {
+            return HomeIntent::OpenHub;
         }
         HomeIntent::OpenGameSettings
     }
@@ -93,6 +100,8 @@ pub enum HomeIntent {
     PlayTogether,
     /// Open the trophy list.
     OpenTrophies,
+    /// Open the Game Hub of the selected game.
+    OpenHub,
     /// Open the game settings side panel.
     OpenGameSettings,
     /// Answer "How did it run?" (0 to 3) or dismiss it (4).
@@ -107,6 +116,8 @@ pub enum HomeIntent {
     /// The captures button: the screenshots and clips.
     OpenCaptures,
     OpenSettings,
+    /// The bell: the Notification Center.
+    OpenNotifications,
     /// The friends button: the online area on the friends list, or on sign-in while signed out.
     OpenFriends,
     /// The profile: sign-in, or the account's online area.
@@ -130,10 +141,11 @@ impl HomeFocus {
     pub const LIBRARY: HomeFocus = HomeFocus::Top(0);
     pub const CAPTURES: HomeFocus = HomeFocus::Top(1);
     pub const FRIENDS: HomeFocus = HomeFocus::Top(2);
-    pub const SETTINGS: HomeFocus = HomeFocus::Top(3);
-    pub const PROFILE: HomeFocus = HomeFocus::Top(4);
+    pub const NOTIFICATIONS: HomeFocus = HomeFocus::Top(3);
+    pub const SETTINGS: HomeFocus = HomeFocus::Top(4);
+    pub const PROFILE: HomeFocus = HomeFocus::Top(5);
     /// The last stop of the top bar.
-    const LAST_TOP: u8 = 4;
+    const LAST_TOP: u8 = 5;
 
     /// What a press on stop `index` of the top bar does.
     pub fn top_intent(index: u8) -> HomeIntent {
@@ -141,7 +153,8 @@ impl HomeFocus {
             0 => HomeIntent::OpenLibrary,
             1 => HomeIntent::OpenCaptures,
             2 => HomeIntent::OpenFriends,
-            3 => HomeIntent::OpenSettings,
+            3 => HomeIntent::OpenNotifications,
+            4 => HomeIntent::OpenSettings,
             _ => HomeIntent::OpenOnline,
         }
     }
@@ -600,10 +613,12 @@ mod tests {
                 HomeFocus::Top(2),
                 HomeFocus::Top(3),
                 HomeFocus::Top(4),
+                HomeFocus::Top(5),
                 HomeFocus::Tiles,
                 HomeFocus::Actions(0),
                 HomeFocus::Actions(1),
                 HomeFocus::Actions(2),
+                HomeFocus::Actions(3),
             ]
         );
         let end = at.tab(false, c);
@@ -614,18 +629,18 @@ mod tests {
         assert_eq!(HomeFocus::LIBRARY.tab(true, c).focus, HomeFocus::LIBRARY);
         // The question line joins while it is asked.
         c.asking = true;
-        assert_eq!(HomeFocus::Actions(2).tab(false, c).focus, HomeFocus::Ask(0));
+        assert_eq!(HomeFocus::Actions(3).tab(false, c).focus, HomeFocus::Ask(0));
         assert_eq!(HomeFocus::Ask(4).tab(false, c).focus, HomeFocus::Ask(4));
-        // A stop that has gone is replaced by the nearest one: Tab from a third action when only two
-        // are left goes to nothing further, Shift+Tab to the one before.
-        let two = ctx(3, 0, false);
+        // A stop that has gone is replaced by the nearest one: Tab from a fourth action when only
+        // three are left goes to nothing further, Shift+Tab to the one before.
+        let three = ctx(3, 0, false);
         assert_eq!(
-            HomeFocus::Actions(2).tab(true, two).focus,
-            HomeFocus::Actions(0)
+            HomeFocus::Actions(3).tab(true, three).focus,
+            HomeFocus::Actions(1)
         );
         assert_eq!(
-            HomeFocus::Ask(1).tab(false, two).focus,
-            HomeFocus::Actions(1)
+            HomeFocus::Ask(1).tab(false, three).focus,
+            HomeFocus::Actions(2)
         );
         // No games: the top bar and the one tile stop (choose a folder).
         let empty = ctx(0, 0, false);
@@ -674,11 +689,12 @@ mod tests {
     fn top_bar_navigation() {
         let c = ctx(3, 1, false);
         let nav = |from: HomeFocus, command| from.navigate(command, c);
-        // Left to right: library, captures, friends, settings, profile; no wrap at either end.
+        // Left to right: library, captures, friends, bell, settings, profile; no wrap at either end.
         let order = [
             HomeFocus::LIBRARY,
             HomeFocus::CAPTURES,
             HomeFocus::FRIENDS,
+            HomeFocus::NOTIFICATIONS,
             HomeFocus::SETTINGS,
             HomeFocus::PROFILE,
         ];
@@ -700,6 +716,7 @@ mod tests {
             (HomeFocus::LIBRARY, HomeIntent::OpenLibrary),
             (HomeFocus::CAPTURES, HomeIntent::OpenCaptures),
             (HomeFocus::FRIENDS, HomeIntent::OpenFriends),
+            (HomeFocus::NOTIFICATIONS, HomeIntent::OpenNotifications),
             (HomeFocus::SETTINGS, HomeIntent::OpenSettings),
             (HomeFocus::PROFILE, HomeIntent::OpenOnline),
         ] {
@@ -718,8 +735,8 @@ mod tests {
             HomeFocus::Actions(1)
         );
         assert_eq!(
-            HomeFocus::Actions(2).navigate(Command::Right, with).focus,
-            HomeFocus::Actions(2)
+            HomeFocus::Actions(3).navigate(Command::Right, with).focus,
+            HomeFocus::Actions(3)
         );
         assert_eq!(
             HomeFocus::Actions(1).navigate(Command::Select, with).intent,
@@ -727,17 +744,27 @@ mod tests {
         );
         assert_eq!(
             HomeFocus::Actions(2).navigate(Command::Select, with).intent,
+            Some(HomeIntent::OpenHub)
+        );
+        assert_eq!(
+            HomeFocus::Actions(3).navigate(Command::Select, with).intent,
             Some(HomeIntent::OpenGameSettings)
         );
         let without = ctx(2, 0, false);
         assert_eq!(
-            HomeFocus::Actions(1)
+            HomeFocus::Actions(2)
                 .navigate(Command::Right, without)
                 .focus,
-            HomeFocus::Actions(1)
+            HomeFocus::Actions(2)
         );
         assert_eq!(
             HomeFocus::Actions(1)
+                .navigate(Command::Select, without)
+                .intent,
+            Some(HomeIntent::OpenHub)
+        );
+        assert_eq!(
+            HomeFocus::Actions(2)
                 .navigate(Command::Select, without)
                 .intent,
             Some(HomeIntent::OpenGameSettings)

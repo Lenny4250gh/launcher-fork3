@@ -11,6 +11,7 @@ mod macstyle;
 mod screens;
 mod startup;
 mod ui;
+mod watchdog;
 
 use instance::Join;
 

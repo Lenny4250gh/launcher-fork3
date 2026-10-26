@@ -17,14 +17,20 @@ use gilrs::{Axis, Button, EventType, Gamepad, GamepadId, Gilrs, MappingSource, P
 
 use crate::ui::home_button::HomeButton;
 use crate::ui::input::{Command, PadMessage};
+use crate::ui::nav_bindings::{self, Bindings, Role};
+use crate::ui::pad_hub::{self, Link, PadInfo};
 use crate::ui::pad_info::{self, Battery, Family};
 use crate::ui::talk;
 
-/// Stick deflection that makes a direction.
+/// Stick deflection that makes a direction, at the default dead zone of 25 percent. The dead zone
+/// of the Controllers page moves it: the stick engages 30 points above the zone and lets go 13
+/// above it.
 pub const STICK_THRESHOLD: f32 = 0.55;
 /// Deflection below which a held stick direction lets go. Between the two nothing changes, so a
 /// thumb resting near the threshold does not flutter between "right" and "nothing".
 pub const STICK_RELEASE: f32 = 0.38;
+/// The dead zone the two values above belong to.
+pub const DEFAULT_ZONE: f32 = 0.25;
 /// A held direction gives way to the other axis only when that one is this much stronger, so a
 /// thumb near the diagonal does not jump between "right" and "up".
 pub const STICK_SWITCH: f32 = 1.25;
@@ -44,21 +50,42 @@ pub fn direction(x: f32, y: f32) -> Option<Command> {
     }
 }
 
-fn stick_axis(v: f32) -> f32 {
-    if v.abs() > STICK_THRESHOLD { v } else { 0.0 }
+fn stick_axis(v: f32, engage: f32) -> f32 {
+    if v.abs() > engage { v } else { 0.0 }
 }
 
 /// The left stick as a direction, with hysteresis: it engages at [`STICK_THRESHOLD`], lets go at
 /// [`STICK_RELEASE`] and changes axis only for a clearly stronger other axis.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Stick {
     held: Option<Command>,
+    engage: f32,
+    release: f32,
+}
+
+impl Default for Stick {
+    fn default() -> Self {
+        let mut stick = Self {
+            held: None,
+            engage: STICK_THRESHOLD,
+            release: STICK_RELEASE,
+        };
+        stick.set_zone(DEFAULT_ZONE);
+        stick
+    }
 }
 
 impl Stick {
+    /// Sets the dead zone (0.05 to 0.5): the thresholds follow it.
+    pub fn set_zone(&mut self, zone: f32) {
+        self.engage = STICK_THRESHOLD + (zone - DEFAULT_ZONE);
+        self.release = STICK_RELEASE + (zone - DEFAULT_ZONE);
+    }
+
     /// The direction for a stick at (x, y), y up.
     pub fn update(&mut self, x: f32, y: f32) -> Option<Command> {
-        let fresh = || direction(stick_axis(x), stick_axis(y));
+        let (engage, release) = (self.engage, self.release);
+        let fresh = || direction(stick_axis(x, engage), stick_axis(y, engage));
         self.held = match self.held {
             None => fresh(),
             Some(held) => {
@@ -69,8 +96,8 @@ impl Stick {
                     Command::Up => (y, x),
                     _ => (-y, x),
                 };
-                if along >= STICK_RELEASE {
-                    if across.abs() >= STICK_THRESHOLD && across.abs() > along * STICK_SWITCH {
+                if along >= release {
+                    if across.abs() >= engage && across.abs() > along * STICK_SWITCH {
                         fresh()
                     } else {
                         Some(held)
@@ -113,6 +140,8 @@ enum PressEffect {
     Create,
     /// A command for the UI.
     Command(Command),
+    /// A step to the previous or the next section (a shoulder job).
+    Tab(bool),
     /// A D-pad direction, held until its release.
     Dpad(Command),
     /// Dropped.
@@ -121,20 +150,26 @@ enum PressEffect {
 
 /// `mine`: the launcher has the pad (no game in front). Otherwise it hears the Home button and
 /// Create and nothing else, so a game's buttons never move the focus of the launcher behind it.
-fn press_effect(button: Button, mine: bool) -> PressEffect {
+fn press_effect(button: Button, mine: bool, bindings: &Bindings) -> PressEffect {
     match button {
         Button::Mode => PressEffect::Home,
         // Create on a DualSense, Share on a DualShock, View or Back on an Xbox pad.
         Button::Select => PressEffect::Create,
         _ if !mine => PressEffect::Nothing,
-        Button::South => PressEffect::Command(Command::Select),
-        Button::East => PressEffect::Command(Command::Back),
-        Button::North | Button::Start => PressEffect::Command(Command::Options),
         Button::DPadUp => PressEffect::Dpad(Command::Up),
         Button::DPadDown => PressEffect::Dpad(Command::Down),
         Button::DPadLeft => PressEffect::Dpad(Command::Left),
         Button::DPadRight => PressEffect::Dpad(Command::Right),
-        _ => PressEffect::Nothing,
+        // The rest is what the player made of it (ui::nav_bindings): Cross, Circle, Triangle and
+        // Menu by default, the bumpers for the sections.
+        _ => match bindings.pad_role(button) {
+            Some(Role::Previous) => PressEffect::Tab(true),
+            Some(Role::Next) => PressEffect::Tab(false),
+            Some(role) => role
+                .command()
+                .map_or(PressEffect::Nothing, PressEffect::Command),
+            None => PressEffect::Nothing,
+        },
     }
 }
 
@@ -309,6 +344,36 @@ fn adopt(gilrs: &Gilrs, active: &mut ActivePad, id: GamepadId) {
     }
 }
 
+/// Tells the Controllers page which pads there are and how each is connected.
+fn publish(gilrs: &Gilrs, active: Option<GamepadId>, links: &[(u16, u16, Link)]) {
+    let pads = gilrs
+        .gamepads()
+        .map(|(id, pad)| {
+            let (vendor, product) = (pad.vendor_id(), pad.product_id());
+            let power = pad.power_info();
+            let sony = vendor == Some(SONY);
+            PadInfo {
+                id: usize::from(id),
+                name: pad.os_name().to_owned(),
+                vendor,
+                product,
+                family: family_of(&pad),
+                link: pad_hub::link_for(vendor, product, matches!(power, PowerInfo::Wired), links),
+                battery: battery_of(power),
+                backend: if sony {
+                    format!("gilrs ({BACKEND}) + HID")
+                } else {
+                    format!("gilrs ({BACKEND})")
+                },
+                active: active == Some(id),
+                dualsense: is_dualsense(vendor, product),
+                rumble: pad.is_ff_supported(),
+            }
+        })
+        .collect();
+    pad_hub::publish_pads(pads);
+}
+
 fn log_all(gilrs: &Gilrs) {
     let mut count = 0;
     for (_, pad) in gilrs.gamepads() {
@@ -363,11 +428,14 @@ fn session(ctx: &egui::Context, tx: &Sender<PadMessage>, home: &HomeButton, atte
     } else {
         pad_info::clear();
     }
+    let mut links = pad_hub::hid_links();
+    publish(&gilrs, active.id, &links);
     let mut next_battery = Instant::now() + BATTERY_EVERY;
     let mut dirs = Directions::default();
     let mut last = None;
     loop {
         while let Some(event) = gilrs.next_event() {
+            let bindings = nav_bindings::current();
             let send = |message| {
                 crate::ui::latency::pad_event_read();
                 if tx.send(message).is_ok() {
@@ -381,32 +449,64 @@ fn session(ctx: &egui::Context, tx: &Sender<PadMessage>, home: &HomeButton, atte
                     Turn::Switched => {
                         adopt(&gilrs, &mut active, event.id);
                         active.last = Some(Instant::now());
+                        publish(&gilrs, active.id, &links);
                         ctx.request_repaint();
                     }
                     Turn::Echo => continue,
                 },
             }
+            // What the Controllers page shows live: the pad in use, whatever the launcher does with it.
+            let pad_no = usize::from(event.id);
+            match event.event {
+                EventType::ButtonPressed(button, _) => {
+                    pad_hub::note_button(pad_no, button, true);
+                    pad_hub::note_press(button);
+                }
+                EventType::ButtonReleased(button, _) => pad_hub::note_button(pad_no, button, false),
+                EventType::ButtonChanged(button, value, _) => {
+                    pad_hub::note_trigger(pad_no, button, value);
+                }
+                EventType::AxisChanged(axis, value, _) => pad_hub::note_axis(pad_no, axis, value),
+                _ => {}
+            }
+            if pad_hub::watched() {
+                ctx.request_repaint();
+            }
             // With a game in front the launcher hears the Home button and nothing else; the held
             // directions are kept up to date but not passed on.
-            let mine = home.accepts_pad();
+            // While a binding waits for a button, or the button test runs, the pad only lights
+            // the page: Home and Create work, nothing else moves the launcher.
+            let mine = home.accepts_pad() && !nav_bindings::capturing();
             match event.event {
                 EventType::ButtonPressed(button, _) => talk::shared().gilrs_button(button, true),
                 EventType::ButtonReleased(button, _) => talk::shared().gilrs_button(button, false),
                 _ => {}
             }
             match event.event {
-                EventType::ButtonPressed(button, _) => match press_effect(button, mine) {
-                    PressEffect::Home => {
-                        home.press();
+                EventType::ButtonPressed(button, _) => {
+                    let effect = press_effect(button, mine, &bindings);
+                    // The talk button belongs to talking: a launcher button it shares gives way.
+                    let effect = if matches!(effect, PressEffect::Command(_) | PressEffect::Tab(_))
+                        && talk::shared().button().is_some_and(|b| b.gilrs() == button)
+                    {
+                        PressEffect::Nothing
+                    } else {
+                        effect
+                    };
+                    match effect {
+                        PressEffect::Home => {
+                            home.press();
+                        }
+                        PressEffect::Create => send(PadMessage::Create),
+                        PressEffect::Command(command) => send(PadMessage::Button(command)),
+                        PressEffect::Tab(backwards) => send(PadMessage::Tab { backwards }),
+                        PressEffect::Dpad(Command::Up) => dirs.dpad.1 = 1.0,
+                        PressEffect::Dpad(Command::Down) => dirs.dpad.1 = -1.0,
+                        PressEffect::Dpad(Command::Left) => dirs.dpad.0 = -1.0,
+                        PressEffect::Dpad(_) => dirs.dpad.0 = 1.0,
+                        PressEffect::Nothing => {}
                     }
-                    PressEffect::Create => send(PadMessage::Create),
-                    PressEffect::Command(command) => send(PadMessage::Button(command)),
-                    PressEffect::Dpad(Command::Up) => dirs.dpad.1 = 1.0,
-                    PressEffect::Dpad(Command::Down) => dirs.dpad.1 = -1.0,
-                    PressEffect::Dpad(Command::Left) => dirs.dpad.0 = -1.0,
-                    PressEffect::Dpad(_) => dirs.dpad.0 = 1.0,
-                    PressEffect::Nothing => {}
-                },
+                }
                 EventType::ButtonReleased(button, _) => match button {
                     Button::DPadUp | Button::DPadDown => dirs.dpad.1 = 0.0,
                     Button::DPadLeft | Button::DPadRight => dirs.dpad.0 = 0.0,
@@ -424,6 +524,8 @@ fn session(ctx: &egui::Context, tx: &Sender<PadMessage>, home: &HomeButton, atte
                     if active.id.is_none() {
                         adopt(&gilrs, &mut active, event.id);
                     }
+                    links = pad_hub::hid_links();
+                    publish(&gilrs, active.id, &links);
                     ctx.request_repaint();
                 }
                 EventType::Disconnected => {
@@ -437,10 +539,13 @@ fn session(ctx: &egui::Context, tx: &Sender<PadMessage>, home: &HomeButton, atte
                             None => pad_info::clear(),
                         }
                     }
+                    links = pad_hub::hid_links();
+                    publish(&gilrs, active.id, &links);
                     ctx.request_repaint();
                 }
                 _ => {}
             }
+            dirs.stick_state.set_zone(nav_bindings::deadzone());
             let now = if mine { dirs.current() } else { None };
             if now != last {
                 last = now;
@@ -449,6 +554,7 @@ fn session(ctx: &egui::Context, tx: &Sender<PadMessage>, home: &HomeButton, atte
         }
         if Instant::now() >= next_battery {
             next_battery = Instant::now() + BATTERY_EVERY;
+            publish(&gilrs, active.id, &links);
             if let Some(pad) = active.id.and_then(|id| gilrs.connected_gamepad(id)) {
                 let battery = battery_of(pad.power_info());
                 if battery != pad_info::battery() {
@@ -493,30 +599,39 @@ mod tests {
         ];
         for button in all {
             assert_eq!(
-                press_effect(button, false),
+                press_effect(button, false, &Bindings::defaults()),
                 PressEffect::Nothing,
                 "{button:?}"
             );
         }
-        assert_eq!(press_effect(Button::Mode, false), PressEffect::Home);
-        assert_eq!(press_effect(Button::Select, false), PressEffect::Create);
+        assert_eq!(
+            press_effect(Button::Mode, false, &Bindings::defaults()),
+            PressEffect::Home
+        );
+        assert_eq!(
+            press_effect(Button::Select, false, &Bindings::defaults()),
+            PressEffect::Create
+        );
     }
 
     #[test]
     fn with_the_launcher_in_front_buttons_work_and_home_still_switches() {
         assert_eq!(
-            press_effect(Button::South, true),
+            press_effect(Button::South, true, &Bindings::defaults()),
             PressEffect::Command(Command::Select)
         );
         assert_eq!(
-            press_effect(Button::East, true),
+            press_effect(Button::East, true, &Bindings::defaults()),
             PressEffect::Command(Command::Back)
         );
         assert_eq!(
-            press_effect(Button::DPadLeft, true),
+            press_effect(Button::DPadLeft, true, &Bindings::defaults()),
             PressEffect::Dpad(Command::Left)
         );
-        assert_eq!(press_effect(Button::Mode, true), PressEffect::Home);
+        assert_eq!(
+            press_effect(Button::Mode, true, &Bindings::defaults()),
+            PressEffect::Home
+        );
     }
 
     /// The flag the loop reads for `mine`: false while a game runs and the launcher is behind it.
@@ -684,5 +799,56 @@ mod tests {
         assert_eq!(stick.update(-0.9, 0.0), Some(Command::Left));
         assert_eq!(stick.update(0.0, 0.9), Some(Command::Up));
         assert_eq!(stick.update(0.0, -0.9), Some(Command::Down));
+    }
+
+    #[test]
+    fn the_shoulders_step_and_a_rebound_button_follows_its_new_job() {
+        let mut bindings = Bindings::defaults();
+        assert_eq!(
+            press_effect(Button::LeftTrigger, true, &bindings),
+            PressEffect::Tab(true)
+        );
+        assert_eq!(
+            press_effect(Button::RightTrigger, true, &bindings),
+            PressEffect::Tab(false)
+        );
+        bindings.assign_pad(Role::Select, "East").unwrap();
+        assert_eq!(
+            press_effect(Button::East, true, &bindings),
+            PressEffect::Command(Command::Select)
+        );
+        assert_eq!(
+            press_effect(Button::South, true, &bindings),
+            PressEffect::Command(Command::Back)
+        );
+        // The directions, Home and Create are not the player's to move.
+        assert_eq!(
+            press_effect(Button::DPadUp, true, &bindings),
+            PressEffect::Dpad(Command::Up)
+        );
+        assert_eq!(
+            press_effect(Button::Mode, true, &bindings),
+            PressEffect::Home
+        );
+        assert_eq!(
+            press_effect(Button::Select, true, &bindings),
+            PressEffect::Create
+        );
+        // A game in front still hears nothing.
+        assert_eq!(
+            press_effect(Button::East, false, &bindings),
+            PressEffect::Nothing
+        );
+    }
+
+    #[test]
+    fn the_dead_zone_moves_where_the_stick_engages() {
+        let mut stick = Stick::default();
+        stick.set_zone(0.40);
+        assert_eq!(stick.update(0.60, 0.0), None);
+        assert_eq!(stick.update(0.75, 0.0), Some(Command::Right));
+        let mut stick = Stick::default();
+        stick.set_zone(0.05);
+        assert_eq!(stick.update(0.40, 0.0), Some(Command::Right));
     }
 }

@@ -46,6 +46,11 @@ pub enum Cue {
 }
 
 impl Cue {
+    /// Cues that tell of something nobody asked for: they follow the notification volume.
+    pub const fn is_notification(self) -> bool {
+        matches!(self, Cue::Notify | Cue::Message | Cue::Invite | Cue::Ring)
+    }
+
     pub const ALL: [Cue; 18] = [
         Cue::Move,
         Cue::Hover,
