@@ -2289,7 +2289,9 @@ fn composer_view(
             if type_now {
                 response.request_focus();
             }
-            ctx.data_mut(|d| d.insert_temp(egui::Id::NULL.with(TYPING), response.has_focus()));
+            // Read the focus before `data_mut`: asking the context inside its own lock deadlocks.
+            let typing = response.has_focus();
+            ctx.data_mut(|d| d.insert_temp(egui::Id::NULL.with(TYPING), typing));
             if response.changed() {
                 events.push(Mouse::Typed(text.clone()));
             }
