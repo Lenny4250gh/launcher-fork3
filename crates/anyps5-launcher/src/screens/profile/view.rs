@@ -22,6 +22,7 @@ use anyps5_core::online::api::{
 use anyps5_core::online::{self, Online};
 
 use crate::screens::format;
+use crate::screens::hub_strings::HubText;
 use crate::screens::online::{
     Avatar, Local, OwnedGame, ago_text, monogram_colour, presence_text, rarity_text,
 };
@@ -73,6 +74,8 @@ pub struct OwnLibrary {
     pub trophies: Vec<OwnTrophy>,
     /// Earned trophies by grade: platinum, gold, silver, bronze.
     pub grades: [u32; 4],
+    /// Seconds played in all games over the last seven days.
+    pub week_seconds: u64,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -93,6 +96,8 @@ pub enum Press {
     Retry,
     /// Leave the profile for this game on Home.
     OpenGame(String),
+    /// The trophies of all games together.
+    OpenTrophies,
     /// Open the feed on this item (where the reactions are).
     OpenFeed(u64),
     /// Compare the player's trophies in this game (a title ID) with this account's.
@@ -495,6 +500,15 @@ fn header(inputs: &Inputs<'_>, handle: &str, ready: &mut Ready) {
             } else {
                 ready.note = Some(P::OwnOfflineNote.text(language).to_owned());
             }
+            if inputs
+                .library
+                .is_some_and(|l| l.grades.iter().any(|count| *count > 0))
+            {
+                ready.actions.push(action(
+                    Press::OpenTrophies,
+                    HubText::OverviewTitle.text(language),
+                ));
+            }
         }
         Relation::Friend => {
             ready.chip = Some(P::Friend.text(language).to_owned());
@@ -638,6 +652,18 @@ fn own_parts(inputs: &Inputs<'_>, page: Option<&online::api::ProfilePage>, ready
     }
     let minutes: u64 = library.games.iter().map(|g| g.seconds / 60).sum();
     ready.stats.extend(time_stat(minutes, language));
+    let week = library.week_seconds / 60;
+    if week > 0 {
+        let figure = playtime_text(week, language);
+        let label = HubText::WeekLabel.text(language);
+        ready.stats.push(Stat {
+            name: format!("{label}: {figure}"),
+            figure,
+            label: label.to_owned(),
+            grades: None,
+            level: None,
+        });
+    }
     ready.stats.extend(trophy_stat(library.grades, language));
     // The level is the cloud's: without its answer (offline, still loading) there is none.
     if let Some(level) = page.and_then(|p| p.level.as_ref()) {

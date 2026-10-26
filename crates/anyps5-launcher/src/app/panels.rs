@@ -24,6 +24,7 @@
 mod captures;
 mod compare;
 mod friends;
+mod hub;
 mod profile;
 
 use std::collections::HashMap;
@@ -158,6 +159,11 @@ pub struct PanelHost {
     profile: crate::screens::profile::ProfileScreen,
     /// The trophy comparison (`Overlay::Compare`).
     compare: crate::screens::compare::CompareScreen,
+    /// The Game Hub (`Overlay::GameHub`) and its own reading of the captures folder.
+    hub: crate::screens::hub::HubScreen,
+    hub_service: crate::app::captures::CaptureService,
+    /// The trophies of all games (`Overlay::TrophyOverview`).
+    overview: crate::screens::overview::OverviewScreen,
     /// The page the Friends screen opens on when the profile screen sent the player there: the
     /// page, and a feed item to put the focus on.
     online_start: Option<(crate::screens::online::Page, Option<u64>)>,
@@ -254,6 +260,9 @@ impl PanelHost {
             friends: crate::screens::friends::FriendsScreen::default(),
             profile: crate::screens::profile::ProfileScreen::default(),
             compare: crate::screens::compare::CompareScreen::default(),
+            hub: crate::screens::hub::HubScreen::default(),
+            hub_service: crate::app::captures::CaptureService::new(ctx),
+            overview: crate::screens::overview::OverviewScreen::default(),
             online_start: None,
             restore: RestorePanel::default(),
             save_view: None,
@@ -1562,6 +1571,16 @@ impl PanelHost {
                     }
                     model.dismiss_overlay();
                 }
+                LibraryAction::Hub(index) => {
+                    if index < model.games.len() {
+                        model.selected = index;
+                        model.focus = HomeFocus::Tiles;
+                        model.measure_selected();
+                        model.open_hub();
+                    } else {
+                        model.dismiss_overlay();
+                    }
+                }
                 LibraryAction::Close => model.dismiss_overlay(),
                 LibraryAction::ChooseFolder => {
                     model.dismiss_overlay();
@@ -1968,7 +1987,31 @@ impl PanelHost {
         let earned = std::mem::take(&mut cx.model.trophy_banners);
         let mut refresh: Vec<GameId> = Vec::new();
         for (game, trophy) in earned {
-            self.banners.push(BannerTrophy::from_core(&trophy));
+            let mut banner = BannerTrophy::from_core(&trophy);
+            // The share of players is known when the network has told the feed of this trophy.
+            let title_id = cx
+                .model
+                .games
+                .iter()
+                .find(|g| g.id == game)
+                .map(|g| g.title_id.clone());
+            banner.rarity = title_id.and_then(|title| {
+                cx.model
+                    .online
+                    .feed
+                    .items
+                    .iter()
+                    .find_map(|item| match &item.event {
+                        anyps5_core::online::api::FeedEvent::Trophy {
+                            title_id,
+                            number,
+                            rarity,
+                            ..
+                        } if *title_id == title && u32::from(*number) == trophy.number => *rarity,
+                        _ => None,
+                    })
+            });
+            self.banners.push(banner);
             if !refresh.contains(&game) {
                 refresh.push(game);
             }
@@ -2016,6 +2059,8 @@ impl OverlayHost for PanelHost {
             Overlay::Friends => self.friends_ui(cx, wanted),
             Overlay::Profile => self.profile_ui(cx, wanted),
             Overlay::Compare => self.compare_ui(cx, wanted),
+            Overlay::GameHub => self.hub_ui(cx, wanted),
+            Overlay::TrophyOverview => self.overview_ui(cx, wanted),
         }
     }
 
@@ -2394,6 +2439,8 @@ mod tests {
             Overlay::Settings,
             Overlay::Library,
             Overlay::Captures,
+            Overlay::GameHub,
+            Overlay::TrophyOverview,
             Overlay::GameSettings,
             Overlay::Controls,
             Overlay::Advanced,
@@ -2442,6 +2489,7 @@ mod tests {
             (HomeIntent::OpenSettings, Overlay::Settings),
             (HomeIntent::OpenLibrary, Overlay::Library),
             (HomeIntent::OpenCaptures, Overlay::Captures),
+            (HomeIntent::OpenHub, Overlay::GameHub),
             (HomeIntent::OpenOnline, Overlay::Friends),
             (HomeIntent::OpenFriends, Overlay::Friends),
             (HomeIntent::OpenGameSettings, Overlay::GameSettings),

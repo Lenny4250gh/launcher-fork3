@@ -55,9 +55,9 @@ pub struct HomeContext {
 
 impl HomeContext {
     /// Number of buttons in the action row: primary, Play Together (optional), trophies
-    /// (optional), "...".
+    /// (optional), the Game Hub, "...".
     pub fn action_count(&self) -> usize {
-        2 + usize::from(self.has_trophies) + usize::from(self.together)
+        3 + usize::from(self.has_trophies) + usize::from(self.together)
     }
 
     /// What a press on button `index` of the action row does.
@@ -72,8 +72,14 @@ impl HomeContext {
             }
             slot += 1;
         }
-        if self.has_trophies && index == slot {
-            return HomeIntent::OpenTrophies;
+        if self.has_trophies {
+            if index == slot {
+                return HomeIntent::OpenTrophies;
+            }
+            slot += 1;
+        }
+        if index == slot {
+            return HomeIntent::OpenHub;
         }
         HomeIntent::OpenGameSettings
     }
@@ -88,6 +94,8 @@ pub enum HomeIntent {
     PlayTogether,
     /// Open the trophy list.
     OpenTrophies,
+    /// Open the Game Hub of the selected game.
+    OpenHub,
     /// Open the game settings side panel.
     OpenGameSettings,
     /// Answer "How did it run?" (0 to 3) or dismiss it (4).
@@ -575,6 +583,7 @@ mod tests {
                 HomeFocus::Actions(0),
                 HomeFocus::Actions(1),
                 HomeFocus::Actions(2),
+                HomeFocus::Actions(3),
             ]
         );
         let end = at.tab(false, c);
@@ -585,18 +594,18 @@ mod tests {
         assert_eq!(HomeFocus::LIBRARY.tab(true, c).focus, HomeFocus::LIBRARY);
         // The question line joins while it is asked.
         c.asking = true;
-        assert_eq!(HomeFocus::Actions(2).tab(false, c).focus, HomeFocus::Ask(0));
+        assert_eq!(HomeFocus::Actions(3).tab(false, c).focus, HomeFocus::Ask(0));
         assert_eq!(HomeFocus::Ask(4).tab(false, c).focus, HomeFocus::Ask(4));
-        // A stop that has gone is replaced by the nearest one: Tab from a third action when only two
-        // are left goes to nothing further, Shift+Tab to the one before.
-        let two = ctx(3, 0, false);
+        // A stop that has gone is replaced by the nearest one: Tab from a fourth action when only
+        // three are left goes to nothing further, Shift+Tab to the one before.
+        let three = ctx(3, 0, false);
         assert_eq!(
-            HomeFocus::Actions(2).tab(true, two).focus,
-            HomeFocus::Actions(0)
+            HomeFocus::Actions(3).tab(true, three).focus,
+            HomeFocus::Actions(1)
         );
         assert_eq!(
-            HomeFocus::Ask(1).tab(false, two).focus,
-            HomeFocus::Actions(1)
+            HomeFocus::Ask(1).tab(false, three).focus,
+            HomeFocus::Actions(2)
         );
         // No games: the top bar and the one tile stop (choose a folder).
         let empty = ctx(0, 0, false);
@@ -689,8 +698,8 @@ mod tests {
             HomeFocus::Actions(1)
         );
         assert_eq!(
-            HomeFocus::Actions(2).navigate(Command::Right, with).focus,
-            HomeFocus::Actions(2)
+            HomeFocus::Actions(3).navigate(Command::Right, with).focus,
+            HomeFocus::Actions(3)
         );
         assert_eq!(
             HomeFocus::Actions(1).navigate(Command::Select, with).intent,
@@ -698,17 +707,27 @@ mod tests {
         );
         assert_eq!(
             HomeFocus::Actions(2).navigate(Command::Select, with).intent,
+            Some(HomeIntent::OpenHub)
+        );
+        assert_eq!(
+            HomeFocus::Actions(3).navigate(Command::Select, with).intent,
             Some(HomeIntent::OpenGameSettings)
         );
         let without = ctx(2, 0, false);
         assert_eq!(
-            HomeFocus::Actions(1)
+            HomeFocus::Actions(2)
                 .navigate(Command::Right, without)
                 .focus,
-            HomeFocus::Actions(1)
+            HomeFocus::Actions(2)
         );
         assert_eq!(
             HomeFocus::Actions(1)
+                .navigate(Command::Select, without)
+                .intent,
+            Some(HomeIntent::OpenHub)
+        );
+        assert_eq!(
+            HomeFocus::Actions(2)
                 .navigate(Command::Select, without)
                 .intent,
             Some(HomeIntent::OpenGameSettings)

@@ -2318,6 +2318,7 @@ impl ScreenGallery {
                 ]
             },
             grades: if new { [0; 4] } else { [1, 4, 9, 30] },
+            week_seconds: if new { 0 } else { 5 * 3_600 + 1_200 },
         };
         let inputs = Inputs {
             online: &self.online,

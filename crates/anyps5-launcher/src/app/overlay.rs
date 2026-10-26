@@ -42,6 +42,10 @@ pub enum Overlay {
     Profile,
     /// The player's trophies in a game next to another player's (a full-screen panel).
     Compare,
+    /// One game's page: art, trophies, play time, captures, friends and more (a full-screen panel).
+    GameHub,
+    /// The trophies of all games together (a full-screen panel).
+    TrophyOverview,
     /// The release a game stays on is gone: download it again or follow the global toolkit
     /// (a panel of the game frame).
     ToolkitMissing,

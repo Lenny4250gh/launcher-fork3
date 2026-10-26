@@ -868,6 +868,26 @@ impl Preferences {
         self.playtime_days.retain(|_, days| !days.is_empty());
     }
 
+    /// Seconds a game was played on the last `days` UTC days up to and including today (`now` in
+    /// Unix seconds). Days older than [`PLAYTIME_DAYS`] are gone, so more than that counts no more.
+    pub fn playtime_recent(&self, id: &GameId, days: i64, now: i64) -> u64 {
+        let since = utc_day(now - (days.max(1) - 1) * 86_400);
+        self.playtime_days.get(id.as_str()).map_or(0, |per_day| {
+            per_day
+                .iter()
+                .filter(|(day, _)| **day >= since)
+                .fold(0u64, |sum, (_, seconds)| sum.saturating_add(*seconds))
+        })
+    }
+
+    /// Seconds played in all games on the last `days` UTC days (this week: 7).
+    pub fn playtime_recent_total(&self, days: i64, now: i64) -> u64 {
+        self.playtime_days
+            .keys()
+            .map(|key| self.playtime_recent(&GameId::from_key(key.as_str()), days, now))
+            .fold(0u64, u64::saturating_add)
+    }
+
     /// The folder for F12 screenshots: the chosen one or `Pictures\AnyPS5`.
     pub fn screenshots_dir(&self, paths: &AppPaths) -> PathBuf {
         self.screenshots_folder
@@ -1252,6 +1272,23 @@ mod tests {
         );
         let old: Preferences = serde_json::from_str(r#"{"version":1}"#).unwrap();
         assert!(old.playtime_days.is_empty());
+    }
+
+    #[test]
+    fn recent_playtime_counts_the_last_days_only() {
+        let mut prefs = Preferences::default();
+        let id = GameId::from_key("a");
+        let other = GameId::from_key("b");
+        let now = 1_700_000_000;
+        prefs.add_playtime_day(&id, 100, now);
+        prefs.add_playtime_day(&id, 50, now - 6 * 86_400);
+        prefs.add_playtime_day(&id, 7, now - 7 * 86_400);
+        prefs.add_playtime_day(&other, 20, now - 86_400);
+        assert_eq!(prefs.playtime_recent(&id, 7, now), 150);
+        assert_eq!(prefs.playtime_recent(&id, 1, now), 100);
+        assert_eq!(prefs.playtime_recent(&id, 30, now), 157);
+        assert_eq!(prefs.playtime_recent_total(7, now), 170);
+        assert_eq!(prefs.playtime_recent(&GameId::from_key("none"), 7, now), 0);
     }
 
     #[test]
