@@ -219,7 +219,9 @@ impl LfgText {
     pub const fn german(self) -> Option<&'static str> {
         Some(match self {
             LfgText::FindPlayers => "Mitspieler finden",
-            LfgText::FindPlayersDetail => "Spieler, die dieses Spiel besitzen und eine Gruppe suchen",
+            LfgText::FindPlayersDetail => {
+                "Spieler, die dieses Spiel besitzen und eine Gruppe suchen"
+            }
             LfgText::PostListing => "Gesuch erstellen",
             LfgText::PostListingDetail => "1 Stunde lang offen",
             LfgText::YourListing => "Dein Gesuch",
@@ -281,7 +283,9 @@ impl LfgText {
             LfgText::PostLimit => {
                 "Schließe zuerst eines deiner Gesuche. Du kannst eines pro Spiel und drei insgesamt haben."
             }
-            LfgText::PostRate => "Du hast viele Gesuche erstellt. Versuche es in ein paar Minuten erneut.",
+            LfgText::PostRate => {
+                "Du hast viele Gesuche erstellt. Versuche es in ein paar Minuten erneut."
+            }
             LfgText::PostRestricted => "Dein Konto kann gerade keine Gesuche erstellen.",
             LfgText::PostBadNote => "Eine Notiz hat höchstens 140 Zeichen und keine Links.",
             LfgText::PostFailed => {
@@ -300,9 +304,7 @@ impl LfgText {
             LfgText::NoFriends => {
                 "Du hast noch keine Freunde, an die du senden kannst. Füge zuerst einen Freund hinzu."
             }
-            LfgText::SendSignedOut => {
-                "Melde dich im AnyPlay-Netzwerk an, um Aufnahmen zu senden."
-            }
+            LfgText::SendSignedOut => "Melde dich im AnyPlay-Netzwerk an, um Aufnahmen zu senden.",
             LfgText::SendFriendsOnly => "Aufnahmen gehen nur an Freunde.",
             LfgText::SendNote => {
                 "Screenshots bis 10 MB, Clips bis 100 MB und 60 Sekunden. Die Cloud speichert sie 30 Tage."
