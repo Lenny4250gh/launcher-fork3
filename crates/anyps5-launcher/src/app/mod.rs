@@ -496,6 +496,7 @@ impl LauncherApp {
         {
             self.shell.input.last_direction = Some(*command);
         }
+        crate::watchdog::set_action(action_name(&event));
         match event {
             InputEvent::Command(command) => match self.model.handle(command) {
                 Routed::Overlay(overlay) => {
@@ -886,21 +887,31 @@ impl LauncherApp {
             Motion::Overlay,
         );
         let mut closed = false;
+        let mut acted = false;
         if let Some(toast) = &self.model.toast {
             let close = toast
                 .stays()
                 .then(|| self.model.language().text(Key::Close));
-            closed = chrome::toast(
+            let send = toast
+                .report
+                .is_some()
+                .then(|| crate::screens::strings::Extra::SendReport.text(self.model.language()));
+            let (shut, sent) = chrome::toast_with_action(
                 ctx,
                 "launcher-toast",
                 toast.icon,
                 &toast.text,
                 close,
+                send,
                 visible,
                 v,
             );
+            closed = shut;
+            acted = sent;
         }
-        if closed && visible {
+        if acted && visible {
+            self.model.send_crash_report();
+        } else if closed && visible {
             self.model.dismiss_toast();
         }
         if visible
@@ -1064,6 +1075,7 @@ pub fn run(inbox: Option<crate::instance::Inbox>, arguments: Vec<String>) -> efr
     };
     crate::ui::restrict_backends(&mut options);
     crate::startup::mark("window requested");
+    crate::watchdog::start();
     let result = eframe::run_native(
         "AnyPlay Launcher",
         options,
@@ -1077,6 +1089,7 @@ pub fn run(inbox: Option<crate::instance::Inbox>, arguments: Vec<String>) -> efr
                 chrome_applied: false,
                 frames: 0,
                 start_fullscreen: fullscreen,
+                watched: None,
             }))
         }),
     );
@@ -1114,6 +1127,19 @@ fn relaunch_on_vulkan() -> eframe::Result {
     Ok(())
 }
 
+/// What the watchdog notes about an input: the kind, never the key the player typed.
+fn action_name(event: &InputEvent) -> String {
+    match event {
+        InputEvent::Command(command) => format!("{command:?}"),
+        InputEvent::Tab { backwards } => format!("Tab (backwards: {backwards})"),
+        InputEvent::Scroll(command) => format!("Scroll {command:?}"),
+        InputEvent::Create => "Create".into(),
+        InputEvent::OpenSettings => "OpenSettings".into(),
+        InputEvent::ToggleFullscreen => "ToggleFullscreen".into(),
+        InputEvent::CapturedKey { .. } => "CapturedKey".into(),
+    }
+}
+
 /// The eframe wrapper of [`LauncherApp`].
 pub struct App {
     pub app: LauncherApp,
@@ -1123,10 +1149,35 @@ pub struct App {
     /// Fill the screen once the window is shown: asked for at creation, while eframe still keeps
     /// the window hidden, Windows ignores it (and egui would believe it took).
     start_fullscreen: bool,
+    /// What the watchdog was last told the player is looking at.
+    watched: Option<(Option<Overlay>, bool, bool)>,
+}
+
+impl App {
+    /// Tells the watchdog the screen when it changes (a short string, not on every frame).
+    fn note_screen(&mut self) {
+        let model = &self.app.model;
+        let key = (
+            model.overlay,
+            model.onboarded(),
+            model.running.is_some() || model.starting.is_some(),
+        );
+        if self.watched != Some(key) {
+            self.watched = Some(key);
+            let place = match key {
+                (_, false, _) => "onboarding".to_owned(),
+                (Some(overlay), _, _) => format!("{overlay:?}"),
+                (None, _, _) => "home".to_owned(),
+            };
+            let game = if key.2 { ", game starting or running" } else { "" };
+            crate::watchdog::set_screen(format!("{place}{game}"));
+        }
+    }
 }
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
+        crate::watchdog::frame_begin();
         if !self.chrome_applied {
             self.chrome_applied = true;
             window_chrome::apply(frame);
@@ -1145,6 +1196,9 @@ impl eframe::App for App {
         self.app.paint(ui);
         self.app.finish_frame(&ctx);
         crate::ui::latency::frame_done();
+        self.note_screen();
+        // Frames are due every few milliseconds while the window has focus and the backdrop moves.
+        crate::watchdog::frame_end(self.app.focused && !self.app.shell.backdrop.paused);
     }
 
     #[cfg(target_os = "macos")]

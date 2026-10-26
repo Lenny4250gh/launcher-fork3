@@ -19,6 +19,7 @@ pub mod idle;
 pub mod issue;
 pub mod launch;
 pub mod library;
+pub mod logflood;
 pub mod linkreg;
 pub mod links;
 pub mod location;

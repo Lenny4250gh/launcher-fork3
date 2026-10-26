@@ -374,6 +374,9 @@ pub fn restrict_backends(options: &mut eframe::NativeOptions) {
                 _ => Some(2),
             }
         };
+        // The start-up log splits the wait for the GPU here: before this line the adapters were
+        // enumerated, after it the device and the surface are made.
+        crate::startup::mark(&format!("{} GPUs listed", adapters.len()));
         adapters
             .iter()
             .filter_map(|adapter| rank(adapter).map(|rank| (rank, adapter)))

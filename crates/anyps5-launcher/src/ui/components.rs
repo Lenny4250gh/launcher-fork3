@@ -547,6 +547,28 @@ impl<'a> ConsoleButton<'a> {
         self
     }
 
+    /// The width the button will take, for layouts that place it by its right edge.
+    pub fn width(&self, painter: &Painter) -> f32 {
+        let style = self.size.style();
+        let has_text = !self.title.is_empty();
+        let icon_width = self.icon.map_or(0.0, |_| self.size.glyph(has_text));
+        let gap = if self.icon.is_some() && has_text {
+            self.size.gap()
+        } else {
+            0.0
+        };
+        let text_width = if has_text {
+            text::width(painter, style, self.title)
+        } else {
+            0.0
+        };
+        if has_text {
+            (self.size.text_pad() * 2.0 + icon_width + gap + text_width).max(self.min_width)
+        } else {
+            self.size.height().max(self.min_width)
+        }
+    }
+
     pub fn show(self, ui: &mut Ui) -> Response {
         let painter = ui.painter().clone();
         let style = self.size.style();

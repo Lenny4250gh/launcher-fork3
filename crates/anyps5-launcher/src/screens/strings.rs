@@ -32,6 +32,9 @@ pub enum Extra {
     /// Linux: the user cannot open `/dev/udmabuf`.
     DiagnosisNoUdmabuf,
     SaveReport,
+    OpenOnlineLog,
+    /// The toast after a game ended in trouble.
+    SendReport,
     /// Toast while the toolkit downloads.
     ToolkitDownloading,
     /// Fonts row: the set a game gets when no folder is picked.
@@ -296,6 +299,8 @@ impl Extra {
                 "The game cannot open /dev/udmabuf. Add your user to the kvm group and log in again."
             }
             Extra::SaveReport => "Save Report",
+            Extra::OpenOnlineLog => "Open Online Log",
+            Extra::SendReport => "Send Report",
             Extra::ToolkitDownloading => "Downloading the toolkit…",
             Extra::FontsBuiltIn => "Built-in Noto (Latin, Thai, Arabic)",
             Extra::FontsCjkReady => "Japanese, Chinese and Korean included",
@@ -513,6 +518,8 @@ impl Extra {
                 "Oyun /dev/udmabuf dosyasını açamıyor. Kullanıcını kvm grubuna ekleyip yeniden oturum aç."
             }
             Extra::SaveReport => "Raporu Kaydet",
+            Extra::OpenOnlineLog => "Çevrimiçi Günlüğü Aç",
+            Extra::SendReport => "Rapor Gönder",
             Extra::ToolkitDownloading => "Araç seti indiriliyor…",
             Extra::FontsBuiltIn => "Yerleşik Noto (Latin, Tayca, Arapça)",
             Extra::FontsCjkReady => "Japonca, Çince ve Korece dahil",
@@ -708,7 +715,7 @@ impl Extra {
         substitute(self.text(language), args)
     }
 
-    pub const ALL: [Extra; 158] = [
+    pub const ALL: [Extra; 160] = [
         Extra::Toolkit,
         Extra::UpdateCheck,
         Extra::UpdateCheckDetail,
@@ -730,6 +737,8 @@ impl Extra {
         Extra::DiagnosisHostCpu,
         Extra::DiagnosisNoUdmabuf,
         Extra::SaveReport,
+        Extra::OpenOnlineLog,
+        Extra::SendReport,
         Extra::ToolkitDownloading,
         Extra::FontsBuiltIn,
         Extra::FontsCjkReady,

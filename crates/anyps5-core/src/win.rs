@@ -268,6 +268,12 @@ pub fn find_window(pids: &[u32]) -> Option<isize> {
     search.found
 }
 
+/// Whether a window handle still names a window.
+pub fn window_exists(handle: isize) -> bool {
+    // SAFETY: plain call; a stale handle only returns false.
+    unsafe { IsWindow(Some(hwnd(handle))).as_bool() }
+}
+
 fn hwnd(handle: isize) -> HWND {
     HWND(handle as *mut c_void)
 }

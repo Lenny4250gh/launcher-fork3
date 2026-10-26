@@ -114,6 +114,8 @@ pub enum Scene {
     Toast,
     /// A failure toast: it stays until dismissed, with its Close button.
     ToastError,
+    /// A game crashed: the failure toast offers Send Report.
+    ToastCrash,
     /// A long failure message: the toast shows all of it and keeps off the top bar's buttons.
     ToastErrorLong,
     /// A verified launcher update waits: the notice after the title.
@@ -179,6 +181,7 @@ impl Scene {
             "starting" => Scene::Starting,
             "toast" => Scene::Toast,
             "toast-error" => Scene::ToastError,
+            "toast-crash" => Scene::ToastCrash,
             "toast-error-long" => Scene::ToastErrorLong,
             "home-update" => Scene::HomeUpdate,
             "home-update-narrow" => Scene::HomeUpdateNarrow,
@@ -895,6 +898,11 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
         Scene::ToastError => m.toast_failure(
             "Could not start Lanternfall. The game closed during start-up. Open the log from Game Settings for the details.",
         ),
+        Scene::ToastCrash => {
+            if let Some(id) = m.games.first().map(|g| g.id.clone()) {
+                m.toast_crash("Lanternfall: The game crashed (EXCEPTION_ACCESS_VIOLATION).", id);
+            }
+        }
         Scene::ToastErrorLong => m.toast_failure(
             "Could not start Lanternfall. The game closed right after it opened, before it showed a window. The log from the last start has the technical details, and the launcher can open it from Game Settings. Try again once the toolkit is up to date, or close other programs that use the graphics card.",
         ),

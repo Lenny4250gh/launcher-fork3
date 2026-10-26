@@ -3118,6 +3118,7 @@ fn sample_report() -> ReportInput {
         settings: serde_json::json!({"fullscreen": true, "windowSize": 100, "controls": {"Cross": ["KEY:F"]}}),
         crash: None,
         session: SAMPLE_LOG.into(),
+        controllers: vec!["DualSense Wireless Controller".into()],
         now: "2026-10-22T09:31:00Z".into(),
     }
 }

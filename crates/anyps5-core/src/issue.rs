@@ -341,6 +341,7 @@ mod tests {
             }),
             crash: None,
             session: "C:\\Users\\alice\\AppData\\x.log\nline 1\n\nline 2\nline 3".into(),
+            controllers: Vec::new(),
             now: "2026-10-22T09:31:00Z".into(),
         }
     }

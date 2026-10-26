@@ -11,11 +11,64 @@ use std::sync::OnceLock;
 use regex::Regex;
 
 /// How the process ended.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExitInfo {
-    /// The exit status; `None` when the launcher ended the process.
+    /// The exit status; `None` when the launcher ended the process or a signal did.
     pub code: Option<u32>,
     pub had_window: bool,
+    /// Unix: the signal that ended the process (11 is a segmentation fault).
+    pub signal: Option<i32>,
+    /// The game's window went away while the process still ran: the player closed it.
+    pub window_closed: bool,
+    /// The launcher ended the game (Stop, or closing the launcher while it ran).
+    pub killed: bool,
+}
+
+/// The name of a Unix signal, or the number.
+pub fn signal_name(signal: i32) -> String {
+    match signal {
+        4 => "SIGILL".into(),
+        6 => "SIGABRT".into(),
+        7 => "SIGBUS".into(),
+        8 => "SIGFPE".into(),
+        9 => "SIGKILL".into(),
+        11 => "SIGSEGV".into(),
+        15 => "SIGTERM".into(),
+        other => format!("signal {other}"),
+    }
+}
+
+impl ExitInfo {
+    /// Whether a signal that means a fault ended the process.
+    fn crashed_by_signal(&self) -> Option<i32> {
+        self.signal.filter(|s| matches!(s, 4 | 6 | 7 | 8 | 11))
+    }
+
+    /// One plain sentence on how the game ended, for the log: it quit with an exit code, its
+    /// window was closed, the launcher stopped it, or it crashed (with the exception or signal).
+    pub fn describe(&self) -> String {
+        if let Some(signal) = self.crashed_by_signal() {
+            return format!("the game crashed (signal {signal}, {})", signal_name(signal));
+        }
+        if self.killed {
+            return "the launcher stopped the game".into();
+        }
+        if let Some(signal) = self.signal {
+            return format!("the game was ended by a signal ({})", signal_name(signal));
+        }
+        match self.code {
+            Some(code) if is_crash_status(code) => format!(
+                "the game crashed (exception {} = 0x{code:08X})",
+                exception_name(code)
+            ),
+            Some(3) => "the game crashed (abort(), exit code 3)".into(),
+            Some(code) if self.window_closed => {
+                format!("the game's window was closed (exit code {code})")
+            }
+            Some(code) => format!("the game quit (exit code {code})"),
+            None => "the game ended (no exit code)".into(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -248,6 +301,9 @@ impl Diagnosis {
         }
 
         // 7. The exit status alone.
+        if let Some(signal) = exit.and_then(ExitInfo::crashed_by_signal) {
+            return Some(Diagnosis::Crashed(signal_name(signal)));
+        }
         match code {
             Some(0xC000_0017) => Some(Diagnosis::OutOfMemory),
             Some(3) => Some(Diagnosis::Crashed("abort()".into())),
@@ -377,6 +433,7 @@ mod tests {
         ExitInfo {
             code: Some(code),
             had_window: true,
+            ..Default::default()
         }
     }
 
@@ -525,6 +582,42 @@ mod tests {
     }
 
     #[test]
+    fn the_end_is_told_in_one_sentence() {
+        let info = |code, signal, window_closed, killed| ExitInfo {
+            code,
+            signal,
+            window_closed,
+            killed,
+            had_window: true,
+        };
+        assert_eq!(
+            info(Some(0), None, false, false).describe(),
+            "the game quit (exit code 0)"
+        );
+        assert_eq!(
+            info(Some(0), None, true, false).describe(),
+            "the game's window was closed (exit code 0)"
+        );
+        assert_eq!(
+            info(Some(0xC000_0005), None, false, false).describe(),
+            "the game crashed (exception EXCEPTION_ACCESS_VIOLATION = 0xC0000005)"
+        );
+        assert_eq!(
+            info(None, Some(11), false, false).describe(),
+            "the game crashed (signal 11, SIGSEGV)"
+        );
+        assert_eq!(
+            info(None, None, false, true).describe(),
+            "the launcher stopped the game"
+        );
+        // A segmentation fault is a crash in the failure card too.
+        assert_eq!(
+            Diagnosis::read("", Some(&info(None, Some(11), false, false))),
+            Some(Diagnosis::Crashed("SIGSEGV".into()))
+        );
+    }
+
+    #[test]
     fn exit_codes_alone() {
         let d = |code: Option<u32>| {
             Diagnosis::read(
@@ -532,6 +625,7 @@ mod tests {
                 Some(&ExitInfo {
                     code,
                     had_window: true,
+                    ..Default::default()
                 }),
             )
         };
