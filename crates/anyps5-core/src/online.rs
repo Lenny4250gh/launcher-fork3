@@ -19,6 +19,8 @@ mod calls;
 mod compare;
 mod feed;
 mod join;
+pub mod lfg;
+pub mod media;
 mod profile;
 mod restrictions;
 mod runs;
@@ -470,6 +472,28 @@ pub enum Purpose {
     },
     AcceptRequest(String),
     LeaveConversation(String),
+    // Looking for group and media
+    /// The open listings of a game.
+    Lfg {
+        title_id: String,
+    },
+    LfgMine,
+    LfgPost,
+    LfgClose(String),
+    LfgAsk(String),
+    LfgWithdraw(String),
+    LfgAnswer {
+        listing: String,
+        accept: bool,
+    },
+    /// A screenshot or clip on its way to a conversation.
+    SendMedia {
+        conversation: String,
+    },
+    /// A received file being downloaded to the cache.
+    FetchMedia {
+        media: String,
+    },
     // Voice
     /// Switching voice on or off, its mode, a member's volume or mute.
     Voice,
@@ -545,6 +569,10 @@ pub enum Notice {
     Restricted(control::Restriction),
     /// The account was banned and is signed out.
     Banned(control::Restriction),
+    /// Someone asked to join a listing of the player.
+    LfgRequest { from: Account, title_id: String },
+    /// A poster accepted the player's request: their party invitation is on its way.
+    LfgAccepted { by: Account, title_id: String },
 }
 
 /// What the launcher knows about the player's online state.
@@ -589,6 +617,10 @@ pub struct Online {
     pub runs: Runs,
     /// The join code behind the Join button on Discord.
     pub join: JoinOffer,
+    /// Looking for group: the listings of the game on screen and the player's own.
+    pub lfg: lfg::Lfg,
+    /// The files of received screenshots and clips.
+    pub media: media::Cache,
     /// How many trophies of each title the cloud has recorded since this sign-in.
     uploaded: BTreeMap<String, usize>,
     /// How many secret trophies of each title the cloud has been told about since this sign-in.
@@ -726,6 +758,12 @@ impl Online {
         }
         match purpose {
             Purpose::Feed { .. } => self.feed.error = Some(failure.clone()),
+            Purpose::Lfg { .. } => self.lfg.failed = true,
+            Purpose::FetchMedia { media } => {
+                self.media.asked.remove(media);
+                self.media.failed.insert(media.clone());
+            }
+            Purpose::LfgPost => self.lfg.post_error = Some(failure.code.clone()),
             Purpose::Conversations => self.social.fetch_failed(None),
             Purpose::Messages {
                 conversation,
@@ -909,6 +947,41 @@ impl Online {
                 }
             }
             Purpose::Hello => self.voice_hello(),
+            Purpose::Lfg { title_id } => {
+                if let Ok(answer) = serde_json::from_value::<api::Listings>(value.clone()) {
+                    self.lfg.keep_listings(title_id, answer);
+                }
+            }
+            Purpose::FetchMedia { media } => {
+                self.media.failed.remove(media);
+                self.media.ready.insert(media.clone());
+            }
+            Purpose::LfgMine => {
+                if let Ok(mine) = serde_json::from_value::<api::LfgMine>(value.clone()) {
+                    self.lfg.mine = Some(mine);
+                }
+            }
+            Purpose::LfgPost => {
+                self.lfg.post_error = None;
+                if let Ok(listing) = serde_json::from_value::<api::Listing>(value.clone()) {
+                    let mine = self.lfg.mine.get_or_insert_with(Default::default);
+                    mine.posted.retain(|l| l.id != listing.id);
+                    mine.posted.insert(0, listing);
+                }
+            }
+            Purpose::LfgClose(id) | Purpose::LfgWithdraw(id) => self.lfg.remove(id),
+            Purpose::LfgAsk(_) | Purpose::LfgAnswer { .. } => {
+                if let Ok(listing) = serde_json::from_value::<api::Listing>(value.clone()) {
+                    self.lfg.replace(&listing);
+                    // The player's request is a new row of "asked" until the next fetch.
+                    if let Some(mine) = self.lfg.mine.as_mut()
+                        && matches!(purpose, Purpose::LfgAsk(_))
+                        && !mine.asked.iter().any(|l| l.id == listing.id)
+                    {
+                        mine.asked.push(listing);
+                    }
+                }
+            }
             Purpose::JoinCode => match serde_json::from_value::<api::JoinCode>(value.clone()) {
                 Ok(code) => self.join.issued(code),
                 Err(_) => self.join.failed(false, false, unix_now()),
@@ -976,6 +1049,16 @@ impl Online {
                     }
                     if *announce {
                         self.announce(conversation, &got.new, notices);
+                    }
+                }
+            }
+            Purpose::SendMedia { conversation } => {
+                if let Ok(message) = serde_json::from_value::<Message>(value.clone()) {
+                    let seq = message.seq;
+                    let got = self.social.ingest_sent(message);
+                    self.social.mark_read(conversation, seq);
+                    if let Some(next) = got.follow {
+                        self.fetch(conversation, next, false);
                     }
                 }
             }
@@ -1377,6 +1460,147 @@ impl Online {
         }
     }
 
+    /// The screen of a game's listings opened: forget another game's, ask for this one's.
+    pub fn open_lfg(&mut self, title_id: &str) {
+        self.lfg.open(title_id);
+        self.refresh_lfg();
+    }
+
+    /// Asks the cloud for the listings of the game on screen and for the player's own, unless
+    /// that question waits already.
+    pub fn refresh_lfg(&mut self) {
+        let Some(title_id) = self.lfg.title_id.clone() else {
+            return;
+        };
+        if !self.is_online() {
+            return;
+        }
+        self.lfg.asked_at = unix_now();
+        if !self.is_waiting(|p| matches!(p, Purpose::Lfg { .. })) {
+            self.send(
+                Purpose::Lfg {
+                    title_id: title_id.clone(),
+                },
+                Command::Lfg {
+                    title_id,
+                    mode: None,
+                    language: None,
+                },
+            );
+        }
+        if !self.is_waiting(|p| *p == Purpose::LfgMine) {
+            self.send(Purpose::LfgMine, Command::LfgMine);
+        }
+    }
+
+    /// Posts a listing for the game on screen.
+    pub fn post_lfg(
+        &mut self,
+        title_id: String,
+        mode: api::LfgMode,
+        language: Option<String>,
+        note: String,
+        slots: u8,
+    ) {
+        if !self.is_online() || self.is_waiting(|p| *p == Purpose::LfgPost) {
+            return;
+        }
+        self.lfg.post_error = None;
+        self.send(
+            Purpose::LfgPost,
+            Command::LfgPost {
+                title_id,
+                mode,
+                language,
+                note,
+                slots,
+            },
+        );
+    }
+
+    pub fn close_lfg(&mut self, listing: &str) {
+        self.send(
+            Purpose::LfgClose(listing.to_owned()),
+            Command::LfgClose {
+                listing: listing.to_owned(),
+            },
+        );
+    }
+
+    pub fn ask_lfg(&mut self, listing: &str) {
+        self.send(
+            Purpose::LfgAsk(listing.to_owned()),
+            Command::LfgAsk {
+                listing: listing.to_owned(),
+            },
+        );
+    }
+
+    pub fn withdraw_lfg(&mut self, listing: &str) {
+        self.send(
+            Purpose::LfgWithdraw(listing.to_owned()),
+            Command::LfgWithdraw {
+                listing: listing.to_owned(),
+            },
+        );
+    }
+
+    /// The poster's answer to a request.
+    pub fn answer_lfg(&mut self, listing: &str, account: AccountId, accept: bool) {
+        self.send(
+            Purpose::LfgAnswer {
+                listing: listing.to_owned(),
+                accept,
+            },
+            Command::LfgAnswer {
+                listing: listing.to_owned(),
+                account,
+                accept,
+            },
+        );
+    }
+
+    /// Reports a listing and its poster.
+    pub fn report_listing(&mut self, poster: AccountId, listing: &str, reason: api::ReportReason) {
+        self.send(
+            Purpose::Report(poster),
+            Command::Report {
+                account: poster,
+                reason,
+                details: String::new(),
+                conversation: None,
+                seq: None,
+                listing: Some(listing.to_owned()),
+            },
+        );
+    }
+
+    /// Sends a screenshot or clip to a conversation.
+    pub fn send_media(&mut self, conversation: &str, path: &Path) {
+        self.send(
+            Purpose::SendMedia {
+                conversation: conversation.to_owned(),
+            },
+            Command::SendMedia {
+                conversation: conversation.to_owned(),
+                path: path.to_string_lossy().into_owned(),
+            },
+        );
+    }
+
+    /// Downloads the file of a media message into `path`.
+    pub fn fetch_media(&mut self, media: &str, path: &Path) {
+        self.send(
+            Purpose::FetchMedia {
+                media: media.to_owned(),
+            },
+            Command::FetchMedia {
+                media: media.to_owned(),
+                path: path.to_string_lossy().into_owned(),
+            },
+        );
+    }
+
     /// Asks for the newest page of the feed, unless that question waits already.
     pub fn request_feed(&mut self) {
         if !self.is_signed_in() || self.is_waiting(|p| *p == Purpose::Feed { before: None }) {
@@ -1649,6 +1873,7 @@ impl Online {
                     self.revealed_sent.clear();
                     self.playtime_sent.clear();
                     self.join = JoinOffer::default();
+                    self.lfg.reset();
                 }
                 if self.account.is_some() {
                     self.restrictions.signed_in();
@@ -1794,6 +2019,23 @@ impl Online {
                 if self.feed.loaded {
                     self.request_feed();
                 }
+            }
+            Event::LfgRequest {
+                listing: _,
+                title_id,
+                from,
+            } => {
+                // The poster's list of requests is read again the next time it is looked at.
+                self.lfg.asked_at = 0;
+                notices.push(Notice::LfgRequest { from, title_id });
+            }
+            Event::LfgAccepted {
+                listing: _,
+                title_id,
+                by,
+            } => {
+                self.lfg.asked_at = 0;
+                notices.push(Notice::LfgAccepted { by, title_id });
             }
             // The Discord Social SDK is not used by this launcher yet.
             Event::Discord(_) => {}
@@ -2528,6 +2770,7 @@ mod tests {
                     deleted: false,
                     reactions: Vec::new(),
                     rev: 0,
+                    media: None,
                 })
                 .collect(),
             last: to,
@@ -2809,6 +3052,7 @@ mod tests {
                 deleted: false,
                 reactions: Vec::new(),
                 rev: 0,
+                media: None,
             },
         );
         assert!(!notices.iter().any(|n| matches!(n, Notice::Message { .. })));

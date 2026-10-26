@@ -191,6 +191,21 @@ impl PanelHost {
                     self.capture_service.images.start_copy(c.path.clone());
                 }
             }
+            CapturesAction::SendToFriend(_) => {
+                let Some(c) = &target else { return };
+                let duration = self
+                    .capture_service
+                    .images
+                    .duration(&c.path)
+                    .map(|d| d.as_millis() as u64);
+                match crate::app::lfg::prepare(&c.path, c.size, duration) {
+                    Ok(outgoing) => model.open_send_capture(outgoing),
+                    Err(refusal) => {
+                        let text = crate::app::lfg::refusal_text(refusal, language);
+                        model.toast_failure(text);
+                    }
+                }
+            }
             CapturesAction::Delete(_) => {
                 let Some(c) = &target else { return };
                 let name = c.file_name();

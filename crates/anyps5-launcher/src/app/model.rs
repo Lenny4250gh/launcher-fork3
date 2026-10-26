@@ -332,6 +332,8 @@ pub struct Model {
     pub profile: Option<crate::app::profile::Target>,
     /// The comparison the trophy compare screen is on (`app::compare`).
     pub compare: Option<crate::app::compare::Target>,
+    /// Find Players and Send to a Friend (`app::lfg`).
+    pub lfg: crate::app::lfg::State,
     /// The profile screen opens again from the comparison: its focus stays where it was.
     pub profile_returning: bool,
     /// The Friends screen opens on the page it was left on, not on its first one: the player
@@ -410,6 +412,7 @@ impl Model {
             together: Default::default(),
             profile: None,
             compare: None,
+            lfg: crate::app::lfg::State::default(),
             profile_returning: false,
             online_resume: false,
             friends_back: None,

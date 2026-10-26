@@ -24,6 +24,7 @@
 mod captures;
 mod compare;
 mod friends;
+pub(crate) mod lfg;
 mod profile;
 
 use std::collections::HashMap;
@@ -158,6 +159,10 @@ pub struct PanelHost {
     profile: crate::screens::profile::ProfileScreen,
     /// The trophy comparison (`Overlay::Compare`).
     compare: crate::screens::compare::CompareScreen,
+    /// Find Players (`Overlay::FindPlayers`) and the friend picker of Captures
+    /// (`Overlay::SendCapture`).
+    lfg: crate::screens::lfg::LfgPanel,
+    send: crate::screens::send::SendPanel,
     /// The page the Friends screen opens on when the profile screen sent the player there: the
     /// page, and a feed item to put the focus on.
     online_start: Option<(crate::screens::online::Page, Option<u64>)>,
@@ -254,6 +259,8 @@ impl PanelHost {
             friends: crate::screens::friends::FriendsScreen::default(),
             profile: crate::screens::profile::ProfileScreen::default(),
             compare: crate::screens::compare::CompareScreen::default(),
+            lfg: crate::screens::lfg::LfgPanel::default(),
+            send: crate::screens::send::SendPanel::default(),
             online_start: None,
             restore: RestorePanel::default(),
             save_view: None,
@@ -723,6 +730,7 @@ impl PanelHost {
                 .then(|| self.save_view.as_ref().map(|v| v.backups.len()))
                 .flatten(),
             recommended,
+            find_players: true,
             unlock_note,
             pin: &pin,
             language,
@@ -763,6 +771,7 @@ impl PanelHost {
             GameSettingsAction::OpenControls => model.switch_overlay(Overlay::Controls),
             GameSettingsAction::OpenAdvanced => model.switch_overlay(Overlay::Advanced),
             GameSettingsAction::OpenRecommended => model.switch_overlay(Overlay::Recommended),
+            GameSettingsAction::OpenFindPlayers => model.open_find_players(Overlay::GameSettings),
             GameSettingsAction::AskUninstall => model.switch_overlay(Overlay::ConfirmUninstall),
             GameSettingsAction::OpenSaves => {
                 self.saves_stale = true;
@@ -2016,6 +2025,8 @@ impl OverlayHost for PanelHost {
             Overlay::Friends => self.friends_ui(cx, wanted),
             Overlay::Profile => self.profile_ui(cx, wanted),
             Overlay::Compare => self.compare_ui(cx, wanted),
+            Overlay::FindPlayers => self.find_players_ui(cx, wanted),
+            Overlay::SendCapture => self.send_capture_ui(cx, wanted),
         }
     }
 
@@ -2046,6 +2057,7 @@ impl OverlayHost for PanelHost {
             self.events.clear();
         }
         self.poll_work(cx.model);
+        self.continue_media_send(cx.model);
         self.poll_toolkit(cx.model);
         let paths = cx.model.paths.clone();
         self.launcher.tick(&paths, cx.model.prefs.check_for_updates);

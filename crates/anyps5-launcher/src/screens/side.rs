@@ -191,7 +191,7 @@ impl SideState {
 
 /// The row a panel stands on when it opens on `row`: a caption is no stop, so it is the first row
 /// after it that can be focused (the caption itself when nothing follows).
-fn settle(kinds: &[RowKind], row: usize) -> usize {
+pub(crate) fn settle(kinds: &[RowKind], row: usize) -> usize {
     match kinds.get(row..) {
         Some(tail) if tail.first().is_some_and(|k| !k.focusable()) => {
             if tail.iter().any(|k| k.focusable()) {

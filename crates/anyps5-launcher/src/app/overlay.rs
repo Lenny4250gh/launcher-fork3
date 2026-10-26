@@ -42,6 +42,10 @@ pub enum Overlay {
     Profile,
     /// The player's trophies in a game next to another player's (a full-screen panel).
     Compare,
+    /// Players who own the selected game and look for a group (a panel of the game frame).
+    FindPlayers,
+    /// The friend picker for a screenshot or clip of Captures (a panel of the game frame).
+    SendCapture,
     /// The release a game stays on is gone: download it again or follow the global toolkit
     /// (a panel of the game frame).
     ToolkitMissing,
@@ -69,12 +73,21 @@ impl Overlay {
                 | Overlay::ToolkitMissing
                 | Overlay::InGame
                 | Overlay::ConfirmCloseGame
+                | Overlay::FindPlayers
+                | Overlay::SendCapture
         )
     }
 
     /// The overlays of the online area: closed while the launcher's update is required.
     pub fn is_online(self) -> bool {
-        matches!(self, Overlay::Friends | Overlay::Profile | Overlay::Compare)
+        matches!(
+            self,
+            Overlay::Friends
+                | Overlay::Profile
+                | Overlay::Compare
+                | Overlay::FindPlayers
+                | Overlay::SendCapture
+        )
     }
 
     /// Number of categories of a two-level panel (only settings has more than one).

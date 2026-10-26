@@ -6,7 +6,9 @@
 //! has to stay where it is while the messages scroll. What the screens say is built by plain
 //! functions ([`entries`], [`thread`]) that tests read without a window.
 
-use anyps5_core::online::api::{Account, AccountId, ConversationKind, EDIT_WINDOW_SECS, Message};
+use anyps5_core::online::api::{
+    Account, AccountId, ConversationKind, EDIT_WINDOW_SECS, MediaKind, Message,
+};
 use anyps5_core::online::{Blocked, delivered_to_other, others, plain, read_by_other, seen_by};
 use egui::containers::scroll_area::ScrollBarVisibility;
 use egui::{Align, Align2, Color32, Margin, Rect, ScrollArea, Sense, Ui, pos2, vec2};
@@ -15,9 +17,11 @@ use super::feed::paint_avatar;
 use super::local::{Avatar, Local};
 use super::{OnlineData, OnlinePanel, restriction};
 use crate::screens::format;
+use crate::screens::lfg_strings::LfgText;
 use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
 use crate::screens::scroll::Follow;
+use crate::screens::send::media_label;
 use crate::ui::anim::{AnimExt, Motion};
 use crate::ui::components::{self, ConsoleButton, ControlSize, corner, paint_capsule};
 use crate::ui::i18n::{Arg, Language};
@@ -143,6 +147,8 @@ fn offset_at(data: &OnlineData<'_>, unix: i64) -> i32 {
 fn line_of(message: &Message, language: Language) -> String {
     if message.deleted {
         S::Removed.text(language).to_owned()
+    } else if let Some(info) = &message.media {
+        media_label(info, language)
     } else {
         plain(&message.text)
             .split_whitespace()
@@ -242,6 +248,18 @@ pub struct Bubble {
     pub last: bool,
     /// More than two people write here: others' bubbles carry a name and a picture.
     pub crowd: bool,
+    /// A screenshot or a clip instead of words.
+    pub media: Option<BubbleMedia>,
+}
+
+/// What a media bubble shows above its line.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BubbleMedia {
+    pub clip: bool,
+    /// The file is gone from the cloud.
+    pub unavailable: bool,
+    /// The screenshot, once it is on this PC: the texture and its width over height.
+    pub texture: Option<(egui::TextureId, f32)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -378,10 +396,25 @@ pub fn thread(data: &OnlineData<'_>, local: &Local, id: &str, shown: usize) -> O
             }
         }
         let meta = (last && !message.deleted).then(|| parts.join(" · "));
-        let text = if message.deleted {
-            S::Removed.text(language).to_owned()
-        } else {
-            plain(&message.text)
+        let media = message
+            .media
+            .as_ref()
+            .filter(|_| !message.deleted)
+            .map(|info| BubbleMedia {
+                clip: info.kind == MediaKind::Clip,
+                unavailable: online.media.failed.contains(&info.id),
+                texture: local.media.get(&info.id).map(|m| (m.texture, m.aspect)),
+            });
+        let text = match (&message.media, message.deleted) {
+            (_, true) => S::Removed.text(language).to_owned(),
+            (Some(info), false) => {
+                if media.as_ref().is_some_and(|m| m.unavailable) {
+                    LfgText::Unavailable.text(language).to_owned()
+                } else {
+                    media_label(info, language)
+                }
+            }
+            (None, false) => plain(&message.text),
         };
         let sender_name = if mine {
             T::You.text(language).to_owned()
@@ -410,6 +443,7 @@ pub fn thread(data: &OnlineData<'_>, local: &Local, id: &str, shown: usize) -> O
             first,
             last,
             crowd,
+            media,
         })));
     }
     let loaded = social.is_loaded(id);
@@ -525,6 +559,8 @@ pub fn composer(data: &OnlineData<'_>, id: &str) -> Option<Composer> {
 fn snippet_of(message: &Message, language: Language) -> String {
     if message.deleted {
         S::Removed.text(language).to_owned()
+    } else if let Some(info) = &message.media {
+        media_label(info, language)
     } else {
         anyps5_core::online::snippet(&message.text, 40)
     }
@@ -534,6 +570,7 @@ fn snippet_of(message: &Message, language: Language) -> String {
 pub fn editable(message: &Message, me: AccountId, now: i64) -> bool {
     message.sender.id == me
         && !message.deleted
+        && message.media.is_none()
         && u64::try_from(now).is_ok_and(|now| now <= message.created + EDIT_WINDOW_SECS)
 }
 
@@ -1897,6 +1934,63 @@ fn removed_view(
     row
 }
 
+/// The width and height of the picture above a media bubble's line.
+const PREVIEW_W: f32 = 260.0;
+const PREVIEW_H: f32 = 146.0;
+
+/// The largest rectangle of a picture's shape inside `rect`, centred in it.
+fn fit(rect: Rect, aspect: f32) -> Rect {
+    if !aspect.is_finite() || aspect <= 0.0 {
+        return rect;
+    }
+    let by_width = vec2(rect.width(), rect.width() / aspect);
+    let size = if by_width.y <= rect.height() {
+        by_width
+    } else {
+        vec2(rect.height() * aspect, rect.height())
+    };
+    Rect::from_center_size(rect.center(), size)
+}
+
+/// The screenshot, or a quiet box with the glyph of what the bubble holds.
+fn paint_preview(painter: &egui::Painter, rect: Rect, media: &BubbleMedia) {
+    match media.texture {
+        Some((texture, aspect)) if !media.unavailable => {
+            let shown = fit(rect, aspect);
+            painter.image(
+                texture,
+                shown,
+                Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+            // A low outline keeps the picture's edge apart from the bubble.
+            painter.rect_stroke(
+                shown,
+                egui::CornerRadius::ZERO,
+                egui::Stroke::new(1.0, fade(color::text(), 0.10)),
+                egui::StrokeKind::Inside,
+            );
+        }
+        _ => {
+            painter.rect_filled(rect, corner(radius::KEYCAP), fade(color::text(), 0.08));
+            let icon = if media.unavailable {
+                Icon::WARNING
+            } else if media.clip {
+                Icon::PLAY_CIRCLE
+            } else {
+                Icon::IMAGE
+            };
+            painter.text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                icon.glyph(),
+                icon.font(36.0, false),
+                color::text_note(),
+            );
+        }
+    }
+}
+
 /// The fill of a bubble: the others' resting surface, the player's one step lighter.
 fn bubble_fill(mine: bool) -> Color32 {
     if mine {
@@ -1943,8 +2037,17 @@ fn bubble_view(
     if let Some((w, t)) = &quote {
         inner_w = inner_w.max(w.size().x.max(t.size().x) + QUOTE_INSET);
     }
+    let preview_w = b.media.as_ref().map(|_| PREVIEW_W.min(text_width));
+    if let Some(w) = preview_w {
+        inner_w = inner_w.max(w);
+    }
+    let preview_h = if preview_w.is_some() {
+        PREVIEW_H + space::S
+    } else {
+        0.0
+    };
     let bubble_w = (inner_w + 2.0 * BUBBLE_PAD_X).max(BUBBLE_MIN);
-    let bubble_h = body.size().y + 2.0 * BUBBLE_PAD_Y + quote_h;
+    let bubble_h = body.size().y + 2.0 * BUBBLE_PAD_Y + quote_h + preview_h;
     let name_h = if b.name.is_some() { NAME_HEIGHT } else { 0.0 };
     let meta_h = if b.meta.is_some() { META_HEIGHT } else { 0.0 };
     let gap = if b.first { RUN_GAP } else { LINE_GAP };
@@ -2034,6 +2137,12 @@ fn bubble_view(
         painter.galley(pos2(x, y), who, color::text_label());
         painter.galley(pos2(x, y + who_h), text, color::text_detail());
         y += quote_h;
+    }
+    if let (Some(media), Some(width)) = (&b.media, preview_w) {
+        let rect =
+            Rect::from_min_size(pos2(bubble.min.x + BUBBLE_PAD_X, y), vec2(width, PREVIEW_H));
+        paint_preview(&painter, rect, media);
+        y += preview_h;
     }
     painter.galley(pos2(bubble.min.x + BUBBLE_PAD_X, y), body, color::text());
 
@@ -2520,6 +2629,7 @@ mod tests {
             deleted: false,
             reactions: Vec::new(),
             rev: 0,
+            media: None,
         }
     }
 

@@ -1567,6 +1567,7 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
             deleted: false,
             reactions: Vec::new(),
             rev: 0,
+            media: None,
         };
     let mut lumen_messages = vec![
         said(
@@ -2519,6 +2520,7 @@ impl ScreenGallery {
                     changes: 1,
                     needed: true,
                 }),
+                find_players: true,
                 unlock_note: Some(
                     "Unlocked with v0.1.2. v0.1.3 is installed. This update changes how games are converted."
                         .into(),

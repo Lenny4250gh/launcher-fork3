@@ -23,6 +23,7 @@ pub mod clock;
 pub mod compare;
 pub mod core_pipeline;
 mod discord;
+pub mod lfg;
 pub mod links;
 pub mod ludus;
 pub mod ludus_web;

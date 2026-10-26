@@ -10,11 +10,13 @@ use anyps5_core::online::{Online, Purpose, others, plain};
 use super::{Ask, OnlineAction, OnlineData, OnlinePanel, Page, presence_text};
 use crate::screens::format;
 use crate::screens::friends_strings::FriendsText as FX;
+use crate::screens::lfg_strings::LfgText;
 use crate::screens::online_feed_strings::FeedText as FD;
 use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
 use crate::screens::online_voice_strings::VoiceText as V;
 use crate::screens::rows::Row;
+use crate::screens::send::media_label;
 use crate::screens::together_strings::TogetherText as TT;
 use crate::ui::i18n::{Arg, Key, Language};
 use crate::ui::icons::Icon;
@@ -591,10 +593,24 @@ impl OnlinePanel {
                 }
                 if message.deleted {
                     rows.push(Row::body("body", t(S::Removed)));
+                } else if let Some(info) = &message.media {
+                    rows.push(Row::body("body", media_label(info, language)));
                 } else {
                     rows.push(Row::body("body", plain(&message.text)));
                 }
                 if !message.deleted {
+                    if let Some(info) = &message.media {
+                        rows.push(
+                            Row::command("openMedia", LfgText::OpenMedia.text(language))
+                                .icon(if info.kind == anyps5_core::online::api::MediaKind::Clip {
+                                    Icon::PLAY
+                                } else {
+                                    Icon::IMAGE
+                                })
+                                .detail(LfgText::OpenMediaDetail.text(language))
+                                .group_start(),
+                        );
+                    }
                     if !conversation.request {
                         rows.push(
                             Row::action("reply", t(S::Reply))
@@ -618,11 +634,13 @@ impl OnlinePanel {
                                 .destructive(),
                         );
                     }
-                    rows.push(
-                        Row::command("copyText", t(S::CopyText))
-                            .icon(Icon::FILE_TEXT)
-                            .group_start(),
-                    );
+                    if message.media.is_none() {
+                        rows.push(
+                            Row::command("copyText", t(S::CopyText))
+                                .icon(Icon::FILE_TEXT)
+                                .group_start(),
+                        );
+                    }
                     if !mine {
                         rows.push(
                             Row::action("reportMessage", T::Report.text(language)).icon(Icon::FLAG),
@@ -1021,6 +1039,12 @@ impl OnlinePanel {
                 }
             }
             ("blockChat", Page::ChatOptions(id)) => self.ask(Ask::BlockChat(id), data),
+            ("openMedia", Page::Message(id, seq)) => {
+                actions.push(OnlineAction::OpenMedia {
+                    conversation: id,
+                    seq,
+                });
+            }
             ("copyText", Page::Message(id, seq)) => {
                 if let Some(message) = social.messages(&id).iter().find(|m| m.seq == seq) {
                     actions.push(OnlineAction::CopyText(plain(&message.text)));
@@ -1169,6 +1193,7 @@ mod tests {
                     deleted: false,
                     reactions: Vec::new(),
                     rev: 0,
+                    media: None,
                 })
                 .collect(),
             last: to,

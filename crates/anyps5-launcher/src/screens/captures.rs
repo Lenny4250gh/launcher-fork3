@@ -103,6 +103,8 @@ pub enum CapturesAction {
     OpenInPlayer(usize),
     ShowInFolder(usize),
     CopyImage(usize),
+    /// Send the capture to a friend: the friend picker opens.
+    SendToFriend(usize),
     Delete(usize),
 }
 
@@ -113,6 +115,7 @@ impl CapturesAction {
             CapturesAction::OpenInPlayer(i)
             | CapturesAction::ShowInFolder(i)
             | CapturesAction::CopyImage(i)
+            | CapturesAction::SendToFriend(i)
             | CapturesAction::Delete(i) => Some(i),
             _ => None,
         }
@@ -155,6 +158,7 @@ pub(crate) enum Mode {
 pub(crate) enum ViewAction {
     OpenInPlayer,
     CopyImage,
+    SendToFriend,
     ShowInFolder,
     Delete,
 }
@@ -165,16 +169,26 @@ impl ViewAction {
         match (kind, deletable) {
             (Kind::Clip, true) => &[
                 ViewAction::OpenInPlayer,
+                ViewAction::SendToFriend,
                 ViewAction::ShowInFolder,
                 ViewAction::Delete,
             ],
-            (Kind::Clip, false) => &[ViewAction::OpenInPlayer, ViewAction::ShowInFolder],
+            (Kind::Clip, false) => &[
+                ViewAction::OpenInPlayer,
+                ViewAction::SendToFriend,
+                ViewAction::ShowInFolder,
+            ],
             (Kind::Screenshot, true) => &[
                 ViewAction::CopyImage,
+                ViewAction::SendToFriend,
                 ViewAction::ShowInFolder,
                 ViewAction::Delete,
             ],
-            (Kind::Screenshot, false) => &[ViewAction::CopyImage, ViewAction::ShowInFolder],
+            (Kind::Screenshot, false) => &[
+                ViewAction::CopyImage,
+                ViewAction::SendToFriend,
+                ViewAction::ShowInFolder,
+            ],
         }
     }
 }
@@ -605,6 +619,7 @@ impl CapturesScreen {
         match action {
             ViewAction::OpenInPlayer => out.actions.push(CapturesAction::OpenInPlayer(capture)),
             ViewAction::CopyImage => out.actions.push(CapturesAction::CopyImage(capture)),
+            ViewAction::SendToFriend => out.actions.push(CapturesAction::SendToFriend(capture)),
             ViewAction::ShowInFolder => out.actions.push(CapturesAction::ShowInFolder(capture)),
             ViewAction::Delete => {
                 // Opens on Cancel: Enter must never delete by accident.
