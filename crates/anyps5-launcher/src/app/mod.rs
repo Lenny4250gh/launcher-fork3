@@ -350,16 +350,51 @@ impl LauncherApp {
 
     /// Tells the net service whether the talk key is down. Only a launcher in front sees keys:
     /// when it loses the focus, or the player types somewhere, the key counts as up. A game that
-    /// has the keyboard gets no push to talk; voice activity is for playing (docs/DESIGN.md 17).
+    /// has the keyboard is read by the watcher thread of `ui::talk` (docs/DESIGN.md 17).
     fn push_to_talk(&mut self, ctx: &Context) {
+        use crate::ui::sound::Cue;
+        use crate::ui::talk::{self, PadButton};
         let focused = self.assume_focus || ctx.input(|i| i.viewport().focused).unwrap_or(true);
         let key = crate::screens::online::talk_key(&self.model.online);
-        let held = focused
-            && !self.shell.input.capture_keys
+        let voice = &self.model.online.voice;
+        let active =
+            voice.runs_here() && voice.mode_in_use() == anyps5_core::online::VoiceMode::PushToTalk;
+        let button = voice.prefs().pad.as_deref().and_then(PadButton::from_name);
+        let talk = talk::shared();
+        // Cues from the watcher thread need the sound device open.
+        self.shell.sounds.warm();
+        if !talk.has_cues()
+            && let Some(cues) = self.shell.sounds.cue_sender()
+        {
+            talk.set_cues(cues);
+        }
+        talk.configure(talk::Setup {
+            ctx,
+            home: &self.shell.home,
+            active,
+            key: talk::virtual_key(key),
+            button,
+            cues_on: self.shell.sounds.enabled,
+        });
+        if !focused {
+            // Something else is in front: the watcher thread tells the service, and this side
+            // takes its state over.
+            self.model.online.adopt_talking(talk.told());
+            return;
+        }
+        let held = (!self.shell.input.capture_keys
             && !self.shell.input.blocked
             && !crate::ui::a11y::foreign_focus(ctx)
-            && ctx.input(|i| i.key_down(key) && !i.modifiers.any());
+            && ctx.input(|i| i.key_down(key) && !i.modifiers.any()))
+            || (active && talk.pad_down());
+        let before = self.model.online.is_talking();
         self.model.online.set_talking(held);
+        let after = self.model.online.is_talking();
+        talk.set_told(after);
+        if after != before {
+            self.shell
+                .play(if after { Cue::TalkOn } else { Cue::TalkOff });
+        }
     }
 
     /// Writes the preferences when something changed (atomic, see `Preferences::save`).

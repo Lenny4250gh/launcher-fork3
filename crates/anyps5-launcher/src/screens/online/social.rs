@@ -1921,7 +1921,7 @@ mod tests {
         let note = rows.iter().find(|r| r.id == "voiceNote").unwrap();
         assert_eq!(
             note.title,
-            "Push to talk works while the launcher is in front."
+            super::super::voice::ptt_note(false).text(Language::English)
         );
         // A running game has the keyboard: the note says what to do instead.
         let playing = OnlineData {
@@ -1931,7 +1931,10 @@ mod tests {
         };
         let rows = panel.rows(&playing).2;
         let note = rows.iter().find(|r| r.id == "voiceNote").unwrap();
-        assert!(note.title.contains("Switch to Voice Activity"));
+        assert_eq!(
+            note.title,
+            super::super::voice::ptt_note(true).text(Language::English)
+        );
         // Voice activity has its own note and no talk key on the voice page.
         online.set_voice_mode(VoiceMode::VoiceActivity);
         let rows = panel.rows(&data(&online)).2;
