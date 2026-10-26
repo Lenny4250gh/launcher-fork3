@@ -1078,8 +1078,16 @@ picked an accent.
 - **Where the colours come from.** The game's background art, else its icon, is read on a worker thread
   (`app::game_colors`, two at a time), reduced to 64 px, and `ui::gamecolors::dominant` takes up to three
   colours: twelve hue buckets of the colourful pixels weighted by saturation and brightness, at least 60 degrees
-  apart. The look of each game is remembered for the session; art that cannot be read or has no colour gives
-  Cosmic's look.
+  apart. Art that cannot be read or has no colour gives Cosmic's look.
+- **Remembered between runs (0.3.3).** The look of each game is kept in `game-colors.json` in the data folder
+  (`AppPaths::game_colors_file`), so the theme is there at the first frame of the next start and nothing is read
+  again. An entry is `{ art, deep, middle, bright, accent }` under the game's id; `art` is a fingerprint of the
+  picture (FNV-1a over its path, size and time of last change, one `stat` and no decoding), so a game whose art was
+  replaced is read once more and a game whose art did not change never is. The file carries the version of the
+  algorithm (`ALGORITHM`): a file from another version, a damaged one or a missing one is the same as none. It holds
+  at most 400 games, dropping first the ones not opened in this run. It is written by the UI thread after a look was
+  found (a few kilobytes, once per new game), never in the previews, and a failed write is not reported: the colours
+  are found again next time. A game without art is not written.
 - **Palette.** Deep from the first colour (brightest channel 0.08), middle from the first and second (0.46), bright
   from the second and third (1.0), then clamped (`clamp_palette`).
 - **Contrast.** The lit tone (the middle tone a third of the way to the bright one, as the contrast table has it) may have at most the relative luminance of Aurora's
@@ -1362,7 +1370,7 @@ talks to. Rules for rows:
 | General (`general`) | gear | *(no heading)* `prepare` toggle (Prepare New Games Automatically), `hide` toggle `hideWhilePlaying`, `hiddenTrophies` toggle (the trophy list's only option, 5.11), `homeButton` toggle (6.6), then `updateCheck` toggle (Check for Updates: the launcher's own update and the toolkit's) |
 | Appearance (`appearance`) | brush | `theme` choice (Cosmic/Aurora/Sunset), `accent` choice (six), `backdrop` choice (`backgroundTheme` / `backgroundImage` / `backgroundVideo`; picking image/video opens a file dialog when no file is set or the kind changed), `file` action `chooseFile` (only when backdrop is not theme; detail = file name), `artwork` toggle `gameArtwork`, on the Mac `glass` toggle (19), `motion` choice (`motionFull` / `motionReduced`) |
 | Library (`storage`) | 2x2 grid | `folder` action (detail = path or an em dash; opens the folder dialog), `rescan` action (detail `gamesFound`; sound `select`), then the rows of the unlocked games location ("Unlocked Games Location" below): `unlockedLocation` with its note, `unlockedDefault`, and while copies move `moveCancel`, `moveContinue`, `moveLeave` |
-| Sound (`sound`) | speaker | `sounds`, `music` (Home Screen Music, 7.3), `gameMusic` (Game Music, 7.3), `notifSounds`; each with its volume stepper (`volInterface`, `volMusic`, `volGameMusic`, `volNotif`) under it while the switch is on |
+| Sound (`sound`) | speaker | `sounds`, `music` (Home Screen Music, 7.3), `gameMusic` (Game Music, 7.3), `notifSounds`; each with its volume slider (`volInterface`, `volMusic`, `volGameMusic`, `volNotif`, 5.8.1) under it while the switch is on |
 | Controllers (`controllers`) | game controller | `controllers` action (Controller Center), `vibration` choice (6.8), info `controllerHelp` (what to do when the pad does not react) |
 | Captures (`captures`) | camera | `screenshots` action `screenshotsFolder` (detail = path, `~` abbreviated; an info row naming the toolkit it needs while the toolkit is too old), `showScreenshots` command, info `screenshotHint` (F12). Windows, after a group gap: the Clips rows (9.8) |
 | Broadcast (`broadcast`) | play circle | `broadcastService` choice, `broadcastServer` text (custom service only), `broadcastKey` text (masked), `broadcastQuality` choice. Off Windows: info `broadcastNone` |
@@ -1444,6 +1452,7 @@ A row has a symbol, a title (17 medium, up to 2 lines, shrinks to 0.85), an opti
 | choice | `<  value  >` (chevrons 13 bold in 26 boxes, opacity 0.85, 0.25 when at the end; value 16 semibold, 120..190 wide, shrinks to 0.7) | click chevron = step; click row = next, wraps | left/right step (clamped), select = next (wraps) |
 | toggle | switch 50 x 28 (on = accent track, off = white 0.18, knob white) | click row or switch toggles | right = on, left = off, select = toggle |
 | stepper | `-  value  +` (tabular 16 semibold, 70 wide) | click -/+ | left/right by step (clamped), select = +step, wraps to min |
+| slider | `----o----  70%`: a rail and a thumb, then the value (tabular 16 semibold, 56 wide, right-aligned); see 5.8.1 | press or drag on the rail sets the value at once; a click on the rest of the row only takes the focus | the stepper's: left/right by step (clamped), a held direction repeats and speeds up (6.1), select = +step, wraps to min; Page Up/Page Down move two steps |
 | action | trailing chevron-right (14 semibold, 0.6) | click runs it (sound `select`) | select runs it |
 | info | static text (15 medium, 0.7) or just the title in white 0.62 when it has no value (section headers, hints) | none | not focusable |
 | text | right-aligned text field 200 wide, edits live | click to edit | keys go to the field (6.1) |
@@ -1475,6 +1484,38 @@ host and the end of the token stay readable. Screen readers hear "Link: https://
 **Key cap** (controls): min 30 x 28, radius 7, padding h 9, text 13.5 semibold; fill white 0.12 for keyboard keys and white 0.06 for
 mouse/wheel sources (black 0.12 / 0.06 when focused), 1 px stroke at 0.18. No binding: the text `noKey` (15 medium, 0.5). Waiting for
 a key: `pressKey` (15 semibold, pulsing, animation 17b).
+
+#### 5.8.1 Sliders (0.3.3)
+
+A slider is a stepper that shows where it is (`Control::Slider`, `RowControl::Slider`). The row model is the stepper's, on
+purpose: the same `Change::Stepper`, the same `PanelEffect::Adjust` and the same steps, so every screen that handles a
+stepper handles a slider, and the keyboard and the pad need nothing new. Console menus step their sliders with the
+direction buttons and hold-to-repeat, and that is the pattern here: left/right move the value by the row's step (10 for
+the volumes), a held direction repeats after 0.36 s and speeds up after six repeats (`ui::input::Repeater`, the one
+logic of the pad and the arrow keys). What a slider
+adds is the pointer and a picture of the value:
+
+- **Pointer.** The grip is the rail's width by the height of the row (58 dp or more, so far over 44). It answers on
+  pointer-down, not on release, and follows the pointer 1:1 while it is held; the value snaps to half the row's step
+  (5 for the volumes), measured from the minimum. The cursor is a hand open over the grip and closed while it is held.
+  The row's own click (select, next) does not apply to a slider: a click beside the rail only moves the focus.
+- **Keyboard.** The arrows are the pad's (above); Page Up and Page Down move two steps while the row has the focus.
+  There is no Home or End: Home is a fixed pad binding of the launcher (6.1).
+- **Picture.** A 4 dp rail in white 0.34, filled with ink (white 0.92) up to a 9 dp-radius thumb, which is ink as well:
+  the accent is for choices, and a value does not need it. The thumb follows the value in 0.10 s (`Motion::Press`, the
+  same with reduced motion), so a step slides and a drag keeps up. While it is held a soft disc of white 0.16 grows
+  around the thumb by 5 dp. A colour slider (`Track::Hue`, `Track::Ramp`) has an 8 dp rail painted with its own
+  colours, round ends, and a thumb whose centre shows the colour it stands on, so what the slider sets is seen on it.
+  There is no focus ring of its own: the row's ring is the focus. Nothing moves except the thumb and the halo.
+- **Sound.** A value change ticks (`Cue::Move`), once per change of value, not per frame. A row that sets a volume
+  (`own_tick`) lets the screen play the tick: the engine is told the new volume first (`Sounds::set_volumes` before
+  `play`), so the tick is as loud as the volume it sets and silent at Off; the notification volume ticks with a
+  notification cue. The generic path plays the tick for every other slider.
+- **Accessibility.** One node per row, role slider, label the title, numeric value the percentage of the range (0 to 100)
+  and the text value as shown (`70%`, `210°`) read after it.
+
+Used by the four volumes of Sound (7.7) and by the hue and brightness of the custom light bar colour (6.10). The Party
+member's volume (0 to 200 %) stays a stepper.
 
 ### 5.9 Game settings (the "..." menu) and the panels of its frame
 
@@ -2296,7 +2337,7 @@ Settings, Behaviour, **Controllers** opens a full-screen page (`screens::control
   - *Test Buttons* opens the live test: a pad drawing in which every button lights while it is held, the triggers fill, and the sticks show a dot and the dead zone ring; the numbers stand under it. While it runs (and while a binding waits) the pad sends the launcher no commands (`nav_bindings::set_capturing`); Home and Create still work. It is left with Esc, the page's Back button, or by holding the pad's Back button for a second (a thin line fills).
   - *Test Vibration* plays a light-motor then heavy-motor pattern at medium strength whatever the vibration setting says (`Haptics::test`). Refused while a game runs or starts, and without a pad that can rumble.
   - *Stick Dead Zone* (5 to 50 percent, default 25, preference `padDeadzone`) is for the launcher's own pad navigation only: the left stick engages 30 points above it and lets go 13 above it, which is the old 0.55 and 0.38 at 25. Games keep their own.
-  - *Light Bar Colour* (only with a DualSense connected): seven colours (`lightbar`, `RRGGBB`). `ui::lightbar` writes the output report over `hidapi` (USB report 0x02, 63 bytes; Bluetooth 0x31, 78 bytes with the CRC-32 over 0xA2 and the report; offsets from the kernel's `hid-playstation.c` and SDL's `SDL_hidapi_ps5.c`, listed in the module). Only the lightbar bits are set, so rumble and the player lamps stay as they are. This is the one place the launcher writes to a pad's HID output; it happens only on the player's choice, and never while a game runs or starts (the game owns the pad; its next report replaces the colour anyway).
+  - *Light Bar Colour* (only with a DualSense connected): seven presets and *Custom* (`lightbar`, `RRGGBB`). *Custom* opens two slider rows under the choice (5.8.1): *Hue* (0 to 355 degrees, a rail of every hue) and *Brightness* (10 to 100 percent, a rail from black to the hue at full brightness), steps of 10 for the arrows and the pad and of 5 for the pointer. The colour is the pure hue at that brightness, stored as `RRGGBB` like a preset (`ui::lightbar::custom`; `custom_of` reads the two values back from it), and no such colour equals a preset or Off (tested over every stop), so the choice row says Custom exactly when the stored colour is none of the presets. Choosing Custom from a preset starts at that colour's own hue and brightness (Off starts at red); a custom colour already chosen stays. Every step is written to the pad at once, without a toast (the light bar is the answer): `lightbar::set_soon` writes on a thread of its own and a newer colour replaces an older one still waiting, so a drag never queues writes. The rule is the presets': nothing is written while a game runs or starts (a warning toast, and the stored colour stays). The colour is stored only in the preferences, not per pad. `ui::lightbar` writes the output report over `hidapi` (USB report 0x02, 63 bytes; Bluetooth 0x31, 78 bytes with the CRC-32 over 0xA2 and the report; offsets from the kernel's `hid-playstation.c` and SDL's `SDL_hidapi_ps5.c`, listed in the module). Only the lightbar bits are set, so rumble and the player lamps stay as they are. This is the one place the launcher writes to a pad's HID output; it happens only on the player's choice, and never while a game runs or starts (the game owns the pad; its next report replaces the colour anyway).
 - **Launcher Controls.** *Confirm with Circle* swaps Select and Back on the pad. Below it one row per job, each showing its keys and its pad button: Select, Back, Options, Previous Section, Next Section. Choosing a row waits for a key or a pad button (10 seconds, Esc cancels); the press replaces that device's binding for the job. A button or key already used by another job **swaps**: the other job lets go of it and, left with nothing, takes what the first job had, so no job is left without a button, and a toast says what moved. The directions (D-pad, left stick, arrow keys), Home (PS), Create, Tab and F11 are fixed and refused with a toast. *Reset to Default* puts everything back. Games keep their own bindings (the Controls panel of a game); this is the launcher only.
   - Defaults: Select Cross, Enter, Space; Back Circle, Esc, Backspace; Options Triangle, Menu, O; Previous and Next Section L1 and R1 (a step through the sections, like Shift+Tab and Tab: the home screen's sections, a row up or down in a panel). Stored as the differences only: `navPad` and `navKeys` map a job (`select`, `back`, `options`, `previous`, `next`) to button or key names. Names a version does not know are ignored.
   - The hint bars follow the bindings: the first pad button and key of Select, Back and Options (a face button draws its glyph, a bumper, trigger or Menu a cap with its name), through `HintAction`. The saved light bar colour is put on a DualSense when it connects and at start, never while a game runs or starts.
@@ -2339,8 +2380,8 @@ in `docs/user/INPUT_MAPPING.md` of AnyPS5-ARM.
 ### 7.7 Volumes by kind of sound (0.3.0)
 
 Settings, Behavior, Sound: each switch (Interface Sounds, Home Screen Music, Game Music, Notification Sounds) has a
-volume row under it while it is on, a stepper from Off to 100% in steps of 10 (`volume_*` preferences, 100 by default,
-so nothing is quieter than before). Notification Sounds is a new switch: off mutes the notification cues (a notice, a
+volume row under it while it is on, a slider (5.8.1) from Off to 100% in steps of 10 for the arrows and the pad and of 5
+for the pointer (`volume_*` preferences, 100 by default, so nothing is quieter than before). Notification Sounds is a new switch: off mutes the notification cues (a notice, a
 message, an invitation, a call: `Cue::is_notification`) while the interface sounds go on. The engine scales each cue by
 the volume of its kind when it starts and the two musics continuously, gliding over about 25 ms so a change does not
 click. A volume of zero never reaches the device.

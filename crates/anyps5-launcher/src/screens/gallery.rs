@@ -2,7 +2,7 @@
 //! be screenshotted and compared with the original (`docs/DESIGN.md` screenshot table).
 //!
 //! ```text
-//! anyplay-launcher --gallery=controllers|controllers-test|settings|settings1..6|game-settings|game-settings-foot|confirm|controls|controls-capture|
+//! anyplay-launcher --gallery=controllers|controllers-test|controllers-lightbar|controllers-lightbar-custom|settings-sound|settings|settings1..6|game-settings|game-settings-foot|confirm|controls|controls-capture|
 //!                           controls-end|advanced|trophies|trophies-hidden|trophies-revealed|banner|start|unlocking|log|report|library|
 //!                           captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
@@ -161,6 +161,11 @@ pub enum ScreenPage {
     Confirm,
     Controllers,
     ControllersTest,
+    /// The light bar row of a DualSense, with a preset (`false`) or a custom colour (`true`), whose
+    /// hue and brightness sliders show under it.
+    ControllersLight(bool),
+    /// Settings, Sound: the volume sliders, the first one focused.
+    SettingsSound,
     Controls,
     ControlsCapture,
     /// The last rows: import, export, reset.
@@ -822,6 +827,9 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "confirm" => ScreenPage::Confirm,
         "controllers" => ScreenPage::Controllers,
         "controllers-test" => ScreenPage::ControllersTest,
+        "controllers-lightbar" => ScreenPage::ControllersLight(false),
+        "controllers-lightbar-custom" => ScreenPage::ControllersLight(true),
+        "settings-sound" => ScreenPage::SettingsSound,
         "controls" => ScreenPage::Controls,
         "controls-capture" => ScreenPage::ControlsCapture,
         "controls-end" => ScreenPage::ControlsEnd,
@@ -3455,6 +3463,41 @@ impl ScreenGallery {
             }
             ScreenPage::Controllers => self.controllers.open(),
             ScreenPage::ControllersTest => self.controllers.open_test(),
+            ScreenPage::ControllersLight(custom) => {
+                crate::ui::pad_hub::publish_pads(vec![crate::ui::pad_hub::PadInfo {
+                    id: 0,
+                    name: "DualSense Wireless Controller".into(),
+                    vendor: Some(0x054C),
+                    product: Some(0x0CE6),
+                    family: crate::ui::pad_info::Family::PlayStation,
+                    link: crate::ui::pad_hub::Link::Bluetooth,
+                    battery: crate::ui::pad_info::Battery::Unknown,
+                    backend: "gilrs (WGI), HID".into(),
+                    active: true,
+                    dualsense: true,
+                    rumble: true,
+                }]);
+                self.prefs.lightbar = Some(if custom {
+                    crate::ui::lightbar::hex(crate::ui::lightbar::custom(210, 80))
+                } else {
+                    crate::ui::lightbar::hex(crate::ui::lightbar::COLOURS[0].1)
+                });
+                // The caption, the pad, the test caption and its two rows, the dead zone, then the
+                // light bar; with a custom colour the hue slider is the next row.
+                self.controllers.open_row(if custom { 7 } else { 6 });
+            }
+            ScreenPage::SettingsSound => {
+                self.prefs.sounds = true;
+                self.prefs.music = true;
+                self.prefs.game_music = true;
+                self.prefs.notification_sounds = true;
+                self.prefs.volume_interface = 70;
+                self.prefs.volume_music = 40;
+                self.prefs.volume_game_music = 100;
+                self.prefs.volume_notifications = 0;
+                self.settings.open_at(Category::Sound.index(), true);
+                self.settings.focus_row_id("volInterface");
+            }
             ScreenPage::Controls => self.controls.open(),
             ScreenPage::ControlsCapture => {
                 self.controls.open_row(3);
