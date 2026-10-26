@@ -586,8 +586,8 @@ mod tests {
 
     #[test]
     fn the_sound_map_is_balanced() {
-        // The three ticks are the quietest cues and a run of them stays soft.
-        let ticks = [Cue::Hover, Cue::Move, Cue::Bump];
+        // The ticks are the quietest cues and a run of them stays soft.
+        let ticks = [Cue::Hover, Cue::Move, Cue::Bump, Cue::TalkOn, Cue::TalkOff];
         let loudest_tick = ticks.iter().map(|&c| peak_db(c)).fold(f32::MIN, f32::max);
         for cue in Cue::ALL {
             if !ticks.contains(&cue) {

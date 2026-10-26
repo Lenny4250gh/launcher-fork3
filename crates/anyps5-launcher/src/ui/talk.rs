@@ -119,10 +119,8 @@ pub fn virtual_key(key: Key) -> Option<u32> {
     if let [letter @ b'A'..=b'Z'] = name.as_bytes() {
         return Some(u32::from(*letter));
     }
-    if let Some(digit) = name.strip_prefix("Num").and_then(|d| d.parse::<u32>().ok())
-        && digit <= 9
-    {
-        return Some(0x30 + digit);
+    if let [digit @ b'0'..=b'9'] = name.as_bytes() {
+        return Some(u32::from(*digit));
     }
     if let Some(n) = name.strip_prefix('F').and_then(|d| d.parse::<u32>().ok())
         && (1..=12).contains(&n)

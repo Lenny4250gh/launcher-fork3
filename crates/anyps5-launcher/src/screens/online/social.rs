@@ -2186,6 +2186,8 @@ mod tests {
                 "voiceMode",
                 "voiceNote",
                 "talkKey",
+                "talkPad",
+                "voiceNoise",
                 "voiceInput",
                 "voiceOutput",
                 "refreshDevices",
