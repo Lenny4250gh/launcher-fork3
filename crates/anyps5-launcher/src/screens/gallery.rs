@@ -103,6 +103,8 @@ pub enum ScreenPage {
     TrophiesHidden,
     /// The same trophy after Show.
     TrophiesRevealed,
+    /// A game whose trophy set is empty.
+    TrophiesEmpty,
     Banner,
     Start,
     Unlocking,
@@ -694,6 +696,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "trophies" => ScreenPage::Trophies,
         "trophies-hidden" => ScreenPage::TrophiesHidden,
         "trophies-revealed" => ScreenPage::TrophiesRevealed,
+        "trophies-empty" => ScreenPage::TrophiesEmpty,
         "banner" => ScreenPage::Banner,
         "start" => ScreenPage::Start,
         "unlocking" => ScreenPage::Unlocking,
@@ -2565,6 +2568,15 @@ impl ScreenGallery {
             };
             self.advanced.show(shell, &ctx, &events, &mut data);
         }
+        let none = TrophySet {
+            trophies: Vec::new(),
+            ..self.set.clone()
+        };
+        let set = if matches!(self.page, ScreenPage::TrophiesEmpty) {
+            &none
+        } else {
+            &self.set
+        };
         self.trophies.show(
             shell,
             &ctx,
@@ -2572,7 +2584,7 @@ impl ScreenGallery {
             &TrophyData {
                 game_key: "gallery",
                 game_name: name,
-                set: &self.set,
+                set,
                 language,
                 accent,
                 show_hidden: self.prefs.show_hidden_trophies,
@@ -2830,6 +2842,7 @@ impl ScreenGallery {
             }
             ScreenPage::Advanced => self.advanced.open_row(4),
             ScreenPage::Trophies => self.trophies.open_at(1),
+            ScreenPage::TrophiesEmpty => self.trophies.open_at(0),
             ScreenPage::TrophiesHidden => self.trophies.open_at(SECRET_TROPHY),
             ScreenPage::TrophiesRevealed => {
                 self.trophies.open_at(SECRET_TROPHY);
