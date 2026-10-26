@@ -103,7 +103,7 @@ pub fn show(ui: &mut Ui, room: Rect, page: &StatePage<'_>, focused: bool) -> boo
     let block = Rect::from_center_size(pos2(centre, top + height * 0.5), vec2(TITLE_WIDTH, height));
     // The id comes from the caller's ui: two overlays can show a state page in the same frame
     // while one fades out and the other in, each on its own layer.
-    ui.interact(block, ui.id().with("state-page"), Sense::hover())
+    ui.interact(block, ui.scope_id().with("state-page"), Sense::hover())
         .widget_info(|| WidgetInfo::labeled(Role::Label, true, said.as_str()));
 
     let disc = Rect::from_center_size(pos2(centre, top + DISC * 0.5), vec2(DISC, DISC));
