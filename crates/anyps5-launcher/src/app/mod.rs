@@ -528,7 +528,9 @@ impl LauncherApp {
                         (_, false) => Command::Down,
                         (_, true) => Command::Up,
                     };
+                    self.shell.input.via_tab = true;
                     self.handle_event(ctx, InputEvent::Command(command));
+                    self.shell.input.via_tab = false;
                 } else {
                     self.model.tab_home(backwards);
                 }

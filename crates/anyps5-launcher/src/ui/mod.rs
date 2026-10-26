@@ -46,6 +46,7 @@ pub mod input;
 pub mod intro;
 pub mod latency;
 pub mod nudge;
+pub mod os_emoji;
 pub mod pad_info;
 pub mod press;
 pub mod ps_button;
