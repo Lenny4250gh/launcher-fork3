@@ -7,6 +7,7 @@ use egui::Context;
 
 use crate::screens::captures_strings::CapturesText;
 use crate::screens::dialog;
+use crate::screens::notification_strings::NotifyText;
 use crate::screens::rows::{self, Change, Row};
 use crate::screens::side::{self, Frame, Leave, SideState, SideView};
 use crate::ui::Shell;
@@ -98,6 +99,8 @@ pub enum InGameAction {
     Resume,
     Trophies,
     Captures,
+    /// The Notification Center.
+    Notifications,
     GameSettings,
     Friends,
     /// Ask whether to close the game.
@@ -125,6 +128,7 @@ fn rows_of(data: &InGameData<'_>) -> Vec<Row> {
         Row::command("resume", InGameText::BackToGame.text(language)).icon(Icon::PLAY_CIRCLE),
         Row::command("trophies", language.text(Key::Trophies)).icon(Icon::TROPHY),
         Row::command("captures", CapturesText::Title.text(language)).icon(Icon::IMAGES),
+        Row::command("notifications", NotifyText::Title.text(language)).icon(Icon::BELL),
         Row::command("settings", language.text(Key::GameSettings)).icon(Icon::SLIDERS_HORIZONTAL),
     ];
     if data.online {
@@ -175,6 +179,7 @@ impl InGamePanel {
             "resume" => InGameAction::Resume,
             "trophies" => InGameAction::Trophies,
             "captures" => InGameAction::Captures,
+            "notifications" => InGameAction::Notifications,
             "settings" => InGameAction::GameSettings,
             "friends" => InGameAction::Friends,
             _ => InGameAction::AskClose,
@@ -358,8 +363,8 @@ mod tests {
             accent: Color32::WHITE,
             online: false,
         };
-        assert_eq!(rows_of(&data).len(), 5);
-        data.online = true;
         assert_eq!(rows_of(&data).len(), 6);
+        data.online = true;
+        assert_eq!(rows_of(&data).len(), 7);
     }
 }

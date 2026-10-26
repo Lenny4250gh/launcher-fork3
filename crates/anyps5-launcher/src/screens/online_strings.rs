@@ -53,8 +53,9 @@ pub enum OnlineText {
     Blocked,
     /// `%@` = the game.
     Playing,
-    /// `%@` = the game.
-    PlayingJoinable,
+    /// In a session of the AnyPlay network. `%@` = the game.
+    PlayingOnline,
+    PlayingOnlineJoinable,
     FriendOnline,
     FriendOffline,
     NoFriends,
@@ -214,7 +215,8 @@ impl OnlineText {
             OnlineText::Session => "Playing Together",
             OnlineText::Blocked => "Blocked",
             OnlineText::Playing => "Playing %@",
-            OnlineText::PlayingJoinable => "Playing %@ · You can join",
+            OnlineText::PlayingOnline => "Playing %@ · Online",
+            OnlineText::PlayingOnlineJoinable => "Playing %@ · Online · You can join",
             OnlineText::FriendOnline => "Online",
             OnlineText::FriendOffline => "Offline",
             OnlineText::NoFriends => "No friends yet. Add one by the name they chose.",
@@ -368,7 +370,8 @@ impl OnlineText {
             OnlineText::Session => "Birlikte Oynananlar",
             OnlineText::Blocked => "Engellenenler",
             OnlineText::Playing => "%@ oynuyor",
-            OnlineText::PlayingJoinable => "%@ oynuyor · Katılabilirsin",
+            OnlineText::PlayingOnline => "%@ oynuyor · Çevrimiçi",
+            OnlineText::PlayingOnlineJoinable => "%@ oynuyor · Çevrimiçi · Katılabilirsin",
             OnlineText::FriendOnline => "Çevrimiçi",
             OnlineText::FriendOffline => "Çevrimdışı",
             OnlineText::NoFriends => "Henüz arkadaşın yok. Seçtikleri adla birini ekle.",
@@ -492,7 +495,8 @@ mod tests {
 
     const ALL: &[OnlineText] = &[
         OnlineText::Playing,
-        OnlineText::PlayingJoinable,
+        OnlineText::PlayingOnline,
+        OnlineText::PlayingOnlineJoinable,
         OnlineText::ReportTitle,
         OnlineText::JoinDetail,
         OnlineText::InvitedBy,

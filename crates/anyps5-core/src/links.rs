@@ -238,6 +238,16 @@ fn join_code(text: &str) -> Result<String, LinkError> {
     }
 }
 
+/// The deep link that asks the launcher of whoever opens it for the invitation `code` stands for
+/// (`anyps5://v1/join/<code>`), the link the "Copy Invite Link" button puts on the clipboard.
+/// It only asks: the launcher shows the invitation and the player decides. `None` when `code` is
+/// not a join code.
+pub fn join_link(code: &str) -> Option<String> {
+    join_code(code)
+        .ok()
+        .map(|code| format!("{SCHEME}://v1/join/{code}"))
+}
+
 /// The value of `path` in `path=<folder>`, the only key `open` takes.
 fn open_path(query: &str) -> Result<PathBuf, LinkError> {
     let mut found = None;
@@ -706,5 +716,14 @@ x",
                 Err(LinkError::BadPath("not absolute"))
             );
         }
+    }
+
+    #[test]
+    fn a_join_link_made_for_a_code_parses_back_to_it() {
+        let link = join_link("K3X9M2PQRA").expect("a code");
+        assert_eq!(link, "anyps5://v1/join/k3x9m2pqra");
+        assert_eq!(parse(&link), Ok(join("k3x9m2pqra")));
+        assert_eq!(join_link("not a code"), None);
+        assert_eq!(join_link("k3x9m2pqra/play"), None);
     }
 }

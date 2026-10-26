@@ -25,6 +25,7 @@ pub mod location;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod notes;
+pub mod notifications;
 pub mod online;
 pub mod openh264;
 pub mod patches;

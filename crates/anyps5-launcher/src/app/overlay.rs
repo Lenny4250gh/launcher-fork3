@@ -38,6 +38,8 @@ pub enum Overlay {
     /// Friends, party, messages, activity and the online settings of the AnyPlay network, and
     /// signing in to it (a full-screen panel).
     Friends,
+    /// What the launcher told the player on its own, newest first (a full-screen panel).
+    Notifications,
     /// A player's profile, the player's own or another's (a full-screen panel).
     Profile,
     /// The player's trophies in a game next to another player's (a full-screen panel).

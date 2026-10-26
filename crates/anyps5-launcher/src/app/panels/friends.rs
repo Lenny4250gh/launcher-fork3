@@ -211,6 +211,7 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
             }
         }
         OnlineAction::Join(friend) => crate::app::together::join_friend(model, friend),
+        OnlineAction::InviteLink => model.request_invite_link(),
         OnlineAction::Invite(account) => {
             online.send(
                 Purpose::Invite,

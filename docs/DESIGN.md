@@ -2698,6 +2698,20 @@ Screenshots and clips have a place of their own: a full-screen gallery, like a c
 - **Gallery.** `--gallery=captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|captures-clip-plain|captures-confirm|captures-missing|captures-loading`. All names, times and pictures are invented.
 - **Not yet.** Video playback inside the launcher, a picture for a clip on Linux, a recycle bin, sharing.
 
+### 9.12 Notification Center
+
+Everything the launcher tells the player on its own is kept in one list, so a toast that was missed is not lost. The data is `anyps5_core::notifications` (the entries, the cap of 200, the file `notifications.json` next to the preferences, written when something changed); the screen is `screens/notifications.rs`; the glue is `app/panels/notifications.rs`; the texts are `screens/notification_strings.rs`. The overlay is `Overlay::Notifications`, a full-screen panel with the library's glass.
+
+- **Reached from.** The bell in the top bar (between friends and settings; `HomeIntent::OpenNotifications`), with a count badge of what was not read ("9+" past nine), and the row **Notifications** in the quick panel the Home button opens in front of a running game. Back leaves.
+- **What is recorded.** Only events nobody asked for, in one place (`Model::announce`, `Model::note`): a friend request, a Play Together invitation, a party invitation, a message or message request that arrives while the Friends screen is not open, a missed call, the end of a Play Together session, a trophy earned, a launcher update that is ready, a toolkit update that is available. The answer to the player's own press stays a toast and is not recorded. An update that waits is recorded once per version.
+- **An entry** has a kind (the glyph in the disc and the small label), the sentence as it was shown, when ("5 min ago"), its own button (**Accept** for a friend request, **Join** for an invitation, **Open** for the rest) and **Dismiss**. A button shows only while it still has something to do: a request answered elsewhere or an invitation that ran out keeps its sentence and **Dismiss** only. **Accept** and **Join** take the entry with them, **Open** keeps it. The buttons use the answers of the Friends screen (`online_action`), so a notification has no path of its own.
+- **Read.** Opening the area marks everything read; the entries that were new carry a dot and the brighter ink until the area closes. **Clear All** (top right of the list) empties the history.
+- **Focus.** Up and down walk the entries, up from the first reaches Clear All, left and right move between the buttons of an entry, select runs the focused one. Every step plays `move`, an end `bump`, back `close`. Tab walks like a column of rows. The list scrolls to the focus as in the trophies.
+- **Empty.** The state page (5.21): "No notifications", and what shows up here.
+- **Invite link.** The party page has **Copy Invite Link**. It asks the network for a join code (the one the Discord button uses) and puts `anyps5://v1/join/<code>` on the clipboard. The link only asks: whoever opens it gets the invitation like any other and decides (ADR 0022). The code is held while there is a session or party to join, and given back after. The Discord **Join on AnyPlay** button opens the web page of the same code, which hands over to the same link, so both lead into the same invitation flow, which also lands in the Notification Center.
+- **Friends' presence.** A friend who plays in a session of the network reads "Playing <game> · Online" (and "· You can join" when the session is open); a Play Together session reads "Playing <game> together (2/4)". Presence and the games are the cloud's; no title is special.
+- **Discord.** "Show Game on Discord" stays off by default. A game Discord detects shows with Discord's own art; any other under AnyPlay's mark with the game's name on hover. The start time shows as elapsed time. No game art leaves the PC: an external picture would need a public source of art, which does not exist yet.
+
 ## 10. Asset list
 
 | Asset in the ARM repo | Reuse? | Notes |

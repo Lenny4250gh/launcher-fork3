@@ -14,6 +14,7 @@ use crate::app::model::{GameState, Model, SizeState};
 use crate::screens::glibc_strings::shortfall_text;
 use crate::screens::ludus_strings::LudusText;
 use crate::screens::ludus_web_strings::BrowserText;
+use crate::screens::notification_strings::NotifyText;
 use crate::screens::online_social_strings::SocialText;
 use crate::screens::online_strings::OnlineText;
 use crate::screens::phone_strings::PhoneText;
@@ -244,7 +245,27 @@ fn top_bar(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<P
     if response.clicked() {
         presses.push(Press::Focus(HomeFocus::SETTINGS));
     }
-    // Friends sit between the library and the settings; the count is the friends online now.
+    // The bell sits between the friends and the settings; its badge counts what was not read.
+    let unread_notes = cx.model.notes.unread();
+    let bell_name = if unread_notes == 0 {
+        NotifyText::Title.text(language).to_owned()
+    } else {
+        NotifyText::BellUnread.format(language, &[Arg::Int(unread_notes as i64)])
+    };
+    let bell = IconButton::new(Icon::BELL, bell_name)
+        .focused(focused(HomeFocus::NOTIFICATIONS))
+        .show(&mut row);
+    if unread_notes > 0 {
+        paint_count_badge(
+            &painter,
+            bell.rect.right_top() + vec2(-8.0, 8.0),
+            unread_notes,
+        );
+    }
+    if bell.clicked() {
+        presses.push(Press::Focus(HomeFocus::NOTIFICATIONS));
+    }
+    // Friends sit between the library and the bell; the count is the friends online now.
     let friends_online = online.friends_online();
     let label = match friends_online {
         0 => OnlineText::Friends.text(language).to_owned(),
@@ -883,6 +904,30 @@ fn friends_button(
         );
     }
     it.response
+}
+
+/// A small count in ink on the corner of a button: the number, "9+" past nine. The number is dark
+/// on the ink disc, so it reads on any picture behind it.
+fn paint_count_badge(painter: &egui::Painter, centre: egui::Pos2, count: usize) {
+    let label = if count > 9 {
+        "9+".to_owned()
+    } else {
+        count.to_string()
+    };
+    let width = if count > 9 { 24.0 } else { 18.0 };
+    let rect = Rect::from_center_size(centre, vec2(width, 18.0));
+    painter.rect_filled(rect.expand(2.0), 11.0, color::mark_halo());
+    painter.rect_filled(rect, 9.0, color::text());
+    text::paint_tabular(
+        painter,
+        pos2(
+            rect.min.x + (width - text::tabular_width(painter, ty::MICRO, &label)) * 0.5,
+            rect.center().y - ty::MICRO.line_height() * 0.5,
+        ),
+        ty::MICRO,
+        &label,
+        egui::Color32::BLACK,
+    );
 }
 
 /// Where the friends icon ends inside its 44 dp circle (the glyph is 20 dp, centred).

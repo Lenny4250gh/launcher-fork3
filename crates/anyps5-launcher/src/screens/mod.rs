@@ -57,6 +57,8 @@ pub mod ludus;
 pub mod ludus_strings;
 pub mod ludus_web;
 pub mod ludus_web_strings;
+pub mod notification_strings;
+pub mod notifications;
 pub mod onboarding;
 pub mod onboarding_strings;
 pub mod online;
