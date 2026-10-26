@@ -3,7 +3,7 @@
 
 use super::*;
 use std::ffi::CString;
-use std::io::Read as _;
+use std::io::{Read as _, Seek as _};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 
@@ -78,10 +78,40 @@ fn verify_bundle(app: &Path, version: &str) -> Result<(), SelfUpdateError> {
     Ok(())
 }
 
+/// ZipArchive keeps only the last central entry for each name. Count the original records,
+/// including duplicates, before accepting its indexed view. Entry bodies are still decoded
+/// and CRC-checked by zip; this walk reads only fixed headers and skips their variable fields.
+fn central_entries(archive: &Path, start: u64) -> io::Result<usize> {
+    let mut file = fs::File::open(archive)?;
+    file.seek(io::SeekFrom::Start(start))?;
+    let invalid = || io::Error::new(io::ErrorKind::InvalidData, "invalid zip directory");
+    let mut count = 0;
+    loop {
+        let mut magic = [0; 4];
+        file.read_exact(&mut magic)?;
+        match &magic {
+            b"PK\x05\x06" | b"PK\x06\x06" => return Ok(count),
+            b"PK\x01\x02" => {}
+            _ => return Err(invalid()),
+        }
+        count += 1;
+        if count > 4096 {
+            return Err(invalid());
+        }
+        let mut fields = [0; 42];
+        file.read_exact(&mut fields)?;
+        let variable: i64 = [24, 26, 28]
+            .into_iter()
+            .map(|offset| i64::from(u16::from_le_bytes([fields[offset], fields[offset + 1]])))
+            .sum();
+        file.seek(io::SeekFrom::Current(variable))?;
+    }
+}
+
 fn unpack(archive: &Path, destination: &Path) -> Result<PathBuf, SelfUpdateError> {
     let invalid = || io::Error::new(io::ErrorKind::InvalidData, "invalid macOS app archive");
     let mut zip = zip::ZipArchive::new(fs::File::open(archive)?).map_err(|_| invalid())?;
-    if zip.len() > 4096 {
+    if zip.len() > 4096 || central_entries(archive, zip.central_directory_start())? != zip.len() {
         return Err(invalid().into());
     }
     let mut total = 0u64;
@@ -206,6 +236,22 @@ mod tests {
             assert!(unpack(&zip, destination.path()).is_err(), "{name}");
             assert!(!work.path().join("outside").exists());
         }
+        // ZipWriter refuses duplicate names itself. Make two same-length names, then change
+        // the second in both headers so this reaches our reader as a valid duplicate archive.
+        let first = "AnyPlay Launcher.app/Contents/one";
+        let second = "AnyPlay Launcher.app/Contents/two";
+        archive(&zip, &[(first, b"one"), (second, b"two")]);
+        let mut bytes = fs::read(&zip).unwrap();
+        for offset in 0..=bytes.len() - second.len() {
+            if &bytes[offset..offset + second.len()] == second.as_bytes() {
+                bytes[offset..offset + first.len()].copy_from_slice(first.as_bytes());
+            }
+        }
+        fs::write(&zip, bytes).unwrap();
+        let mut parsed = zip::ZipArchive::new(fs::File::open(&zip).unwrap()).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed.by_index(0).unwrap().name(), first);
+        assert!(unpack(&zip, tempfile::tempdir().unwrap().path()).is_err());
         let mut writer = zip::ZipWriter::new(fs::File::create(&zip).unwrap());
         writer
             .add_symlink(
