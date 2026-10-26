@@ -7,6 +7,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
+      platform:
+        description: Build every release artifact, or exercise only the macOS release job without publishing
+        type: choice
+        options: [all, macos]
+        default: all
       network_ref:
         description: The anyplaynet/network commit to build the net service from (full SHA); empty takes the repository variable NETWORK_REF, then network.ref
         required: false
@@ -81,6 +86,7 @@ jobs:
           if-no-files-found: error
 
   windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'macos'
     needs: notices
     runs-on: windows-latest
     defaults:
@@ -217,6 +223,7 @@ jobs:
   # 2.35): only two weak symbols of Rust's std (pidfd_spawnp, pidfd_getpid) name 2.39, and std
   # does without them. The linux job below carries it.
   linux-share-worker:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'macos'
     needs: notices
     runs-on: ubuntu-24.04
     steps:
@@ -247,6 +254,7 @@ jobs:
   # Built on the oldest runner image still offered: a binary links against the glibc it is built
   # with, and an older one runs on more distributions.
   linux:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'macos'
     needs: [notices, linux-share-worker]
     runs-on: ubuntu-22.04
     defaults:
