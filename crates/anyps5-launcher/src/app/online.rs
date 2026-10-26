@@ -130,7 +130,8 @@ impl OnlineService {
                         cloud,
                     },
                 );
-                tell_worker(model);
+                // A codec download that failed before is tried again with the service.
+                tell_worker(model, true);
             }
             Err(error) => {
                 tracing::warn!("the net service could not start: {error}");
@@ -179,7 +180,8 @@ impl OnlineService {
             }
             // Cisco's OpenH264 came or went: the worker is asked again what it can do.
             if anyps5_core::openh264::take_changed() {
-                tell_worker(model);
+                // Not after a failure: that would retry in a loop while the PC is offline.
+                tell_worker(model, false);
             }
             for line in process.drain() {
                 let ended = line == net::Line::Ended;
@@ -946,23 +948,43 @@ pub fn share_worker_path(model: &Model) -> Option<std::path::PathBuf> {
     net::locate_worker().or_else(|| bundled_worker(&model.paths))
 }
 
+/// Whether Cisco's codec is fetched now: a missing one always; one whose last download failed
+/// only when `retry_failed` (the net service starts, the player opens Settings), never on the
+/// change that the failed download itself reports, which would retry in a loop while offline.
+fn codec_fetch_wanted(state: &anyps5_core::openh264::CodecState, retry_failed: bool) -> bool {
+    use anyps5_core::openh264::CodecState;
+    match state {
+        CodecState::Missing => true,
+        CodecState::Failed(_) => retry_failed,
+        CodecState::Downloading | CodecState::Ready => false,
+    }
+}
+
+/// On Linux, while the player keeps the codec on with share screen: fetches Cisco's OpenH264 when
+/// [`codec_fetch_wanted`] says so.
+pub(crate) fn fetch_codec(model: &Model, retry_failed: bool) {
+    if !(cfg!(target_os = "linux") && model.prefs.online_openh264 && share_screen_enabled(model)) {
+        return;
+    }
+    let source = anyps5_core::openh264::Source::default();
+    if codec_fetch_wanted(
+        &anyps5_core::openh264::state(&model.paths, &source),
+        retry_failed,
+    ) {
+        anyps5_core::openh264::install_in_background(&model.paths, source, None);
+    }
+}
+
 /// Tells the net service where the share worker is, when share screen is on and there is one.
 /// Without this the net service reports neither `can_share` nor `can_watch` and the launcher
 /// shows nothing of it.
-fn tell_worker(model: &mut Model) {
+fn tell_worker(model: &mut Model, retry_failed: bool) {
     if !share_screen_enabled(model) {
         return;
     }
     // On Linux the codec is Cisco's download: while the player keeps it on, a missing one is
     // fetched again, and the worker is told once it is there.
-    if cfg!(target_os = "linux") && model.prefs.online_openh264 {
-        let source = anyps5_core::openh264::Source::default();
-        if anyps5_core::openh264::state(&model.paths, &source)
-            == anyps5_core::openh264::CodecState::Missing
-        {
-            anyps5_core::openh264::install_in_background(&model.paths, source, None);
-        }
-    }
+    fetch_codec(model, retry_failed);
     let Some(path) = net::locate_worker().or_else(|| bundled_worker(&model.paths)) else {
         tracing::info!("share screen is on, but there is no share worker");
         return;
@@ -1323,11 +1345,26 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_codec_download_is_tried_again_on_a_start_but_never_in_a_loop() {
+        use anyps5_core::openh264::CodecState;
+        let failed = CodecState::Failed("offline".into());
+        // The net service starting, or the player opening Settings: again.
+        assert!(codec_fetch_wanted(&failed, true));
+        // The failure's own change notice: not again, or an offline PC retries forever.
+        assert!(!codec_fetch_wanted(&failed, false));
+        for retry in [true, false] {
+            assert!(codec_fetch_wanted(&CodecState::Missing, retry));
+            assert!(!codec_fetch_wanted(&CodecState::Downloading, retry));
+            assert!(!codec_fetch_wanted(&CodecState::Ready, retry));
+        }
+    }
+
+    #[test]
     fn the_share_worker_is_only_handed_over_when_share_screen_is_on() {
         let mut model = signed_in_model();
         model.prefs.online_share_screen = false;
         // Off: nothing goes out, whatever worker there may be.
-        tell_worker(&mut model);
+        tell_worker(&mut model, true);
         assert!(model.online.take_outbox().is_empty());
         // On, with a worker: the net service is told where it is.
         model.prefs.online_share_screen = true;

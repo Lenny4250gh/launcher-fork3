@@ -1,6 +1,6 @@
 //! Texts of the profile screen (docs/DESIGN.md 17, "Profile screen"). English and Turkish like the
 //! rest. Titles of sections and buttons are in title case, notes and details in sentence case.
-//! Grades, times and the four reactions come from `online_feed_strings`; this file holds only what
+//! Grades and times come from `online_feed_strings`; this file holds only what
 //! the screen adds.
 
 use crate::ui::i18n::{Arg, Language, substitute};

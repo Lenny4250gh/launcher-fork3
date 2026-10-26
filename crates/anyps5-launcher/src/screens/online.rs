@@ -1522,17 +1522,20 @@ impl OnlinePanel {
                     Some((handle, FriendRequestResult::Requested)) => rows.push(
                         Row::info("addStatus", f(T::RequestSent, &[Arg::Str(handle)]), None)
                             .icon(Icon::CHECK)
+                            .live()
                             .group_start(),
                     ),
                     Some((handle, FriendRequestResult::Friends)) => rows.push(
                         Row::info("addStatus", f(T::NowFriends, &[Arg::Str(handle)]), None)
                             .icon(Icon::CHECK)
+                            .live()
                             .group_start(),
                     ),
                     Some((_, FriendRequestResult::Failed(text))) => rows.push(
                         Row::info("addStatus", text.clone(), None)
                             .icon(Icon::WARNING)
                             .warning()
+                            .live()
                             .group_start(),
                     ),
                     None => rows.push(Row::info("hint", t(T::AddFriendHint), None).group_start()),

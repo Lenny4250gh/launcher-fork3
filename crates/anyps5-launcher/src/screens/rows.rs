@@ -82,6 +82,9 @@ pub struct Row {
     pub refusal: bool,
     /// Caution: an info row that says something may not work. Never danger.
     pub warning: bool,
+    /// A result that appears where the player looks: a screen reader announces it once, when it
+    /// changes (the toast it replaces did).
+    pub live: bool,
     /// A text block the page is about: body size and ink.
     pub body: bool,
     /// A note that says what the player has to do: detail ink, not the quiet note ink.
@@ -116,6 +119,7 @@ impl Row {
             destructive: false,
             refusal: false,
             warning: false,
+            live: false,
             body: false,
             step: false,
             group_start: false,
@@ -285,6 +289,11 @@ impl Row {
         let mut row = Row::new(id, text, Control::Info(None));
         row.body = true;
         row
+    }
+
+    pub fn live(mut self) -> Row {
+        self.live = true;
+        self
     }
 
     pub fn warning(mut self) -> Row {
@@ -740,6 +749,7 @@ fn show_row(
         destructive,
         refusal: _,
         warning,
+        live,
         body,
         step,
         group_start: _,
@@ -813,6 +823,7 @@ fn show_row(
         .focused(focused)
         .destructive(*destructive)
         .warning(*warning)
+        .live(*live)
         .body(*body)
         .step(*step)
         .attached(*attached)

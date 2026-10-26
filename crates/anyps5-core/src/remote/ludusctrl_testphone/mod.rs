@@ -885,7 +885,9 @@ impl TestPhone {
     }
 
     /// Sends a PAIR_REQ, first waiting out [`PAIR_RESEND`] since the last one so the PC's
-    /// per-IP rate limit does not drop it.
+    /// per-IP rate limit does not drop it. The wait runs from the last request or, when the PC
+    /// answered it, from that answer: the PC starts its limit when it handles a request, which
+    /// on a busy machine is later than when it was sent, and never later than its answer.
     pub fn send_pair_request(&mut self, request: &[u8]) -> io::Result<()> {
         if let Some(last) = self.last_pair_request {
             let due = last + PAIR_RESEND;
@@ -910,6 +912,7 @@ impl TestPhone {
         while let Some(left) = deadline.checked_duration_since(Instant::now()) {
             let Some(data) = self.recv(left)? else { break };
             if let Some(resp) = PairResp::parse(&data) {
+                self.last_pair_request = Some(Instant::now());
                 return Ok(Some((resp, attempt.on_response(&data))));
             }
         }

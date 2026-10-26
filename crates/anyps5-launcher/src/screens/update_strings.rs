@@ -34,6 +34,9 @@ pub enum UpdateText {
     NoteReadOnly,
     /// This launcher cannot install updates itself (a Linux `.tar.gz`).
     NoteManual,
+    /// A package manager owns this launcher (Flatpak, the AUR). `%@` = the version, then the
+    /// package manager's name.
+    NotePackaged,
     NoteOffline,
     NoteRefused,
     NoteOther,
@@ -71,10 +74,12 @@ pub enum UpdateText {
     RequiredNoNewer,
     /// Required and this launcher cannot install it itself.
     RequiredNoteManual,
+    /// Required and a package manager owns this launcher. `%@` = the package manager's name.
+    RequiredNotePackaged,
 }
 
 impl UpdateText {
-    pub const ALL: [UpdateText; 37] = [
+    pub const ALL: [UpdateText; 39] = [
         UpdateText::Row,
         UpdateText::Checking,
         UpdateText::UpToDate,
@@ -90,6 +95,7 @@ impl UpdateText {
         UpdateText::NoteHolding,
         UpdateText::NoteReadOnly,
         UpdateText::NoteManual,
+        UpdateText::NotePackaged,
         UpdateText::NoteOffline,
         UpdateText::NoteRefused,
         UpdateText::NoteOther,
@@ -112,6 +118,7 @@ impl UpdateText {
         UpdateText::RequiredOffline,
         UpdateText::RequiredNoNewer,
         UpdateText::RequiredNoteManual,
+        UpdateText::RequiredNotePackaged,
     ];
 
     pub const fn english(self) -> &'static str {
@@ -139,6 +146,7 @@ impl UpdateText {
             UpdateText::NoteManual => {
                 "This launcher cannot update itself. Download the new version from GitHub, or use the AppImage, which updates itself."
             }
+            UpdateText::NotePackaged => "Version %@ is available. %@ updates the launcher.",
             UpdateText::NoteOffline => "Could not reach GitHub. The launcher tries again later.",
             UpdateText::NoteRefused => {
                 "The update could not be verified, so it was not installed. Download the latest launcher from GitHub."
@@ -175,6 +183,7 @@ impl UpdateText {
             UpdateText::RequiredNoteManual => {
                 "Download the new version from GitHub and install it."
             }
+            UpdateText::RequiredNotePackaged => "Update the launcher with %@.",
         }
     }
 
@@ -203,6 +212,7 @@ impl UpdateText {
             UpdateText::NoteManual => {
                 "Bu başlatıcı kendini güncelleyemez. Yeni sürümü GitHub'dan indir ya da kendini güncelleyen AppImage'i kullan."
             }
+            UpdateText::NotePackaged => "Sürüm %@ var. Başlatıcıyı %@ günceller.",
             UpdateText::NoteOffline => "GitHub'a ulaşılamadı. Başlatıcı daha sonra yeniden dener.",
             UpdateText::NoteRefused => {
                 "Güncelleme doğrulanamadı, bu yüzden kurulmadı. Son sürümü GitHub'dan indir."
@@ -235,6 +245,7 @@ impl UpdateText {
                 "Henüz daha yeni bir başlatıcı bulunamadı. Biraz sonra tekrar dene."
             }
             UpdateText::RequiredNoteManual => "Yeni sürümü GitHub'dan indir ve kur.",
+            UpdateText::RequiredNotePackaged => "Başlatıcıyı %@ ile güncelle.",
         }
     }
 
@@ -265,6 +276,7 @@ impl UpdateText {
             UpdateText::NoteManual => {
                 "Dieser Launcher kann sich nicht selbst aktualisieren. Lade die neue Version von GitHub herunter oder nutze das AppImage, das sich selbst aktualisiert."
             }
+            UpdateText::NotePackaged => "Version %@ ist verfügbar. %@ aktualisiert den Launcher.",
             UpdateText::NoteOffline => {
                 "GitHub war nicht erreichbar. Der Launcher versucht es später erneut."
             }
@@ -303,6 +315,7 @@ impl UpdateText {
             UpdateText::RequiredNoteManual => {
                 "Lade die neue Version von GitHub herunter und installiere sie."
             }
+            UpdateText::RequiredNotePackaged => "Aktualisiere den Launcher mit %@.",
             _ => return None,
         })
     }
@@ -363,6 +376,24 @@ mod tests {
             for language in Language::ALL {
                 assert!(text.text(language).contains("%@"), "{text:?} {language:?}");
             }
+        }
+    }
+
+    #[test]
+    fn the_packaged_texts_name_the_package_manager() {
+        for language in Language::ALL {
+            let note =
+                UpdateText::NotePackaged.format(language, &[Arg::Str("0.3.0"), Arg::Str("AUR")]);
+            assert!(
+                note.contains("0.3.0") && note.contains("AUR"),
+                "{language:?}"
+            );
+            assert!(!note.contains("%@"), "{language:?}");
+            let required = UpdateText::RequiredNotePackaged.format(language, &[Arg::Str("AUR")]);
+            assert!(
+                required.contains("AUR") && !required.contains("%@"),
+                "{language:?}"
+            );
         }
     }
 

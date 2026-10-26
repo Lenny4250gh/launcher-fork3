@@ -22,6 +22,10 @@ modules:
     buildsystem: simple
     build-commands:
       - install -Dm755 anyplay-launcher /app/bin/anyplay-launcher
+      # The release binary is not rebuilt, so the package says it is packaged: the launcher then never
+      # replaces its own files and tells the player to update with Flatpak (docs/UPDATES.md).
+      - printf 'Flatpak\n' > package-manager
+      - install -Dm644 package-manager /app/share/anyplay-launcher/package-manager
       - sed 's/^Icon=.*/Icon=net.anyplay.Launcher/' anyplay-launcher.desktop > net.anyplay.Launcher.desktop
       - install -Dm644 net.anyplay.Launcher.desktop /app/share/applications/net.anyplay.Launcher.desktop
       # The icon is 64x64, so it goes in the 64x64 folder (a 256x256 folder would hold a scaled-up lie).
