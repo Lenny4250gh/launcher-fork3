@@ -18,6 +18,7 @@ use gilrs::{Axis, Button, EventType, Gamepad, GamepadId, Gilrs, MappingSource, P
 use crate::ui::home_button::HomeButton;
 use crate::ui::input::{Command, PadMessage};
 use crate::ui::pad_info::{self, Battery, Family};
+use crate::ui::talk;
 
 /// Stick deflection that makes a direction.
 pub const STICK_THRESHOLD: f32 = 0.55;
@@ -389,6 +390,11 @@ fn session(ctx: &egui::Context, tx: &Sender<PadMessage>, home: &HomeButton, atte
             // directions are kept up to date but not passed on.
             let mine = home.accepts_pad();
             match event.event {
+                EventType::ButtonPressed(button, _) => talk::shared().gilrs_button(button, true),
+                EventType::ButtonReleased(button, _) => talk::shared().gilrs_button(button, false),
+                _ => {}
+            }
+            match event.event {
                 EventType::ButtonPressed(button, _) => match press_effect(button, mine) {
                     PressEffect::Home => {
                         home.press();
@@ -422,6 +428,7 @@ fn session(ctx: &egui::Context, tx: &Sender<PadMessage>, home: &HomeButton, atte
                 }
                 EventType::Disconnected => {
                     tracing::info!("gamepad removed");
+                    talk::shared().gilrs_gone();
                     dirs = Directions::default();
                     if active.id == Some(event.id) {
                         active = ActivePad::default();

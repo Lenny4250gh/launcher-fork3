@@ -11,6 +11,57 @@ fn pick(language: Language, english: &'static str, turkish: &'static str) -> &'s
     match language {
         Language::English => english,
         Language::Turkish => turkish,
+        Language::German => german(english),
+    }
+}
+
+/// The German text of an English one (the English text is the key); English when none is there.
+fn german(english: &'static str) -> &'static str {
+    match english {
+        "Unlocked Games Location" => "Speicherort freigeschalteter Spiele",
+        "Choose a Folder for Unlocked Games" => "Ordner für freigeschaltete Spiele wählen",
+        "Use Default Location" => "Standardort verwenden",
+        "Next to your games" => "Neben deinen Spielen",
+        "Not found" => "Nicht gefunden",
+        "free" => "frei",
+        "Unlocked games are copied in full into a .AnyPS5 folder here. Your dumps are never changed." => {
+            "Freigeschaltete Spiele werden hier vollständig in einen .AnyPS5-Ordner kopiert. Deine Dumps bleiben unverändert."
+        }
+        "This is a network location. Copying is slower, and games run over the network." => {
+            "Das ist ein Netzwerkort. Kopieren dauert länger, und Spiele laufen über das Netzwerk."
+        }
+        "This folder is not available, so its games show as locked. Connect the drive, or choose another folder." => {
+            "Dieser Ordner ist nicht verfügbar, deshalb erscheinen seine Spiele als gesperrt. Schließ das Laufwerk an oder wähle einen anderen Ordner."
+        }
+        "Unlocking and playing wait until the move is done. Saves move with their game." => {
+            "Freischalten und Spielen warten, bis das Verschieben fertig ist. Spielstände ziehen mit ihrem Spiel um."
+        }
+        "Cancel Move" => "Verschieben abbrechen",
+        "Continue Moving" => "Verschieben fortsetzen",
+        "Leave Games Where They Are" => "Spiele am alten Ort lassen",
+        "They stay in the old location, unused. You unlock them again after that." => {
+            "Sie bleiben ungenutzt am alten Ort. Danach schaltest du sie noch einmal frei."
+        }
+        "That folder is not there. Choose another one." => {
+            "Dieser Ordner ist nicht da. Wähle einen anderen."
+        }
+        "Choose a folder outside your games folder. Your dumps are never written to." => {
+            "Wähle einen Ordner außerhalb deines Spieleordners. In deine Dumps wird nie geschrieben."
+        }
+        "Choose a folder outside the .AnyPS5 folders." => {
+            "Wähle einen Ordner außerhalb der .AnyPS5-Ordner."
+        }
+        "Cannot write to that folder. Choose another one." => {
+            "In diesen Ordner kann nicht geschrieben werden. Wähle einen anderen."
+        }
+        "Close the running game first." => "Beende zuerst das laufende Spiel.",
+        "Wait until unlocking is done." => "Warte, bis das Freischalten fertig ist.",
+        "Finish or cancel the move first." => "Schließ das Verschieben zuerst ab oder brich es ab.",
+        "Unlocked games moved." => "Freigeschaltete Spiele verschoben.",
+        "Your unlocked games are being moved. Try again when that is done." => {
+            "Deine freigeschalteten Spiele werden gerade verschoben. Versuch es noch einmal, wenn das fertig ist."
+        }
+        other => other,
     }
 }
 
@@ -112,6 +163,10 @@ pub fn moving(done: usize, total: usize, percent: u32, language: Language) -> St
             "{} / {total} taşınıyor \u{b7} %{percent}",
             (done + 1).min(total)
         ),
+        Language::German => format!(
+            "{} von {total} wird verschoben \u{b7} {percent} %",
+            (done + 1).min(total)
+        ),
     }
 }
 
@@ -166,6 +221,15 @@ pub fn note_left(count: usize, from: &Path, language: Language) -> String {
         ),
         (Language::Turkish, n) => format!(
             "Kilidi açılan {n} oyun hâlâ {from} içinde. Taşınana kadar kilit açma ve oynama bekler."
+        ),
+        (Language::German, 0) => format!(
+            "Einige freigeschaltete Spiele liegen noch in {from}. Freischalten und Spielen warten, bis sie verschoben sind."
+        ),
+        (Language::German, 1) => format!(
+            "1 freigeschaltetes Spiel liegt noch in {from}. Freischalten und Spielen warten, bis es verschoben ist."
+        ),
+        (Language::German, n) => format!(
+            "{n} freigeschaltete Spiele liegen noch in {from}. Freischalten und Spielen warten, bis sie verschoben sind."
         ),
     }
 }
@@ -240,6 +304,14 @@ pub fn stopped(left: usize, language: Language) -> String {
         Language::Turkish => {
             format!("{left} oyun eski konumunda kaldı. Taşımaya Ayarlar'dan devam et.")
         }
+        Language::German => format!(
+            "{left} {} am alten Ort. Setz das Verschieben in den Einstellungen fort.",
+            if left == 1 {
+                "Spiel liegt noch"
+            } else {
+                "Spiele liegen noch"
+            }
+        ),
     }
 }
 
@@ -255,6 +327,9 @@ pub fn no_space(needed: u64, free: u64, language: Language) -> String {
         ),
         Language::Turkish => format!(
             "Yeni sürücü dolu: sıradaki oyun {needed} istiyor, {free} boş. Yer açıp devam et."
+        ),
+        Language::German => format!(
+            "Das neue Laufwerk ist voll: Das nächste Spiel braucht {needed}, frei sind {free}. Schaffe Platz und mach dann weiter."
         ),
     }
 }

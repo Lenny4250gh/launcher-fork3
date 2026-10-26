@@ -34,10 +34,26 @@ impl RoomText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            RoomText::VoiceOn => "Sprache einschalten",
+            RoomText::ViewInvitation => "Einladung ansehen",
+            RoomText::MutedByYou => "Von dir stummgeschaltet",
+            RoomText::InviteAFriend => "Freund einladen",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

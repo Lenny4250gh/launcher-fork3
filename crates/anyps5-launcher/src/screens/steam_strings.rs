@@ -34,28 +34,30 @@ impl SteamText {
         match self {
             SteamText::Add => "Add to Steam",
             SteamText::AddDetail => {
-                "Adds the launcher to your Steam library for Big Picture and the Steam Deck. Close Steam first."
+                "Puts the launcher in your Steam library, so Big Picture and the Steam Deck can start it. Steam has to be closed."
             }
             SteamText::AddGames => "Add My Games to Steam",
             SteamText::AddGamesDetail => {
-                "Adds each game in your library to Steam, with its own artwork. Close Steam first."
+                "Puts every game from your library in Steam, each with its own artwork. Steam has to be closed."
             }
-            SteamText::Added => "Added to Steam. Start Steam again to see it.",
-            SteamText::Updated => "Updated in Steam. Start Steam again to see the change.",
-            SteamText::GameAdded => "1 game is in Steam. Start Steam again to see it.",
-            SteamText::GamesAdded => "%@ games are in Steam. Start Steam again to see them.",
-            SteamText::Running => "Steam is running. Close Steam, then try again.",
+            SteamText::Added => "Added to Steam. Open Steam again and it is there.",
+            SteamText::Updated => "Steam entry updated. Open Steam again to see it.",
+            SteamText::GameAdded => "1 game was added to Steam. Open Steam again and it is there.",
+            SteamText::GamesAdded => {
+                "%@ games were added to Steam. Open Steam again and they are there."
+            }
+            SteamText::Running => "Steam is still open. Quit it and try once more.",
             SteamText::NoSteam => {
-                "Steam was not found on this PC. Install Steam and sign in once, then try again."
+                "No Steam installation was found on this PC. Set Steam up, log in once, and come back."
             }
             SteamText::NoUsers => {
-                "Steam has no account on this PC yet. Sign in to Steam once, then try again."
+                "Steam has no logged-in account on this PC. Log in to Steam once and come back."
             }
             SteamText::Unreadable => {
-                "Could not read Steam's shortcut list, so nothing was changed."
+                "Steam's shortcut list could not be read. Nothing was changed."
             }
             SteamText::Failed => {
-                "Could not save to your Steam folder. Check that it is not read-only, then try again."
+                "Writing to your Steam folder failed. Make sure the folder is not read-only and try once more."
             }
             SteamText::NoGames => "No games in the library yet.",
         }
@@ -65,39 +67,79 @@ impl SteamText {
         match self {
             SteamText::Add => "Steam'e Ekle",
             SteamText::AddDetail => {
-                "Başlatıcıyı Big Picture ve Steam Deck için Steam kitaplığına ekler. Önce Steam'i kapat."
+                "Başlatıcıyı Steam kitaplığına koyar; böylece Big Picture ve Steam Deck onu açabilir. Steam kapalı olmalı."
             }
             SteamText::AddGames => "Oyunlarımı Steam'e Ekle",
             SteamText::AddGamesDetail => {
-                "Kitaplıktaki her oyunu kendi görseliyle Steam'e ekler. Önce Steam'i kapat."
+                "Kitaplığındaki her oyunu kendi görseliyle Steam'e koyar. Steam kapalı olmalı."
             }
-            SteamText::Added => "Steam'e eklendi. Görmek için Steam'i yeniden başlat.",
-            SteamText::Updated => {
-                "Steam'de güncellendi. Değişikliği görmek için Steam'i yeniden başlat."
+            SteamText::Added => "Steam'e eklendi. Steam'i yeniden aç, orada olacak.",
+            SteamText::Updated => "Steam kaydı güncellendi. Görmek için Steam'i yeniden aç.",
+            SteamText::GameAdded => "1 oyun Steam'e eklendi. Steam'i yeniden aç, orada olacak.",
+            SteamText::GamesAdded => {
+                "%@ oyun Steam'e eklendi. Steam'i yeniden aç, orada olacaklar."
             }
-            SteamText::GameAdded => "1 oyun Steam'de. Görmek için Steam'i yeniden başlat.",
-            SteamText::GamesAdded => "%@ oyun Steam'de. Görmek için Steam'i yeniden başlat.",
-            SteamText::Running => "Steam çalışıyor. Steam'i kapat, sonra tekrar dene.",
+            SteamText::Running => "Steam hâlâ açık. Kapat ve bir kez daha dene.",
             SteamText::NoSteam => {
-                "Bu bilgisayarda Steam bulunamadı. Steam'i kur ve bir kez giriş yap, sonra tekrar dene."
+                "Bu bilgisayarda Steam kurulumu bulunamadı. Steam'i kur, bir kez giriş yap ve geri gel."
             }
             SteamText::NoUsers => {
-                "Steam'de bu bilgisayarda henüz hesap yok. Steam'e bir kez giriş yap, sonra tekrar dene."
+                "Steam'de bu bilgisayarda giriş yapılmış hesap yok. Steam'e bir kez giriş yap ve geri gel."
             }
             SteamText::Unreadable => {
-                "Steam'in kısayol listesi okunamadı, bu yüzden hiçbir şey değiştirilmedi."
+                "Steam'in kısayol listesi okunamadı. Hiçbir şey değiştirilmedi."
             }
             SteamText::Failed => {
-                "Steam klasörüne kaydedilemedi. Salt okunur olmadığını kontrol et, sonra tekrar dene."
+                "Steam klasörüne yazılamadı. Klasörün salt okunur olmadığından emin ol ve bir kez daha dene."
             }
             SteamText::NoGames => "Kitaplıkta henüz oyun yok.",
         }
+    }
+
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            SteamText::Add => "Zu Steam hinzufügen",
+            SteamText::AddDetail => {
+                "Fügt den Launcher deiner Steam-Bibliothek für Big Picture und das Steam Deck hinzu. Schließe Steam zuerst."
+            }
+            SteamText::AddGames => "Meine Spiele zu Steam hinzufügen",
+            SteamText::AddGamesDetail => {
+                "Fügt jedes Spiel deiner Bibliothek mit eigenem Artwork zu Steam hinzu. Schließe Steam zuerst."
+            }
+            SteamText::Added => "Zu Steam hinzugefügt. Starte Steam neu, um es zu sehen.",
+            SteamText::Updated => {
+                "In Steam aktualisiert. Starte Steam neu, um die Änderung zu sehen."
+            }
+            SteamText::GameAdded => "1 Spiel ist in Steam. Starte Steam neu, um es zu sehen.",
+            SteamText::GamesAdded => "%@ Spiele sind in Steam. Starte Steam neu, um sie zu sehen.",
+            SteamText::Running => "Steam läuft. Schließe Steam und versuche es erneut.",
+            SteamText::NoSteam => {
+                "Steam wurde auf diesem PC nicht gefunden. Installiere Steam und melde dich einmal an, dann versuche es erneut."
+            }
+            SteamText::NoUsers => {
+                "Steam hat auf diesem PC noch kein Konto. Melde dich einmal bei Steam an, dann versuche es erneut."
+            }
+            SteamText::Unreadable => {
+                "Die Verknüpfungsliste von Steam konnte nicht gelesen werden, deshalb wurde nichts geändert."
+            }
+            SteamText::Failed => {
+                "Im Steam-Ordner konnte nicht gespeichert werden. Prüfe, dass er nicht schreibgeschützt ist, dann versuche es erneut."
+            }
+            SteamText::NoGames => "Noch keine Spiele in der Bibliothek.",
+            _ => return None,
+        })
     }
 
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

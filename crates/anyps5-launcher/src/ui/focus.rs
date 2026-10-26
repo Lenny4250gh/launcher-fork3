@@ -32,6 +32,9 @@ pub enum HomeFocus {
     /// The Play Together card at the top centre: its buttons from the left (the quiet answer
     /// first, the primary one last). The pad reaches it from the library button, to the left.
     Card(u8),
+    /// The shelves below the tile row (Recently Played, Friends Playing Now, New): the games
+    /// of both from the left, counted over the shelves.
+    Shelf(usize),
 }
 
 /// What the home screen needs to know to navigate.
@@ -51,6 +54,8 @@ pub struct HomeContext {
     pub notice: u8,
     /// Buttons of the Play Together card (0 = no card).
     pub card: u8,
+    /// Games on the shelves that are on screen (0 = no shelf).
+    pub shelf: usize,
 }
 
 impl HomeContext {
@@ -96,6 +101,8 @@ pub enum HomeIntent {
     UpdateAction(usize),
     /// A button of the Play Together card, in the order it is drawn.
     CardAction(usize),
+    /// A game of a shelf: join the friend's session, or select the game.
+    ShelfItem(usize),
     OpenLibrary,
     /// The captures button: the screenshots and clips.
     OpenCaptures,
@@ -145,6 +152,7 @@ impl HomeFocus {
         let mut order: Vec<HomeFocus> = (0..ctx.card).map(HomeFocus::Card).collect();
         order.extend((0..=Self::LAST_TOP).map(HomeFocus::Top));
         order.push(HomeFocus::Tiles);
+        order.extend((0..ctx.shelf).map(HomeFocus::Shelf));
         if ctx.games > 0 {
             order.extend((0..ctx.action_count()).map(HomeFocus::Actions));
             if ctx.asking {
@@ -168,6 +176,10 @@ impl HomeFocus {
             .iter()
             .position(|f| *f == self)
             .unwrap_or_else(|| match self {
+                HomeFocus::Shelf(_) => order
+                    .iter()
+                    .rposition(|f| matches!(f, HomeFocus::Shelf(_)))
+                    .unwrap_or(tiles),
                 HomeFocus::Actions(_) | HomeFocus::Ask(_) => order
                     .iter()
                     .rposition(|f| matches!(f, HomeFocus::Actions(_)))
@@ -214,6 +226,7 @@ impl HomeFocus {
                     step.sound = Some(Cue::Move);
                 }
                 Command::Up => go(&mut step, HomeFocus::SETTINGS),
+                Command::Down if has_games && ctx.shelf > 0 => go(&mut step, HomeFocus::Shelf(0)),
                 Command::Down if has_games => go(&mut step, HomeFocus::Actions(0)),
                 Command::Select => {
                     step.intent = Some(if has_games {
@@ -247,10 +260,25 @@ impl HomeFocus {
                     Command::Left => go(&mut step, HomeFocus::Actions(i.saturating_sub(1))),
                     Command::Right => go(&mut step, HomeFocus::Actions((i + 1).min(last))),
                     Command::Down if ctx.asking => go(&mut step, HomeFocus::Ask(0)),
+                    Command::Up if ctx.shelf > 0 => go(&mut step, HomeFocus::Shelf(0)),
                     Command::Up | Command::Back => go(&mut step, HomeFocus::Tiles),
                     Command::Select => {
                         step.intent = Some(ctx.action_intent(i));
                     }
+                    Command::Options if has_games => {
+                        step.intent = Some(HomeIntent::OpenGameSettings)
+                    }
+                    _ => {}
+                }
+            }
+            HomeFocus::Shelf(i) => {
+                let last = ctx.shelf.saturating_sub(1);
+                match command {
+                    Command::Left => go(&mut step, HomeFocus::Shelf(i.saturating_sub(1))),
+                    Command::Right => go(&mut step, HomeFocus::Shelf((i + 1).min(last))),
+                    Command::Up | Command::Back => go(&mut step, HomeFocus::Tiles),
+                    Command::Down if has_games => go(&mut step, HomeFocus::Actions(0)),
+                    Command::Select => step.intent = Some(HomeIntent::ShelfItem(i)),
                     Command::Options if has_games => {
                         step.intent = Some(HomeIntent::OpenGameSettings)
                     }
@@ -496,6 +524,7 @@ mod tests {
             asking: false,
             notice: 0,
             card: 0,
+            shelf: 0,
         }
     }
 
@@ -882,5 +911,41 @@ mod tests {
             PanelEffect::None
         );
         assert!(single.in_rows);
+    }
+
+    #[test]
+    fn the_shelves_sit_between_the_tiles_and_the_actions() {
+        let mut c = ctx(3, 0, false);
+        let down = HomeFocus::Tiles.navigate(Command::Down, c);
+        assert_eq!(down.focus, HomeFocus::Actions(0), "no shelf, no stop");
+        c.shelf = 4;
+        let down = HomeFocus::Tiles.navigate(Command::Down, c);
+        assert_eq!(down.focus, HomeFocus::Shelf(0));
+        let right = HomeFocus::Shelf(3).navigate(Command::Right, c);
+        assert_eq!(
+            right.focus,
+            HomeFocus::Shelf(3),
+            "the last game is the last stop"
+        );
+        let left = HomeFocus::Shelf(2).navigate(Command::Left, c);
+        assert_eq!(left.focus, HomeFocus::Shelf(1));
+        let down = HomeFocus::Shelf(1).navigate(Command::Down, c);
+        assert_eq!(down.focus, HomeFocus::Actions(0));
+        let up = HomeFocus::Actions(0).navigate(Command::Up, c);
+        assert_eq!(up.focus, HomeFocus::Shelf(0));
+        let up = HomeFocus::Shelf(2).navigate(Command::Up, c);
+        assert_eq!(up.focus, HomeFocus::Tiles);
+        let select = HomeFocus::Shelf(2).navigate(Command::Select, c);
+        assert_eq!(select.intent, Some(HomeIntent::ShelfItem(2)));
+    }
+
+    #[test]
+    fn tab_walks_the_shelves_after_the_tiles() {
+        let mut c = ctx(3, 0, false);
+        c.shelf = 2;
+        let step = HomeFocus::Tiles.tab(false, c);
+        assert_eq!(step.focus, HomeFocus::Shelf(0));
+        let step = HomeFocus::Shelf(1).tab(false, c);
+        assert_eq!(step.focus, HomeFocus::Actions(0));
     }
 }

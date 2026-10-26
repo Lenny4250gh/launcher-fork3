@@ -202,10 +202,83 @@ impl ProfileText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            ProfileText::Friend => "Freund",
+            ProfileText::RequestSent => "Anfrage gesendet",
+            ProfileText::RequestReceived => "Möchte befreundet sein",
+            ProfileText::StatGame => "Spiel",
+            ProfileText::StatGames => "Spiele",
+            ProfileText::StatHour => "Stunde",
+            ProfileText::StatHours => "Stunden",
+            ProfileText::StatMinute => "Minute",
+            ProfileText::StatMinutes => "Minuten",
+            ProfileText::StatTrophy => "Trophäe",
+            ProfileText::StatTrophies => "Trophäen",
+            ProfileText::StatLevel => "Level",
+            ProfileText::StatPoints => "%@ Punkte",
+            ProfileText::StatLevelName => "Level %@, %@ Punkte",
+            ProfileText::SectionGames => "Spiele",
+            ProfileText::SectionTrophies => "Letzte Trophäen",
+            ProfileText::SectionActivity => "Letzte Aktivität",
+            ProfileText::LastPlayed => "Zuletzt gespielt: %@",
+            ProfileText::NeverPlayed => "Noch nicht gespielt",
+            ProfileText::Favourite => "Favorit",
+            ProfileText::NotInLibraryDetail => "Nicht in deiner Bibliothek",
+            ProfileText::CompareHint => "Trophäen vergleichen",
+            ProfileText::TrophyProgress => "%@ von %@ Trophäen",
+            ProfileText::GradeTrophy => "%@-Trophäe",
+            ProfileText::InAGame => "In einem Spiel",
+            ProfileText::ActivityLine => "%@ %@",
+            ProfileText::FriendsOnline => "Freunde",
+            ProfileText::FriendsOnlineUnread => "Freunde (%@)",
+            ProfileText::FriendOptions => "Freund-Optionen",
+            ProfileText::AnswerRequest => "Anfrage beantworten",
+            ProfileText::AddFriend => "Freund hinzufügen",
+            ProfileText::AppearOnline => "Online erscheinen",
+            ProfileText::LoadingNote => "Profil wird geladen…",
+            ProfileText::OfflineTitle => "Du bist offline",
+            ProfileText::OfflineNote => {
+                "Profile anderer Spieler laden, sobald du wieder online bist."
+            }
+            ProfileText::FailedTitle => "Dieses Profil wurde nicht geladen",
+            ProfileText::FailedNote => "Prüfe deine Verbindung und versuche es erneut.",
+            ProfileText::PrivateTitle => "Dieses Profil ist privat",
+            ProfileText::PrivateNote => "%@ teilt das Profil nur mit Freunden.",
+            ProfileText::EmptyTitle => "Noch nichts zu zeigen",
+            ProfileText::EmptyNote => "%@ hat noch nichts gespielt oder geteilt.",
+            ProfileText::OwnGamesEmpty => {
+                "Spiele aus deiner Bibliothek erscheinen hier mit deiner Spielzeit."
+            }
+            ProfileText::OwnTrophiesEmpty => {
+                "Verdiene eine Trophäe in einem Spiel, dann erscheint sie hier."
+            }
+            ProfileText::OwnActivityEmpty => {
+                "Trophäen, neue Freunde und erste Spiele erscheinen hier."
+            }
+            ProfileText::OwnNothingYet => {
+                "Spiele ein Spiel, dann erscheinen deine Stunden, Trophäen und Aktivitäten hier."
+            }
+            ProfileText::OwnOfflineNote => {
+                "Du bist offline. Deine Aktivität kommt zurück, sobald du wieder online bist."
+            }
+            ProfileText::SharedGames => "Du besitzt %@ ihrer Spiele",
+            ProfileText::ScreenName => "Profil von %@",
+            ProfileText::StatName => "%@ %@",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
