@@ -264,16 +264,14 @@ impl RequiredScreen {
         actions: &mut Vec<RequiredAction>,
     ) {
         match command {
-            Command::Up | Command::Down | Command::Left | Command::Right => {
+            Command::Up | Command::Down | Command::Left | Command::Right if primary.enabled() => {
                 // Two buttons: any direction goes to the other one, when there is another one.
-                if primary.enabled() {
-                    let up = matches!(command, Command::Up | Command::Left);
-                    let next = if up { 0 } else { 1 };
-                    if self.focus != next {
-                        self.focus = next;
-                        self.moved = true;
-                        shell.play(Cue::Move);
-                    }
+                let up = matches!(command, Command::Up | Command::Left);
+                let next = if up { 0 } else { 1 };
+                if self.focus != next {
+                    self.focus = next;
+                    self.moved = true;
+                    shell.play(Cue::Move);
                 }
             }
             Command::Select => {
