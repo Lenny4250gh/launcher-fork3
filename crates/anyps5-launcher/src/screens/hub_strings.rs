@@ -169,10 +169,64 @@ impl HubText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            HubText::Overline => "Spiele-Hub",
+            HubText::ScreenName => "Spiele-Hub von %@",
+            HubText::Trophies => "Trophäen",
+            HubText::TrophyCount => "%@ von %@",
+            HubText::LatestTrophy => "Zuletzt: %@ (%@)",
+            HubText::NoneEarned => "Noch keine verdient.",
+            HubText::NoTrophyList => "Dieses Spiel hat keine Trophäen.",
+            HubText::TrophyList => "Trophäenliste",
+            HubText::AllGames => "Alle Spiele",
+            HubText::PlayTime => "Spielzeit",
+            HubText::NeverPlayed => "Noch nicht gespielt",
+            HubText::ThisWeek => "%@ diese Woche",
+            HubText::WeekLabel => "Diese Woche",
+            HubText::LastPlayed => "Zuletzt gespielt: %@",
+            HubText::Captures => "Aufnahmen",
+            HubText::CaptureCount => "%@ Aufnahmen",
+            HubText::CaptureOne => "1 Aufnahme",
+            HubText::NoCaptures => "Noch keine. Mach im Spiel eine mit F12.",
+            HubText::SeeAll => "Alle ansehen",
+            HubText::Friends => "Freunde",
+            HubText::FriendsPlaying => "%@ spielt gerade",
+            HubText::NoFriendsPlaying => "Gerade spielt keiner deiner Freunde dieses Spiel.",
+            HubText::FriendsSignedOut => "Melde dich an, um zu sehen, welche Freunde es spielen.",
+            HubText::PlayTogether => "Zusammen spielen",
+            HubText::TogetherUpTo => "Bis zu %@ Spieler",
+            HubText::TogetherNone => "Für dieses Spiel noch nicht verfügbar.",
+            HubText::Compatibility => "Kompatibilität",
+            HubText::CompatNone => "Noch keine Berichte von Spielern.",
+            HubText::CompatOffline => {
+                "Melde dich an, um zu sehen, was Spieler herausgefunden haben."
+            }
+            HubText::GameMusic => "Spielemusik",
+            HubText::MusicOn => "An",
+            HubText::MusicOff => "Aus",
+            HubText::MusicNone => "Dieses Spiel hat keine.",
+            HubText::OverviewOverline => "Alle Spiele",
+            HubText::OverviewTitle => "Trophäen",
+            HubText::OverviewSummary => "%@ Trophäen in %@ Spielen",
+            HubText::OverviewLoading => "Trophäenlisten werden gelesen …",
+            HubText::OverviewEmptyTitle => "Noch keine Trophäenlisten",
+            HubText::OverviewEmptyNote => "Spiele mit Trophäen zeigen hier ihren Fortschritt.",
+            HubText::OverviewRowName => "%@: %@ von %@ Trophäen. %@",
+            HubText::OverviewLatest => "Zuletzt am %@",
+            HubText::OverviewNothingYet => "Noch nichts verdient",
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
@@ -239,6 +293,12 @@ mod tests {
                 "{text:?}"
             );
             assert!(!text.english().is_empty() && !text.turkish().is_empty());
+            let german = text.german().expect("every text has German");
+            assert_eq!(
+                text.english().matches("%@").count(),
+                german.matches("%@").count(),
+                "{text:?}"
+            );
         }
     }
 

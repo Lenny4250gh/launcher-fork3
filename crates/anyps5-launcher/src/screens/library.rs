@@ -11,7 +11,7 @@ use crate::screens::side::commands;
 use crate::ui::Shell;
 use crate::ui::anim::AnimExt;
 use crate::ui::chrome::{TileImage, TileOverlay, TileStyle, fullscreen_panel, paint_tile};
-use crate::ui::components::ConsoleButton;
+use crate::ui::components::{ConsoleButton, ControlSize};
 use crate::ui::glass::GlassStyle;
 use crate::ui::i18n::{Key, Language};
 use crate::ui::icons::Icon;
@@ -25,6 +25,8 @@ pub const COLUMNS: usize = 6;
 const COLUMN_GAP: f32 = 26.0;
 const ROW_GAP: f32 = 30.0;
 const GRID_PADDING: f32 = 14.0;
+/// Between the state line and the line of what players found.
+const COMPAT_GAP: f32 = 4.0;
 
 /// As many tiles as fit the width, at least three.
 pub fn columns_for(width: f32) -> usize {
@@ -49,6 +51,8 @@ pub struct LibraryEntry {
     pub icon: Option<TileImage>,
     pub overlay: TileOverlay,
     pub state: StateText,
+    /// What players found, in words under the state ("Runs well"); nothing when it is unknown.
+    pub compat: Option<StateText>,
 }
 
 /// What the host has to do after a frame.
@@ -62,6 +66,41 @@ pub enum LibraryAction {
     Close,
     /// Select this game and open its Game Hub (options on a tile).
     Hub(usize),
+    /// The bar: the next order, the next filter, the search page, the storage page, and
+    /// "show all games" from the empty page.
+    NextSort,
+    NextFilter,
+    OpenSearch,
+    OpenStorage,
+    ClearFilters,
+}
+
+/// What the bar above the grid says. Its stops, left to right, are the order, the filter, the
+/// search and the storage page.
+#[derive(Clone, Debug, Default)]
+pub struct BarData {
+    pub sort: String,
+    pub filter: String,
+    /// What was typed; the search button then says so.
+    pub query: String,
+    pub search: String,
+    pub storage: String,
+    /// A filter or a search hides games: an empty grid then offers to show them all.
+    pub narrowed: bool,
+    pub nothing_title: String,
+    pub nothing_text: String,
+    pub clear: String,
+}
+
+/// The stops of the bar.
+pub const BAR_STOPS: usize = 4;
+
+/// Where the focus sits on the library page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+enum Zone {
+    #[default]
+    Grid,
+    Bar(usize),
 }
 
 /// The games, borrowed for one frame.
@@ -73,6 +112,7 @@ pub struct LibraryData<'a> {
     pub folder_set: bool,
     /// The games are being looked for: the empty grid asks for nothing yet.
     pub scanning: bool,
+    pub bar: BarData,
 }
 
 /// The grid overlay.
@@ -83,6 +123,9 @@ pub struct LibraryGrid {
     index: usize,
     /// Columns of the last frame, so the arrows move by the rows the player sees.
     columns: usize,
+    zone: Zone,
+    /// The stop of the bar the focus returns to.
+    bar_stop: usize,
 }
 
 /// Where an arrow command moves the focus in a grid of `count` tiles.
@@ -103,6 +146,7 @@ impl LibraryGrid {
         self.open = true;
         self.closing = false;
         self.index = selected;
+        self.zone = Zone::Grid;
     }
 
     pub fn close(&mut self) {
@@ -110,6 +154,12 @@ impl LibraryGrid {
             self.open = false;
             self.closing = true;
         }
+    }
+
+    /// Leaves without an exit: another panel takes the screen over.
+    pub fn dismiss(&mut self) {
+        self.open = false;
+        self.closing = false;
     }
 
     pub fn is_active(&self) -> bool {
@@ -135,7 +185,47 @@ impl LibraryGrid {
         self.index = self.index.min(count.saturating_sub(1));
         if self.open {
             for command in commands(events) {
+                if let Zone::Bar(stop) = self.zone {
+                    match command {
+                        Command::Left | Command::Right => {
+                            let next = if command == Command::Left {
+                                stop.saturating_sub(1)
+                            } else {
+                                (stop + 1).min(BAR_STOPS - 1)
+                            };
+                            self.bar_stop = next;
+                            if next != stop {
+                                self.zone = Zone::Bar(next);
+                                shell.play(Cue::Move);
+                            } else {
+                                shell.play(Cue::Bump);
+                            }
+                        }
+                        Command::Down if count > 0 => {
+                            self.zone = Zone::Grid;
+                            shell.play(Cue::Move);
+                        }
+                        Command::Up | Command::Down => shell.play(Cue::Bump),
+                        Command::Select => {
+                            shell.play(Cue::Select);
+                            actions.push(bar_action(stop));
+                        }
+                        Command::Back | Command::Options => {
+                            shell.play(Cue::Close);
+                            self.close();
+                            actions.push(LibraryAction::Close);
+                        }
+                    }
+                    if !self.open {
+                        break;
+                    }
+                    continue;
+                }
                 match command {
+                    Command::Up if self.index < self.columns.max(1) && data.bar_visible() => {
+                        self.zone = Zone::Bar(self.bar_stop);
+                        shell.play(Cue::Move);
+                    }
                     Command::Left | Command::Right | Command::Up | Command::Down => {
                         let columns = if self.columns == 0 {
                             COLUMNS
@@ -154,6 +244,10 @@ impl LibraryGrid {
                         shell.play(Cue::Select);
                         self.close();
                         actions.push(LibraryAction::Pick(self.index));
+                    }
+                    Command::Select if data.bar.narrowed => {
+                        shell.play(Cue::Select);
+                        actions.push(LibraryAction::ClearFilters);
                     }
                     Command::Select if !data.scanning => {
                         shell.play(Cue::Select);
@@ -178,20 +272,43 @@ impl LibraryGrid {
             }
         }
         let mut clicked = None;
+        let mut bar_clicked = None;
+        let mut clear = false;
         let mut folder = false;
         let mut columns = self.columns;
         let index = self.index;
+        let zone = self.zone;
         let open = self.open;
         let drawn = fullscreen_panel(
             ctx,
             "library-grid",
             open,
             GlassStyle::fullscreen_panel(),
-            |ui, _| draw(ui, data, index, &mut clicked, &mut folder, &mut columns),
+            |ui, _| {
+                draw(
+                    ui,
+                    data,
+                    (index, zone),
+                    &mut clicked,
+                    &mut folder,
+                    &mut columns,
+                    (&mut bar_clicked, &mut clear),
+                )
+            },
         );
         self.columns = columns;
         if drawn.is_none() {
             self.closing = false;
+        }
+        if let (true, Some(stop)) = (open, bar_clicked) {
+            self.bar_stop = stop;
+            self.zone = Zone::Bar(stop);
+            shell.play(Cue::Select);
+            actions.push(bar_action(stop));
+        }
+        if open && clear {
+            shell.play(Cue::Select);
+            actions.push(LibraryAction::ClearFilters);
         }
         if open && folder {
             shell.play(Cue::Select);
@@ -208,13 +325,31 @@ impl LibraryGrid {
     }
 }
 
+fn bar_action(stop: usize) -> LibraryAction {
+    match stop {
+        0 => LibraryAction::NextSort,
+        1 => LibraryAction::NextFilter,
+        2 => LibraryAction::OpenSearch,
+        _ => LibraryAction::OpenStorage,
+    }
+}
+
+impl LibraryData<'_> {
+    /// The bar is there once there are games to order, filter and search, or a filter hides them.
+    fn bar_visible(&self) -> bool {
+        !self.entries.is_empty() || self.bar.narrowed
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn draw(
     ui: &mut Ui,
     data: &LibraryData<'_>,
-    focus: usize,
+    (focus, zone): (usize, Zone),
     clicked: &mut Option<usize>,
     folder: &mut bool,
     columns_out: &mut usize,
+    (bar_clicked, clear): (&mut Option<usize>, &mut bool),
 ) {
     let ctx = ui.ctx().clone();
     let painter = ui.painter().clone();
@@ -244,9 +379,91 @@ fn draw(
     let header = Rect::from_min_size(area.min, vec2(area.width(), title_h));
     crate::screens::right_aligned_hints(ui, header, language);
 
-    // No games: the same words as the empty home, in the middle under the header.
+    // The bar under the header: order, filter, search, storage. A button stays 12 dp from the next.
+    let mut bar_bottom = header.max.y;
+    if data.bar_visible() {
+        let top = header.max.y + size::CONTROL_GAP;
+        let bar = Rect::from_min_size(
+            pos2(area.min.x, top),
+            vec2(area.width(), ControlSize::Medium.height()),
+        );
+        bar_bottom = bar.max.y;
+        let mut child = ui.new_child(
+            UiBuilder::new()
+                .max_rect(bar)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        child.spacing_mut().item_spacing.x = size::CONTROL_GAP;
+        let search_label = if data.bar.query.trim().is_empty() {
+            data.bar.search.clone()
+        } else {
+            data.bar.query.clone()
+        };
+        let stops = [
+            (&data.bar.sort, Icon::ARROWS_DOWN_UP),
+            (&data.bar.filter, Icon::LIST),
+            (&search_label, Icon::MAGNIFYING_GLASS),
+            (&data.bar.storage, Icon::HARD_DRIVE),
+        ];
+        for (i, (label, icon)) in stops.into_iter().enumerate() {
+            let shown = text::middle_truncate(&painter, ty::CHOICE_VALUE, label, 320.0);
+            let response = ConsoleButton::new(&shown)
+                .icon(icon)
+                .size(ControlSize::Medium)
+                .accessible_name(label.clone())
+                .focused(zone == Zone::Bar(i))
+                .show(&mut child);
+            if response.clicked() {
+                *bar_clicked = Some(i);
+            }
+        }
+    }
+
+    // Nothing shown: with a filter or a search the page says so and offers all games; without
+    // games it uses the words of the empty home, in the middle under the header.
     if data.entries.is_empty() {
         let middle = pos2(area.center().x, area.center().y);
+        if data.bar.narrowed {
+            text::paint(
+                &painter,
+                middle,
+                Align2::CENTER_BOTTOM,
+                ty::EMPTY_TITLE,
+                &data.bar.nothing_title,
+                color::text(),
+            );
+            let body = crate::screens::wrapped_centered(
+                &painter,
+                ty::BODY,
+                &data.bar.nothing_text,
+                color::text_empty(),
+                area.width().min(720.0),
+                3,
+            );
+            let body_height = body.size().y;
+            painter.galley(pos2(middle.x, middle.y + 16.0), body, color::text_empty());
+            let button = Rect::from_center_size(
+                pos2(
+                    middle.x,
+                    middle.y + 16.0 + body_height + 24.0 + size::BUTTON_MIN_HEIGHT * 0.5,
+                ),
+                vec2(300.0, size::BUTTON_MIN_HEIGHT),
+            );
+            let mut child = ui.new_child(
+                UiBuilder::new()
+                    .max_rect(button)
+                    .layout(egui::Layout::top_down(egui::Align::Center)),
+            );
+            if ConsoleButton::new(&data.bar.clear)
+                .prominent(true)
+                .focused(zone == Zone::Grid)
+                .show(&mut child)
+                .clicked()
+            {
+                *clear = true;
+            }
+            return;
+        }
         text::paint(
             &painter,
             middle,
@@ -300,7 +517,7 @@ fn draw(
     // The grid.
     // The first column stands on the title's edge; the padding is room for the focus ring.
     let list = Rect::from_min_max(
-        pos2(area.min.x - GRID_PADDING, header.max.y + 26.0),
+        pos2(area.min.x - GRID_PADDING, bar_bottom + 26.0),
         pos2(area.max.x + GRID_PADDING, area.max.y),
     );
     let mut child = ui.new_child(UiBuilder::new().max_rect(list));
@@ -318,8 +535,16 @@ fn draw(
     }
     let tile = size::LIBRARY_TILE;
     let name_style = |focused: bool| if focused { ty::FACT } else { ty::SENTENCE };
-    let cell_h =
-        tile + 10.0 + ty::SENTENCE.line_height() + 10.0 + ty::STATE_LABEL_SMALL.line_height();
+    // A second line under the state says what players found; every cell has room for it once
+    // any game has one.
+    let any_compat = data.entries.iter().any(|e| e.compat.is_some());
+    let line = ty::STATE_LABEL_SMALL.line_height();
+    let cell_h = tile
+        + 10.0
+        + ty::SENTENCE.line_height()
+        + 10.0
+        + line
+        + if any_compat { COMPAT_GAP + line } else { 0.0 };
     let rows = data.entries.len().div_ceil(columns);
     let mut geometry = Vec::with_capacity(rows);
     let output = area_scroll.show(&mut child, |ui| {
@@ -341,14 +566,17 @@ fn draw(
             let x = area.min.x + col as f32 * (tile + COLUMN_GAP);
             let y = top + row as f32 * (cell_h + ROW_GAP);
             let cell = Rect::from_min_size(pos2(x, y), vec2(tile, cell_h));
-            let focused = i == focus;
+            let focused = i == focus && zone == Zone::Grid;
             let response = ui.interact(cell, id.with(("cell", i)), Sense::click());
             crate::ui::a11y::follow(&ctx, response.id, focused);
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(
                     egui::Role::Button,
                     true,
-                    format!("{}, {}", entry.name, entry.state.text),
+                    match &entry.compat {
+                        Some(c) => format!("{}, {}, {}", entry.name, entry.state.text, c.text),
+                        None => format!("{}, {}", entry.name, entry.state.text),
+                    },
                 )
             });
             if input::hovered(&ctx, &response) {
@@ -397,29 +625,35 @@ fn draw(
             let extra = (name_g.size().y - ty::SENTENCE.line_height()).max(0.0);
             let ny = cell.min.y + tile + 10.0;
             painter.galley(pos2(cell.min.x, ny), name_g, ink);
-            if entry.state.quiet {
-                continue;
+            let mut sy = ny + ty::SENTENCE.line_height() + extra + 10.0;
+            let mut lines = Vec::new();
+            if !entry.state.quiet {
+                lines.push(&entry.state);
             }
-            let sy = ny + ty::SENTENCE.line_height() + extra + 10.0;
-            painter.text(
-                pos2(
-                    cell.min.x + 6.0,
-                    sy + ty::STATE_LABEL_SMALL.line_height() * 0.5,
-                ),
-                Align2::CENTER_CENTER,
-                entry.state.icon.glyph(),
-                entry.state.icon.font(12.0, true),
-                entry.state.tint,
-            );
-            let label_g = clamped(
-                &painter,
-                ty::STATE_LABEL_SMALL,
-                &entry.state.text,
-                entry.state.tint,
-                tile - 20.0,
-                1,
-            );
-            painter.galley(pos2(cell.min.x + 20.0, sy), label_g, entry.state.tint);
+            if let Some(c) = &entry.compat {
+                lines.push(c);
+            }
+            // The word, in the ink of its state; the glyph says it again for those who do not
+            // read the colour.
+            for state in lines {
+                painter.text(
+                    pos2(cell.min.x + 6.0, sy + line * 0.5),
+                    Align2::CENTER_CENTER,
+                    state.icon.glyph(),
+                    state.icon.font(12.0, true),
+                    state.tint,
+                );
+                let label_g = clamped(
+                    &painter,
+                    ty::STATE_LABEL_SMALL,
+                    &state.text,
+                    state.tint,
+                    tile - 20.0,
+                    1,
+                );
+                painter.galley(pos2(cell.min.x + 20.0, sy), label_g, state.tint);
+                sy += line + COMPAT_GAP;
+            }
         }
     });
     follow.end(

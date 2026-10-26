@@ -75,10 +75,34 @@ impl AboutText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            AboutText::Website => "AnyPlay-Website",
+            AboutText::Discord => "AnyPlay Discord",
+            AboutText::DiscordDetail => "Neuigkeiten, Hilfe und andere Spieler",
+            AboutText::Privacy => "Datenschutzerklärung",
+            AboutText::Terms => "Nutzungsbedingungen",
+            AboutText::Consent => {
+                "Mit dem Erstellen eines Kontos stimmst du den {terms} und der {privacy} zu."
+            }
+            AboutText::Credits => {
+                "Aufgebaut auf AnyPS5 von boykopovar. Der Launcher begann als AnyPS5-ARM-Launcher von utkuhalis für macOS."
+            }
+            AboutText::LudusCredits => "LudusCtrl-Protokoll und App von Josip Parlov (@parl0v)",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 }

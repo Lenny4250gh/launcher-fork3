@@ -81,6 +81,8 @@ const BADGE_HEIGHT: f32 = 22.0;
 const COMPOSER_HEIGHT: f32 = 44.0;
 const COMPOSER_BUTTON: f32 = 44.0;
 const SEND_BUTTON: f32 = ControlSize::Small.height();
+/// The emoji glyph in the field (an icon alone: 20).
+const EMOJI_GLYPH: f32 = 20.0;
 const NOTE_BAR: f32 = 36.0;
 /// The room of the two answers (Accept, Decline) or of Block in the request bar.
 const ANSWER_SLOT: f32 = 260.0;
@@ -544,6 +546,8 @@ pub fn editable(message: &Message, me: AccountId, now: i64) -> bool {
 /// The buttons of the composer, left to right.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slot {
+    /// The smiley that opens the system's emoji picker (where there is one).
+    Emoji,
     Field,
     Send,
 }
@@ -586,6 +590,8 @@ pub struct Shape {
     pub earlier: bool,
     pub note: bool,
     pub kind: Kind,
+    /// The composer has the emoji glyph before its field.
+    pub emoji: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -642,6 +648,32 @@ pub enum Step {
     Options,
 }
 
+/// A Tab press in a thread: like the arrows, but the emoji glyph comes before the field in reading
+/// order, so Tab lands on it first and Shift+Tab from the field goes back to it.
+fn tab_step(focus: ThreadFocus, command: Command, shape: Shape) -> Step {
+    use ThreadFocus as F;
+    if shape.emoji {
+        match (focus, command) {
+            (F::Composer(Slot::Emoji), Command::Down) => {
+                return Step::Moved(F::Composer(Slot::Field), true);
+            }
+            (F::Composer(Slot::Field), Command::Up) => {
+                return Step::Moved(F::Composer(Slot::Emoji), true);
+            }
+            (F::Composer(Slot::Emoji), Command::Up) => {
+                return step(F::Composer(Slot::Field), Command::Up, shape);
+            }
+            _ => {}
+        }
+    }
+    match step(focus, command, shape) {
+        Step::Moved(F::Composer(Slot::Field), true) if shape.emoji && command == Command::Down => {
+            Step::Moved(F::Composer(Slot::Emoji), true)
+        }
+        other => other,
+    }
+}
+
 /// Applies a command to the focus of a thread.
 pub fn step(focus: ThreadFocus, command: Command, shape: Shape) -> Step {
     use ThreadFocus as F;
@@ -653,6 +685,7 @@ pub fn step(focus: ThreadFocus, command: Command, shape: Shape) -> Step {
         F::Earlier if !shape.earlier => shape.top().unwrap_or_else(|| shape.entry()),
         F::Header => F::Header,
         F::Note if !shape.note => shape.entry(),
+        F::Composer(Slot::Emoji) if !shape.emoji => F::Composer(Slot::Field),
         F::Composer(_) if shape.kind != Kind::Write => shape.entry(),
         F::Answer(_) if shape.kind != Kind::Request => shape.entry(),
         F::Bar if shape.kind != Kind::Bar => shape.entry(),
@@ -695,6 +728,7 @@ pub fn step(focus: ThreadFocus, command: Command, shape: Shape) -> Step {
         Command::Left => match focus {
             F::Message(i) => moved(F::Message(i.saturating_sub(5))),
             F::Composer(Slot::Send) => moved(F::Composer(Slot::Field)),
+            F::Composer(Slot::Field) if shape.emoji => moved(F::Composer(Slot::Emoji)),
             F::Answer(Answer::Block) => moved(F::Answer(Answer::Decline)),
             F::Answer(Answer::Decline) => moved(F::Answer(Answer::Accept)),
             _ => Step::Moved(focus, false),
@@ -704,6 +738,7 @@ pub fn step(focus: ThreadFocus, command: Command, shape: Shape) -> Step {
                 moved(F::Message((i + 5).min(shape.messages - 1)))
             }
             F::Message(_) => moved(shape.bottom()),
+            F::Composer(Slot::Emoji) => moved(F::Composer(Slot::Field)),
             F::Composer(Slot::Field) => moved(F::Composer(Slot::Send)),
             F::Answer(Answer::Accept) => moved(F::Answer(Answer::Decline)),
             F::Answer(Answer::Decline) => moved(F::Answer(Answer::Block)),
@@ -787,6 +822,8 @@ pub struct ChatState {
     pub type_now: bool,
     /// How many bubbles the thread has shown, to scroll down when one arrives.
     pub seen: usize,
+    /// The emoji glyph was pressed: once the field holds the focus, the system's picker opens.
+    pub emoji_pending: bool,
 }
 
 impl OnlinePanel {
@@ -880,6 +917,7 @@ impl OnlinePanel {
                 Composer::Request => Kind::Request,
                 _ => Kind::Bar,
             },
+            emoji: crate::ui::os_emoji::AVAILABLE && matches!(composer, Composer::Write { .. }),
         };
         Some((thread, composer, shape))
     }
@@ -935,10 +973,17 @@ impl OnlinePanel {
             super::Page::Conversation(id) | super::Page::MessageRequest(id) => id.clone(),
             _ => return false,
         };
-        let Some((_, composer, shape)) = self.chat_shape(data, &id) else {
+        let Some((_, composer, mut shape)) = self.chat_shape(data, &id) else {
             return false;
         };
-        match step(self.chat.focus, command, shape) {
+        // A pad has no use for the system's picker: its focus never rests on the glyph.
+        shape.emoji &= !shell.input.pad_in_use;
+        let stepped = if shell.input.via_tab {
+            tab_step(self.chat.focus, command, shape)
+        } else {
+            step(self.chat.focus, command, shape)
+        };
+        match stepped {
             Step::Moved(to, moved) => {
                 if moved {
                     shell.play(crate::ui::sound::Cue::Move);
@@ -995,6 +1040,14 @@ impl OnlinePanel {
                     self.go(Page::Keyboard(id.to_owned()), data);
                 } else {
                     self.chat.type_now = true;
+                }
+            }
+            ThreadFocus::Composer(Slot::Emoji) => {
+                // The picker types into the focused window: the field takes the focus first, the
+                // picker opens on the frame the field holds it.
+                if !pad {
+                    self.chat.type_now = true;
+                    self.chat.emoji_pending = true;
                 }
             }
             ThreadFocus::Composer(Slot::Send) => {
@@ -1124,6 +1177,17 @@ impl OnlinePanel {
             data.language,
         );
         self.chat.type_now = false;
+        if std::mem::take(&mut self.chat.emoji_pending) {
+            // Read both before opening: the picker types into whatever window holds the focus.
+            let ctx = ui.ctx().clone();
+            let typing = ctx
+                .data(|d| d.get_temp::<bool>(egui::Id::NULL.with(TYPING)))
+                .unwrap_or(false);
+            let window_focused = ctx.input(|i| i.focused);
+            if typing && window_focused {
+                crate::ui::os_emoji::open();
+            }
+        }
         let pad = false;
         for event in events {
             match event {
@@ -2125,8 +2189,21 @@ fn composer_view(
                 pos2(pill.max.x - space::XS - SEND_BUTTON * 0.5, pill.center().y),
                 vec2(SEND_BUTTON, SEND_BUTTON),
             );
+            // The smiley stands where the text starts, as quiet as the placeholder; the field follows
+            // it by one grid gap. Only where the system has a picker to open.
+            let glyph_end = if crate::ui::os_emoji::AVAILABLE {
+                emoji_glyph(
+                    ui,
+                    pill,
+                    focus == Some(ThreadFocus::Composer(Slot::Emoji)),
+                    S::Emoji.text(language),
+                    events,
+                )
+            } else {
+                pill.min.x + BUBBLE_PAD_X
+            };
             let field = Rect::from_min_max(
-                pos2(pill.min.x + BUBBLE_PAD_X, pill.min.y),
+                pos2(glyph_end, pill.min.y),
                 pos2(send.min.x - space::S, pill.max.y),
             );
             icon_button(
@@ -2180,7 +2257,9 @@ fn composer_view(
             if type_now {
                 response.request_focus();
             }
-            ctx.data_mut(|d| d.insert_temp(egui::Id::NULL.with(TYPING), response.has_focus()));
+            // Read the focus before `data_mut`: asking the context inside its own lock deadlocks.
+            let typing = response.has_focus();
+            ctx.data_mut(|d| d.insert_temp(egui::Id::NULL.with(TYPING), typing));
             if response.changed() {
                 events.push(Mouse::Typed(text.clone()));
             }
@@ -2305,6 +2384,52 @@ fn composer_view(
             }
         }
     }
+}
+
+/// The glyph at the field's leading end that opens the system's emoji picker: no box, no capsule,
+/// the placeholder's ink at rest and one step brighter under the pointer or the focus. Its hit area
+/// is the field's height wide and ends where the text begins. Returns where the text begins.
+fn emoji_glyph(ui: &mut Ui, pill: Rect, focused: bool, name: &str, events: &mut Vec<Mouse>) -> f32 {
+    let ctx = ui.ctx().clone();
+    let painter = ui.painter().clone();
+    let glyph = Rect::from_center_size(
+        pos2(
+            pill.min.x + BUBBLE_PAD_X + EMOJI_GLYPH * 0.5,
+            pill.center().y,
+        ),
+        vec2(EMOJI_GLYPH, EMOJI_GLYPH),
+    );
+    let text_start = glyph.max.x + space::S;
+    let hit = Rect::from_min_max(pill.min, pos2(text_start, pill.max.y));
+    let response = ui.interact(hit, ui.make_persistent_id("emoji"), Sense::click());
+    crate::ui::a11y::follow(&ctx, response.id, focused);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
+    let hovered = input::hovered(&ctx, &response);
+    if hovered {
+        ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    if response.clicked() {
+        events.push(Mouse::Press(ThreadFocus::Composer(Slot::Emoji)));
+    }
+    let t = ctx.focus_t((response.id, "emoji"), focused);
+    components::paint_focus_ring(
+        &painter,
+        Rect::from_center_size(glyph.center(), vec2(size::CONTROL_S, size::CONTROL_S)),
+        size::CONTROL_S * 0.5,
+        t,
+    );
+    painter.text(
+        glyph.center(),
+        Align2::CENTER_CENTER,
+        Icon::SMILEY.glyph(),
+        Icon::SMILEY.font(EMOJI_GLYPH, false),
+        if hovered || focused {
+            color::text_detail()
+        } else {
+            color::text_note()
+        },
+    );
+    text_start
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2884,6 +3009,40 @@ mod tests {
     }
 
     #[test]
+    fn the_emoji_glyph_stands_before_the_field_for_arrows_and_tab() {
+        use ThreadFocus as F;
+        let mut s = shape(3, false, false, Kind::Write);
+        s.emoji = true;
+        let emoji = F::Composer(Slot::Emoji);
+        let field = F::Composer(Slot::Field);
+        let send = F::Composer(Slot::Send);
+        // Arrows: Left from the field reaches it, Right leaves it; Send keeps its place.
+        assert_eq!(step(field, Command::Left, s), Step::Moved(emoji, true));
+        assert_eq!(step(emoji, Command::Right, s), Step::Moved(field, true));
+        assert_eq!(step(emoji, Command::Left, s), Step::Moved(emoji, false));
+        assert_eq!(step(send, Command::Left, s), Step::Moved(field, true));
+        // Tab: from the last message to the glyph, on to the field; Shift+Tab walks back.
+        assert_eq!(
+            tab_step(F::Message(2), Command::Down, s),
+            Step::Moved(emoji, true)
+        );
+        assert_eq!(tab_step(emoji, Command::Down, s), Step::Moved(field, true));
+        assert_eq!(tab_step(field, Command::Up, s), Step::Moved(emoji, true));
+        assert_eq!(
+            tab_step(emoji, Command::Up, s),
+            Step::Moved(F::Message(2), true)
+        );
+        // Where there is no picker (or a pad is in use) the glyph is not a stop.
+        s.emoji = false;
+        assert_eq!(step(field, Command::Left, s), Step::Moved(field, false));
+        assert_eq!(step(emoji, Command::Right, s), Step::Moved(send, true));
+        assert_eq!(
+            tab_step(F::Message(2), Command::Down, s),
+            Step::Moved(field, true)
+        );
+    }
+
+    #[test]
     fn the_composer_follows_what_the_conversation_allows() {
         let mut online = online();
         let mut request = chat("r", ConversationKind::Direct, &[(9, "Nyx")], 1);
@@ -2930,6 +3089,7 @@ mod tests {
             earlier,
             note,
             kind,
+            emoji: false,
         }
     }
 

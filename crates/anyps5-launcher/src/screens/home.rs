@@ -19,6 +19,7 @@ use crate::screens::online_social_strings::SocialText;
 use crate::screens::online_strings::OnlineText;
 use crate::screens::phone_strings::PhoneText;
 use crate::screens::run_strings::{RunText, friends_line};
+use crate::screens::shelves;
 use crate::screens::strings::{Extra, playtime_text};
 use crate::screens::together_strings::TogetherText;
 use crate::screens::toolkit_pin;
@@ -87,18 +88,23 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
     let ctx = cx.ctx.clone();
     let screen = ctx.content_rect();
     let mut presses = Vec::new();
+    let mut shelf_presses = Vec::new();
     crate::ui::shade::paint(ui.painter(), screen, !cx.model.games.is_empty());
     // At launch the parts rise into place one after another (ui::intro).
     staged(ui, &ctx, intro::TOP_BAR, screen, |ui, screen| {
         top_bar(ui, cx, screen, &mut presses);
     });
     if cx.model.games.is_empty() {
+        cx.model.shelf_count = 0;
         staged(ui, &ctx, intro::HERO, screen, |ui, screen| {
             empty_library(ui, cx, screen, &mut presses);
         });
     } else {
         staged(ui, &ctx, intro::TILES, screen, |ui, screen| {
             tile_row(ui, cx, screen, &mut presses);
+        });
+        staged(ui, &ctx, intro::HERO, screen, |ui, screen| {
+            shelf_band(ui, cx, screen, &mut shelf_presses);
         });
         staged(ui, &ctx, intro::HERO, screen, |ui, screen| {
             hero(ui, cx, screen, &mut presses);
@@ -112,6 +118,9 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
             hints(ui, language, set, screen);
         });
     }
+    for focus in shelf_presses {
+        cx.model.click(focus);
+    }
     for press in presses {
         match press {
             Press::Tile { index, double } => cx.model.click_tile(index, double),
@@ -119,6 +128,54 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
             Press::ChooseFolder => cx.model.request_folder_dialog(),
         }
     }
+}
+
+/// What the shelves show and how many games each takes, when the window has room for them.
+struct ShelfPlan {
+    shelves: Vec<crate::app::library_view::Shelf>,
+    cap: usize,
+}
+
+/// The shelves fit between the tile row and the hero's title (a one-line title, with its state
+/// above it); a low or narrow window shows none, and the hero keeps its place.
+fn shelf_plan(
+    model: &Model,
+    painter: &egui::Painter,
+    screen: Rect,
+    language: Language,
+) -> Option<ShelfPlan> {
+    let all = model.shelves();
+    if all.is_empty() {
+        return None;
+    }
+    let cap = shelves::cap(screen, all.len());
+    if cap == 0 {
+        return None;
+    }
+    let (_, hint_height) = hint_bar_size(painter, language, true);
+    let geometry = hero_geometry(screen, hint_height, 0.0);
+    let state_height = ty::STATE_LABEL.line_height() + STATE_GAP;
+    let bottom = shelves::top(screen) + shelves::height();
+    if geometry.title_bottom - ty::HERO_TITLE.line_height() - state_height - shelves::BELOW < bottom
+    {
+        return None;
+    }
+    Some(ShelfPlan {
+        shelves: model.shelves_with(cap),
+        cap,
+    })
+}
+
+fn shelf_band(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<HomeFocus>) {
+    let painter = ui.painter().clone();
+    let language = cx.language();
+    let Some(plan) = shelf_plan(cx.model, &painter, screen, language) else {
+        cx.model.shelf_count = 0;
+        return;
+    };
+    cx.model.shelf_cap = plan.cap;
+    cx.model.shelf_count = plan.shelves.iter().map(|s| s.items.len()).sum();
+    shelves::show(ui, cx, shelves::top(screen), &plan.shelves, presses);
 }
 
 /// Draws one part of the screen at its intro stage: faded and lowered while it arrives, directly
@@ -1042,7 +1099,7 @@ fn tile_row(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<
                 ui.interact(rect, Id::unique(("tile", game.id.as_str())), Sense::click());
             response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label.as_str()));
             crate::ui::a11y::follow(&ctx, response.id, ring_on && is_selected);
-            if input::hovered(&ctx, &response) {
+            if under_pointer && response.contains_pointer() {
                 ctx.set_cursor_icon(CursorIcon::PointingHand);
             }
             if response.double_clicked() {
@@ -1201,8 +1258,12 @@ fn paint_hero(
     }
     // A low window must not push a two-line title (and the state above it) over the tile row.
     let state_height = ty::STATE_LABEL.line_height() + STATE_GAP;
-    let tiles_bottom =
+    let mut tiles_bottom =
         screen.min.y + pad::HOME_TOP + size::ICON_BUTTON + 34.0 + size::TILE_LARGE + 24.0;
+    // The shelves, when they are drawn, are part of what the title must not run into.
+    if shelf_plan(cx.model, &painter, screen, language).is_some() {
+        tiles_bottom = shelves::top(screen) + shelves::height() + shelves::BELOW;
+    }
     if geometry.title_bottom - title.size().y - state_height < tiles_bottom {
         title = wrapped(
             &painter,
@@ -1274,6 +1335,7 @@ fn paint_hero(
                 .icon(Icon::TROPHY)
                 .icon_fill(true)
                 .tabular(true)
+                .size(ControlSize::Small)
                 .focused(focused(trophies_index))
                 .show(ui);
             if response.clicked() {

@@ -29,10 +29,19 @@ impl FailureText {
         }
     }
 
+    pub const fn german(self) -> &'static str {
+        match self {
+            FailureText::UnlockStopped => {
+                "Das Freischalten wurde angehalten. Versuch es noch einmal. Wenn es wieder anhält, zeigt dir Optionen > Protokoll den Grund, und Problem melden schickt ihn an uns."
+            }
+        }
+    }
+
     pub fn text(self, language: Language) -> &'static str {
         match language {
             Language::English => self.english(),
             Language::Turkish => self.turkish(),
+            Language::German => self.german(),
         }
     }
 }
