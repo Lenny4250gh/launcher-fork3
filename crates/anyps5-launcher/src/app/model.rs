@@ -1295,6 +1295,10 @@ impl Model {
         } else {
             overlay
         };
+        if overlay == Overlay::Settings {
+            // The codec's row may say its download failed: opening Settings tries it again.
+            crate::app::online::fetch_codec(self, true);
+        }
         self.panel = match overlay {
             Overlay::Settings => PanelNav::settings(overlay.categories()),
             // The controls panel opens on its first key, below the hint; advanced below its header.
