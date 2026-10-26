@@ -471,6 +471,7 @@ impl LauncherApp {
         self.shell.sounds.enabled = self.model.prefs.sounds;
         self.shell
             .set_vibration(screens::convert::vibration(self.model.prefs.vibration));
+        crate::ui::nav_bindings::apply(&self.model.prefs);
         if !self.model.prefs.discord_presence {
             self.clear_presence();
         }

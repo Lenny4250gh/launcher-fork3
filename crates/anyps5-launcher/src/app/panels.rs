@@ -61,6 +61,7 @@ use crate::app::steam;
 use crate::app::toolkit::{EngineFailure, NotesState, ToolkitEvent, ToolkitService};
 use crate::screens::advanced::{AdvancedAction, AdvancedData, AdvancedPanel};
 use crate::screens::banner::{BannerHost, BannerTrophy};
+use crate::screens::controllers::{ControllersAction, ControllersData, ControllersPanel};
 use crate::screens::controls::{ControlsAction, ControlsData, ControlsPanel};
 use crate::screens::game_settings::{
     GameSettingsAction, GameSettingsData, GameSettingsPanel, RecommendedRow, UninstallAction,
@@ -148,6 +149,10 @@ pub struct PanelHost {
     /// The tags of the releases on this PC, read when the game sheet opens and after a change.
     pin_installed: Option<Vec<String>>,
     controls: ControlsPanel,
+    controllers: ControllersPanel,
+    /// DualSense pads seen last frame, and the saved light bar colour is due on the next idle one.
+    lightbar_seen: usize,
+    lightbar_due: bool,
     advanced: AdvancedPanel,
     trophies: TrophyListPanel,
     library: LibraryGrid,
@@ -257,6 +262,9 @@ impl PanelHost {
             close_game: CloseGamePanel::default(),
             pin_installed: None,
             controls: ControlsPanel::default(),
+            controllers: ControllersPanel::default(),
+            lightbar_seen: 0,
+            lightbar_due: false,
             advanced: AdvancedPanel::default(),
             trophies: TrophyListPanel::default(),
             library: LibraryGrid::default(),
@@ -557,6 +565,10 @@ impl PanelHost {
                 self.whats_new_tag = tag;
                 self.settings_return = Category::ALL.iter().position(|c| *c == Category::Toolkit);
                 model.switch_overlay(Overlay::WhatsNew);
+            }
+            SettingsAction::OpenControllers => {
+                self.settings_return = Category::ALL.iter().position(|c| *c == Category::Behaviour);
+                model.switch_overlay(Overlay::Controllers);
             }
             SettingsAction::RestartNow => self.restart_launcher(model, cx.ctx),
             SettingsAction::CancelRestart => self.launcher.cancel_hold(),
@@ -1417,6 +1429,70 @@ impl PanelHost {
         }
     }
 
+    /// The light bar colour the player chose, put on a DualSense when it is connected (and at
+    /// start), but never while a game runs or starts: the game owns the pad then.
+    fn apply_saved_lightbar(&mut self, model: &Model) {
+        let seen = crate::ui::pad_hub::snapshot()
+            .pads
+            .iter()
+            .filter(|p| p.dualsense)
+            .count();
+        if seen != self.lightbar_seen {
+            self.lightbar_due = seen > 0;
+            self.lightbar_seen = seen;
+        }
+        if !self.lightbar_due || model.running.is_some() || model.starting.is_some() {
+            return;
+        }
+        self.lightbar_due = false;
+        if let Some(rgb) = model
+            .prefs
+            .lightbar
+            .as_deref()
+            .and_then(crate::ui::lightbar::parse)
+        {
+            let spawned = std::thread::Builder::new()
+                .name("lightbar".into())
+                .spawn(move || {
+                    if let Err(err) = crate::ui::lightbar::set(rgb) {
+                        tracing::warn!("saved light bar colour not set: {err}");
+                    }
+                });
+            if let Err(err) = spawned {
+                tracing::warn!("light bar thread not started: {err}");
+            }
+        }
+    }
+
+    /// Settings, Controllers.
+    fn controllers_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
+        let events = self.take_events(wanted);
+        if wanted && !self.controllers.is_active() {
+            self.controllers.open();
+        } else if !wanted && self.controllers.is_active() {
+            self.controllers.close(cx.shell);
+        }
+        let language = cx.model.language();
+        let accent = cx.shell.accent_color();
+        let game_running = cx.model.running.is_some() || cx.model.starting.is_some();
+        let mut data = ControllersData {
+            prefs: &mut cx.model.prefs,
+            language,
+            accent,
+            game_running,
+        };
+        let out = self.controllers.show(cx.shell, cx.ctx, &events, &mut data);
+        if out.changed {
+            cx.model.mark_prefs_dirty();
+        }
+        for action in out.actions {
+            match action {
+                ControllersAction::Back => cx.model.switch_overlay(Overlay::Settings),
+                ControllersAction::Toast(ToastRequest { icon, text }) => cx.model.toast(text, icon),
+            }
+        }
+    }
+
     fn whats_new_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
         let events = self.take_events(wanted);
         let language = cx.model.language();
@@ -2137,6 +2213,7 @@ impl OverlayHost for PanelHost {
             Overlay::Recommended => self.recommended_ui(cx, wanted),
             Overlay::WhatsNew => self.whats_new_ui(cx, wanted),
             Overlay::Required => self.required_ui(cx, wanted),
+            Overlay::Controllers => self.controllers_ui(cx, wanted),
             Overlay::Friends => self.friends_ui(cx, wanted),
             Overlay::Notifications => self.notifications_ui(cx, wanted),
             Overlay::Profile => self.profile_ui(cx, wanted),
@@ -2166,6 +2243,7 @@ impl OverlayHost for PanelHost {
     }
 
     fn frame(&mut self, cx: &mut OverlayCx<'_>) {
+        self.apply_saved_lightbar(cx.model);
         // Keys that arrived while no overlay was open belong to nobody.
         if cx.model.overlay.is_none() {
             self.events.clear();

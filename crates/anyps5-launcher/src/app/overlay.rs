@@ -60,6 +60,9 @@ pub enum Overlay {
     /// "Update required": this version is retired, so the update comes before the online area.
     /// Offline play stays open (a full-screen panel, docs/DESIGN.md 9.5.1).
     Required,
+    /// Settings, Controllers: the pads, their tests and the launcher's own buttons (a
+    /// full-screen panel, docs/DESIGN.md 6.10).
+    Controllers,
 }
 
 impl Overlay {
