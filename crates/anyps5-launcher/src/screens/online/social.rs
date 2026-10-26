@@ -891,7 +891,8 @@ impl OnlinePanel {
         let social = &online.social;
         let me = Self::me(data);
         match (row, self.page.clone()) {
-            ("startParty", _) => self.go(Page::PartyPicker, data),
+            // One press opens the room; friends are invited from inside it.
+            ("startParty", _) => actions.push(OnlineAction::PartyCreate),
             ("inviteFriends", _) => self.go(Page::PartyPicker, data),
             ("partyChat", _) => {
                 if let Some(chat) = social.party_chat() {

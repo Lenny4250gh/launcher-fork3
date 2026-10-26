@@ -13,6 +13,9 @@ pub enum RoomText {
     MutedByYou,
     /// The empty seat of the grid.
     InviteAFriend,
+    /// The line of a party of one: the room is open and nobody is in it yet.
+    AloneTitle,
+    AloneNote,
 }
 
 impl RoomText {
@@ -22,6 +25,8 @@ impl RoomText {
             RoomText::ViewInvitation => "View Invitation",
             RoomText::MutedByYou => "Muted by you",
             RoomText::InviteAFriend => "Invite a Friend",
+            RoomText::AloneTitle => "Your party is open",
+            RoomText::AloneNote => "Invite friends to talk, chat and play together.",
         }
     }
 
@@ -31,6 +36,8 @@ impl RoomText {
             RoomText::ViewInvitation => "Daveti Görüntüle",
             RoomText::MutedByYou => "Senin tarafından susturuldu",
             RoomText::InviteAFriend => "Arkadaş Davet Et",
+            RoomText::AloneTitle => "Partin açık",
+            RoomText::AloneNote => "Arkadaşlarını davet et: birlikte konuşun, yazışın ve oynayın.",
         }
     }
 
@@ -42,6 +49,10 @@ impl RoomText {
             RoomText::ViewInvitation => "Einladung ansehen",
             RoomText::MutedByYou => "Von dir stummgeschaltet",
             RoomText::InviteAFriend => "Freund einladen",
+            RoomText::AloneTitle => "Deine Party ist offen",
+            RoomText::AloneNote => {
+                "Lade Freunde ein, um zusammen zu sprechen, zu schreiben und zu spielen."
+            }
             _ => return None,
         })
     }

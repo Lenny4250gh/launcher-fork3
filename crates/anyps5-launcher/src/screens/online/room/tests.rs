@@ -147,6 +147,10 @@ fn without_a_party_the_page_has_one_primary_action() {
     online.social.apply_party(None);
     let room = Room::new(&data(&online));
     assert!(!room.in_party);
+    assert!(
+        room.voice.is_empty(),
+        "voice and its settings belong to a party"
+    );
     assert_eq!(room.primary, Some(Stop::Start));
     let plan = room.plan(4);
     assert_eq!(plan.rows[0], [Stop::Start]);
@@ -194,4 +198,35 @@ fn leaving_is_the_last_stop_and_the_only_one_that_ends_something() {
     assert_eq!(ending, [Stop::Leave]);
     // The one that ends something is never the primary action.
     assert_ne!(room.primary, Some(Stop::Leave));
+}
+
+#[test]
+fn starting_a_party_makes_it_at_once_without_asking_for_friends() {
+    let mut online = online(&[(1, "Mira")], 1);
+    online.social.apply_party(None);
+    let mut panel = OnlinePanel::default();
+    panel.go(Page::Party, &data(&online));
+    let mut actions = Vec::new();
+    let (room, _) = panel.room_now(&data(&online));
+    panel.room_press(&room, Stop::Start, &data(&online), &mut actions);
+    assert_eq!(actions, [OnlineAction::PartyCreate]);
+    assert_eq!(panel.page, Page::Party, "no picker in between");
+}
+
+#[test]
+fn a_party_of_one_is_open_and_invites_friends_first() {
+    let online = online(&[(1, "Mira")], 1);
+    let room = Room::new(&data(&online));
+    assert!(room.in_party);
+    assert_eq!(room.cards[0].title, "Your party is open");
+    assert!(
+        room.cards[0].action.is_none(),
+        "a line, not a stop: it never takes the focus"
+    );
+    assert_eq!(room.primary, Some(Stop::Invite));
+    assert!(room.seat);
+    // The voice settings stand with the mute controls in the room.
+    assert!(room.voice.iter().any(|b| b.stop == Stop::VoiceSettings));
+    let plan = room.plan(5);
+    assert_eq!(plan.stop(plan.start()), Some(Stop::Invite));
 }

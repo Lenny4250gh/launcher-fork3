@@ -365,7 +365,19 @@ impl Room {
             icon: Icon::USER_PLUS,
             destructive: false,
         });
-        let cards = cards(data, leads && !alone && online.is_online());
+        let mut cards = cards(data, leads && !alone && online.is_online());
+        // A party of one is open and waiting: the page says so, and Invite Friends is its action.
+        if alone {
+            cards.insert(
+                0,
+                Card {
+                    icon: Icon::USERS,
+                    title: R::AloneTitle.text(language).to_owned(),
+                    detail: R::AloneNote.text(language).to_owned(),
+                    action: None,
+                },
+            );
+        }
 
         // The player's voice.
         let mut voice_buttons = Vec::new();
@@ -529,19 +541,10 @@ impl Room {
                 FX::TryAgain.text(language),
             )
         };
-        let mut voice = Vec::new();
-        if online.is_online() {
-            voice.push(Button {
-                stop: Stop::VoiceSettings,
-                label: V::VoiceSettings.text(language).to_owned(),
-                icon: Icon::GEAR_SIX,
-                destructive: false,
-            });
-        }
+        // No voice controls here: voice belongs to a party, and its settings sit in the room.
         Room {
             in_party: false,
             cards,
-            voice,
             empty_title: empty.0.to_owned(),
             empty_note: empty.1.to_owned(),
             empty_action: empty.2.to_owned(),

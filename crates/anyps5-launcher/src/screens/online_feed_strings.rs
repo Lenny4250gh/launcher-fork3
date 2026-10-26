@@ -82,17 +82,11 @@ pub enum FeedText {
     AgoHours,
     AgoDays,
     AgoYesterday,
-    // Reactions
+    // Reactions: only the words stay, for the counts on a profile's activity
     ReactNice,
     ReactGg,
     ReactWow,
     ReactSame,
-    /// `%@` = the reaction (Nice), `%@` = how many.
-    ReactionCount,
-    /// The accessible name of the player's own reaction: `%@` = the reaction.
-    ReactionMine,
-    /// Toast: a reaction did not go through.
-    ReactFailed,
     // Profile page
     /// Shown for the player's own profile.
     OwnSubtitle,
@@ -182,9 +176,6 @@ impl FeedText {
             FeedText::ReactGg => "GG",
             FeedText::ReactWow => "Wow",
             FeedText::ReactSame => "Same",
-            FeedText::ReactionCount => "%@: %@",
-            FeedText::ReactionMine => "%@: %@, your reaction",
-            FeedText::ReactFailed => "The reaction did not go through. Try again.",
             FeedText::OwnSubtitle => "This is what other players see",
             FeedText::ProfileLoading => "Loading…",
             FeedText::ProfileFailed => {
@@ -270,9 +261,6 @@ impl FeedText {
             FeedText::ReactGg => "GG",
             FeedText::ReactWow => "Vay",
             FeedText::ReactSame => "Ben de",
-            FeedText::ReactionCount => "%@: %@",
-            FeedText::ReactionMine => "%@: %@, senin tepkin",
-            FeedText::ReactFailed => "Tepki gönderilemedi. Tekrar dene.",
             FeedText::OwnSubtitle => "Diğer oyuncular profilini böyle görür",
             FeedText::ProfileLoading => "Yükleniyor…",
             FeedText::ProfileFailed => "Profil yüklenemedi. Bağlantını kontrol edip tekrar dene.",
@@ -360,9 +348,6 @@ impl FeedText {
             FeedText::ReactGg => "GG",
             FeedText::ReactWow => "Wow",
             FeedText::ReactSame => "Same",
-            FeedText::ReactionCount => "%@: %@",
-            FeedText::ReactionMine => "%@: %@, deine Reaktion",
-            FeedText::ReactFailed => "Die Reaktion kam nicht an. Versuche es erneut.",
             FeedText::OwnSubtitle => "Das sehen andere Spieler",
             FeedText::ProfileLoading => "Wird geladen…",
             FeedText::ProfileFailed => {
@@ -431,8 +416,6 @@ mod tests {
             FeedText::AgoMinutes,
             FeedText::AgoHours,
             FeedText::AgoDays,
-            FeedText::ReactionCount,
-            FeedText::ReactionMine,
             FeedText::NotInLibrary,
             FeedText::HoursMinutes,
             FeedText::Hours,
