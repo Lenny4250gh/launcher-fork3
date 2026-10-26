@@ -60,11 +60,14 @@ pub enum Primary {
     TryAgain,
     /// This launcher cannot install it itself: open the releases page.
     Download,
+    /// A package manager installed the launcher and updates it: there is nothing to press here,
+    /// so *Play Offline* is the one button.
+    None,
 }
 
 impl Primary {
     pub fn enabled(self) -> bool {
-        !matches!(self, Primary::UpdateNow { enabled: false })
+        !matches!(self, Primary::UpdateNow { enabled: false } | Primary::None)
     }
 }
 
@@ -98,6 +101,8 @@ pub fn plan(update: &LauncherUpdate) -> Primary {
         | LauncherUpdate::Available(_)
         | LauncherUpdate::Downloading { .. }
         | LauncherUpdate::Holding(_) => Primary::UpdateNow { enabled: false },
+        // The package manager does the update; there is nothing to press here.
+        LauncherUpdate::Packaged { .. } => Primary::None,
         LauncherUpdate::UpToDate | LauncherUpdate::Failed(UpdateFailure::Offline) => {
             Primary::TryAgain
         }
@@ -117,7 +122,9 @@ pub fn target(update: &LauncherUpdate) -> Option<&str> {
         | LauncherUpdate::Holding(v)
         | LauncherUpdate::ReadOnly(v)
         | LauncherUpdate::Manual(v) => Some(v),
-        LauncherUpdate::Downloading { version, .. } => Some(version),
+        LauncherUpdate::Downloading { version, .. } | LauncherUpdate::Packaged { version, .. } => {
+            Some(version)
+        }
         _ => None,
     }
 }
@@ -145,6 +152,10 @@ pub fn status(update: &LauncherUpdate, language: Language) -> (String, Option<f3
         LauncherUpdate::UpToDate => (U::RequiredNoNewer.text(language).to_owned(), None),
         LauncherUpdate::ReadOnly(_) => (U::NoteReadOnly.text(language).to_owned(), None),
         LauncherUpdate::Manual(_) => (U::RequiredNoteManual.text(language).to_owned(), None),
+        LauncherUpdate::Packaged { by, .. } => (
+            U::RequiredNotePackaged.format(language, &[Arg::Str(by)]),
+            None,
+        ),
         LauncherUpdate::Failed(UpdateFailure::Offline) => {
             (U::RequiredOffline.text(language).to_owned(), None)
         }
@@ -292,6 +303,7 @@ impl RequiredScreen {
                         Primary::UpdateNow { .. } => RequiredAction::UpdateNow,
                         Primary::TryAgain => RequiredAction::TryAgain,
                         Primary::Download => RequiredAction::Download,
+                        Primary::None => RequiredAction::PlayOffline,
                     }
                 } else {
                     RequiredAction::PlayOffline
@@ -390,7 +402,11 @@ fn draw(
     );
 
     let button_h = ControlSize::Large.height();
-    let buttons_h = button_h * 2.0 + BUTTON_GAP;
+    let buttons_h = if primary == Primary::None {
+        button_h
+    } else {
+        button_h * 2.0 + BUTTON_GAP
+    };
     // The bar's room is kept in every state, so the buttons do not move when the state changes.
     let status_h = status.size().y + BAR_GAP + BAR_HEIGHT;
     let head_h = ICON + space::XL + title.size().y + space::M + reason.size().y;
@@ -487,11 +503,12 @@ fn draw(
         Primary::UpdateNow { .. } => U::UpdateNow.text(language),
         Primary::TryAgain => U::TryAgain.text(language),
         Primary::Download => U::Download.text(language),
+        Primary::None => "",
     };
     let primary_icon = match primary {
-        Primary::UpdateNow { .. } => Icon::DOWNLOAD_SIMPLE,
+        // `None` draws no button.
+        Primary::UpdateNow { .. } | Primary::Download | Primary::None => Icon::DOWNLOAD_SIMPLE,
         Primary::TryAgain => Icon::ARROW_CLOCKWISE,
-        Primary::Download => Icon::DOWNLOAD_SIMPLE,
     };
     // One width for both, wide enough for the longest label ("Download from GitHub").
     let button_w = BUTTON_WIDTH.min(width);
@@ -502,22 +519,26 @@ fn draw(
             .layout(Layout::top_down(Align::Center)),
     );
     buttons.spacing_mut().item_spacing.y = BUTTON_GAP;
-    if ConsoleButton::new(primary_label)
-        .icon(primary_icon)
-        .prominent(true)
-        .enabled(primary.enabled())
-        .focused(focused == 0)
-        .min_width(button_w)
-        .show(&mut buttons)
-        .clicked()
+    if primary != Primary::None
+        && ConsoleButton::new(primary_label)
+            .icon(primary_icon)
+            .prominent(true)
+            .enabled(primary.enabled())
+            .focused(focused == 0)
+            .min_width(button_w)
+            .show(&mut buttons)
+            .clicked()
     {
         clicked.push(match primary {
             Primary::UpdateNow { .. } => RequiredAction::UpdateNow,
             Primary::TryAgain => RequiredAction::TryAgain,
             Primary::Download => RequiredAction::Download,
+            Primary::None => RequiredAction::PlayOffline,
         });
     }
+    // Alone, the way out is the primary action.
     if ConsoleButton::new(U::PlayOffline.text(language))
+        .prominent(primary == Primary::None)
         .focused(focused == 1)
         .min_width(button_w)
         .show(&mut buttons)
@@ -625,6 +646,24 @@ mod tests {
         ] {
             assert_eq!(plan(&state), Primary::Download, "{state:?}");
         }
+    }
+
+    #[test]
+    fn a_packaged_launcher_is_told_to_update_with_its_package_manager() {
+        let state = LauncherUpdate::Packaged {
+            version: v("0.3.0"),
+            by: v("Flatpak"),
+        };
+        // Nothing to press, so no button but the way out, which has the focus.
+        assert_eq!(plan(&state), Primary::None);
+        let mut screen = RequiredScreen::default();
+        screen.open();
+        assert_eq!(screen.focused(Primary::None), 1);
+        assert_eq!(target(&state), Some("0.3.0"));
+        let (text, fraction) = status(&state, Language::English);
+        assert_eq!(text, "Update the launcher with Flatpak.");
+        assert_eq!(fraction, None);
+        assert!(reason_line(Reason::Retired, &state, Language::English).contains("0.3.0"));
     }
 
     #[test]
