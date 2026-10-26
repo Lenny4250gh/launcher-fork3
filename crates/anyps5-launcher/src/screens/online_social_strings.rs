@@ -383,6 +383,7 @@ impl SocialText {
             SocialText::Opening => "Wird geöffnet…",
             SocialText::ShowEarlier => "Frühere Nachrichten anzeigen",
             SocialText::MessageField => "Nachricht",
+            SocialText::Emoji => "Emoji",
             SocialText::Send => "Senden",
             SocialText::TooLong => "Kürze auf 2.000 Zeichen",
             SocialText::LeaveConversation => "Unterhaltung verlassen",

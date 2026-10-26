@@ -1,5 +1,5 @@
-//! Texts of Broadcast: the settings rows, the Home button panel and the toasts. English and
-//! Turkish like the rest; any other language reads English until it has its own.
+//! Texts of Broadcast: the settings rows, the Home button panel and the toasts. English,
+//! Turkish and German like the rest; any other language reads English until it has its own.
 
 use crate::ui::i18n::Language;
 
@@ -181,9 +181,67 @@ impl BroadcastText {
         }
     }
 
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            BroadcastText::Title => "Übertragung",
+            BroadcastText::Service => "Übertragen an",
+            BroadcastText::ServiceDetail => {
+                "Zeigt das laufende Spiel live. Vorerst ohne den Ton des Spiels"
+            }
+            BroadcastText::Twitch => "Twitch",
+            BroadcastText::YouTube => "YouTube",
+            BroadcastText::Custom => "Eigenes RTMP",
+            BroadcastText::Server => "Serveradresse",
+            BroadcastText::ServerDetail => "Beginnt mit rtmp://",
+            BroadcastText::Key => "Stream-Schlüssel",
+            BroadcastText::KeyDetail => {
+                "Füge den Schlüssel aus deinem Dashboard ein. Er bleibt auf diesem PC und wird nie angezeigt"
+            }
+            BroadcastText::Quality => "Übertragungsqualität",
+            BroadcastText::Quality720p30 => "720p, 30 fps",
+            BroadcastText::Quality720p60 => "720p, 60 fps",
+            BroadcastText::Quality1080p60 => "1080p, 60 fps",
+            BroadcastText::Start => "Übertragung starten",
+            BroadcastText::Stop => "Übertragung beenden",
+            BroadcastText::Connecting => "Verbindung zum Übertragungsserver wird aufgebaut",
+            BroadcastText::Live => "Live",
+            BroadcastText::Badge => "LIVE",
+            BroadcastText::Started => "Du bist live",
+            BroadcastText::Ended => "Übertragung beendet",
+            BroadcastText::NeedKey => {
+                "Trage zuerst deinen Stream-Schlüssel in den Einstellungen ein."
+            }
+            BroadcastText::NeedServer => "Trage zuerst die Serveradresse in den Einstellungen ein.",
+            BroadcastText::KeyNotKept => {
+                "Der Stream-Schlüssel konnte auf diesem PC nicht gespeichert werden."
+            }
+            BroadcastText::NoWorker => "Übertragen gehört nicht zu dieser Version.",
+            BroadcastText::BadKey => {
+                "Der Dienst hat deinen Stream-Schlüssel nicht angenommen. Prüfe ihn in den Einstellungen."
+            }
+            BroadcastText::NoServer => {
+                "Der Übertragungsserver ist nicht erreichbar. Prüfe die Adresse und deine Verbindung."
+            }
+            BroadcastText::Lost => {
+                "Die Verbindung zum Dienst ist abgebrochen. Die Übertragung wurde beendet."
+            }
+            BroadcastText::NoEncoder => {
+                "Zum Übertragen braucht es einen Video-Encoder, und dieser PC hat keinen."
+            }
+            BroadcastText::NoWindow => "Das Fenster des Spiels wurde nicht gefunden.",
+            BroadcastText::Failed => "Die Übertragung wurde beendet.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
             _ => self.english(),
         }
     }

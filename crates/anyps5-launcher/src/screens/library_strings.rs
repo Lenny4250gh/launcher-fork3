@@ -1,5 +1,5 @@
 //! Texts of the library page (sort, filter, search, what players found), of the storage page and
-//! of the home screen's shelves. English and Turkish like the rest.
+//! of the home screen's shelves. English, Turkish and German like the rest.
 
 use crate::ui::i18n::{Arg, Language, substitute};
 
@@ -200,12 +200,78 @@ impl LibraryText {
         }
     }
 
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            LibraryText::RunsWell => "Läuft gut",
+            LibraryText::RunsWithIssues => "Läuft mit Problemen",
+            LibraryText::NoStart => "Startet nicht",
+            LibraryText::Lan => "LAN",
+            LibraryText::SortBy => "Sortierung: %@",
+            LibraryText::SortRecent => "Zuletzt gespielt",
+            LibraryText::SortName => "Name",
+            LibraryText::SortSize => "Größe",
+            LibraryText::SortStatus => "Status",
+            LibraryText::ShowFilter => "Anzeige: %@",
+            LibraryText::FilterAll => "Alle Spiele",
+            LibraryText::FilterReady => "Bereit",
+            LibraryText::FilterNeedsUnlock => "Muss freigeschaltet werden",
+            LibraryText::FilterTogether => "Zusammen spielen",
+            LibraryText::Search => "Suchen",
+            LibraryText::SearchFor => "Suche: %@",
+            LibraryText::Storage => "Speicher",
+            LibraryText::SearchTitle => "Bibliothek durchsuchen",
+            LibraryText::SearchFound => "%@ gefunden",
+            LibraryText::SearchNone => "Kein Spiel passt",
+            LibraryText::SearchField => "Name",
+            LibraryText::SearchShow => "Spiele anzeigen",
+            LibraryText::SearchClear => "Suche löschen",
+            LibraryText::KeyShift => "Umschalt",
+            LibraryText::KeyLetters => "abc",
+            LibraryText::KeySymbols => "123",
+            LibraryText::KeySpace => "Leertaste",
+            LibraryText::KeyDelete => "Löschen",
+            LibraryText::NothingHere => "Hier sind keine Spiele",
+            LibraryText::NothingHereText => "Kein Spiel passt zur Suche oder zum Filter.",
+            LibraryText::ClearFilters => "Alle Spiele anzeigen",
+            LibraryText::StorageTitle => "Speicher",
+            LibraryText::StorageSummary => {
+                "Freigeschaltete Kopien belegen %@. %@ frei auf diesem Laufwerk."
+            }
+            LibraryText::StorageSummaryNoDrive => "Freigeschaltete Kopien belegen %@.",
+            LibraryText::StorageEmpty => "Keine freigeschalteten Kopien",
+            LibraryText::StorageEmptyText => {
+                "Ein Spiel belegt hier Platz, sobald es freigeschaltet ist. Deine Spieldateien zählen nicht mit."
+            }
+            LibraryText::StorageMeasuring => "Wird gemessen\u{2026}",
+            LibraryText::StorageCopy => "Freigeschaltete Kopie: %@",
+            LibraryText::StorageTotal => "Alle freigeschalteten Kopien",
+            LibraryText::RemoveCopy => "Freigeschaltete Kopie entfernen",
+            LibraryText::RemoveCopyTitle => "Freigeschaltete Kopie von %@ entfernen?",
+            LibraryText::RemoveCopyBody => {
+                "Das gibt %@ frei. Deine Spieldateien bleiben, wo sie sind, und die Spielstände werden vorher gesichert. Das Spiel erneut freizuschalten dauert eine Weile."
+            }
+            LibraryText::RemoveCopyRunning => "Beende zuerst das Spiel",
+            LibraryText::Cancel => "Abbrechen",
+            LibraryText::ShelfFriends => "Freunde spielen gerade",
+            LibraryText::ShelfRecent => "Zuletzt gespielt",
+            LibraryText::ShelfNew => "Neu",
+            LibraryText::Join => "Beitreten",
+            LibraryText::ShelfFriendPlays => "%@ spielt das",
+            LibraryText::NewGame => "Neues Spiel: %@",
+            LibraryText::NewGames => "%@ neue Spiele",
+            _ => return None,
+        })
+    }
+
     pub fn text(self, language: Language) -> &'static str {
         match language {
             Language::English => self.english(),
             Language::Turkish => self.turkish(),
-            // German follows in its own pass; until then it reads English.
-            Language::German => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
