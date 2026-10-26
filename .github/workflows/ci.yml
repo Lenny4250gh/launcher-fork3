@@ -26,11 +26,9 @@ defaults:
 
 jobs:
   build:
-    runs-on: blacksmith-16vcpu-windows-2025
-    env:
-      # Three core tests need an interactive desktop session (a global hotkey, real window sizes,
-      # the phone receiver); Blacksmith's Windows VM is headless, so they skip here.
-      ANYPLAY_HEADLESS_CI: "1"
+    # GitHub's Windows runner: several core tests need an interactive desktop session, which
+    # Blacksmith's headless Windows VM lacks (being sorted out; the release builds run on Blacksmith).
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
