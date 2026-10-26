@@ -4,7 +4,7 @@
 //! it, so a state looks and stands the same on every page: centred on the page (horizontally on
 //! the window, vertically in the room the caller leaves).
 
-use egui::{Align, Align2, Id, Layout, Rect, Role, Sense, Ui, UiBuilder, WidgetInfo, pos2, vec2};
+use egui::{Align, Align2, Layout, Rect, Role, Sense, Ui, UiBuilder, WidgetInfo, pos2, vec2};
 
 use crate::ui::anim::AnimExt;
 use crate::ui::components::{ConsoleButton, paint_spinner_arc};
@@ -101,7 +101,9 @@ pub fn show(ui: &mut Ui, room: Rect, page: &StatePage<'_>, focused: bool) -> boo
         _ => page.title.to_owned(),
     };
     let block = Rect::from_center_size(pos2(centre, top + height * 0.5), vec2(TITLE_WIDTH, height));
-    ui.interact(block, Id::unique("state-page"), Sense::hover())
+    // The id comes from the caller's ui: two overlays can show a state page in the same frame
+    // while one fades out and the other in, each on its own layer.
+    ui.interact(block, ui.id().with("state-page"), Sense::hover())
         .widget_info(|| WidgetInfo::labeled(Role::Label, true, said.as_str()));
 
     let disc = Rect::from_center_size(pos2(centre, top + DISC * 0.5), vec2(DISC, DISC));
