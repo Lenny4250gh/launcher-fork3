@@ -8,7 +8,7 @@
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
 //!                           game-hub|game-hub-running|game-hub-empty|trophies-all|
 //!                           find-players|find-players-mine|find-players-empty|post-listing|send-to-friend|
-//!                           about-update|behavior-links|settings-codec|settings-codec-off|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
+//!                           about-update|behavior-links|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
 //!                           update-required|update-required-downloading|update-required-failed|
@@ -98,6 +98,55 @@ pub enum HubLook {
     Empty,
 }
 
+/// The OpenH264 row in each of its states (Linux), for the longest texts: a failed download shows
+/// the error as the system gives it, the refusal and the load failure the share worker's words.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CodecLook {
+    Ready,
+    Off,
+    Downloading,
+    Failed,
+    Refused,
+    NotLoaded,
+}
+
+impl CodecLook {
+    pub fn env(self) -> crate::screens::settings::Openh264Env {
+        use anyps5_core::openh264::CodecState;
+        let (state, worker) = match self {
+            CodecLook::Ready | CodecLook::Off => (CodecState::Ready, Some(("ready".into(), None))),
+            CodecLook::Downloading => (CodecState::Downloading, None),
+            CodecLook::Failed => (
+                CodecState::Failed(
+                    "https://ciscobinary.openh264.org/libopenh264-2.6.0-linux64.8.so.bz2: \
+                     Connection Failed: Connect error: connection timed out"
+                        .into(),
+                ),
+                None,
+            ),
+            CodecLook::Refused => (
+                CodecState::Ready,
+                Some((
+                    "refused".into(),
+                    Some("/home/player/.local/share/AnyPlay/Network/bin/libopenh264.so.8".into()),
+                )),
+            ),
+            CodecLook::NotLoaded => (
+                CodecState::Ready,
+                Some((
+                    "failed".into(),
+                    Some(
+                        "/home/player/.local/share/AnyPlay/Network/bin/libopenh264.so.8: \
+                         cannot open shared object file"
+                            .into(),
+                    ),
+                )),
+            ),
+        };
+        crate::screens::settings::Openh264Env { state, worker }
+    }
+}
+
 /// The page to show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScreenPage {
@@ -154,7 +203,7 @@ pub enum ScreenPage {
     /// Behavior with the AnyPlay links registered to this launcher.
     BehaviourLinks,
     /// Advanced on Linux with share screen on: the OpenH264 row turned on (and downloaded), or off.
-    SettingsCodec(bool),
+    SettingsCodec(CodecLook),
     /// Settings > Library with the unlocked games location in one state.
     UnlockedLocation(LocationLook),
     /// Behavior with Clips off, on at 30 seconds, and waiting for the clip key.
@@ -796,8 +845,12 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "update-required-download" => ScreenPage::Required(RequiredLook::Download),
         "update-required-offline" => ScreenPage::Required(RequiredLook::OnlineClosed),
         "behavior-links" => ScreenPage::BehaviourLinks,
-        "settings-codec" => ScreenPage::SettingsCodec(true),
-        "settings-codec-off" => ScreenPage::SettingsCodec(false),
+        "settings-codec" => ScreenPage::SettingsCodec(CodecLook::Ready),
+        "settings-codec-off" => ScreenPage::SettingsCodec(CodecLook::Off),
+        "settings-codec-downloading" => ScreenPage::SettingsCodec(CodecLook::Downloading),
+        "settings-codec-failed" => ScreenPage::SettingsCodec(CodecLook::Failed),
+        "settings-codec-refused" => ScreenPage::SettingsCodec(CodecLook::Refused),
+        "settings-codec-not-loaded" => ScreenPage::SettingsCodec(CodecLook::NotLoaded),
         "settings-location" => ScreenPage::UnlockedLocation(LocationLook::Default),
         "settings-location-custom" => ScreenPage::UnlockedLocation(LocationLook::Custom),
         "settings-location-network" => ScreenPage::UnlockedLocation(LocationLook::Network),
@@ -2834,12 +2887,10 @@ impl ScreenGallery {
             cjk_fonts: anyps5_core::fonts::CjkState::Missing,
             phone: &self.phone,
             ludus: &self.ludus,
-            openh264: matches!(self.page, ScreenPage::SettingsCodec(_)).then(|| {
-                crate::screens::settings::Openh264Env {
-                    state: anyps5_core::openh264::CodecState::Ready,
-                    worker: Some(("ready".into(), None)),
-                }
-            }),
+            openh264: match self.page {
+                ScreenPage::SettingsCodec(look) => Some(look.env()),
+                _ => None,
+            },
             windows_rows: true,
             clips: crate::screens::settings::ClipsEnv {
                 count: if self.prefs.clips_seconds > 0 { 3 } else { 0 },
@@ -3433,8 +3484,8 @@ impl ScreenGallery {
                 self.settings.open_at(Category::ConnectedApps.index(), true);
                 self.settings.focus_row_id("links");
             }
-            ScreenPage::SettingsCodec(on) => {
-                self.prefs.online_openh264 = on;
+            ScreenPage::SettingsCodec(look) => {
+                self.prefs.online_openh264 = look != CodecLook::Off;
                 self.settings.open_at(Category::Advanced.index(), true);
             }
             ScreenPage::UnlockedLocation(look) => {
