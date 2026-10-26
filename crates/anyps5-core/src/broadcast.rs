@@ -583,11 +583,15 @@ mod tests {
             EndKind::Lost
         );
         assert_eq!(
-            end_kind("connect_failed: tls_untrusted: this PC does not trust the server's certificate"),
+            end_kind(
+                "connect_failed: tls_untrusted: this PC does not trust the server's certificate"
+            ),
             EndKind::CertUntrusted
         );
         assert_eq!(
-            end_kind("connect_failed: tls_expired: the server's certificate is not valid at this PC's date and time"),
+            end_kind(
+                "connect_failed: tls_expired: the server's certificate is not valid at this PC's date and time"
+            ),
             EndKind::CertExpired
         );
         assert_eq!(
