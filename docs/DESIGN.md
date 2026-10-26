@@ -1236,6 +1236,14 @@ sce_modules prx out rel`) holding `eboot.bin` and `sce_sys/param.json`; sorted b
 (root only); a change triggers a rescan if the last scan was more than 2 s ago and no unlock is running; the window regaining focus
 rescans if more than 3 s passed and reloads trophies of the selected game.
 
+#### 5.3.1 Shelves (0.3.0)
+
+Below the tile row, at most **two** quiet shelves: *Friends Playing Now* (friends who play a game the player owns; *Join* under the game when their session can be joined, else their name), *Recently Played* (by the last play) and *New* (found after the first scan, not played yet). Friends first, then Recently Played, then New; a shelf without games is not there. A shelf is a label (overline) over up to six 56 dp game icons with a one-line name and, for friends, a second line. The shelves only draw when they fit between the tile row and the hero's title with a one-line title (16 dp kept free); a low or narrow window shows none and the hero keeps its place. The hero stays the focus: the shelves use the overline and the 12 dp caption, no cards.
+
+Focus: the shelves are one stop between the tile row and the action row. Down from the tiles lands on the first game, Left and Right walk the games of both shelves, Down goes on to the action row, Up from the action row returns to the shelf, Up or Back from the shelf to the tiles. Tab walks them after the tiles. Select selects the game on the tile row, or joins the friend's session where there is a *Join* (the same checks as Play Together). A click does the same. Preview scenes: `home-shelves`, `home-new`.
+
+**A new game announces itself.** When a scan finds games that were not there before (not the first scan, not after a change of the games folder), the newest is selected on the home screen (not while a game starts or runs, or a panel is open), the select sound plays and a toast says *New game: Name* with the game's icon in place of the glyph, or *3 new games*. Scene `toast-new-game`.
+
 ### 5.4 Unlocking progress
 
 Unlock queues the game (sound `select`); one unlock runs at a time; failures and successes call `startNext`. Steps and their share
@@ -1489,6 +1497,16 @@ without options; below, a scrolling grid of **196** tiles (gap 26 x 30) with as 
 keyboard-selected one, name (15; semibold white when focused, else regular 0.75; 1 line, truncated; the focused tile's name takes up to two lines; a third is cut, but the full name is in the accessible name and in the title on Home. Its state line moves down inside the cell's own gap, so no other tile shifts: this is the one exception to "nothing moves on focus", and it touches only the cell's own content; scene `library-longname` with a state line), state label (12). Click =
 select that game and close. Keys: arrows move (up/down jump a row of 6), select picks, back/options close. The focused tile scrolls
 to the centre (animation 31). The plain "Ready" is not drawn under a tile (it stays in the accessible name): every game would repeat it, and it would hide the one that differs ("Playing", "Update available"). With no games the grid says what the empty home says ("No games yet" and the line about the games folder, no count) and offers the same one button (Pick or Change Folder; Select does the same; scene `library-empty`). (S-library. The tile shown "Playing" uses the coral accent.)
+
+#### 5.10.1 The library page in 0.3.0: what players found, order, filter, search, storage
+
+**What players found.** A second quiet line under the state line of a tile, in the state line's size (12): a glyph and words, never colour alone. "Runs well" (check circle), "Runs with issues" (warning, for the verdicts Menus and In Game) and "Doesn't start" (cross circle) come from the run reports the launcher already fetches (`online::runs`, only once enough players reported); "LAN" (people) comes from the LAN table (`data/lan-titles.v1.json`). The tags join with a middle dot ("Runs well · LAN"); the first one names the glyph. Unknown shows nothing, and so does a signed-out launcher without a LAN entry. The cloud is asked once per game and sign-in when the page opens. "Online" has no data behind it yet (0.3.1). Every cell keeps the room for the line once any tile has one, so rows stay even.
+
+**The bar** sits under the title (12 below the header, 12 between buttons, medium buttons, `ControlSize::Medium`): *Sort: Recently played*, *Show: All games*, *Search*, *Storage*. It is the first stop above the grid: Up from the first row moves there, Down returns; Left and Right walk the four stops; Select on the first two cycles the choice (Name, which is the order of the tile row, Recently played, Size, Status; All games, Ready, Needs unlock, Play together), on the third opens Search, on the fourth Storage. Mouse: the same buttons. The order and the filter are kept in the preferences (`library_sort`, `library_filter`); the query is not. Size measures every game once when it is chosen. "Play together" lists the games of the LAN table. When a filter or a search hides every game the page says so ("No games here") with one button, *Show All Games*, which Select presses.
+
+**Search** (`Overlay::LibrarySearch`, a panel of the game frame): a text row (a keyboard types into it at once) and three rows of keys plus Shift, 123/abc, Space and Delete for a pad, the same keys as the chat's on-screen keyboard. The games behind filter as the query changes; the line above the field counts them. *Show Games* and Back return to the grid; *Clear Search* empties the field.
+
+**Storage** (`Overlay::Storage`, a panel of the game frame): the subtitle says what all unlocked copies use and what is free on their drive ("Unlocked copies use 84 GB. 212 GB free on this drive."), the first row is the total, then one row per unlocked game, biggest first, with the size. Select on a row asks (`Overlay::ConfirmRemoveCopy`, the question card, opens on Cancel): *Remove the unlocked copy of X?* with *Remove Unlocked Copy* first and *Cancel* last. The saves are backed up first (as for Uninstall) and nothing is removed when that fails. The game files (the dump) are never touched: only the copy in the launcher's store goes. A running game's copy is not removed. Back leads to the library; the question returns to the row it came from.
 
 ### 5.11 Trophy list and trophy button
 

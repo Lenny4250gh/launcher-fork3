@@ -98,6 +98,9 @@ impl Playtime {
     }
 }
 
+/// How many games of [`Preferences::new_games`] are kept.
+pub const NEW_GAMES_KEPT: usize = 12;
+
 /// How many days of [`Preferences::playtime_days`] are kept.
 pub const PLAYTIME_DAYS: i64 = 60;
 
@@ -526,6 +529,17 @@ pub struct Preferences {
     /// there at that moment is not prepared, only what comes later.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub known_games: Option<BTreeSet<String>>,
+    /// How the library page orders the games (`recent`, `name`, `size`, `status`); empty is
+    /// `name`, the order of the home screen. The launcher ignores what it does not know.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub library_sort: String,
+    /// Which games the library page shows (`all`, `ready`, `locked`, `together`); empty is `all`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub library_filter: String,
+    /// The games that appeared after the first scan, oldest first: the home screen shelf "New"
+    /// shows those not played yet. At most [`NEW_GAMES_KEPT`] stay.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub new_games: Vec<String>,
     /// Games that appeared and still wait for their preparation.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub prepare_pending: BTreeSet<String>,
@@ -678,6 +692,9 @@ impl Default for Preferences {
             hide_while_playing: false,
             prepare_games: true,
             known_games: None,
+            library_sort: String::new(),
+            library_filter: String::new(),
+            new_games: Vec::new(),
             prepare_pending: BTreeSet::new(),
             ps_button: true,
             vibration: Vibration::Medium,
