@@ -210,6 +210,8 @@ pub fn join(model: &mut Model, offer: Offer) {
         title_id: offer.title_id.clone(),
         version: have.clone(),
         build: world.build.clone(),
+        version_rule: Default::default(),
+        override_version: false,
     };
     model.online.send(
         Purpose::CheckJoin(Join {

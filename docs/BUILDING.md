@@ -51,7 +51,7 @@ tools/macos/package.sh 0.1.3 target/release/anyplay-launcher /tmp/THIRD-PARTY-LI
 
 The app stays ad hoc signed for distribution; no Developer ID or notarization is configured. See the first-start instructions in [INSTALL.md](INSTALL.md#macos). macOS CI checks formatting, Clippy and tests, builds and packages the launcher, and renders Metal screenshots alongside the Windows and Linux jobs.
 
-The Mac package does not yet embed `anyplay-net`, so online integration needs a follow-up. The release workflow builds the Apple silicon app on macOS, verifies the signature and architecture after unzipping, and publishes the zip, dependency SBOM, checksums and provenance. The Mac zip is included in the signed update manifest and in its weekly renewal.
+Mac CI and release builds compile `anyplay-net` natively with its `devices` feature and embed it through `ANYPLAY_NET_EMBED`. A process integration test extracts that service and exchanges real control messages with it. Local builds can set the same variable to their own compiled service; without it, place `anyplay-net` beside the launcher. This enables the launcher online area; online gameplay still requires the macOS bridge in AnyPlay's engine fork. Mac share-screen capture and the optional Discord SDK are not included. The release workflow builds the Apple silicon app on macOS, verifies the signature and architecture after unzipping, and publishes the zip, dependency SBOM, checksums and provenance. The Mac zip is included in the signed update manifest and in its weekly renewal.
 
 ## Releases
 

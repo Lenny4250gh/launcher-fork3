@@ -5,9 +5,9 @@
 #
 #   notices.sh <output file>
 #
-# Run it from a launcher checkout with anyplaynet/network beside it. cargo-about is a pinned
-# download, checked against its SHA-256; to update it, change both lines together. CARGO_ABOUT
-# names a cargo-about binary to use instead, for a machine that is not x86-64 Linux.
+# Run it from a launcher checkout with anyplaynet/network beside it. Build the pinned
+# cargo-about from source with its locked dependencies; never execute a downloaded prebuilt
+# helper. CARGO_ABOUT may name an already source-built native cargo-about binary.
 set -euo pipefail
 
 CARGO_ABOUT_VERSION=0.9.2
@@ -21,25 +21,8 @@ trap 'rm -rf "$work"' EXIT
 
 about=${CARGO_ABOUT:-}
 if [ -z "$about" ]; then
-  case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64)
-      target=x86_64-unknown-linux-musl
-      checksum=9099a59e820c38a68b9d65f300662a567d56562f9a10f6aa4c7e86c17c2566af ;;
-    Darwin-arm64)
-      target=aarch64-apple-darwin
-      checksum=ae72f0df0c399a1e96336f696fa55b1b28679fd725632eba8cf8e4568467cc3e ;;
-    *) echo "Set CARGO_ABOUT to a native cargo-about $CARGO_ABOUT_VERSION binary" >&2; exit 1 ;;
-  esac
-  name="cargo-about-$CARGO_ABOUT_VERSION-$target"
-  curl -fsSL --retry 3 -o "$work/about.tar.gz" \
-    "https://github.com/EmbarkStudios/cargo-about/releases/download/$CARGO_ABOUT_VERSION/$name.tar.gz"
-  if command -v sha256sum >/dev/null; then
-    echo "$checksum  $work/about.tar.gz" | sha256sum -c -
-  else
-    echo "$checksum  $work/about.tar.gz" | shasum -a 256 -c -
-  fi
-  tar -C "$work" -xzf "$work/about.tar.gz"
-  about="$work/$name/cargo-about"
+  cargo install --locked --features cli --version "$CARGO_ABOUT_VERSION" --root "$work/about" cargo-about
+  about="$work/about/bin/cargo-about"
 fi
 
 # --fail stops on a crate whose licence cannot be read: a release never ships an incomplete file.
