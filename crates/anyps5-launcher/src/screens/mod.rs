@@ -25,6 +25,8 @@
 #![allow(dead_code)]
 
 pub mod about_strings;
+#[cfg(test)]
+mod german_coverage;
 pub mod advanced;
 pub mod banner;
 pub mod broadcast_strings;
