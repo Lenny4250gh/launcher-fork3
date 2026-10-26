@@ -16,6 +16,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # The release build, the licence check and the package are made on main and on integration pull
+  # requests (the ones that land a batch), not on every feature pull request: the release workflow
+  # builds all of it again at the tag, and a pull request needs fmt, clippy, the tests and the scenes.
+  FULL_CI: ${{ github.ref == 'refs/heads/main' || startsWith(github.head_ref, 'integration/') }}
 
 # The online crates come from anyplaynet/network, checked out beside the launcher at the commit in
 # network.ref (one full SHA, the file the release reads too). A pull request that needs newer
@@ -25,6 +29,47 @@ defaults:
     working-directory: launcher
 
 jobs:
+  # Does this run need macOS? Always on main and on integration pull requests; on any other pull
+  # request only when it touches code or files that are macOS specific (the files with
+  # cfg(target_os = "macos"), the macOS packaging, the dependencies and the workflows). GitHub's
+  # macOS queue was the slowest wait of a pull request (median 5 to 8 minutes, up to 58).
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      macos: ${{ steps.filter.outputs.macos }}
+    steps:
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ] || [[ $HEAD_REF == integration/* ]]; then
+            echo "macos=true" >> "$GITHUB_OUTPUT"
+            echo "main, a push or an integration pull request: macOS runs"
+            exit 0
+          fi
+          # Files that exist for macOS or whose macOS build can break: keep this list in step with
+          # `grep -rlE target_os crates` (the files with a macOS branch, also the not(windows, linux) ones).
+          pattern='^(Cargo\.(toml|lock)|rust-toolchain.*|network\.ref|tools/macos/|\.github/workflows/(ci|macos-style)\.yml|crates/[^/]+/(Cargo\.toml|build\.rs)|crates/anyps5-core/src/(fsx|idle|launch|lib|location|macos|platform|process|selfupdate|settings|steam_shortcuts|toolkit|unlock)(\.rs|/)|crates/anyps5-core/src/remote/vpad/|crates/anyps5-core/tests/(pipeline\.rs|support/)|crates/anyps5-launcher/src/(macstyle|app/(mod|preview|steam)|screens/(settings|unlock)|ui/(gallery|i18n|mod|os_emoji|ps_button))\.rs|.*mac.*)'
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
+          if grep -qE "$pattern" <<<"$files"; then
+            echo "macos=true" >> "$GITHUB_OUTPUT"
+            echo "this pull request touches macOS files:"
+            grep -E "$pattern" <<<"$files"
+          else
+            echo "macos=false" >> "$GITHUB_OUTPUT"
+            echo "no macOS files in this pull request: the macOS job is skipped (it runs on main and on integration pull requests)"
+          fi
+
   build:
     # GitHub's Windows runner: several core tests need an interactive desktop session, which
     # a headless CI machine lacks.
@@ -56,6 +101,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: launcher
+          # Only main writes the cache; pull requests restore it (a PR run used to save its own
+          # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -63,8 +111,10 @@ jobs:
       - name: Test
         run: cargo test --workspace
       - name: Release build
+        if: env.FULL_CI == 'true'
         run: cargo build --release --target x86_64-pc-windows-msvc
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - if: env.FULL_CI == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: anyplay-launcher-windows-x64
           path: launcher/target/x86_64-pc-windows-msvc/release/anyplay-launcher.exe
@@ -106,6 +156,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: launcher
+          # Only main writes the cache; pull requests restore it (a PR run used to save its own
+          # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -113,17 +166,21 @@ jobs:
       - name: Test
         run: cargo test --workspace --no-fail-fast
       - name: Release build
+        if: env.FULL_CI == 'true'
         run: cargo build --release
       # A crate whose licence cannot be read would stop the next release; find it here first.
       - name: Third-party licences
+        if: env.FULL_CI == 'true'
         run: tools/notices.sh "$RUNNER_TEMP/THIRD-PARTY-LICENSES.txt"
       # Renders the real UI on a software Vulkan device (lavapipe) in a virtual X server.
       - name: Smoke packages
+        if: env.FULL_CI == 'true'
         run: |
           sudo apt-get install -y --no-install-recommends \
             xvfb mesa-vulkan-drivers libvulkan1 libx11-6 libxcursor1 libxi6 libxrandr2 \
             libxkbcommon-x11-0 libgl1
       - name: Smoke screenshots
+        if: env.FULL_CI == 'true'
         run: |
           mkdir -p shots
           for scene in home controls friends; do
@@ -131,7 +188,8 @@ jobs:
               target/release/anyplay-launcher --gallery=$scene --screenshot=shots/$scene.png
           done
           ls -l shots
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - if: env.FULL_CI == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: anyplay-launcher-linux-screenshots
           path: launcher/shots/*.png
@@ -171,6 +229,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: launcher
+          # Only main writes the cache; pull requests restore it (a PR run used to save its own
+          # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: scenes-debug
       - name: Debug build
         run: cargo build -p anyps5-launcher
@@ -178,6 +239,8 @@ jobs:
         run: tools/gallery-sweep.sh target/debug/anyplay-launcher 4 60
 
   macos:
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -204,6 +267,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: launcher
+          # Only main writes the cache; pull requests restore it (a PR run used to save its own
+          # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -211,25 +277,30 @@ jobs:
       - name: Test
         run: cargo test --workspace --no-fail-fast
       - name: Release build
+        if: env.FULL_CI == 'true'
         run: cargo build --release
       - name: Native licence tool on Intel
-        if: runner.arch == 'X64'
+        if: env.FULL_CI == 'true' && runner.arch == 'X64'
         run: |
           cargo install cargo-about --version 0.9.2 --locked
           echo "CARGO_ABOUT=$(command -v cargo-about)" >> "$GITHUB_ENV"
       - name: Third-party licences
+        if: env.FULL_CI == 'true'
         run: tools/notices.sh "$RUNNER_TEMP/THIRD-PARTY-LICENSES.txt"
       - name: Package
+        if: env.FULL_CI == 'true'
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           tools/macos/package.sh "$version" target/release/anyplay-launcher "$RUNNER_TEMP/THIRD-PARTY-LICENSES.txt" dist
       - name: Metal smoke screenshots
+        if: env.FULL_CI == 'true'
         run: |
           mkdir -p shots
           for scene in home controls friends; do
             target/release/anyplay-launcher --gallery="$scene" --screenshot="shots/$scene.png"
           done
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - if: env.FULL_CI == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: anyplay-launcher-macos
           path: |

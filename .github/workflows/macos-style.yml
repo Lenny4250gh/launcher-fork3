@@ -2,9 +2,12 @@ name: macos-style
 
 # Renders the Mac style (docs/DESIGN.md 19) on the Metal runners: the launcher's own frame, and a
 # screenshot of the screen with the window on it, which is the only way to see the system blur.
-# Run it by hand, or it runs on pull requests that touch the Mac style.
+# Run it by hand. It runs on main and on integration branches (the pushes of `integration/*`, which
+# the batch pull request shows), and on any other pull request only when it touches the Mac style.
 on:
   workflow_dispatch:
+  push:
+    branches: [main, "integration/**"]
   pull_request:
     paths:
       - "crates/anyps5-launcher/src/macstyle.rs"
@@ -20,9 +23,10 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request or an integration branch cancels the older run; each push to main runs.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.ref == 'refs/heads/main' && github.run_id || github.ref) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -66,6 +70,7 @@ jobs:
         with:
           workspaces: launcher
           key: style-${{ matrix.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Release build
         run: cargo build --release
       - name: System
