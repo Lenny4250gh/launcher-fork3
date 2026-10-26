@@ -179,6 +179,10 @@ pub enum OnlineAction {
     VoiceMode(VoiceMode),
     /// The key held to talk, by its egui name.
     VoiceKey(String),
+    /// The pad button held to talk, by name; `None` for none.
+    VoicePad(Option<String>),
+    /// "Reduce Background Noise".
+    VoiceNoise(bool),
     /// A microphone or speakers by name; `None` is the system's default.
     VoiceDevice(DeviceKind, Option<String>),
     RefreshVoiceDevices,

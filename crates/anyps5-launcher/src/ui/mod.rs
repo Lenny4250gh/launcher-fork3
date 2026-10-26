@@ -54,6 +54,7 @@ pub mod reveal;
 pub mod shade;
 pub mod sound;
 pub mod state_page;
+pub mod talk;
 pub mod text;
 pub mod theme;
 

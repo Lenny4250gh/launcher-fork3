@@ -32,16 +32,24 @@ pub enum VoiceText {
     Mode,
     PushToTalk,
     VoiceActivity,
-    /// Push to talk reaches only the launcher's own window.
+    /// Push to talk with the key (Windows reads it while a game is in front).
     PttNote,
-    /// A game is running and push to talk would not reach the launcher.
+    /// A game is running.
     PttInGameNote,
+    /// Systems that cannot read a key behind a game: the pad button still works there.
+    PttNoteOther,
+    PttInGameNoteOther,
     ActivityNote,
     CallModeNote,
     // The key
     TalkKey,
     /// The detail while the key row waits for a key.
     TalkKeyNote,
+    TalkButton,
+    TalkButtonNone,
+    // Noise
+    NoiseReduction,
+    NoiseNote,
     // Devices
     Speakers,
     SystemDefault,
@@ -97,10 +105,18 @@ impl VoiceText {
             VoiceText::MicTalking => "Talking",
             VoiceText::Mode => "Mode",
             VoiceText::PushToTalk => "Push to Talk",
-            VoiceText::VoiceActivity => "Voice Activity",
-            VoiceText::PttNote => "Push to talk works while the launcher is in front.",
+            VoiceText::VoiceActivity => "Open Mic",
+            VoiceText::PttNote => {
+                "Hold the talk key to speak. It also works while a game is in front."
+            }
             VoiceText::PttInGameNote => {
-                "A game has the keyboard, so the key does not reach the launcher. Switch to Voice Activity to talk while you play."
+                "Hold the talk key or the talk button to speak. Pick one that the game does not use."
+            }
+            VoiceText::PttNoteOther => {
+                "Hold the talk key to speak while the launcher is in front. A talk button on your pad also works in a game."
+            }
+            VoiceText::PttInGameNoteOther => {
+                "A game has the keyboard, so the key does not reach the launcher. Use a talk button on your pad, or switch to Open Mic."
             }
             VoiceText::ActivityNote => {
                 "The microphone opens whenever you speak. Without headphones, others hear themselves back."
@@ -110,6 +126,12 @@ impl VoiceText {
             }
             VoiceText::TalkKey => "Talk Key",
             VoiceText::TalkKeyNote => "Press a key. Esc keeps the current one.",
+            VoiceText::TalkButton => "Talk Button",
+            VoiceText::TalkButtonNone => "None",
+            VoiceText::NoiseReduction => "Reduce Background Noise",
+            VoiceText::NoiseNote => {
+                "Takes keyboard clicks, fans and other steady noise out of your microphone."
+            }
             VoiceText::Speakers => "Speakers",
             VoiceText::SystemDefault => "System Default",
             VoiceText::InUse => "In use",
@@ -163,10 +185,18 @@ impl VoiceText {
             VoiceText::MicTalking => "Konuşuyor",
             VoiceText::Mode => "Mod",
             VoiceText::PushToTalk => "Bas ve Konuş",
-            VoiceText::VoiceActivity => "Ses Algılama",
-            VoiceText::PttNote => "Bas ve konuş, başlatıcı öndeyken çalışır.",
+            VoiceText::VoiceActivity => "Açık Mikrofon",
+            VoiceText::PttNote => {
+                "Konuşmak için konuşma tuşuna basılı tut. Oyun öndeyken de çalışır."
+            }
             VoiceText::PttInGameNote => {
-                "Klavye oyunda olduğu için tuş başlatıcıya ulaşmaz. Oynarken konuşmak için Ses Algılama'ya geç."
+                "Konuşmak için konuşma tuşuna ya da konuşma düğmesine basılı tut. Oyunun kullanmadığı birini seç."
+            }
+            VoiceText::PttNoteOther => {
+                "Başlatıcı öndeyken konuşmak için konuşma tuşuna basılı tut. Kumandandaki bir konuşma düğmesi oyunda da çalışır."
+            }
+            VoiceText::PttInGameNoteOther => {
+                "Klavye oyunda olduğu için tuş başlatıcıya ulaşmaz. Kumandada bir konuşma düğmesi kullan ya da Açık Mikrofon yap."
             }
             VoiceText::ActivityNote => {
                 "Mikrofon, konuştuğunda açılır. Kulaklık yoksa diğerleri kendi seslerini geri duyar."
@@ -176,6 +206,12 @@ impl VoiceText {
             }
             VoiceText::TalkKey => "Konuşma Tuşu",
             VoiceText::TalkKeyNote => "Bir tuşa bas. Esc mevcut tuşu korur.",
+            VoiceText::TalkButton => "Konuşma Düğmesi",
+            VoiceText::TalkButtonNone => "Yok",
+            VoiceText::NoiseReduction => "Arka Plan Gürültüsünü Azalt",
+            VoiceText::NoiseNote => {
+                "Klavye tıkırtılarını, fan sesini ve diğer sabit gürültüleri mikrofonundan temizler."
+            }
             VoiceText::Speakers => "Hoparlör",
             VoiceText::SystemDefault => "Sistem Varsayılanı",
             VoiceText::InUse => "Kullanımda",
@@ -321,6 +357,8 @@ mod tests {
             VoiceText::PushToTalk,
             VoiceText::VoiceActivity,
             VoiceText::TalkKey,
+            VoiceText::TalkButton,
+            VoiceText::NoiseReduction,
             VoiceText::SystemDefault,
             VoiceText::RefreshDevices,
             VoiceText::VoiceSettings,
