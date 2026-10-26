@@ -237,7 +237,7 @@ jobs:
           # Only main writes the cache; pull requests restore it (a PR run used to save its own
           # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit). One shared key for
           # this kind of job: the debug build never shares a cache with the release builds above.
-          save-if: true # TEMP-MEASURE
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: scenes-debug
       # Line tables instead of full debug info: a panic still names its file and line, the binary
       # is a fraction of the size to link, cache and hand to the shards.
