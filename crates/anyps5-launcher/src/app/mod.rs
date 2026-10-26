@@ -200,7 +200,9 @@ pub struct LauncherApp {
 
 impl LauncherApp {
     pub fn new(cc: &eframe::CreationContext<'_>, config: Config) -> Self {
-        let mut app = Self::from_shell(Shell::new(cc), &cc.egui_ctx, config);
+        let shell = Shell::new(cc);
+        crate::startup::mark("shell built");
+        let mut app = Self::from_shell(shell, &cc.egui_ctx, config);
         app.intro = true;
         app.discord = true;
         app
@@ -216,25 +218,36 @@ impl LauncherApp {
         let wake: std::sync::Arc<dyn Fn() + Send + Sync> =
             std::sync::Arc::new(move || repaint.request_repaint());
         let shared_pad = pad::SharedPad::new();
+        let game_colors_file = config.persist.then(|| model.paths.game_colors_file());
+        crate::startup::mark("model built");
+        let phone = phone::PhoneService::new(
+            wake.clone(),
+            simulated,
+            shell.home.clone(),
+            shared_pad.clone(),
+        );
+        let ludus = ludus::LudusService::new(wake.clone(), simulated, shared_pad);
+        let clips = clips::ClipsService::new(wake.clone(), simulated);
+        let broadcast = broadcast::BroadcastService::new(wake.clone(), simulated);
+        let online = online::OnlineService::new(wake, simulated);
+        crate::startup::mark("services built");
+        let textures = Textures::new(ctx);
+        let services = Services::new(ctx);
+        crate::startup::mark("textures and dialogs built");
         Self {
-            phone: phone::PhoneService::new(
-                wake.clone(),
-                simulated,
-                shell.home.clone(),
-                shared_pad.clone(),
-            ),
-            ludus: ludus::LudusService::new(wake.clone(), simulated, shared_pad),
-            clips: clips::ClipsService::new(wake.clone(), simulated),
-            broadcast: broadcast::BroadcastService::new(wake.clone(), simulated),
-            online: online::OnlineService::new(wake, simulated),
+            phone,
+            ludus,
+            clips,
+            broadcast,
+            online,
             shell,
             model,
-            textures: Textures::new(ctx),
-            services: Services::new(ctx),
+            textures,
+            services,
             pipeline: config.pipeline,
             panels: config.panels,
             applied: Applied::default(),
-            game_colors: game_colors::GameColors::new(),
+            game_colors: game_colors::GameColors::new(game_colors_file),
             focused: true,
             rate: (std::time::Instant::now(), 0, std::time::Instant::now()),
             overlays_shown: Vec::new(),
@@ -1188,19 +1201,25 @@ pub fn run(inbox: Option<crate::instance::Inbox>, arguments: Vec<String>) -> efr
         }),
     );
     match result {
+        // The one GPU DirectX 12 was shown failed: start again with every GPU listed, as before.
+        Err(error) if crate::ui::can_retry_with_all_gpus() => {
+            tracing::warn!("cannot start on the preselected GPU ({error}); trying every GPU");
+            relaunch_with(crate::ui::GPU_PROBE_ENV, "all")
+        }
         // No DirectX 12 GPU: start again on Vulkan (the window never opened, nothing is lost).
         Err(error) if crate::ui::can_fall_back_to_vulkan() => {
             tracing::warn!("cannot start on DirectX 12 ({error}); trying Vulkan");
-            relaunch_on_vulkan()
+            relaunch_with(crate::ui::GPU_ENV, "vulkan")
         }
         other => other,
     }
 }
 
-/// Starts this program again with the Vulkan backend and the same arguments, then ends. This process
+/// Starts this program again with one environment variable set (the Vulkan backend, or every GPU) and
+/// the same arguments, then ends. This process
 /// holds the single instance, so the new one waits for it to end (`--after-update=<pid>`) instead
 /// of handing itself over to it.
-fn relaunch_on_vulkan() -> eframe::Result {
+fn relaunch_with(variable: &str, value: &str) -> eframe::Result {
     let mut args: Vec<std::ffi::OsString> = std::env::args_os()
         .skip(1)
         .filter(|a| {
@@ -1212,7 +1231,7 @@ fn relaunch_on_vulkan() -> eframe::Result {
     let started = std::env::current_exe().and_then(|exe| {
         std::process::Command::new(exe)
             .args(args)
-            .env(crate::ui::GPU_ENV, "vulkan")
+            .env(variable, value)
             .spawn()
     });
     if let Err(error) = started {

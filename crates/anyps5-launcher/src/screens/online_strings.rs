@@ -164,6 +164,9 @@ pub enum OnlineText {
     // Appearing offline
     AppearOffline,
     AppearOfflineDetail,
+    PublicProfile,
+    PublicProfileDetail,
+    PublicProfileNote,
     /// The quiet words where the player sees their own status.
     AppearingOffline,
     // Trophies
@@ -307,6 +310,11 @@ impl OnlineText {
             }
             OnlineText::AppearOffline => "Appear Offline",
             OnlineText::AppearOfflineDetail => "Friends see you as offline",
+            OnlineText::PublicProfile => "Public Profile",
+            OnlineText::PublicProfileDetail => "Anyone can open your page on the web",
+            OnlineText::PublicProfileNote => {
+                "Off until you turn it on. Even then, people who are not your friends see only the parts you share with Everyone."
+            }
             OnlineText::AppearingOffline => "Appearing offline",
             OnlineText::RelayOnly => "Hide Your IP Address",
             OnlineText::RelayOnlyNote => {
@@ -460,6 +468,11 @@ impl OnlineText {
             }
             OnlineText::AppearOffline => "Çevrimdışı Görün",
             OnlineText::AppearOfflineDetail => "Arkadaşların seni çevrimdışı görür",
+            OnlineText::PublicProfile => "Herkese Açık Profil",
+            OnlineText::PublicProfileDetail => "Herkes web sayfanı açabilir",
+            OnlineText::PublicProfileNote => {
+                "Sen açana kadar kapalıdır. Açıkken bile arkadaşın olmayanlar yalnızca Herkes için paylaştığın bölümleri görür."
+            }
             OnlineText::AppearingOffline => "Çevrimdışı görünüyorsun",
             OnlineText::RelayOnly => "IP Adresini Gizle",
             OnlineText::RelayOnlyNote => {
@@ -632,6 +645,11 @@ impl OnlineText {
             }
             OnlineText::AppearOffline => "Offline erscheinen",
             OnlineText::AppearOfflineDetail => "Freunde sehen dich als offline",
+            OnlineText::PublicProfile => "Öffentliches Profil",
+            OnlineText::PublicProfileDetail => "Jeder kann deine Seite im Web öffnen",
+            OnlineText::PublicProfileNote => {
+                "Aus, bis du es einschaltest. Auch dann sehen Personen, die nicht deine Freunde sind, nur die Teile, die du für Alle freigegeben hast."
+            }
             OnlineText::AppearingOffline => "Du erscheinst offline",
             OnlineText::RelayOnly => "IP-Adresse verbergen",
             OnlineText::RelayOnlyNote => {

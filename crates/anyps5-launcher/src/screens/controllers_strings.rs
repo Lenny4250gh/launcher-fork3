@@ -49,6 +49,10 @@ pub enum Pads {
     ColourOrange,
     ColourWhite,
     ColourOff,
+    /// The entry after the presets, and the two sliders it opens.
+    ColourCustom,
+    LightBarHue,
+    LightBarBrightness,
     /// `%@` = the button that confirms.
     ConfirmWith,
     ConfirmWithDetail,
@@ -137,6 +141,9 @@ impl Pads {
         Pads::ColourOrange,
         Pads::ColourWhite,
         Pads::ColourOff,
+        Pads::ColourCustom,
+        Pads::LightBarHue,
+        Pads::LightBarBrightness,
         Pads::ConfirmWith,
         Pads::ConfirmWithDetail,
         Pads::ControlsNote,
@@ -225,6 +232,9 @@ impl Pads {
             Pads::ColourOrange => "Orange",
             Pads::ColourWhite => "White",
             Pads::ColourOff => "Off",
+            Pads::ColourCustom => "Custom",
+            Pads::LightBarHue => "Hue",
+            Pads::LightBarBrightness => "Brightness",
             Pads::ConfirmWith => "Confirm with %@",
             Pads::ConfirmWithDetail => {
                 "Swaps Select and Back on the pad, as some players are used to"
@@ -336,6 +346,9 @@ impl Pads {
             Pads::ColourOrange => "Turuncu",
             Pads::ColourWhite => "Beyaz",
             Pads::ColourOff => "Kapalı",
+            Pads::ColourCustom => "Özel",
+            Pads::LightBarHue => "Ton",
+            Pads::LightBarBrightness => "Parlaklık",
             Pads::ConfirmWith => "%@ ile Onayla",
             Pads::ConfirmWithDetail => "Koldaki Seç ve Geri tuşlarının yerini değiştirir",
             Pads::ControlsNote => {
@@ -447,6 +460,9 @@ impl Pads {
             Pads::ColourOrange => "Orange",
             Pads::ColourWhite => "Weiß",
             Pads::ColourOff => "Aus",
+            Pads::ColourCustom => "Eigene",
+            Pads::LightBarHue => "Farbton",
+            Pads::LightBarBrightness => "Helligkeit",
             Pads::ConfirmWith => "Mit %@ bestätigen",
             Pads::ConfirmWithDetail => {
                 "Tauscht Auswählen und Zurück auf dem Controller, wie manche es gewohnt sind"

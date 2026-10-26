@@ -48,6 +48,12 @@ pub enum BroadcastText {
     BadKey,
     /// Toast: the server could not be reached.
     NoServer,
+    /// Toast: the service's certificate is not trusted, or is for another server.
+    CertUntrusted,
+    /// Toast: the certificate is not valid at this PC's date and time.
+    CertExpired,
+    /// Toast: the secure connection failed for another reason.
+    SecureFailed,
     /// Toast: the connection broke while live.
     Lost,
     NoEncoder,
@@ -57,7 +63,7 @@ pub enum BroadcastText {
 }
 
 impl BroadcastText {
-    pub const ALL: [BroadcastText; 31] = [
+    pub const ALL: [BroadcastText; 34] = [
         BroadcastText::Title,
         BroadcastText::Service,
         BroadcastText::ServiceDetail,
@@ -85,6 +91,9 @@ impl BroadcastText {
         BroadcastText::NoWorker,
         BroadcastText::BadKey,
         BroadcastText::NoServer,
+        BroadcastText::CertUntrusted,
+        BroadcastText::CertExpired,
+        BroadcastText::SecureFailed,
         BroadcastText::Lost,
         BroadcastText::NoEncoder,
         BroadcastText::NoWindow,
@@ -95,14 +104,12 @@ impl BroadcastText {
         match self {
             BroadcastText::Title => "Broadcast",
             BroadcastText::Service => "Broadcast To",
-            BroadcastText::ServiceDetail => {
-                "Shows the running game live. For now without the game's sound"
-            }
+            BroadcastText::ServiceDetail => "Shows the running game and its sound live",
             BroadcastText::Twitch => "Twitch",
             BroadcastText::YouTube => "YouTube",
             BroadcastText::Custom => "Custom RTMP",
             BroadcastText::Server => "Server Address",
-            BroadcastText::ServerDetail => "Starts with rtmp://",
+            BroadcastText::ServerDetail => "Starts with rtmp:// or rtmps://",
             BroadcastText::Key => "Stream Key",
             BroadcastText::KeyDetail => {
                 "Paste the key from your dashboard. It stays on this PC and is never shown"
@@ -128,6 +135,15 @@ impl BroadcastText {
             BroadcastText::NoServer => {
                 "The broadcast server could not be reached. Check the address and your connection."
             }
+            BroadcastText::CertUntrusted => {
+                "This PC does not trust the service's security certificate. Check the server address."
+            }
+            BroadcastText::CertExpired => {
+                "The service's security certificate is not valid right now. Check your PC's date and time."
+            }
+            BroadcastText::SecureFailed => {
+                "A secure connection to the service could not be made. Check the address and your connection."
+            }
             BroadcastText::Lost => "The connection to the service was lost. The broadcast stopped.",
             BroadcastText::NoEncoder => "Broadcasting needs a video encoder, and this PC has none.",
             BroadcastText::NoWindow => "The broadcast could not find the game's window.",
@@ -139,14 +155,12 @@ impl BroadcastText {
         match self {
             BroadcastText::Title => "Yayın",
             BroadcastText::Service => "Yayın Yeri",
-            BroadcastText::ServiceDetail => {
-                "Çalışan oyunu canlı gösterir. Şimdilik oyunun sesi olmadan"
-            }
+            BroadcastText::ServiceDetail => "Çalışan oyunu sesiyle birlikte canlı gösterir",
             BroadcastText::Twitch => "Twitch",
             BroadcastText::YouTube => "YouTube",
             BroadcastText::Custom => "Özel RTMP",
             BroadcastText::Server => "Sunucu Adresi",
-            BroadcastText::ServerDetail => "rtmp:// ile başlar",
+            BroadcastText::ServerDetail => "rtmp:// veya rtmps:// ile başlar",
             BroadcastText::Key => "Yayın Anahtarı",
             BroadcastText::KeyDetail => {
                 "Panelinizdeki anahtarı yapıştırın. Bu bilgisayarda kalır ve hiç gösterilmez"
@@ -172,6 +186,15 @@ impl BroadcastText {
             BroadcastText::NoServer => {
                 "Yayın sunucusuna ulaşılamadı. Adresi ve bağlantınızı kontrol edin."
             }
+            BroadcastText::CertUntrusted => {
+                "Bu bilgisayar hizmetin güvenlik sertifikasına güvenmiyor. Sunucu adresini kontrol edin."
+            }
+            BroadcastText::CertExpired => {
+                "Hizmetin güvenlik sertifikası şu an geçerli değil. Bilgisayarınızın tarih ve saatini kontrol edin."
+            }
+            BroadcastText::SecureFailed => {
+                "Hizmetle güvenli bağlantı kurulamadı. Adresi ve bağlantınızı kontrol edin."
+            }
             BroadcastText::Lost => "Hizmetle bağlantı koptu. Yayın durdu.",
             BroadcastText::NoEncoder => {
                 "Yayın için bir video kodlayıcı gerekir, bu bilgisayarda yok."
@@ -186,14 +209,12 @@ impl BroadcastText {
         Some(match self {
             BroadcastText::Title => "Übertragung",
             BroadcastText::Service => "Übertragen an",
-            BroadcastText::ServiceDetail => {
-                "Zeigt das laufende Spiel live. Vorerst ohne den Ton des Spiels"
-            }
+            BroadcastText::ServiceDetail => "Zeigt das laufende Spiel mit seinem Ton live",
             BroadcastText::Twitch => "Twitch",
             BroadcastText::YouTube => "YouTube",
             BroadcastText::Custom => "Eigenes RTMP",
             BroadcastText::Server => "Serveradresse",
-            BroadcastText::ServerDetail => "Beginnt mit rtmp://",
+            BroadcastText::ServerDetail => "Beginnt mit rtmp:// oder rtmps://",
             BroadcastText::Key => "Stream-Schlüssel",
             BroadcastText::KeyDetail => {
                 "Füge den Schlüssel aus deinem Dashboard ein. Er bleibt auf diesem PC und wird nie angezeigt"
@@ -222,6 +243,15 @@ impl BroadcastText {
             }
             BroadcastText::NoServer => {
                 "Der Übertragungsserver ist nicht erreichbar. Prüfe die Adresse und deine Verbindung."
+            }
+            BroadcastText::CertUntrusted => {
+                "Dieser PC vertraut dem Sicherheitszertifikat des Dienstes nicht. Prüfe die Serveradresse."
+            }
+            BroadcastText::CertExpired => {
+                "Das Sicherheitszertifikat des Dienstes ist gerade nicht gültig. Prüfe Datum und Uhrzeit deines PCs."
+            }
+            BroadcastText::SecureFailed => {
+                "Mit dem Dienst konnte keine sichere Verbindung aufgebaut werden. Prüfe die Adresse und deine Verbindung."
             }
             BroadcastText::Lost => {
                 "Die Verbindung zum Dienst ist abgebrochen. Die Übertragung wurde beendet."

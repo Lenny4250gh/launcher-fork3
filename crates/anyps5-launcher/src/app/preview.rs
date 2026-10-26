@@ -120,6 +120,7 @@ pub enum Scene {
     HomeTrophies,
     HomeLocked,
     HomeUnlocking,
+    HomeUninstalling,
     /// The launcher prepares the selected game on its own: progress, time left, the quiet tile band.
     HomePreparing,
     /// ... and it stands still because the PC is busy.
@@ -229,6 +230,7 @@ impl Scene {
             "home-trophies" => Scene::HomeTrophies,
             "home-locked" => Scene::HomeLocked,
             "home-unlocking" => Scene::HomeUnlocking,
+            "home-uninstalling" => Scene::HomeUninstalling,
             "home-preparing" => Scene::HomePreparing,
             "home-preparing-paused" => Scene::HomePreparingPaused,
             "home-preparing-waiting" => Scene::HomePreparingWaiting,
@@ -809,6 +811,11 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
             m.selected = at(2);
             m.progress
                 .insert(ids[at(2)].clone(), (UnlockStep::Copy, 0.4));
+            m.focus = HomeFocus::Actions(0);
+        }
+        Scene::HomeUninstalling => {
+            m.selected = at(2);
+            m.uninstalling.insert(ids[at(2)].clone(), 0.4);
             m.focus = HomeFocus::Actions(0);
         }
         Scene::HomePreparing | Scene::HomePreparingPaused | Scene::HomePreparingWaiting => {

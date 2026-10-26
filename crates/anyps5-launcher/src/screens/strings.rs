@@ -261,6 +261,8 @@ pub enum Extra {
     UninstallBacksUp,
     /// Toast: the removal did not start.
     UninstallNeedsBackup,
+    /// The state line and the greyed-out button while a game's copy is being removed.
+    Uninstalling,
     /// Toast: the restore stopped part way.
     SavesRestoreIncomplete,
     /// Toast: the restore stopped part way, nothing had to be kept.
@@ -481,6 +483,7 @@ impl Extra {
             Extra::UninstallNeedsBackup => {
                 "Could not back up the saves, so the game was not removed. Check the free disk space and try again."
             }
+            Extra::Uninstalling => "Removing",
             Extra::SavesRestoreIncomplete => {
                 "The restore did not finish. The saves from before are in the newest backup, Before a restore."
             }
@@ -696,6 +699,7 @@ impl Extra {
             Extra::UninstallNeedsBackup => {
                 "Kayıtlar yedeklenemedi, bu yüzden oyun kaldırılmadı. Boş disk alanını kontrol edip yeniden dene."
             }
+            Extra::Uninstalling => "Kaldırılıyor",
             Extra::SavesRestoreIncomplete => {
                 "Geri yükleme tamamlanmadı. Önceki kayıtlar en yeni yedekte, \"Geri yüklemeden önce\"."
             }
@@ -935,6 +939,7 @@ impl Extra {
             Extra::UninstallNeedsBackup => {
                 "Die Spielstände konnten nicht gesichert werden, deshalb wurde das Spiel nicht entfernt. Prüfe den freien Speicherplatz und versuche es erneut."
             }
+            Extra::Uninstalling => "Wird entfernt",
             Extra::SavesRestoreIncomplete => {
                 "Die Wiederherstellung wurde nicht abgeschlossen. Die früheren Spielstände sind in der neuesten Sicherung, Vor einer Wiederherstellung."
             }
@@ -963,7 +968,7 @@ impl Extra {
         substitute(self.text(language), args)
     }
 
-    pub const ALL: [Extra; 160] = [
+    pub const ALL: [Extra; 161] = [
         Extra::Toolkit,
         Extra::UpdateCheck,
         Extra::UpdateCheckDetail,
@@ -1121,6 +1126,7 @@ impl Extra {
         Extra::SavesRestoreTitle,
         Extra::UninstallBacksUp,
         Extra::UninstallNeedsBackup,
+        Extra::Uninstalling,
         Extra::SavesRestoreIncomplete,
         Extra::SavesRestoreIncompleteNone,
         Extra::SavesBusy,

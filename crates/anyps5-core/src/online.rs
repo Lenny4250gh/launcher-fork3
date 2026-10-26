@@ -408,6 +408,13 @@ pub enum Purpose {
     Cards,
     Privacy,
     SetPrivacy,
+    /// Whether the player's page at `/u/<handle>` is shown to everyone.
+    PublicProfile,
+    /// The public profile switch on or off; `before` is what it was.
+    SetPublicProfile {
+        on: bool,
+        before: bool,
+    },
     /// A page of the feed: the newest, or the one that starts before an item.
     Feed {
         before: Option<u64>,
@@ -662,6 +669,8 @@ pub struct Online {
     pub compares: BTreeMap<CompareKey, CompareEntry>,
     /// Who sees the player's trophies; `None` until the cloud said.
     pub privacy: Option<api::Privacy>,
+    /// Whether the page at `/u/<handle>` is shown to everyone; `None` until the cloud said.
+    pub public_profile: Option<bool>,
     /// What players found per title (run reports).
     pub runs: Runs,
     /// The join code behind the Join button on Discord.
@@ -842,6 +851,10 @@ impl Online {
                 entry.hidden = failure.is(api::ErrorCode::NotFound);
                 entry.failed = !entry.hidden && entry.data.is_none();
             }
+            Purpose::SetPublicProfile { before, .. } => {
+                // The same: the switch showed the choice at once.
+                self.public_profile = Some(*before);
+            }
             Purpose::AppearOffline { before, .. } => {
                 // The choice showed at once; the refusal takes it back.
                 if let Some(account) = self.account.as_mut() {
@@ -990,6 +1003,11 @@ impl Online {
                 };
                 let known = sent.entry(title_id.clone()).or_default();
                 *known = (*known).max(*count);
+            }
+            Purpose::PublicProfile | Purpose::SetPublicProfile { .. } => {
+                if let Ok(now) = serde_json::from_value::<api::PublicProfile>(value.clone()) {
+                    self.public_profile = Some(now.public_profile);
+                }
             }
             Purpose::Privacy | Purpose::SetPrivacy => {
                 if let Ok(privacy) = serde_json::from_value(value.clone()) {
@@ -1880,6 +1898,37 @@ impl Online {
         );
     }
 
+    /// Asks the cloud whether the player's page at `/u/<handle>` is public, unless it is known.
+    pub fn request_public_profile(&mut self) {
+        if self.is_signed_in()
+            && self.public_profile.is_none()
+            && !self.is_waiting(|p| matches!(p, Purpose::PublicProfile))
+        {
+            self.send(Purpose::PublicProfile, Command::PublicProfile);
+        }
+    }
+
+    /// Shows the player's page at `/u/<handle>` to everyone, or only to friends again. The choice
+    /// shows at once, the cloud's answer settles it and a refusal takes it back. Before the cloud
+    /// said what it is now there is nothing to flip: the launcher asks first.
+    pub fn set_public_profile(&mut self, on: bool) {
+        if !self.is_signed_in() {
+            return;
+        }
+        let Some(before) = self.public_profile else {
+            self.request_public_profile();
+            return;
+        };
+        if before == on || self.is_waiting(|p| matches!(p, Purpose::SetPublicProfile { .. })) {
+            return;
+        }
+        self.public_profile = Some(on);
+        self.send(
+            Purpose::SetPublicProfile { on, before },
+            Command::SetPublicProfile { on },
+        );
+    }
+
     /// Changes who sees the player's trophies. The cloud replaces the whole setting, so the other
     /// parts go back as the cloud last said; before it said anything, the launcher asks again
     /// instead of guessing them. The choice shows at once and comes back with the answer.
@@ -1927,6 +1976,7 @@ impl Online {
                     self.profiles.clear();
                     self.compares.clear();
                     self.privacy = None;
+                    self.public_profile = None;
                     self.uploaded.clear();
                     self.secrets_sent.clear();
                     self.revealed_sent.clear();
@@ -3445,6 +3495,46 @@ mod tests {
             total: tally,
             level: api::TrophyLevel::of(tally.points),
         }
+    }
+
+    #[test]
+    fn the_public_profile_switch_waits_for_the_cloud_then_shows_at_once() {
+        let mut online = Online::default();
+        signed_in(&mut online);
+        online.take_outbox();
+        // Not known yet: pressing the switch asks, and sends no change.
+        online.set_public_profile(true);
+        let lines = online.take_outbox();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::PublicProfile
+        );
+        assert_eq!(online.public_profile, None);
+        let id = online.next;
+        answer(&mut online, id, api::PublicProfile::default());
+        assert_eq!(online.public_profile, Some(false));
+        online.set_public_profile(true);
+        assert_eq!(
+            online.public_profile,
+            Some(true),
+            "the choice shows at once"
+        );
+        let lines = online.take_outbox();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::SetPublicProfile { on: true }
+        );
+        // A second press while the first waits sends nothing.
+        online.set_public_profile(false);
+        assert!(online.take_outbox().is_empty());
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert_eq!(
+            online.public_profile,
+            Some(false),
+            "refused: back to what it was"
+        );
     }
 
     #[test]

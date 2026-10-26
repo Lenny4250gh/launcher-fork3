@@ -199,6 +199,11 @@ impl AppPaths {
         self.data.join("notifications.json")
     }
 
+    /// `game-colors.json`: the colours Game Colors found in each game's art (docs/DESIGN.md 3.13).
+    pub fn game_colors_file(&self) -> PathBuf {
+        self.data.join("game-colors.json")
+    }
+
     pub fn cache_dir(&self) -> PathBuf {
         self.data.join("Cache")
     }
