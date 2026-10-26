@@ -39,6 +39,7 @@ pub mod report;
 pub mod saves;
 pub mod selfupdate;
 pub mod settings;
+pub mod steam_shortcuts;
 pub mod theme_song;
 pub mod toolkit;
 pub mod trophies;

@@ -75,6 +75,7 @@ pub mod share_strings;
 mod shared;
 pub mod side;
 pub mod start;
+pub mod steam_strings;
 pub mod strings;
 pub mod together;
 pub mod together_strings;
