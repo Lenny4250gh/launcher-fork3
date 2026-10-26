@@ -17,12 +17,17 @@ export function normalize(bom) {
     const ref = component['bom-ref'];
     if (typeof ref !== 'string' || !ref.startsWith('path+file://')) return;
     if (!component.name || !component.version) throw new Error('Source component has no name or version');
-    const stable = `urn:anyplay:source:${encodeURIComponent(component.name)}:${encodeURIComponent(component.version)}`;
+    // A binary's display name can equal another package's name (the share worker and share
+    // library). Use the package URL's identity, not that display name, to keep them distinct.
+    const packageUrl = typeof component.purl === 'string' ? component.purl.split(/[?#]/)[0] : '';
+    const identity = packageUrl.startsWith('pkg:cargo/') ? packageUrl.slice('pkg:cargo/'.length)
+      : `${component.name}@${component.version}`;
+    const stable = `urn:anyplay:source:${encodeURIComponent(identity)}`;
     if (owners.has(stable) && owners.get(stable) !== ref) throw new Error('Ambiguous source component');
     owners.set(stable, ref);
     references.set(ref, stable);
     const purl = component.purl;
-    if (typeof purl === 'string' && purl.includes('file://')) {
+    if (typeof purl === 'string') {
       const hash = purl.indexOf('#');
       const base = hash < 0 ? purl : purl.slice(0, hash);
       const subpath = hash < 0 ? '' : purl.slice(hash);
