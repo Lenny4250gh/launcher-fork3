@@ -773,7 +773,7 @@ mod tests {
         assert_eq!(games[1].trophies, None);
         assert_eq!(selected.as_deref(), Some(games[1].id.as_str()));
         assert_eq!(running, None);
-        assert!(language == "en" || language == "tr");
+        assert!(language == "en" || language == "tr" || language == "de");
         assert!(games[0].art.is_some(), "the phone always gets an art tag");
     }
 

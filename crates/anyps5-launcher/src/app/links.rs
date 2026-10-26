@@ -236,9 +236,9 @@ impl Model {
     }
 
     /// Opens the friend request for `handle`, filled in and not sent. Signed out, the player is
-    /// taken to the sign-in page instead and the handle is dropped.
+    /// taken to the sign-in page and the handle waits for it.
     pub fn show_friend_request(&mut self, handle: String) {
-        self.friend_request = self.online.is_signed_in().then_some(handle);
+        self.friend_request = Some(handle);
         self.open(Overlay::Friends);
     }
 

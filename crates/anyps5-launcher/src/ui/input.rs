@@ -297,6 +297,20 @@ pub fn hovered(ctx: &Context, response: &egui::Response) -> bool {
     hovered
 }
 
+/// Like [`hovered`], but also true while the pointer is over a widget laid on top of this one
+/// (a button inside a row). `response.hovered()` goes to the topmost widget only, so a row that
+/// reveals its buttons on hover would hide them the moment the pointer reached one, and show them
+/// again a frame later: the flicker. The pointer inside the row's rectangle is the row hovered.
+pub fn hovered_within(ctx: &Context, response: &egui::Response) -> bool {
+    let within =
+        response.hovered() || ctx.rect_contains_pointer(response.layer_id, response.interact_rect);
+    let hovered = within && pointer_in_use(ctx);
+    if hovered {
+        ctx.data_mut(|d| d.insert_temp(hovered_id(), response.id.value()));
+    }
+    hovered
+}
+
 fn hovered_id() -> egui::Id {
     egui::Id::unique("input-hovered-element")
 }
