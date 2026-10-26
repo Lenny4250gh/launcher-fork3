@@ -227,8 +227,7 @@ jobs:
       # Only what the build needs: the shards install the runtime side.
       - name: System packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends             pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+          tools/apt-install.sh             pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
@@ -277,8 +276,7 @@ jobs:
       # the headers), a virtual X server and a software Vulkan device (lavapipe).
       - name: System packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends             libasound2t64 libudev1 libxkbcommon0 libwayland-client0 libwayland-cursor0 libwayland-egl1             xvfb mesa-vulkan-drivers libvulkan1 libx11-6 libxcursor1 libxi6 libxrandr2             libxkbcommon-x11-0 libgl1
+          tools/apt-install.sh             libasound2t64 libudev1 libxkbcommon0 libwayland-client0 libwayland-cursor0 libwayland-egl1             xvfb mesa-vulkan-drivers libvulkan1 libx11-6 libxcursor1 libxi6 libxrandr2             libxkbcommon-x11-0 libgl1
       - name: The binary finds its libraries
         run: |
           chmod +x target/debug/anyplay-launcher
