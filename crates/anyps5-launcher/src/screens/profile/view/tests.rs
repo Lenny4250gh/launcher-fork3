@@ -181,6 +181,12 @@ fn a_profile_that_is_not_there_is_loading_offline_or_failed() {
         },
     );
     assert!(matches!(body(&online), Body::Failed));
+    let failed = view(&inputs(&online, &local, None, 2));
+    assert_eq!(
+        failed.state_action.map(|a| a.press),
+        Some(Press::Retry),
+        "a failure offers Try Again"
+    );
     // A page that was read once stays on screen when the next read fails.
     let mut known = page(who(2, "Lumen"));
     known.profile.about = Some("Hi".into());
@@ -203,6 +209,11 @@ fn a_stranger_with_nothing_shared_is_private_and_a_friend_is_just_new() {
     let stranger = view(&inputs(&online, &local, None, 12));
     assert!(matches!(stranger.body, Body::Private));
     assert_eq!(stranger.handle, "Tarn");
+    assert_eq!(
+        stranger.state_action.map(|a| a.press),
+        Some(Press::AddFriend("Tarn".into())),
+        "a private profile offers the request"
+    );
     assert!(matches!(
         view(&inputs(&online, &local, None, 2)).body,
         Body::Empty
@@ -443,9 +454,9 @@ fn the_own_profile_names_what_an_empty_section_waits_for_and_a_friends_stays_out
     set(&mut online, page(who(1, "Mira")));
     let library = OwnLibrary::default();
     let own = ready(view(&inputs(&online, &local, Some(&library), 1)));
-    assert!(own.games.empty.is_some() && own.trophies.empty.is_some());
-    assert!(own.activity.empty.is_some());
-    assert!(own.games.shown() && own.trophies.shown() && own.activity.shown());
+    // Nothing at all: one line under the header, no three empty sections.
+    assert!(own.note.is_some());
+    assert!(!own.games.shown() && !own.trophies.shown() && !own.activity.shown());
     // A new player has no figures: zeros say nothing.
     assert!(own.stats.is_empty());
 }
