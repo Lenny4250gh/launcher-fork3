@@ -418,7 +418,7 @@ mod tests {
             broadcast: Some(Phase::Off),
         };
         let rows = rows_of(&data);
-        assert_eq!(rows.len(), 6);
+        assert_eq!(rows.len(), 7);
         assert_eq!(rows[4].title, "Start Broadcast");
         data.broadcast = Some(Phase::Live);
         let rows = rows_of(&data);
