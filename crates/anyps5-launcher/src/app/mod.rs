@@ -585,13 +585,8 @@ impl LauncherApp {
             },
             InputEvent::Tab { backwards } => {
                 if !self.model.onboarded() {
-                    // The onboarding steps lay their choices out side by side.
-                    let command = if backwards {
-                        crate::ui::input::Command::Left
-                    } else {
-                        crate::ui::input::Command::Right
-                    };
-                    self.model.onboarding_command(command);
+                    // The onboarding is a grid: Tab walks it in reading order.
+                    self.model.onboarding_tab(backwards);
                 } else if self.model.overlay.is_some() {
                     // A panel is a column of rows: reading order is down and up. The library is a
                     // grid of tiles: reading order is along the row, then the next one.
@@ -717,6 +712,11 @@ impl LauncherApp {
             Effect::Pipeline(command) => self.submit(command, None),
             Effect::SaveClip => self.clips.save(&mut self.model),
             Effect::ToggleBroadcast => self.broadcast.toggle(&mut self.model, &*self.pipeline),
+            Effect::OpenPage(url) => {
+                if let Err(error) = anyps5_core::platform::open_url(url) {
+                    tracing::warn!("cannot open {url}: {error}");
+                }
+            }
             Effect::StartOnline => self.online.start(&mut self.model),
             Effect::StopOnline => self.online.stop(&mut self.model),
             Effect::RelayOnlyChanged => self.online.relay_only_changed(&mut self.model),

@@ -1882,63 +1882,98 @@ pub fn glass_card(ctx: &Context, painter: &Painter, rect: Rect, style: GlassStyl
     paint_glass(ctx, painter, rect, style);
 }
 
-/// Language card of the onboarding (280 x 150, radius 20): `TR` / `EN` tag over the name.
-pub fn language_card(
+/// A card the player chooses among (the first start's languages and confirm buttons): a tinted
+/// surface with a hairline, `size` wide and tall. The chosen one is brighter and carries a check,
+/// so the choice never rests on tone alone; the ring shows only for keys and the pad. `active`
+/// false draws it without taking presses. Returns the response, the painted rectangle and how
+/// chosen it is (0..=1).
+pub fn choice_card(
     ui: &mut Ui,
-    language: Language,
+    size: Vec2,
+    chosen: bool,
     focused: bool,
-    force: Option<Force>,
-) -> Response {
-    let it = components::interact(
-        ui,
-        vec2(size::LANGUAGE_CARD.0, size::LANGUAGE_CARD.1),
-        focused,
-        true,
-        force,
-    );
-    let name = language.display_name();
+    active: bool,
+    name: &str,
+) -> (Response, Rect, f32) {
+    let it = components::interact(ui, size, focused && active, active, None);
     it.response
-        .widget_info(|| WidgetInfo::labeled(Role::Button, true, name));
-    if !ui.is_rect_visible(it.rect) {
-        return it.response;
-    }
+        .widget_info(|| WidgetInfo::selected(Role::RadioButton, true, chosen, name));
     let painter = ui.painter();
-    let s = 1.0;
-    let rect = it.painted(painter);
-    let r = radius::LANGUAGE_CARD;
+    let painted = it.painted(painter);
+    let t = ui.ctx().choice_t((it.response.id, "chosen"), chosen);
+    let r = radius::LARGE;
     components::paint_surface(
         painter,
-        rect,
+        painted,
         r,
-        color::surface(),
+        mix(color::surface_row(), color::surface_hover(), t),
         it.hover,
         it.focus,
         it.press,
-        size::FOCUS_RING_LARGE,
+        self::size::FOCUS_RING_LARGE,
     );
-    paint_hairline(painter, rect, r, color::hairline_card());
-    let ink = Color32::WHITE;
-    let pad = 26.0 * s;
-    let tag_style = theme::TextStyle::new(15.0, theme::Weight::Bold);
-    let name_style = text::scaled(ty::LANGUAGE_NAME, s);
-    let name_h = name_style.line_height();
-    text::paint(
+    paint_hairline(
         painter,
-        pos2(rect.min.x + pad, rect.max.y - pad - name_h - 20.0 * s),
-        Align2::LEFT_TOP,
-        text::scaled(tag_style, s),
-        language.tag(),
-        fade(ink, 0.6),
+        painted,
+        r,
+        mix(color::hairline_card(), color::hairline_hover(), t),
     );
-    text::paint(
-        painter,
-        pos2(rect.min.x + pad, rect.max.y - pad),
-        Align2::LEFT_BOTTOM,
-        name_style,
+    if t > 0.01 {
+        let icon = Icon::CHECK_CIRCLE;
+        painter.text(
+            pos2(
+                painted.max.x - space::L - CHOICE_CHECK * 0.5,
+                painted.min.y + space::L + CHOICE_CHECK * 0.5,
+            ),
+            Align2::CENTER_CENTER,
+            icon.glyph(),
+            icon.font(CHOICE_CHECK, true),
+            fade(color::text(), t),
+        );
+    }
+    (it.response, painted, t)
+}
+
+/// The check of a chosen card.
+const CHOICE_CHECK: f32 = 20.0;
+
+/// Language card of the first start (280 x 150): the tag (`TR`, `EN`, `DE`) over the language's
+/// own name, on a [`choice_card`].
+pub fn language_card(
+    ui: &mut Ui,
+    language: Language,
+    chosen: bool,
+    focused: bool,
+    active: bool,
+) -> Response {
+    let name = language.display_name();
+    let (response, rect, t) = choice_card(
+        ui,
+        vec2(size::LANGUAGE_CARD.0, size::LANGUAGE_CARD.1),
+        chosen,
+        focused,
+        active,
         name,
-        ink,
     );
-    it.response
+    let painter = ui.painter();
+    let inset = space::XL;
+    text::paint(
+        painter,
+        pos2(rect.min.x + inset, rect.min.y + inset),
+        Align2::LEFT_TOP,
+        ty::OVERLINE,
+        language.tag(),
+        color::text_detail(),
+    );
+    text::paint(
+        painter,
+        pos2(rect.min.x + inset, rect.max.y - inset),
+        Align2::LEFT_BOTTOM,
+        ty::LANGUAGE_NAME,
+        name,
+        mix(color::text_label(), color::text(), t),
+    );
+    response
 }
 
 /// The width of the dots at rest: the current one 46, the others 18, a gap of 10 between.
@@ -1961,9 +1996,9 @@ pub fn onboarding_dots(ui: &mut Ui, steps: usize, current: usize) {
             );
             let (rect, _) = ui.allocate_exact_size(vec2(w, 5.0), Sense::hover());
             let c = if step <= current {
-                white(0.95)
+                color::text()
             } else {
-                white(0.22)
+                color::surface_focus()
             };
             paint_capsule(ui.painter(), rect, c);
         }
