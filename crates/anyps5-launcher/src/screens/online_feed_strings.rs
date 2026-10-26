@@ -82,11 +82,6 @@ pub enum FeedText {
     AgoHours,
     AgoDays,
     AgoYesterday,
-    // Reactions: only the words stay, for the counts on a profile's activity
-    ReactNice,
-    ReactGg,
-    ReactWow,
-    ReactSame,
     // Profile page
     /// Shown for the player's own profile.
     OwnSubtitle,
@@ -172,10 +167,6 @@ impl FeedText {
             FeedText::AgoHours => "%@ h ago",
             FeedText::AgoDays => "%@ d ago",
             FeedText::AgoYesterday => "Yesterday",
-            FeedText::ReactNice => "Nice",
-            FeedText::ReactGg => "GG",
-            FeedText::ReactWow => "Wow",
-            FeedText::ReactSame => "Same",
             FeedText::OwnSubtitle => "This is what other players see",
             FeedText::ProfileLoading => "Loading…",
             FeedText::ProfileFailed => {
@@ -257,10 +248,6 @@ impl FeedText {
             FeedText::AgoHours => "%@ sa önce",
             FeedText::AgoDays => "%@ gün önce",
             FeedText::AgoYesterday => "Dün",
-            FeedText::ReactNice => "Güzel",
-            FeedText::ReactGg => "GG",
-            FeedText::ReactWow => "Vay",
-            FeedText::ReactSame => "Ben de",
             FeedText::OwnSubtitle => "Diğer oyuncular profilini böyle görür",
             FeedText::ProfileLoading => "Yükleniyor…",
             FeedText::ProfileFailed => "Profil yüklenemedi. Bağlantını kontrol edip tekrar dene.",
@@ -344,10 +331,6 @@ impl FeedText {
             FeedText::AgoHours => "vor %@ Std.",
             FeedText::AgoDays => "vor %@ Tg.",
             FeedText::AgoYesterday => "Gestern",
-            FeedText::ReactNice => "Stark",
-            FeedText::ReactGg => "GG",
-            FeedText::ReactWow => "Wow",
-            FeedText::ReactSame => "Same",
             FeedText::OwnSubtitle => "Das sehen andere Spieler",
             FeedText::ProfileLoading => "Wird geladen…",
             FeedText::ProfileFailed => {

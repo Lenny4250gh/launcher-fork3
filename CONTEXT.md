@@ -323,7 +323,7 @@ The soft colour in the top-left of the profile screen, taken from the avatar's p
 _Avoid_: Banner (alone: that is the trophy banner over a game), cover
 
 **Feed page**:
-The Feed of the network as the launcher shows it: a card for each thing the player or a friend did, newest first, each with the four reactions Nice, GG, Wow and Same. A trophy is named only when the player has the game and can read its trophy file.
+The Feed of the network as the launcher shows it: a card for each thing the player or a friend did, newest first. A trophy is named only when the player has the game and can read its trophy file.
 _Avoid_: Timeline, wall, activity page
 
 **Unread mark**:

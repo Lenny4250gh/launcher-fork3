@@ -151,9 +151,91 @@ pub fn show(ui: &mut Ui, room: Rect, page: &StatePage<'_>, focused: bool) -> boo
             ))
             .layout(Layout::top_down(Align::Center)),
     );
-    ConsoleButton::new(label)
+    let response = ConsoleButton::new(label)
         .prominent(true)
         .focused(focused)
-        .show(&mut row)
-        .clicked()
+        .show(&mut row);
+    // The ring's stop is the button: egui's focus (and so the pad's scrolling) follows it.
+    crate::ui::a11y::follow(&ctx, response.id, focused);
+    response.clicked()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::chrome;
+
+    /// Runs one frame in which two overlays (two layers) both draw `draw`. egui panics in debug
+    /// builds when a widget id moves from one layer to another during a frame, which is what
+    /// happens when an overlay fades out while another fades in and both use a shared widget with
+    /// a fixed id.
+    fn two_layers(draw: impl Fn(&mut Ui)) {
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            let output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0))),
+                    ..Default::default()
+                },
+                |ui| {
+                    let ctx = ui.ctx().clone();
+                    for name in ["closing overlay", "opening overlay"] {
+                        egui::Area::new(egui::Id::unique(name))
+                            .fixed_pos(pos2(0.0, 0.0))
+                            .show(&ctx, |ui| draw(ui));
+                    }
+                },
+            );
+            output.drop_without_applying_deltas();
+        }
+    }
+
+    #[test]
+    fn a_state_page_can_be_drawn_by_two_overlays_in_one_frame() {
+        two_layers(|ui| {
+            let room = ui.ctx().content_rect();
+            let page = StatePage {
+                icon: Icon::CLOUD,
+                title: "You are offline",
+                note: Some("Check your connection."),
+                loading: false,
+                action: Some("Try Again"),
+            };
+            show(ui, room, &page, true);
+        });
+    }
+
+    #[test]
+    fn the_same_toast_can_be_in_two_layers_in_one_frame() {
+        // A toast that is shown again while its first copy leaves: same words, two layers.
+        let ctx = egui::Context::default();
+        let output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0))),
+                ..Default::default()
+            },
+            |ui| {
+                let ctx = ui.ctx().clone();
+                chrome::toast(
+                    &ctx,
+                    "toast-leaving",
+                    Icon::CHECK,
+                    "Request sent",
+                    None,
+                    false,
+                    0.4,
+                );
+                chrome::toast(
+                    &ctx,
+                    "toast-arriving",
+                    Icon::CHECK,
+                    "Request sent",
+                    None,
+                    true,
+                    0.6,
+                );
+            },
+        );
+        output.drop_without_applying_deltas();
+    }
 }
