@@ -6,6 +6,7 @@
 //!                           controls-end|advanced|trophies|trophies-hidden|trophies-revealed|banner|start|unlocking|log|report|library|
 //!                           captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
+//!                           game-hub|game-hub-running|game-hub-empty|trophies-all|
 //!                           about-update|behavior-links|settings-codec|settings-codec-off|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
@@ -84,6 +85,17 @@ use crate::ui::icons::Icon;
 use crate::ui::input::InputEvent;
 use anyps5_core::gamefiles::{GameInput, parse_input_ini};
 
+/// The states of the Game Hub (docs/DESIGN.md 5.22).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HubLook {
+    /// Trophies, captures, a friend playing, Play Together and a known verdict.
+    Full,
+    /// The game runs: the primary action is Back to Game.
+    Running,
+    /// Nothing to show yet: no trophies, no captures, nobody playing.
+    Empty,
+}
+
 /// The page to show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScreenPage {
@@ -120,6 +132,10 @@ pub enum ScreenPage {
     LibraryLongName,
     /// The Captures area, in one of its states.
     Captures(crate::screens::captures::sample::CapturesLook),
+    /// The Game Hub of an invented game, in one of its states.
+    Hub(HubLook),
+    /// The trophies of all invented games together.
+    TrophiesAll,
     /// The Toolkit category, in its rows: stable, an update waiting, pinned, a local build.
     Toolkit(ToolkitLook),
     /// The About page with a downloaded launcher update waiting ("Restart Now").
@@ -734,6 +750,10 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "captures-confirm" => ScreenPage::Captures(CapturesLook::Confirm),
         "captures-missing" => ScreenPage::Captures(CapturesLook::Missing),
         "captures-loading" => ScreenPage::Captures(CapturesLook::Loading),
+        "game-hub" => ScreenPage::Hub(HubLook::Full),
+        "game-hub-running" => ScreenPage::Hub(HubLook::Running),
+        "game-hub-empty" => ScreenPage::Hub(HubLook::Empty),
+        "trophies-all" => ScreenPage::TrophiesAll,
         "about-update" => ScreenPage::AboutUpdate(UpdateLook::Ready),
         "about-update-checking" => ScreenPage::AboutUpdate(UpdateLook::Checking),
         "about-update-current" => ScreenPage::AboutUpdate(UpdateLook::UpToDate),
@@ -1988,6 +2008,8 @@ pub struct ScreenGallery {
     library: LibraryGrid,
     captures: crate::screens::captures::CapturesScreen,
     captures_sample: Option<crate::screens::captures::sample::Sample>,
+    hub: crate::screens::hub::HubScreen,
+    overview: crate::screens::overview::OverviewScreen,
     log: LogView,
     start: StartScreen,
     banner_icons: IconCache,
@@ -2106,6 +2128,8 @@ impl ScreenGallery {
             library: LibraryGrid::default(),
             captures: crate::screens::captures::CapturesScreen::default(),
             captures_sample: None,
+            hub: crate::screens::hub::HubScreen::default(),
+            overview: crate::screens::overview::OverviewScreen::default(),
             log: LogView::default(),
             start: StartScreen::default(),
             banner_icons: IconCache::default(),
@@ -2135,6 +2159,149 @@ impl ScreenGallery {
         {
             calls::call_strip(ctx, &strip, language, 1.0, true);
         }
+    }
+
+    /// The Game Hub of the first invented game.
+    fn hub_screen(&mut self, shell: &mut Shell, ctx: &Context, look: HubLook) {
+        use crate::screens::hub::{Block, CaptureBlock, HubData, TrophyBlock};
+        use crate::screens::hub_strings::HubText as H;
+        use crate::screens::ingame::InGameText;
+        use crate::screens::run_strings::RunText;
+        use crate::ui::i18n::{Arg, Key};
+        let language = shell.language;
+        let accent = shell.accent_color();
+        let empty = look == HubLook::Empty;
+        let running = look == HubLook::Running;
+        let art = Some(self.tile(0));
+        let thumbs: Vec<Option<TileImage>> = (1..=4).map(|i| Some(self.tile(i))).collect();
+        let (primary_title, primary_icon) = if running {
+            (InGameText::BackToGame.text(language), Icon::PLAY_CIRCLE)
+        } else {
+            (language.text(Key::Play), Icon::PLAY)
+        };
+        let trophies = if empty {
+            TrophyBlock {
+                figure: String::new(),
+                fraction: None,
+                grades: [0; 4],
+                note: H::NoTrophyList.text(language).to_owned(),
+            }
+        } else {
+            TrophyBlock {
+                figure: H::TrophyCount.format(language, &[Arg::Int(12), Arg::Int(40)]),
+                fraction: Some(0.3),
+                grades: [0, 2, 4, 6],
+                note: H::LatestTrophy
+                    .format(language, &[Arg::Str("First Light"), Arg::Str("Gold")]),
+            }
+        };
+        let time = if empty {
+            Block::note(H::NeverPlayed.text(language))
+        } else {
+            Block::value(
+                "14 h 20 min",
+                Some(format!(
+                    "{}\n{}",
+                    H::ThisWeek.format(language, &[Arg::Str("2 h 5 min")]),
+                    H::LastPlayed.format(language, &[Arg::Str("yesterday")])
+                )),
+            )
+        };
+        let captures = CaptureBlock {
+            count: (!empty).then(|| H::CaptureCount.format(language, &[Arg::Int(7)])),
+            thumbs: if empty { Vec::new() } else { thumbs },
+            empty: H::NoCaptures.text(language).to_owned(),
+        };
+        let friends = if empty {
+            Block::note(H::NoFriendsPlaying.text(language))
+        } else {
+            Block::note(H::FriendsPlaying.format(language, &[Arg::Str("Mira, Lumen")]))
+        };
+        let together = if empty {
+            Block::note(H::TogetherNone.text(language))
+        } else {
+            Block::value(H::TogetherUpTo.format(language, &[Arg::Int(4)]), None)
+        };
+        let compat = if empty {
+            Block::note(H::CompatNone.text(language))
+        } else {
+            Block::note(RunText::Verdict.format(
+                language,
+                &[Arg::Str(RunText::Playable.text(language)), Arg::Int(23)],
+            ))
+        };
+        let music = if empty {
+            Block::note(H::MusicNone.text(language))
+        } else {
+            Block::value(H::MusicOn.text(language), None)
+        };
+        let data = HubData {
+            language,
+            accent,
+            name: NAMES[0],
+            subtitle: "1.00".to_owned(),
+            art,
+            primary_title: primary_title.to_owned(),
+            primary_icon,
+            primary_ready: !running,
+            trophies,
+            has_trophy_list: !empty,
+            time,
+            captures,
+            friends,
+            together,
+            compat,
+            music,
+        };
+        self.hub.show(shell, ctx, &[], &data);
+    }
+
+    /// The trophies of the invented games together.
+    fn overview_screen(&mut self, shell: &mut Shell, ctx: &Context) {
+        use crate::screens::hub_strings::HubText as H;
+        use crate::screens::overview::{OverviewData, OverviewRow};
+        use crate::ui::i18n::Arg;
+        let language = shell.language;
+        let accent = shell.accent_color();
+        let sample = [
+            (0usize, 12usize, 40usize),
+            (1, 3, 24),
+            (2, 0, 18),
+            (3, 31, 31),
+        ];
+        let rows: Vec<OverviewRow> = sample
+            .into_iter()
+            .map(|(i, earned, total)| {
+                let latest = if earned > 0 {
+                    H::OverviewLatest.format(language, &[Arg::Str("3 Oct")])
+                } else {
+                    H::OverviewNothingYet.text(language).to_owned()
+                };
+                OverviewRow {
+                    title_id: format!("PPSA{:05}", 90000 + i),
+                    name: NAMES[i].to_owned(),
+                    art: Some(self.tile(i)),
+                    earned,
+                    total,
+                    fraction: earned as f32 / total as f32,
+                    grades: if earned > 0 {
+                        [u32::from(earned == total), 2, 4, 6]
+                    } else {
+                        [0; 4]
+                    },
+                    label: format!("{}: {earned} of {total}. {latest}", NAMES[i]),
+                    latest,
+                }
+            })
+            .collect();
+        let data = OverviewData {
+            language,
+            accent,
+            summary: H::OverviewSummary.format(language, &[Arg::Int(46), Arg::Int(4)]),
+            loading: false,
+            rows: &rows,
+        };
+        self.overview.show(shell, ctx, &[], &data);
     }
 
     /// The Captures area over the invented folder.
@@ -2680,6 +2847,12 @@ impl ScreenGallery {
         if let ScreenPage::Captures(look) = self.page {
             self.captures_screen(shell, &ctx, look);
         }
+        if let ScreenPage::Hub(look) = self.page {
+            self.hub_screen(shell, &ctx, look);
+        }
+        if self.page == ScreenPage::TrophiesAll {
+            self.overview_screen(shell, &ctx);
+        }
         self.library.show(
             shell,
             &ctx,
@@ -2944,6 +3117,11 @@ impl ScreenGallery {
             ScreenPage::Library | ScreenPage::LibraryLongName => self.library.open(1),
             ScreenPage::LibraryEmpty => self.library.open(0),
             ScreenPage::Captures(look) => self.open_captures(ctx, look),
+            ScreenPage::Hub(_) => self.hub.open(),
+            ScreenPage::TrophiesAll => {
+                self.overview.open();
+                self.overview.set_focus(1);
+            }
             ScreenPage::ControlsEnd => self.controls.open_row(30),
             ScreenPage::Toolkit(look) => {
                 self.settings.open_at(5, true);
