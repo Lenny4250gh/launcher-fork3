@@ -2,8 +2,9 @@
 //! live in the core's [`Preferences`]; the panel edits them in place, applies theme, accent,
 //! language, motion and sound to the shell right away and reports `changed` so the host saves.
 //!
-//! Categories: Appearance, Library, Language, Behaviour, Toolkit (Windows addition: update check
-//! and CPU conversion), Advanced, About. File and folder choices that only need a native dialog run
+//! Categories (the table `TABS`, one entry per tab): General, Appearance, Library, Sound,
+//! Controllers, Captures, Phone as Controller, Online, Connected Apps, Language, Toolkit,
+//! Advanced, About. File and folder choices that only need a native dialog run
 //! here; everything that needs the host (rescan, quit, the toolkit download) is an action.
 
 use std::path::PathBuf;
@@ -54,35 +55,146 @@ use crate::ui::theme::{Accent, Theme, color, pad, radius, size, space, ty};
 /// The categories, in the order of the list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Category {
+    General,
     Appearance,
     Library,
-    Language,
-    Behaviour,
+    Sound,
+    Controllers,
+    Captures,
+    Broadcast,
     Phone,
+    Online,
+    ConnectedApps,
+    Language,
     Toolkit,
     Advanced,
     About,
 }
 
-impl Category {
-    pub const ALL: [Category; 8] = [
-        Category::Appearance,
-        Category::Library,
-        Category::Language,
-        Category::Behaviour,
-        Category::Phone,
-        Category::Toolkit,
-        Category::Advanced,
-        Category::About,
-    ];
+/// One tab of the category rail. Adding a tab is one entry here, one variant above and one page
+/// in [`build_categories`].
+pub struct Tab {
+    pub category: Category,
+    pub icon: Icon,
+    pub title: fn(Language) -> &'static str,
+    /// A little more air above the tab: the rail is grouped by subject without captions.
+    pub starts_group: bool,
+}
 
-    /// The category a link names.
+/// The rail: the app itself, then the things the launcher does for the player, then the network
+/// and the programs around it, then the maintenance pages.
+pub const TABS: [Tab; 14] = [
+    Tab {
+        category: Category::General,
+        icon: Icon::GEAR_SIX,
+        title: |l| words::General.text(l),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::Appearance,
+        icon: Icon::PAINT_BRUSH,
+        title: |l| l.text(Key::Appearance),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::Library,
+        icon: Icon::SQUARES_FOUR,
+        title: |l| l.text(Key::Storage),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::Sound,
+        icon: Icon::SPEAKER_HIGH,
+        title: |l| words::Sound.text(l),
+        starts_group: true,
+    },
+    Tab {
+        category: Category::Controllers,
+        icon: Icon::GAME_CONTROLLER,
+        title: |l| words::Controllers.text(l),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::Captures,
+        icon: Icon::CAMERA,
+        title: |l| words::Captures.text(l),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::Broadcast,
+        icon: Icon::PLAY_CIRCLE,
+        title: |l| BroadcastText::Title.text(l),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::Phone,
+        icon: Icon::DEVICE_MOBILE,
+        title: |l| PhoneText::Title.text(l),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::Online,
+        icon: Icon::WIFI_HIGH,
+        title: |l| words::Online.text(l),
+        starts_group: true,
+    },
+    Tab {
+        category: Category::ConnectedApps,
+        icon: Icon::LINK,
+        title: |l| words::ConnectedApps.text(l),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::Language,
+        icon: Icon::GLOBE,
+        title: |l| l.text(Key::Language),
+        starts_group: true,
+    },
+    Tab {
+        category: Category::Toolkit,
+        icon: Icon::HARD_DRIVE,
+        title: |l| Extra::Toolkit.text(l),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::Advanced,
+        icon: Icon::WRENCH,
+        title: |l| l.text(Key::Advanced),
+        starts_group: false,
+    },
+    Tab {
+        category: Category::About,
+        icon: Icon::INFO,
+        title: |l| l.text(Key::About),
+        starts_group: false,
+    },
+];
+
+impl Category {
+    pub const ALL: [Category; TABS.len()] = {
+        let mut all = [Category::General; TABS.len()];
+        let mut i = 0;
+        while i < TABS.len() {
+            all[i] = TABS[i].category;
+            i += 1;
+        }
+        all
+    };
+
+    /// The category a link names. The old Behaviour page opens General: its rows now live on
+    /// several pages, and General is where it began.
     pub fn from_link(page: SettingsPage) -> Category {
         match page {
+            SettingsPage::General | SettingsPage::Behavior => Category::General,
             SettingsPage::Appearance => Category::Appearance,
             SettingsPage::Library => Category::Library,
+            SettingsPage::Sound => Category::Sound,
+            SettingsPage::Controllers => Category::Controllers,
+            SettingsPage::Captures => Category::Captures,
+            SettingsPage::Broadcast => Category::Broadcast,
+            SettingsPage::Online => Category::Online,
+            SettingsPage::ConnectedApps => Category::ConnectedApps,
             SettingsPage::Language => Category::Language,
-            SettingsPage::Behavior => Category::Behaviour,
             SettingsPage::Phone => Category::Phone,
             SettingsPage::Toolkit => Category::Toolkit,
             SettingsPage::Advanced => Category::Advanced,
@@ -90,30 +202,23 @@ impl Category {
         }
     }
 
+    /// The place of the category in the rail: what the panel's navigation counts in.
+    pub fn index(self) -> usize {
+        TABS.iter()
+            .position(|tab| tab.category == self)
+            .unwrap_or(0)
+    }
+
+    fn tab(self) -> &'static Tab {
+        &TABS[self.index()]
+    }
+
     pub fn title(self, language: Language) -> &'static str {
-        match self {
-            Category::Appearance => language.text(Key::Appearance),
-            Category::Library => language.text(Key::Storage),
-            Category::Language => language.text(Key::Language),
-            Category::Behaviour => language.text(Key::Behaviour),
-            Category::Phone => PhoneText::Title.text(language),
-            Category::Toolkit => Extra::Toolkit.text(language),
-            Category::Advanced => language.text(Key::Advanced),
-            Category::About => language.text(Key::About),
-        }
+        (self.tab().title)(language)
     }
 
     pub fn icon(self) -> Icon {
-        match self {
-            Category::Appearance => Icon::PAINT_BRUSH,
-            Category::Library => Icon::SQUARES_FOUR,
-            Category::Language => Icon::GLOBE,
-            Category::Behaviour => Icon::SLIDERS_HORIZONTAL,
-            Category::Phone => Icon::DEVICE_MOBILE,
-            Category::Toolkit => Icon::HARD_DRIVE,
-            Category::Advanced => Icon::WRENCH,
-            Category::About => Icon::INFO,
-        }
+        self.tab().icon
     }
 }
 
@@ -631,10 +736,8 @@ pub fn build_categories(
     }
     languages.push(Row::info("fontsHint", t(Key::FontsHint), None));
 
-    // Behaviour, in groups: the first has no heading (it is the page), the others say what they
-    // hold. A group is a subject: sound, the pad, the programs the launcher talks to.
-    let mut behaviour = vec![
-        Row::text("name", t(Key::ProfileName), prefs.profile_name.clone()).icon(Icon::USER_CIRCLE),
+    // General: how the launcher starts and behaves around a game, then its updates.
+    let mut general = vec![
         Row::toggle(
             "prepare",
             crate::screens::prepare_strings::setting(language),
@@ -651,9 +754,29 @@ pub fn build_categories(
         )
         .detail(Extra::ShowHiddenTrophiesDetail.text(language))
         .icon(Icon::TROPHY),
-        Row::caption("soundCaption", words::Sound.text(language)).group_start(),
+        Row::toggle(
+            "homeButton",
+            InGameText::Setting.text(language),
+            prefs.ps_button,
+        )
+        .detail(InGameText::SettingDetail.text(language))
+        .icon(Icon::GAME_CONTROLLER),
     ];
-    // Each kind of sound: its switch, and its volume while it is on.
+    // The switch covers the launcher's own update and the toolkit's; "Check Now" for the toolkit
+    // stays on the Toolkit page, next to the channel it depends on.
+    general.push(
+        Row::toggle(
+            "updateCheck",
+            Extra::UpdateCheck.text(language),
+            prefs.check_for_updates,
+        )
+        .detail(Extra::UpdateCheckDetail.text(language))
+        .icon(Icon::ARROWS_CLOCKWISE)
+        .group_start(),
+    );
+
+    // Sound: each kind of sound, its switch, and its volume while it is on.
+    let mut sound = Vec::new();
     let sound_rows = [
         (
             Row::toggle("sounds", t(Key::Sounds), prefs.sounds).icon(Icon::SPEAKER_HIGH),
@@ -711,13 +834,17 @@ pub fn build_categories(
         ),
     ];
     for (switch, on, volume) in sound_rows {
-        behaviour.push(switch);
+        sound.push(switch);
         if on {
-            behaviour.push(volume);
+            sound.push(volume);
         }
     }
-    behaviour.extend([
-        Row::caption("controllerCaption", words::Controller.text(language)).group_start(),
+
+    // Controllers: the Controller Center first, then the pad's own rows.
+    let controllers = vec![
+        Row::action("controllers", Pads::Entry.text(language))
+            .detail(Pads::EntryDetail.text(language))
+            .icon(Icon::GAME_CONTROLLER),
         Row::choice(
             "vibration",
             Extra::Vibration.text(language),
@@ -731,39 +858,25 @@ pub fn build_categories(
         )
         .detail(Extra::VibrationDetail.text(language))
         .icon(Icon::WAVE_SINE),
-        Row::toggle(
-            "homeButton",
-            InGameText::Setting.text(language),
-            prefs.ps_button,
-        )
-        .detail(InGameText::SettingDetail.text(language))
-        .icon(Icon::GAME_CONTROLLER),
-        Row::action("controllers", Pads::Entry.text(language))
-            .detail(Pads::EntryDetail.text(language))
-            .icon(Icon::GAME_CONTROLLER),
-        // Where a player looks when the launcher does not react to the pad: the end of its group.
+        // Where a player looks when the launcher does not react to the pad: the end of the page.
         Row::info("controllerHelp", Extra::ControllerHelp.text(language), None),
-    ]);
-    // The recorder is the share worker, which captures windows on Windows only.
-    if env.windows_rows {
-        behaviour
-            .push(Row::caption("capturesCaption", words::Captures.text(language)).group_start());
-        push_clips_rows(&mut behaviour, prefs, env, language);
-        push_broadcast_rows(&mut behaviour, prefs, env, language);
-    }
-    behaviour.push(Row::caption("appsCaption", words::ConnectedApps.text(language)).group_start());
-    behaviour.push(
+    ];
+
+    // Online: who the player is to others, and the status on Discord.
+    let mut online = vec![
+        Row::text("name", t(Key::ProfileName), prefs.profile_name.clone()).icon(Icon::USER_CIRCLE),
         Row::toggle(
             "discord",
             Extra::DiscordPresence.text(language),
             prefs.discord_presence,
         )
         .detail(Extra::DiscordPresenceDetail.text(language))
-        .icon(Icon::DISCORD_LOGO),
-    );
+        .icon(Icon::DISCORD_LOGO)
+        .group_start(),
+    ];
     // The button belongs to the status: without the status there is nothing to put it on.
     if prefs.discord_presence {
-        behaviour.push(
+        online.push(
             Row::toggle(
                 "discordJoin",
                 DiscordText::Button.text(language),
@@ -773,13 +886,16 @@ pub fn build_categories(
             .icon(Icon::USER_PLUS),
         );
     }
+
+    // Connected Apps
+    let mut apps = Vec::new();
     // The registration lives in the registry, so only Windows has the row.
     if env.windows_rows {
         let detail = match env.links {
             Handler::Other(_) => Extra::LinksDetailOther,
             _ => Extra::LinksDetail,
         };
-        behaviour.push(
+        apps.push(
             Row::toggle(
                 "links",
                 Extra::Links.text(language),
@@ -791,18 +907,22 @@ pub fn build_categories(
     }
     // Steam keeps its shortcuts in files of the user folder; the rows write them (DESIGN.md 9.9).
     if cfg!(any(windows, target_os = "linux", target_os = "macos")) {
-        behaviour.push(
+        apps.push(
             Row::command("addToSteam", SteamText::Add.text(language))
                 .detail(SteamText::AddDetail.text(language))
                 .icon(Icon::STEAM_LOGO),
         );
         if env.games_found > 0 {
-            behaviour.push(
+            apps.push(
                 Row::command("addGamesToSteam", SteamText::AddGames.text(language))
                     .detail(SteamText::AddGamesDetail.text(language))
                     .icon(Icon::STEAM_LOGO),
             );
         }
+    }
+    // A page is never empty: on a system with no app to connect it says so.
+    if apps.is_empty() {
+        apps.push(Row::info("appsNone", words::NoApps.text(language), None));
     }
 
     // Phone as Controller
@@ -959,15 +1079,6 @@ pub fn build_categories(
         };
         toolkit.push(Row::caption("updatesCaption", words::Updates.text(language)).group_start());
         toolkit.push(
-            Row::toggle(
-                "updateCheck",
-                Extra::UpdateCheck.text(language),
-                prefs.check_for_updates,
-            )
-            .detail(Extra::UpdateCheckDetail.text(language))
-            .icon(Icon::ARROWS_CLOCKWISE),
-        );
-        toolkit.push(
             Row::command("checkNow", Extra::CheckNow.text(language))
                 .detail(detail)
                 .icon(Icon::ARROW_CLOCKWISE),
@@ -1004,12 +1115,12 @@ pub fn build_categories(
         ));
     }
 
-    // Advanced
+    // Captures: screenshots, then (Windows) the clips.
     let screenshots = prefs
         .screenshots_folder
         .as_deref()
         .unwrap_or(env.default_screenshots);
-    let mut advanced = Vec::new();
+    let mut captures = Vec::new();
     // F12 screenshots need a build newer than v0.1.3; an older toolkit would ignore the folder.
     match env.toolkit_version {
         Some(version) if !compat::supports(Feature::Screenshots, version) => {
@@ -1021,28 +1132,48 @@ pub fn build_categories(
                     Extra::NeedsNewerThan.format(language, &[Arg::Str(&format!("v{tag}"))])
                 }
             };
-            advanced.push(
+            captures.push(
                 Row::info("screenshots", t(Key::ScreenshotsFolder), Some(needs)).icon(Icon::CAMERA),
             );
         }
         _ => {
-            advanced.push(
+            captures.push(
                 Row::action("screenshots", t(Key::ScreenshotsFolder))
                     .detail(abbreviated(screenshots))
                     .icon(Icon::CAMERA),
             );
-            advanced
+            captures
                 .push(Row::command("showScreenshots", t(Key::ShowScreenshots)).icon(Icon::IMAGES));
-            advanced.push(
+            captures.push(
                 Row::info("screenshotHint", words::ScreenshotHint.text(language), None).attached(),
             );
         }
     }
+    // The recorder is the share worker, which captures windows on Windows only.
+    if env.windows_rows {
+        let first = captures.len();
+        push_clips_rows(&mut captures, prefs, env, language);
+        if first > 0 {
+            captures[first].group_start = true;
+        }
+    }
+
+    // Broadcast: live streaming needs the recorder (Windows); elsewhere the page says so.
+    let mut broadcast = Vec::new();
+    if env.windows_rows {
+        push_broadcast_rows(&mut broadcast, prefs, env, language);
+    } else {
+        broadcast.push(Row::info(
+            "broadcastNone",
+            words::NoBroadcast.text(language),
+            None,
+        ));
+    }
+
+    // Advanced: the first page of the diagnostics has no heading, it is the page.
+    let mut advanced = Vec::new();
     {
         use crate::screens::online_strings::OnlineText;
-        advanced.push(
-            Row::caption("diagnosticsCaption", words::Diagnostics.text(language)).group_start(),
-        );
         advanced.push(
             Row::toggle(
                 "recordNetwork",
@@ -1126,13 +1257,24 @@ pub fn build_categories(
             .group_start(),
     );
 
-    [
-        appearance, library, languages, behaviour, phone_rows, toolkit, advanced, about,
+    // The pages, in the order of the rail (`TABS`).
+    let page = |category, rows| CategoryRows { category, rows };
+    vec![
+        page(Category::General, general),
+        page(Category::Appearance, appearance),
+        page(Category::Library, library),
+        page(Category::Sound, sound),
+        page(Category::Controllers, controllers),
+        page(Category::Captures, captures),
+        page(Category::Broadcast, broadcast),
+        page(Category::Phone, phone_rows),
+        page(Category::Online, online),
+        page(Category::ConnectedApps, apps),
+        page(Category::Language, languages),
+        page(Category::Toolkit, toolkit),
+        page(Category::Advanced, advanced),
+        page(Category::About, about),
     ]
-    .into_iter()
-    .zip(Category::ALL)
-    .map(|(rows, category)| CategoryRows { category, rows })
-    .collect()
 }
 
 /// Broadcast: where it goes, the server of a custom service, the stream key and the quality.
@@ -1143,7 +1285,6 @@ fn push_broadcast_rows(
     language: Language,
 ) {
     use anyps5_core::broadcast::{self, Service};
-    rows.push(Row::caption("broadcastCaption", BroadcastText::Title.text(language)).group_start());
     let service = Service::from_id(&prefs.broadcast_service);
     let selected = Service::ALL.iter().position(|s| *s == service).unwrap_or(0);
     let services = [
@@ -1603,6 +1744,8 @@ pub struct SettingsPanel {
     /// Counts category changes: each one fades the new list in.
     switches: u32,
     last_category: usize,
+    /// The tab the player left the settings on: the next plain open starts there.
+    remembered: usize,
     /// The clip key row waits for a key press.
     clip_capture: bool,
     /// A row to put the focus on once the rows are built (the gallery shows the row that matters).
@@ -1617,6 +1760,7 @@ impl Default for SettingsPanel {
             nav: PanelNav::settings(Category::ALL.len()),
             switches: 0,
             last_category: 0,
+            remembered: 0,
             clip_capture: false,
             focus_id: None,
         }
@@ -1624,9 +1768,9 @@ impl Default for SettingsPanel {
 }
 
 impl SettingsPanel {
-    /// Opens at the category level on the first category.
+    /// Opens at the category level on the tab the player left it on.
     pub fn open(&mut self) {
-        self.open_at(0, false);
+        self.open_at(self.remembered, false);
     }
 
     /// Opens on a category, optionally already in its rows (previews).
@@ -1640,6 +1784,7 @@ impl SettingsPanel {
             self.nav.row = 0;
         }
         self.last_category = self.nav.category;
+        self.remembered = self.nav.category;
     }
 
     /// Puts the focus on a row of the open category (the gallery shows the row that matters).
@@ -1761,6 +1906,7 @@ impl SettingsPanel {
         }
         if self.nav.category != self.last_category {
             self.last_category = self.nav.category;
+            self.remembered = self.nav.category;
             self.switches += 1;
         }
         let language = convert::language(prefs.language);
@@ -2121,78 +2267,113 @@ fn draw(
         color::text(),
     );
     let list_top = title.max.y + space::XXL;
-    let mut y = list_top;
     let column_w = size::SETTINGS_CATEGORY_WIDTH;
-    for (index, cat) in cats.iter().enumerate() {
-        let rect = Rect::from_min_size(
-            pos2(area.min.x, y),
-            vec2(column_w, size::SETTINGS_CATEGORY_ROW),
-        );
-        y += size::SETTINGS_CATEGORY_ROW + space::S;
-        let selected = index == nav.category;
-        let focused = selected && !nav.in_rows;
-        let response = ui.interact(
-            rect,
-            ui.make_persistent_id(("category", index)),
-            Sense::click(),
-        );
-        crate::ui::a11y::follow(&ctx, response.id, focused);
-        let title_text = cat.category.title(language);
-        response.widget_info(|| {
-            egui::WidgetInfo::selected(egui::Role::Tab, true, selected, title_text)
+
+    // The rail: thirteen tabs do not fit under the title on a small window, so it scrolls. The
+    // selected tab is brought into view whenever it changes (keys, pad or the first frame); the
+    // wheel scrolls it freely otherwise.
+    let rail_id = ui.make_persistent_id("settings-rail-seen");
+    let bring_into_view = ctx.data_mut(|d| {
+        let seen: Option<u32> = d.get_temp(rail_id);
+        d.insert_temp(rail_id, switches);
+        seen != Some(switches)
+    });
+    // Room around the rows for the focus ring, which the scroll area would clip.
+    const RING_ROOM: f32 = 8.0;
+    let rail = Rect::from_min_max(
+        pos2(area.min.x - RING_ROOM, list_top - RING_ROOM),
+        pos2(area.min.x + column_w + RING_ROOM, area.max.y),
+    );
+    let mut rail_ui = ui.new_child(UiBuilder::new().max_rect(rail));
+    egui::ScrollArea::vertical()
+        .id_salt("settings-rail")
+        .auto_shrink([false, false])
+        .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        .show(&mut rail_ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            ui.add_space(RING_ROOM);
+            let painter = ui.painter().clone();
+            for (index, cat) in cats.iter().enumerate() {
+                if index > 0 && TABS[index].starts_group {
+                    ui.add_space(space::M);
+                }
+                let (_, slot) = ui.allocate_space(vec2(
+                    column_w + 2.0 * RING_ROOM,
+                    size::SETTINGS_CATEGORY_ROW,
+                ));
+                let rect = Rect::from_min_size(
+                    slot.min + vec2(RING_ROOM, 0.0),
+                    vec2(column_w, size::SETTINGS_CATEGORY_ROW),
+                );
+                ui.add_space(space::S);
+                let selected = index == nav.category;
+                let focused = selected && !nav.in_rows;
+                if selected && bring_into_view {
+                    ui.scroll_to_rect(rect.expand(space::S), None);
+                }
+                let response = ui.interact(
+                    rect,
+                    ui.make_persistent_id(("category", index)),
+                    Sense::click(),
+                );
+                crate::ui::a11y::follow(&ctx, response.id, focused);
+                let title_text = cat.category.title(language);
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(egui::Role::Tab, true, selected, title_text)
+                });
+                if input::hovered(&ctx, &response) {
+                    ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if response.clicked() {
+                    *picked = Some(index);
+                }
+                let t_focus = ctx.focus_t(("category-focus", index), focused);
+                let t_sel = ctx.choice_t(("category-selected", index), selected);
+                let hover_t = ctx.animate_to(
+                    ("category-hover", index),
+                    f32::from(input::hovered(&ctx, &response) && !selected),
+                    Motion::Hover,
+                );
+                // The selected category keeps its quiet fill; the one with the focus gets the ring.
+                components::paint_surface(
+                    &painter,
+                    rect,
+                    radius::ROW,
+                    color::surface().gamma_multiply(t_sel.clamp(0.0, 1.0)),
+                    hover_t,
+                    t_focus,
+                    0.0,
+                    size::FOCUS_RING,
+                );
+                let ink = color::text_detail().lerp_to_gamma(color::text(), t_sel);
+                painter.text(
+                    pos2(
+                        rect.min.x + size::ROW_PADDING_X + size::ROW_ICON_BOX * 0.5,
+                        rect.center().y,
+                    ),
+                    Align2::CENTER_CENTER,
+                    cat.category.icon().glyph(),
+                    cat.category.icon().font(size::ROW_ICON, false),
+                    ink,
+                );
+                let style = if selected {
+                    ty::CATEGORY_SELECTED
+                } else {
+                    ty::CATEGORY
+                };
+                text::paint(
+                    &painter,
+                    pos2(
+                        rect.min.x + size::ROW_PADDING_X + size::ROW_ICON_BOX + space::M,
+                        rect.center().y,
+                    ),
+                    Align2::LEFT_CENTER,
+                    style,
+                    title_text,
+                    ink,
+                );
+            }
         });
-        if input::hovered(&ctx, &response) {
-            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        if response.clicked() {
-            *picked = Some(index);
-        }
-        let t_focus = ctx.focus_t(("category-focus", index), focused);
-        let t_sel = ctx.choice_t(("category-selected", index), selected);
-        let hover_t = ctx.animate_to(
-            ("category-hover", index),
-            f32::from(input::hovered(&ctx, &response) && !selected),
-            Motion::Hover,
-        );
-        // The selected category keeps its quiet fill; the one with the focus gets the ring.
-        components::paint_surface(
-            &painter,
-            rect,
-            radius::ROW,
-            color::surface().gamma_multiply(t_sel),
-            hover_t,
-            t_focus,
-            0.0,
-            size::FOCUS_RING,
-        );
-        let ink = color::text_detail().lerp_to_gamma(color::text(), t_sel);
-        painter.text(
-            pos2(
-                rect.min.x + size::ROW_PADDING_X + size::ROW_ICON_BOX * 0.5,
-                rect.center().y,
-            ),
-            Align2::CENTER_CENTER,
-            cat.category.icon().glyph(),
-            cat.category.icon().font(size::ROW_ICON, false),
-            ink,
-        );
-        let style = if selected {
-            ty::CATEGORY_SELECTED
-        } else {
-            ty::CATEGORY
-        };
-        text::paint(
-            &painter,
-            pos2(
-                rect.min.x + size::ROW_PADDING_X + size::ROW_ICON_BOX + space::M,
-                rect.center().y,
-            ),
-            Align2::LEFT_CENTER,
-            style,
-            title_text,
-            ink,
-        );
-    }
 
     // The rows of the current category, fading in from the side when the category changes.
     let current = nav.category.min(cats.len() - 1);
@@ -2342,7 +2523,9 @@ mod tests {
         let mut prefs = Preferences::first_run();
         let rows_of = |prefs: &Preferences| {
             build_categories(prefs, &env(None, UpdateState::Unknown), Language::English)
-                .remove(0)
+                .into_iter()
+                .find(|page| page.category == Category::Appearance)
+                .unwrap()
                 .rows
                 .into_iter()
                 .find(|r| r.id == "backdrop")
@@ -2718,12 +2901,12 @@ mod tests {
         );
         let first = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
         assert!(
-            !ids(&first, Category::Behaviour).contains(&"discordJoin"),
+            !ids(&first, Category::Online).contains(&"discordJoin"),
             "a new profile shows no game on Discord and no button"
         );
         prefs.discord_presence = true;
         let shown = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
-        let rows = ids(&shown, Category::Behaviour);
+        let rows = ids(&shown, Category::Online);
         let status = rows.iter().position(|id| *id == "discord").unwrap();
         assert_eq!(
             rows[status + 1],
@@ -2733,7 +2916,7 @@ mod tests {
         prefs.discord_presence = false;
         let hidden = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
         assert!(
-            !ids(&hidden, Category::Behaviour).contains(&"discordJoin"),
+            !ids(&hidden, Category::Online).contains(&"discordJoin"),
             "no status, nothing to put a button on"
         );
     }
@@ -2908,7 +3091,7 @@ mod tests {
     fn the_channel_decides_which_toolkit_rows_exist() {
         let mut prefs = Preferences::default();
         let stable = toolkit_ids(&prefs, Some("0.1.3-abc"));
-        for row in ["channel", "whatsNew", "updateCheck", "checkNow", "cpu"] {
+        for row in ["channel", "whatsNew", "checkNow", "cpu"] {
             assert!(stable.contains(&row), "stable has {row}");
         }
         assert!(!stable.contains(&"pinned"));
@@ -2944,13 +3127,7 @@ mod tests {
             .unwrap()
             .rows;
         let ids: Vec<&str> = rows.iter().map(|r| r.id).collect();
-        for row in [
-            "channel",
-            "engineBuilt",
-            "updateCheck",
-            "checkNow",
-            "install",
-        ] {
+        for row in ["channel", "engineBuilt", "checkNow", "install"] {
             assert!(ids.contains(&row), "the engine has {row}");
         }
         assert!(!ids.contains(&"whatsNew") && !ids.contains(&"pinned"));
@@ -3010,7 +3187,7 @@ mod tests {
                 &env(Some(version), UpdateState::Unknown),
                 Language::English,
             );
-            ids(&cats, Category::Advanced)
+            ids(&cats, Category::Captures)
         };
         let released = advanced("0.1.3-abc");
         assert!(released.contains(&"screenshots") && !released.contains(&"showScreenshots"));
@@ -3040,19 +3217,22 @@ mod tests {
     }
 
     #[test]
-    fn behaviour_is_in_groups_and_none_starts_with_a_caption() {
+    fn the_pages_are_in_groups_and_none_starts_with_a_caption() {
         let prefs = Preferences::first_run();
         let cats = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
-        assert_eq!(
-            captions(&cats, Category::Behaviour),
-            [
-                "soundCaption",
-                "controllerCaption",
-                "capturesCaption",
-                "broadcastCaption",
-                "appsCaption"
-            ]
-        );
+        // Sound, the pad, the apps and the status are pages of their own: no captions to tell
+        // groups apart, a gap does.
+        for category in [
+            Category::General,
+            Category::Sound,
+            Category::Controllers,
+            Category::Captures,
+            Category::Broadcast,
+            Category::Online,
+            Category::ConnectedApps,
+        ] {
+            assert!(captions(&cats, category).is_empty(), "{category:?}");
+        }
         // The first row of a page is a row, not a heading: the page starts where the list starts.
         for cat in &cats {
             assert!(
@@ -3061,14 +3241,58 @@ mod tests {
                 cat.category
             );
         }
-        // Sounds, the pad and the apps stay together.
-        let rows = ids(&cats, Category::Behaviour);
-        let at = |id: &str| rows.iter().position(|r| *r == id).unwrap();
-        assert!(at("soundCaption") < at("sounds") && at("sounds") < at("gameMusic"));
-        assert!(
-            at("gameMusic") < at("controllerCaption") && at("controllerCaption") < at("vibration")
+    }
+
+    #[test]
+    fn every_old_behaviour_row_has_a_page_now() {
+        let prefs = Preferences::first_run();
+        let cats = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
+        let page_of = |id: &str| {
+            cats.iter()
+                .find(|c| c.rows.iter().any(|r| r.id == id))
+                .map(|c| c.category)
+        };
+        for (id, category) in [
+            ("prepare", Category::General),
+            ("hide", Category::General),
+            ("hiddenTrophies", Category::General),
+            ("homeButton", Category::General),
+            ("updateCheck", Category::General),
+            ("sounds", Category::Sound),
+            ("music", Category::Sound),
+            ("gameMusic", Category::Sound),
+            ("vibration", Category::Controllers),
+            ("controllerHelp", Category::Controllers),
+            ("screenshots", Category::Captures),
+            ("clips", Category::Captures),
+            ("clipsKey", Category::Captures),
+            ("showClips", Category::Captures),
+            ("name", Category::Online),
+            ("discord", Category::Online),
+            ("recordNetwork", Category::Advanced),
+        ] {
+            // Clips are off in a new profile; their key and folder rows follow the length.
+            if matches!(id, "clipsKey" | "showClips") {
+                continue;
+            }
+            assert_eq!(page_of(id), Some(category), "{id}");
+        }
+    }
+
+    #[test]
+    fn every_link_names_a_page() {
+        use anyps5_core::links::SettingsPage as P;
+        assert_eq!(Category::from_link(P::Behavior), Category::General);
+        assert_eq!(Category::from_link(P::Captures), Category::Captures);
+        assert_eq!(
+            Category::from_link(P::ConnectedApps),
+            Category::ConnectedApps
         );
-        assert!(at("homeButton") < at("appsCaption") && at("appsCaption") < at("discord"));
+        // The table and the list agree, and every category is in the rail once.
+        for (index, tab) in TABS.iter().enumerate() {
+            assert_eq!(tab.category.index(), index);
+            assert_eq!(Category::ALL[index], tab.category);
+        }
     }
 
     #[test]
@@ -3077,8 +3301,10 @@ mod tests {
         let mut e = env(None, UpdateState::Unknown);
         let has = |e: &SettingsEnv<'_>| {
             let cats = build_categories(&prefs, e, Language::English);
-            let rows = ids(&cats, Category::Behaviour);
-            (rows.contains(&"clips"), rows.contains(&"links"))
+            (
+                ids(&cats, Category::Captures).contains(&"clips"),
+                ids(&cats, Category::ConnectedApps).contains(&"links"),
+            )
         };
         assert_eq!(has(&e), (true, true));
         e.windows_rows = false;
@@ -3144,9 +3370,9 @@ mod tests {
         let prefs = Preferences::first_run();
         let e = env(None, UpdateState::Unknown);
         let cats = build_categories(&prefs, &e, Language::English);
-        let want = rows::position(&cats[3].rows, "homeButton").unwrap();
+        let want = rows::position(&cats[0].rows, "homeButton").unwrap();
         let mut panel = SettingsPanel::default();
-        panel.open_at(3, true);
+        panel.open_at(0, true);
         panel.focus_row_id("homeButton");
         panel.apply_focus_id(&cats);
         assert_eq!(panel.nav.row, want);

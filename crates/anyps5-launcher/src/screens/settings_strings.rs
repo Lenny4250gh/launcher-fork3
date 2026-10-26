@@ -6,18 +6,24 @@ use crate::ui::i18n::Language;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SettingsText {
-    /// Behavior: sounds and music.
+    /// Broadcast: the page on a system without the recorder.
+    NoBroadcast,
+    /// Connected Apps: nothing to connect on this system.
+    NoApps,
+    /// The tab: start-up, the Home button, updates.
+    General,
+    /// The tab: account, privacy, Discord status.
+    Online,
+    /// The tab: sounds and music.
     Sound,
-    /// Behavior (Windows): the clips.
+    /// The tab: screenshots and clips.
     Captures,
-    /// Behavior: the pad.
-    Controller,
-    /// Behavior: Discord, Steam and links from websites.
+    /// The tab: the pad.
+    Controllers,
+    /// The tab: Steam and links from websites.
     ConnectedApps,
     /// Language: the fonts games use.
     Fonts,
-    /// Advanced: what the network recording is for.
-    Diagnostics,
     /// Advanced (Linux): the video codec.
     ShareScreen,
     /// Toolkit: the update check.
@@ -33,13 +39,16 @@ pub enum SettingsText {
 }
 
 impl SettingsText {
-    pub const ALL: [SettingsText; 12] = [
+    pub const ALL: [SettingsText; 15] = [
+        SettingsText::General,
+        SettingsText::Online,
+        SettingsText::NoApps,
+        SettingsText::NoBroadcast,
         SettingsText::Sound,
         SettingsText::Captures,
-        SettingsText::Controller,
+        SettingsText::Controllers,
         SettingsText::ConnectedApps,
         SettingsText::Fonts,
-        SettingsText::Diagnostics,
         SettingsText::ShareScreen,
         SettingsText::Updates,
         SettingsText::Unused,
@@ -50,12 +59,15 @@ impl SettingsText {
 
     pub const fn english(self) -> &'static str {
         match self {
+            SettingsText::General => "General",
+            SettingsText::Online => "Online",
+            SettingsText::NoApps => "Nothing to connect on this system.",
+            SettingsText::NoBroadcast => "Live streaming needs Windows.",
             SettingsText::Sound => "Sound",
             SettingsText::Captures => "Captures",
-            SettingsText::Controller => "Controller",
+            SettingsText::Controllers => "Controllers",
             SettingsText::ConnectedApps => "Connected Apps",
             SettingsText::Fonts => "Fonts",
-            SettingsText::Diagnostics => "Diagnostics",
             SettingsText::ShareScreen => "Share Screen",
             SettingsText::Updates => "Updates",
             SettingsText::Unused => "Not Used by Any Game",
@@ -67,12 +79,15 @@ impl SettingsText {
 
     pub const fn turkish(self) -> &'static str {
         match self {
+            SettingsText::General => "Genel",
+            SettingsText::Online => "Çevrim İçi",
+            SettingsText::NoApps => "Bu sistemde bağlanacak bir uygulama yok.",
+            SettingsText::NoBroadcast => "Canlı yayın yalnızca Windows'ta var.",
             SettingsText::Sound => "Ses",
             SettingsText::Captures => "Yakalamalar",
-            SettingsText::Controller => "Kol",
+            SettingsText::Controllers => "Kollar",
             SettingsText::ConnectedApps => "Bağlı Uygulamalar",
             SettingsText::Fonts => "Yazı Tipleri",
-            SettingsText::Diagnostics => "Tanılama",
             SettingsText::ShareScreen => "Ekran Paylaşımı",
             SettingsText::Updates => "Güncellemeler",
             SettingsText::Unused => "Hiçbir Oyunun Kullanmadığı Sürümler",
@@ -88,10 +103,13 @@ impl SettingsText {
         Some(match self {
             SettingsText::Sound => "Ton",
             SettingsText::Captures => "Aufnahmen",
-            SettingsText::Controller => "Controller",
+            SettingsText::General => "Allgemein",
+            SettingsText::Online => "Online",
+            SettingsText::Controllers => "Controller",
+            SettingsText::NoApps => "Auf diesem System gibt es nichts zu verbinden.",
+            SettingsText::NoBroadcast => "Live-Übertragung gibt es nur unter Windows.",
             SettingsText::ConnectedApps => "Verbundene Apps",
             SettingsText::Fonts => "Schriften",
-            SettingsText::Diagnostics => "Diagnose",
             SettingsText::ShareScreen => "Bildschirm teilen",
             SettingsText::Updates => "Updates",
             SettingsText::Unused => "Von keinem Spiel genutzt",

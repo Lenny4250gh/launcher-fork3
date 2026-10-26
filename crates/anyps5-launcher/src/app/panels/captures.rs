@@ -166,9 +166,9 @@ impl PanelHost {
         match action {
             CapturesAction::Close => model.dismiss_overlay(),
             CapturesAction::Refresh => self.capture_service.refresh(folder),
-            CapturesAction::OpenClipsSettings => model.show_settings(Some(SettingsPage::Behavior)),
+            CapturesAction::OpenClipsSettings => model.show_settings(Some(SettingsPage::Captures)),
             CapturesAction::OpenFolderSettings => {
-                model.show_settings(Some(SettingsPage::Advanced));
+                model.show_settings(Some(SettingsPage::Captures));
             }
             CapturesAction::OpenInPlayer(_) => {
                 if let Some(c) = &target
