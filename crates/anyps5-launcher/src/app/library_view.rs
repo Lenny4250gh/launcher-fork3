@@ -126,7 +126,10 @@ fn status_rank(state: &GameState) -> u8 {
     match state {
         GameState::Running | GameState::Starting => 0,
         GameState::Installed { .. } => 1,
-        GameState::Installing { .. } | GameState::Preparing { .. } | GameState::Queued => 2,
+        GameState::Installing { .. }
+        | GameState::Uninstalling { .. }
+        | GameState::Preparing { .. }
+        | GameState::Queued => 2,
         GameState::Locked => 3,
         GameState::Failed(_) => 4,
         GameState::Unreadable => 5,

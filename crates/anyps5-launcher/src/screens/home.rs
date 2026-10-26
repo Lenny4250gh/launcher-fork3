@@ -1024,6 +1024,7 @@ pub fn tile_overlay(state: &GameState, weights: &crate::app::pipeline::StepWeigh
         GameState::Installing { step, fraction } => {
             TileOverlay::Installing(weights.overall(*step, *fraction))
         }
+        GameState::Uninstalling { fraction } => TileOverlay::Installing(*fraction),
         GameState::Preparing { progress, paused } => TileOverlay::Preparing {
             fraction: progress.map(|(step, fraction)| weights.overall(step, fraction)),
             paused: *paused,
@@ -1369,8 +1370,13 @@ fn paint_hero(
         let primary = ConsoleButton::new(primary_title)
             .icon(primary_icon)
             .icon_fill(primary_fill)
-            // While the game starts nothing can be pressed: the button only reports.
-            .prominent(!matches!(state, GameState::Starting))
+            // While the game starts or its copy is removed nothing can be pressed: the button only
+            // reports, and while it is removed it is greyed out.
+            .prominent(!matches!(
+                state,
+                GameState::Starting | GameState::Uninstalling { .. }
+            ))
+            .enabled(!matches!(state, GameState::Uninstalling { .. }))
             .min_width(size::PLAY_MIN_WIDTH)
             .focused(focused(0))
             .show(ui);
@@ -1600,6 +1606,12 @@ pub fn primary_look(state: &GameState, language: Language) -> (&'static str, Ico
         GameState::Installing { .. } | GameState::Queued => {
             (language.text(Key::Cancel), Icon::X, false)
         }
+        // Removing a copy cannot be undone half way: the button only says what is going on.
+        GameState::Uninstalling { .. } => (
+            crate::screens::strings::Extra::Uninstalling.text(language),
+            Icon::TRASH,
+            false,
+        ),
         GameState::Starting => (language.text(Key::Starting), Icon::HOURGLASS, false),
         // The button names what a press does (it brings the game's window back); the state line
         // above the title already says "Playing".
@@ -1609,6 +1621,17 @@ pub fn primary_look(state: &GameState, language: Language) -> (&'static str, Ico
             false,
         ),
     }
+}
+
+/// What the bar next to the buttons shows while a game is busy.
+struct Running {
+    /// 0..=1 on the whole bar.
+    overall: f32,
+    /// The step's name, read out with the percentage.
+    label: &'static str,
+    /// The relinker runs for a while without reporting: the bar sweeps.
+    indeterminate: bool,
+    paused: bool,
 }
 
 /// To the right of the buttons: the unlock progress, the failure or the diagnosis.
@@ -1632,19 +1655,42 @@ fn action_row_status(
     let painter = ui.painter().clone();
     let mid = top + ACTION_ROW * 0.5;
     let room = status_width(x + 16.0, screen_right);
+    let relinking = |step: crate::app::pipeline::UnlockStep, fraction: f32| {
+        step == crate::app::pipeline::UnlockStep::Relink && fraction == 0.0
+    };
     let running = match state {
-        GameState::Installing { step, fraction } => Some((*step, *fraction, false)),
-        GameState::Preparing { progress, paused } => progress.map(|(s, f)| (s, f, *paused)),
+        GameState::Installing { step, fraction } => Some(Running {
+            overall: cx.model.overall(*step, *fraction),
+            label: language.text(step.title_key()),
+            indeterminate: relinking(*step, *fraction),
+            paused: false,
+        }),
+        GameState::Preparing { progress, paused } => progress.map(|(step, fraction)| Running {
+            overall: cx.model.overall(step, fraction),
+            label: language.text(step.title_key()),
+            indeterminate: relinking(step, fraction),
+            paused: *paused,
+        }),
+        // Removing a copy has no steps: one bar from 0 to 100.
+        GameState::Uninstalling { fraction } => Some(Running {
+            overall: *fraction,
+            label: crate::screens::strings::Extra::Uninstalling.text(language),
+            indeterminate: false,
+            paused: false,
+        }),
         _ => None,
     };
     match state {
         _ if running.is_some() => {
-            let (step, fraction, paused) = running.expect("checked");
-            let (step, fraction) = (&step, &fraction);
+            let Running {
+                overall,
+                label,
+                indeterminate,
+                paused,
+            } = running.expect("checked");
             // The state line above the title already names the step: the bar and its percentage
             // sit on the buttons' centre line.
             let left = x + 16.0;
-            let overall = cx.model.overall(*step, *fraction);
             let block = size::HERO_PROGRESS_WIDTH;
             let percent = format!("{}%", (overall * 100.0) as u32);
             text::paint_tabular(
@@ -1667,7 +1713,7 @@ fn action_row_status(
             };
             let spoken = format!(
                 "{} {percent}{}",
-                language.text(step.title_key()),
+                label,
                 note.as_deref()
                     .map(|n| format!(", {n}"))
                     .unwrap_or_default()
@@ -1695,12 +1741,12 @@ fn action_row_status(
                 vec2(block, size::PROGRESS_HEIGHT),
             );
             place(ui, bar, |ui| {
-                if *step == crate::app::pipeline::UnlockStep::Relink && *fraction == 0.0 {
+                if indeterminate {
                     IndeterminateLine::new(accent).width(block).show(ui);
                 } else {
                     ProgressLine::new(overall, if paused { white(0.55) } else { accent })
                         .width(block)
-                        .label(language.text(step.title_key()))
+                        .label(label)
                         .show(ui);
                 }
             });
