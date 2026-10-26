@@ -31,6 +31,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command as Process, Stdio};
 use std::sync::mpsc::{Receiver, channel};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub use anyplay_control::anyplay_api as api;
@@ -147,8 +148,33 @@ pub enum Line {
 /// The net service as a child process.
 pub struct NetProcess {
     child: Option<Child>,
-    stdin: Option<ChildStdin>,
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
     lines: Receiver<Line>,
+}
+
+/// A second way to write to the net service's input, for a thread that must not wait for a UI
+/// frame (the push-to-talk key while a game has the screen and the launcher is minimised and
+/// draws nothing). Lines of both ways never mix: each write holds the pipe until it is done.
+#[derive(Clone)]
+pub struct LineWriter(Arc<Mutex<Option<ChildStdin>>>);
+
+impl LineWriter {
+    /// Writes the lines; an error means the service is gone.
+    pub fn write(&self, lines: &[String]) -> std::io::Result<()> {
+        let mut stdin = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(stdin) = stdin.as_mut() else {
+            return Err(std::io::ErrorKind::BrokenPipe.into());
+        };
+        for line in lines {
+            stdin.write_all(line.as_bytes())?;
+        }
+        stdin.flush()
+    }
+
+    /// The push-to-talk key went down or up. Its answer is not waited for: the number 0 is one the launcher never gives to a command it waits on.
+    pub fn push_to_talk(&self, talking: bool) -> std::io::Result<()> {
+        self.write(&[control::command_line(0, &Command::PushToTalk { talking })])
+    }
 }
 
 /// The `X-AnyPlay-Client` value the net service sends for this launcher.
@@ -213,7 +239,7 @@ impl NetProcess {
             .stdout
             .take()
             .ok_or_else(|| std::io::Error::other("no output pipe"))?;
-        let stdin = child.stdin.take();
+        let stdin = Arc::new(Mutex::new(child.stdin.take()));
         let (tx, lines) = channel();
         std::thread::Builder::new()
             .name("net-read".into())
@@ -251,13 +277,12 @@ impl NetProcess {
 
     /// Writes command lines. An error means the service is gone; its end arrives as a line.
     pub fn write(&mut self, lines: &[String]) -> std::io::Result<()> {
-        let Some(stdin) = &mut self.stdin else {
-            return Err(std::io::ErrorKind::BrokenPipe.into());
-        };
-        for line in lines {
-            stdin.write_all(line.as_bytes())?;
-        }
-        stdin.flush()
+        self.writer().write(lines)
+    }
+
+    /// Another handle on the service's input.
+    pub fn writer(&self) -> LineWriter {
+        LineWriter(self.stdin.clone())
     }
 
     /// The lines that arrived since the last call.
@@ -271,7 +296,7 @@ impl Drop for NetProcess {
     /// still connected, once that game ends); a service that does not end in ten seconds while
     /// no game holds it is stopped.
     fn drop(&mut self) {
-        drop(self.stdin.take());
+        drop(self.stdin.lock().unwrap_or_else(|e| e.into_inner()).take());
         if let Some(mut child) = self.child.take() {
             let _ = std::thread::Builder::new()
                 .name("net-stop".into())

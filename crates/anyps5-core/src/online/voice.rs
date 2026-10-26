@@ -49,7 +49,7 @@ pub enum VoiceProvider {
 }
 
 /// What the player chose for party voice. Lasts across launches and parties.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VoicePrefs {
     pub enabled: bool,
     /// AnyPlay (the default) or Discord.
@@ -71,9 +71,37 @@ pub struct VoicePrefs {
     /// The push-to-talk key by name (an egui key name); `None` is [`DEFAULT_KEY`].
     #[serde(default)]
     pub key: Option<String>,
+    /// A pad button held to talk, by name (the launcher's list); `None` is no button.
+    #[serde(default)]
+    pub pad: Option<String>,
+    /// "Reduce Background Noise": the microphone goes through the noise suppressor. On unless
+    /// the player switched it off.
+    #[serde(default = "yes")]
+    pub noise_reduction: bool,
     /// Members whose volume or mute is not the default.
     #[serde(default)]
     pub peers: Vec<PeerPrefs>,
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl Default for VoicePrefs {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: VoiceProvider::default(),
+            mode: VoiceMode::default(),
+            mode_chosen: false,
+            input: None,
+            output: None,
+            key: None,
+            pad: None,
+            noise_reduction: true,
+            peers: Vec::new(),
+        }
+    }
 }
 
 impl VoicePrefs {
@@ -348,6 +376,10 @@ impl Online {
         let prefs = self.voice.prefs.clone();
         self.voice.in_call = self.call_state() != CallState::Idle;
         self.sync_voice_mode();
+        if !prefs.noise_reduction {
+            // A new service starts with the suppressor on.
+            self.send(Purpose::Voice, Command::VoiceNoise { enabled: false });
+        }
         for (kind, name) in [
             (DeviceKind::Input, prefs.input.clone()),
             (DeviceKind::Output, prefs.output.clone()),
@@ -458,6 +490,23 @@ impl Online {
         }
     }
 
+    /// The pad button held to talk, or none.
+    pub fn set_voice_pad(&mut self, pad: Option<String>) {
+        if self.voice.prefs.pad != pad {
+            self.voice.prefs.pad = pad;
+            self.voice.changed = true;
+        }
+    }
+
+    /// "Reduce Background Noise" on or off.
+    pub fn set_noise_reduction(&mut self, on: bool) {
+        if self.voice.prefs.noise_reduction != on {
+            self.voice.prefs.noise_reduction = on;
+            self.voice.changed = true;
+        }
+        self.send(Purpose::Voice, Command::VoiceNoise { enabled: on });
+    }
+
     /// Chooses a microphone or speakers by name; `None` is the system's default.
     pub fn set_voice_device(&mut self, kind: DeviceKind, name: Option<String>) {
         let (slot, shown) = match kind {
@@ -514,6 +563,15 @@ impl Online {
         }
     }
 
+    /// The push-to-talk watcher thread told the service itself (the launcher draws nothing while
+    /// a game has the screen): the state is taken over without a command, so the next frame
+    /// does not undo it.
+    pub fn adopt_talking(&mut self, talking: bool) {
+        self.voice.talking = talking
+            && self.voice.prefs.enabled
+            && self.voice.mode_in_use() == VoiceMode::PushToTalk;
+    }
+
     /// True while the service was told the key is down.
     pub fn is_talking(&self) -> bool {
         self.voice.talking
@@ -568,6 +626,26 @@ mod tests {
             },
             link: None,
         }
+    }
+
+    #[test]
+    fn noise_reduction_is_on_by_default_kept_and_sent() {
+        let mut online = Online::default();
+        assert!(online.voice.prefs().noise_reduction);
+        let old: VoicePrefs = serde_json::from_str("{\"enabled\":true}").unwrap();
+        assert!(old.noise_reduction, "a file from before has it on");
+        online.set_noise_reduction(false);
+        assert!(online.voice.take_changed());
+        assert!(!online.voice.prefs().noise_reduction);
+        let out = lines(&mut online);
+        assert!(out[0].contains("voice_noise") && out[0].contains("\"enabled\":false"));
+        // A new service starts with it on, so only the off choice goes out after a hello.
+        online.voice_hello();
+        assert!(lines(&mut online).iter().any(|l| l.contains("voice_noise")));
+        online.set_noise_reduction(true);
+        online.voice_hello();
+        let out = lines(&mut online);
+        assert_eq!(out.iter().filter(|l| l.contains("voice_noise")).count(), 1);
     }
 
     #[test]
@@ -726,6 +804,8 @@ mod tests {
                 muted: true,
             }],
             provider: VoiceProvider::default(),
+            pad: None,
+            noise_reduction: true,
         });
         assert!(!online.voice.take_changed());
         let id = online.send(
@@ -863,6 +943,8 @@ mod tests {
                 muted: false,
             }],
             provider: VoiceProvider::default(),
+            pad: Some("rb".into()),
+            noise_reduction: false,
         };
         let text = serde_json::to_string(&prefs).unwrap();
         assert_eq!(serde_json::from_str::<VoicePrefs>(&text).unwrap(), prefs);

@@ -127,6 +127,12 @@ pub enum Scene {
     HomeUpdateHolding,
     /// "Later" was pressed: no notice, a dot on the settings button.
     HomeUpdateLater,
+    /// Friends play games of the library and one shelf has the focus.
+    HomeShelves,
+    /// Recently played and new games on the shelves.
+    HomeNew,
+    /// The scan found a new game: the toast names it.
+    ToastNewGame,
 }
 
 impl Scene {
@@ -188,6 +194,9 @@ impl Scene {
             "home-update-focus" => Scene::HomeUpdateFocus,
             "home-update-holding" => Scene::HomeUpdateHolding,
             "home-update-later" => Scene::HomeUpdateLater,
+            "home-shelves" => Scene::HomeShelves,
+            "home-new" => Scene::HomeNew,
+            "toast-new-game" => Scene::ToastNewGame,
             _ => return None,
         })
     }
@@ -258,6 +267,8 @@ pub struct Options {
     /// `--fullscreen`: fill the screen the window opens on, as the launcher does.
     pub fullscreen: bool,
     pub turkish: bool,
+    /// `--de`: German (`--tr` wins when both are given).
+    pub german: bool,
     /// `--pad`: hint bars show gamepad buttons instead of keys.
     pub pad: bool,
     /// `--theme=aurora|sunset|cosmic`: the backdrop theme (the scenes `home-theme1` and `-2` set it too).
@@ -317,6 +328,7 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
         at: None,
         fullscreen: false,
         turkish: false,
+        german: false,
         pad: false,
         theme: None,
         bright: false,
@@ -370,6 +382,8 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
             options.fullscreen = true;
         } else if arg == "--tr" {
             options.turkish = true;
+        } else if arg == "--de" {
+            options.german = true;
         }
     }
     seen.then_some(options)
@@ -889,6 +903,42 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
         // The restart waits because a game runs.
         Scene::HomeUpdateHolding => m.running = Some(ids[at(1)].clone()),
         Scene::HomeUpdateLater => m.update_dismissed = Some("0.1.4".to_owned()),
+        Scene::HomeShelves => {
+            sign_in(m);
+            add_friends(m, 2, 0);
+            let playing: Vec<(String, String, String)> = [at(2), at(4)]
+                .iter()
+                .map(|&i| {
+                    let g = &m.games[i];
+                    (g.title_id.clone(), g.name.clone(), g.version.clone())
+                })
+                .collect();
+            for (friend, (title_id, title, version)) in
+                m.online.friends.friends.iter_mut().zip(playing)
+            {
+                friend.presence.activity = Some(anyps5_core::online::api::Activity {
+                    title_id,
+                    title,
+                    version,
+                    session: None,
+                });
+            }
+            m.focus = HomeFocus::Shelf(0);
+        }
+        Scene::HomeNew => {
+            let fresh: Vec<String> = [at(4), at(5)]
+                .iter()
+                .map(|&i| ids[i].as_str().to_owned())
+                .collect();
+            m.edit_prefs(|p| p.new_games = fresh);
+            m.focus = HomeFocus::Shelf(2);
+        }
+        Scene::ToastNewGame => {
+            m.announce_new_games(&[ids[at(4)].clone()]);
+            if let Some(toast) = m.toast.as_mut() {
+                toast.until = 1.0e6;
+            }
+        }
         Scene::Toast => {
             m.toast("Lanternfall · Ready to play", Icon::LOCK_OPEN);
             if let Some(toast) = m.toast.as_mut() {
@@ -1042,6 +1092,8 @@ impl PreviewApp {
         let prefs = Preferences {
             language: if options.turkish {
                 CoreLanguage::Turkish
+            } else if options.german {
+                CoreLanguage::German
             } else {
                 CoreLanguage::English
             },
@@ -1061,6 +1113,8 @@ impl PreviewApp {
         }
         shell.language = if options.turkish {
             crate::ui::i18n::Language::Turkish
+        } else if options.german {
+            crate::ui::i18n::Language::German
         } else {
             crate::ui::i18n::Language::English
         };

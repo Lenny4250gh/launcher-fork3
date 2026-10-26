@@ -704,10 +704,258 @@ impl Extra {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            Extra::Toolkit => "Toolkit",
+            Extra::UpdateCheck => "Nach Updates suchen",
+            Extra::UpdateCheckDetail => {
+                "Sucht beim Start des Launchers nach einem neueren Toolkit. Es wird nur die Versionsnummer abgefragt."
+            }
+            Extra::CheckNow => "Jetzt prüfen",
+            Extra::Checking => "Prüfe …",
+            Extra::UpToDate => "Aktuell",
+            Extra::UpdateAvailable => "Update verfügbar: %@",
+            Extra::CheckFailed => "Prüfung fehlgeschlagen",
+            Extra::LastChecked => "Zuletzt geprüft",
+            Extra::ToolkitMissing => "Nicht installiert",
+            Extra::ToolkitInstall => "Toolkit herunterladen",
+            Extra::ToolkitInstallUpdate => "Update installieren",
+            Extra::ToolkitChooseFolder => "Toolkit-Ordner verwenden",
+            Extra::CpuConversion => "CPU-Umwandlung",
+            Extra::CpuConversionDetail => {
+                "Wie Spiele für deinen Prozessor vorbereitet werden. Automatisch passt für die meisten PCs."
+            }
+            Extra::CpuAuto => "Automatisch",
+            Extra::CpuNone => "Keine",
+            Extra::CpuIntel => "Intel",
+            Extra::DiagnosisHostCpu => "Dieser CPU fehlt %@, das das Spiel braucht.",
+            Extra::DiagnosisNoUdmabuf => {
+                "Das Spiel kann /dev/udmabuf nicht öffnen. Füge deinen Benutzer der Gruppe kvm hinzu und melde dich neu an."
+            }
+            Extra::SaveReport => "Bericht speichern",
+            Extra::OpenOnlineLog => "Online-Protokoll öffnen",
+            Extra::SendReport => "Bericht senden",
+            Extra::ToolkitDownloading => "Toolkit wird heruntergeladen …",
+            Extra::FontsBuiltIn => "Integrierte Noto (Lateinisch, Thai, Arabisch)",
+            Extra::FontsCjkReady => "Japanisch, Chinesisch und Koreanisch enthalten",
+            Extra::FontsCjkMissing => "Japanisch, Chinesisch und Koreanisch nicht heruntergeladen",
+            Extra::FontsCjkDownloading => "Japanisch, Chinesisch und Koreanisch werden geladen",
+            Extra::FontsDownloadCjk => "Schriften für Japanisch, Chinesisch und Koreanisch laden",
+            Extra::ToolkitReady => "Toolkit %@ ist bereit",
+            Extra::ToolkitFailed => {
+                "Das Toolkit konnte nicht installiert werden. Prüfe deine Verbindung und versuche es erneut."
+            }
+            Extra::HomeMusic => "Musik auf dem Startbildschirm",
+            Extra::HomeMusicDetail => {
+                "Spielt ruhige Hintergrundmusik auf dem Startbildschirm. Sie blendet aus, solange ein Spiel läuft."
+            }
+            Extra::GameMusic => "Spielmusik",
+            Extra::GameMusicDetail => {
+                "Spielt statt der Startbildschirm-Musik die eigene Musik des gewählten Spiels."
+            }
+            Extra::Vibration => "Controller-Vibration",
+            Extra::VibrationDetail => {
+                "Ein kurzer, sanfter Impuls antwortet auf einen Tastendruck am Controller. Nie, solange ein Spiel im Vordergrund ist."
+            }
+            Extra::ControllerHelp => {
+                "Steam Input und DS4Windows können den Controller blockieren. Schalte die PlayStation-Unterstützung in Steam aus oder beende beide Apps, dann verbinde ihn neu."
+            }
+            Extra::PadStatus => "Controller verbunden",
+            Extra::PadStatusBattery => "Controller verbunden, Akku %@ Prozent",
+            Extra::PadStatusCharging => "Controller verbunden, Akku %@ Prozent, wird geladen",
+            Extra::VibrationLight => "Leicht",
+            Extra::VibrationMedium => "Mittel",
+            Extra::VibrationStrong => "Stark",
+            Extra::DiscordPresence => "Spiel auf Discord zeigen",
+            Extra::DiscordPresenceDetail => {
+                "Ist Discord geöffnet, zeigt dein Profil das Spiel und wie lange du spielst."
+            }
+            Extra::ShowHiddenTrophies => "Versteckte Trophäen immer zeigen",
+            Extra::ShowHiddenTrophiesDetail => {
+                "Versteckte Trophäen zeigen Name und Beschreibung schon vor dem Freischalten. Das siehst nur du."
+            }
+            Extra::TrophyShow => "Zeigen",
+            Extra::TrophiesNone => "Dieses Spiel hat keine Trophäen.",
+            Extra::EmptyLog => {
+                "Noch kein Protokoll. Spiele das Spiel einmal, dann erscheint es hier."
+            }
+            Extra::ToolkitFolderInvalid => {
+                "Dieser Ordner ist kein Toolkit. Wähle den Ordner mit Relinker und libs."
+            }
+            Extra::Layout => "Belegung",
+            Extra::LayoutLauncher => "Launcher",
+            Extra::LayoutMouse => "Maus und Tastatur",
+            Extra::LayoutGame => "Aus dem Spiel",
+            Extra::LayoutCustom => "Eigene",
+            Extra::LayoutGameDetail => "Eigene PC-Tasten des Spiels für %@ Tasten gefunden.",
+            Extra::LauncherReady => "%@ bereit",
+            Extra::LauncherToast => {
+                "Launcher %@ ist bereit. Er wird installiert, wenn du den Launcher schließt."
+            }
+            Extra::RestartNow => "Jetzt neu starten",
+            Extra::LauncherReadOnly => "%@ verfügbar, aber dieser Ordner ist schreibgeschützt",
+            Extra::LauncherUpdateFailed => {
+                "Das Launcher-Update konnte nicht installiert werden. Lade es stattdessen von GitHub herunter."
+            }
+            Extra::Links => "AnyPlay-Links mit diesem Launcher öffnen",
+            Extra::LinksDetail => {
+                "Links auf Websites und in Nachrichten öffnen sich hier, und Ordner erhalten den Eintrag \"Mit AnyPlay Launcher öffnen\"."
+            }
+            Extra::LinksDetailOther => {
+                "Eine andere Kopie des Launchers öffnet sie gerade. Schalte dies ein, um diese zu verwenden."
+            }
+            Extra::LinksFailed => {
+                "Die Link-Einstellungen konnten nicht geändert werden. Versuche es erneut."
+            }
+            Extra::LinkInvalid => "Das ist kein gültiger AnyPlay-Link.",
+            Extra::LinkNoGame => {
+                "%@ ist nicht in deiner Bibliothek. Prüfe den Spieleordner in den Einstellungen."
+            }
+            Extra::LinkNotADump => {
+                "Dieser Ordner ist kein Spiel-Dump. Öffne den Ordner mit eboot.bin."
+            }
+            Extra::LinkOutside => {
+                "%@ liegt außerhalb deines Spieleordners. Verschiebe es dorthin, um es hinzuzufügen."
+            }
+            Extra::LinkUnlock => "Wähle Freischalten, um %@ vorzubereiten.",
+            Extra::LinkUnlocked => "%@ ist schon freigeschaltet.",
+            Extra::ChannelTitle => "Kanal",
+            Extra::ChannelStable => "Stabil",
+            Extra::ChannelPinned => "Fest",
+            Extra::ChannelLocal => "Lokaler Build",
+            Extra::ChannelStableDetail => "Folgt dem neuesten Release.",
+            Extra::ChannelPinnedDetail => {
+                "Bleibt auf einem Release. Es wird kein Update angeboten."
+            }
+            Extra::ChannelLocalDetail => {
+                "Nutzt einen Ordner, den du gebaut oder gewählt hast. Es wird kein Update angeboten."
+            }
+            Extra::ChannelEngine => "AnyPlay-Engine",
+            Extra::ChannelEngineDetail => {
+                "Der Nightly-Build mit Online-Spiel. Ändert sich oft und kann Spiele beschädigen."
+            }
+            Extra::EngineBuilt => "Gebaut am %@",
+            Extra::EngineAvailable => "Ein neuer Engine-Build ist verfügbar",
+            Extra::EngineNoBuild => {
+                "Für dieses System gibt es noch keinen Engine-Build. Es wurde nichts installiert. Wähle einen anderen Kanal."
+            }
+            Extra::EngineUnverified => {
+                "Der Engine-Download konnte nicht geprüft werden. Es wurde nichts installiert. Versuche es später erneut."
+            }
+            Extra::PinnedVersion => "Version",
+            Extra::WhatsNew => "Neuigkeiten",
+            Extra::LastCheckedOn => "Zuletzt geprüft: %@",
+            Extra::FitNewer => {
+                "Neuer, als dieser Launcher getestet wurde. Es sollte trotzdem funktionieren."
+            }
+            Extra::FitOlder => "Ein älteres Toolkit: Einige Funktionen sind ausgeschaltet.",
+            Extra::ToolkitAvailable => "Toolkit %@ ist verfügbar",
+            Extra::NeedsToolkit => "Braucht Toolkit %@",
+            Extra::NeedsNewerThan => "Braucht einen Build neuer als %@",
+            Extra::NotesHeader => "%@, veröffentlicht am %@",
+            Extra::ChangesCount => "%@ Änderungen",
+            Extra::ChangeOne => "1 Änderung",
+            Extra::NotesHighlights => "Highlights",
+            Extra::NotesOther => "Weitere Bereiche",
+            Extra::NotesEverything => "Alles",
+            Extra::NotesLoading => "Notizen werden geladen …",
+            Extra::NotesUnavailable => "Die Notizen konnten nicht geladen werden.",
+            Extra::NotesOpenRelease => "Auf GitHub öffnen",
+            Extra::UnlockedWith => "Freigeschaltet mit %@. Installiert ist %@.",
+            Extra::ConversionChanged => "Dieses Update ändert, wie Spiele umgewandelt werden.",
+            Extra::UnlockOptional => "Erneutes Freischalten ist optional.",
+            Extra::UnlockEarlierBuild => "Mit einem früheren Build dieses Toolkits freigeschaltet.",
+            Extra::RecTitle => "Empfohlen für dieses Spiel",
+            Extra::RecNeeded => "Nötig zum Start",
+            Extra::RecWorthALook => "Einen Blick wert",
+            Extra::RecApply => "Anwenden",
+            Extra::RecDefault => "Standard",
+            Extra::RecOn => "An",
+            Extra::RecOff => "Aus",
+            Extra::RecPlayGo => "Fehlende PlayGo-Daten",
+            Extra::RecPlayGoInstalled => "Als installiert melden",
+            Extra::RecPlayGoAbsent => "Als fehlend melden",
+            Extra::RecImageBase => "Image-Basis",
+            Extra::RecModuleFolder => "Modulordner",
+            Extra::RecExecutable => "Programmdatei",
+            Extra::RecTextureCache => "Textur-Cache",
+            Extra::RecShaderCache => "Shader-Cache",
+            Extra::RecUnlockHint => "Schalte das Spiel nach dem Anwenden erneut frei.",
+            Extra::RecApplied => "Angewendet",
+            Extra::RecAppliedUnlock => {
+                "Gespeichert. Schalte das Spiel erneut frei, um es zu nutzen."
+            }
+            Extra::Played => "Gespielt",
+            Extra::PlayedUnderMinute => "Unter 1 Min.",
+            Extra::PlayedMinutes => "%@ Min.",
+            Extra::PlayedHours => "%@ Std.",
+            Extra::PlayedHoursMinutes => "%@ Std. %@ Min.",
+            Extra::SavesTitle => "Spielstände",
+            Extra::SavesNone => "Noch keine Sicherungen",
+            Extra::SavesOne => "1 Sicherung",
+            Extra::SavesCount => "%@ Sicherungen",
+            Extra::SavesBackUp => "Jetzt sichern",
+            Extra::SavesNothing => "Noch keine Spielstände zum Sichern",
+            Extra::SavesEmpty => {
+                "Noch keine Sicherungen. Jetzt sichern bewahrt eine Kopie deiner Spielstände und Trophäen auf."
+            }
+            Extra::SavesCaption => "Sicherungen",
+            Extra::GroupScreen => "Bildschirm",
+            Extra::GroupPlay => "Spielen",
+            Extra::GroupMaintenance => "Wartung",
+            Extra::SavesKept => {
+                "Bis zu %@ Sicherungen werden behalten. Sicherungen nach dem Spielen werden zuerst entfernt."
+            }
+            Extra::SavesReasonManual => "Manuell",
+            Extra::SavesReasonUnlock => "Vor erneutem Freischalten",
+            Extra::SavesReasonRestore => "Vor einer Wiederherstellung",
+            Extra::SavesReasonUninstall => "Vor dem Deinstallieren",
+            Extra::SavesReasonPlayed => "Nach dem Spielen",
+            Extra::SavesBackedUp => "Spielstände gesichert",
+            Extra::SavesRestore => "Wiederherstellen",
+            Extra::SavesRestoreAsk => {
+                "Die aktuellen Spielstände und Trophäen des Spiels werden durch die Sicherung vom %@ ersetzt. Die aktuellen werden vorher gesichert, du kannst es also rückgängig machen."
+            }
+            Extra::SavesRestored => "Spielstände wiederhergestellt",
+            Extra::SavesRunning => "Beende das Spiel, um eine Sicherung wiederherzustellen.",
+            Extra::SavesFailed => {
+                "Die Spielstände konnten nicht gesichert werden. Prüfe den freien Speicherplatz und versuche es erneut."
+            }
+            Extra::SavesRestoreFailed => {
+                "Die Sicherung konnte nicht wiederhergestellt werden. Deine Spielstände wurden nicht geändert."
+            }
+            Extra::SavesCorrupt => {
+                "Diese Sicherung ist beschädigt. Deine Spielstände wurden nicht geändert. Wähle eine andere Sicherung."
+            }
+            Extra::UninstallTitle => "Diese Installation entfernen?",
+            Extra::SavesRestoreTitle => "Diese Sicherung wiederherstellen?",
+            Extra::UninstallBacksUp => "Deine Spielstände und Trophäen werden vorher gesichert.",
+            Extra::UninstallNeedsBackup => {
+                "Die Spielstände konnten nicht gesichert werden, deshalb wurde das Spiel nicht entfernt. Prüfe den freien Speicherplatz und versuche es erneut."
+            }
+            Extra::SavesRestoreIncomplete => {
+                "Die Wiederherstellung wurde nicht abgeschlossen. Die früheren Spielstände sind in der neuesten Sicherung, Vor einer Wiederherstellung."
+            }
+            Extra::SavesRestoreIncompleteNone => {
+                "Die Wiederherstellung wurde nicht abgeschlossen. Versuche es erneut."
+            }
+            Extra::SavesBusy => {
+                "Die Spielstände werden noch bearbeitet. Versuche es gleich erneut."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

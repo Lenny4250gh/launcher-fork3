@@ -21,8 +21,16 @@ pub enum Request {
 pub const LAUNCHER_NAME: &str = "AnyPlay Launcher";
 
 /// The program Steam starts for the launcher. A Linux AppImage runs from a temporary mount, so
-/// Steam gets the AppImage file instead.
+/// Steam gets the AppImage file instead. On a Mac the program is the executable inside the app
+/// bundle (`AnyPlay Launcher.app/Contents/MacOS/anyplay-launcher`): Steam starts it directly, so
+/// the launch options of a game entry arrive as arguments, which `open` on the bare `.app` would
+/// not pass. A copy that macOS runs from a temporary translocated place is refused: the entry
+/// would point at a path that is gone at the next start.
 pub fn launcher_exe() -> Option<PathBuf> {
+    if cfg!(target_os = "macos") {
+        let exe = std::env::current_exe().ok()?;
+        return mac_exe_is_stable(&exe).then_some(exe);
+    }
     if cfg!(target_os = "linux")
         && let Some(appimage) = std::env::var_os("APPIMAGE").map(PathBuf::from)
         && appimage.is_file()
@@ -30,6 +38,12 @@ pub fn launcher_exe() -> Option<PathBuf> {
         return Some(appimage);
     }
     std::env::current_exe().ok()
+}
+
+/// Whether a macOS executable path is one Steam can start again later.
+fn mac_exe_is_stable(exe: &std::path::Path) -> bool {
+    !exe.components()
+        .any(|part| part.as_os_str() == "AppTranslocation")
 }
 
 /// The entry of the launcher itself.
@@ -147,6 +161,18 @@ mod tests {
         let list = game_shortcuts(&exe, &games);
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "Fine");
+    }
+
+    #[test]
+    fn a_translocated_mac_copy_is_not_a_place_steam_can_start_from() {
+        let stable = std::path::Path::new(
+            "/Applications/AnyPlay Launcher.app/Contents/MacOS/anyplay-launcher",
+        );
+        let moved = std::path::Path::new(
+            "/private/var/folders/x/AppTranslocation/ABC/d/AnyPlay Launcher.app/Contents/MacOS/anyplay-launcher",
+        );
+        assert!(mac_exe_is_stable(stable));
+        assert!(!mac_exe_is_stable(moved));
     }
 
     #[test]

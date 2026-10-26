@@ -48,6 +48,8 @@ use anyps5_core::unlock;
 use egui::{Context, Ui, ViewportCommand};
 
 use crate::app::clock;
+use crate::app::library_panels::{LibraryExtras, bar_data, compat_line};
+use crate::app::library_view::{Filter, compat_of};
 use crate::app::links;
 use crate::app::model::UpdateRequest;
 use crate::app::model::{Effect, GameState, Model};
@@ -147,6 +149,8 @@ pub struct PanelHost {
     advanced: AdvancedPanel,
     trophies: TrophyListPanel,
     library: LibraryGrid,
+    /// Search, storage and the removal of an unlocked copy, around the library page.
+    library_extras: LibraryExtras,
     /// The Captures area (`Overlay::Captures`) and the files and pictures it shows.
     captures: crate::screens::captures::CapturesScreen,
     capture_service: crate::app::captures::CaptureService,
@@ -177,6 +181,10 @@ pub struct PanelHost {
     whats_new_tag: String,
     /// The settings category to open on when coming back from the notes.
     settings_return: Option<usize>,
+    /// The notes panel shows the showcase of the big release, not a list of changes.
+    whats_new_showcase: bool,
+    /// The showcase opened by itself after an update: closing it leaves for the home screen.
+    welcome_standalone: bool,
     /// How many clips the folder held when it was last counted, and when.
     clips_counted: Option<(std::time::Instant, usize)>,
     /// What the catalogue recommends: the shipped one at first, a newer one once fetched.
@@ -246,6 +254,7 @@ impl PanelHost {
             advanced: AdvancedPanel::default(),
             trophies: TrophyListPanel::default(),
             library: LibraryGrid::default(),
+            library_extras: LibraryExtras::new(ctx),
             captures: crate::screens::captures::CapturesScreen::default(),
             capture_service: crate::app::captures::CaptureService::new(ctx),
             log: LogView::default(),
@@ -265,6 +274,8 @@ impl PanelHost {
             required: crate::screens::required::RequiredScreen::default(),
             whats_new_tag: String::new(),
             settings_return: None,
+            whats_new_showcase: false,
+            welcome_standalone: false,
             clips_counted: None,
             catalog: Catalog::embedded(),
             catalog_asked: simulated,
@@ -390,6 +401,7 @@ impl PanelHost {
             clips: crate::screens::settings::ClipsEnv {
                 count: clips_count,
                 capturing: self.settings.clips_capturing(),
+                broadcast_key: cx.model.broadcast_key_set,
             },
             location: cx.model.location_env(),
             windows_rows: cfg!(windows),
@@ -441,6 +453,7 @@ impl PanelHost {
                 let _ = std::fs::create_dir_all(&folder);
                 open_folder(&folder);
             }
+            SettingsAction::BroadcastKey(key) => super::broadcast::set_key(model, key.as_deref()),
             SettingsAction::CheckForUpdates => self.check_toolkit(model),
             SettingsAction::InstallToolkit if model.prefs.toolkit_engine => {
                 self.install_engine(model);
@@ -526,6 +539,8 @@ impl PanelHost {
             }
             SettingsAction::OpenWhatsNew(tag) => {
                 self.launcher_published = None;
+                self.whats_new_showcase = false;
+                self.welcome_standalone = false;
                 self.toolkit.load_notes(
                     &model.paths,
                     &model.prefs.toolkit_repository,
@@ -539,6 +554,13 @@ impl PanelHost {
             SettingsAction::CancelRestart => self.launcher.cancel_hold(),
             SettingsAction::CheckLauncherUpdate => self.launcher.check_now(),
             SettingsAction::OpenLauncherNotes => self.open_launcher_notes(model),
+            SettingsAction::ShowWelcome => {
+                self.show_welcome(
+                    model,
+                    Category::ALL.iter().position(|c| *c == Category::About),
+                    false,
+                );
+            }
             SettingsAction::SetLinks(on) => self.set_links(model, on),
             SettingsAction::AddToSteam => self.add_to_steam(model, steam::Request::Launcher),
             SettingsAction::AddGamesToSteam => {
@@ -860,6 +882,7 @@ impl PanelHost {
             language: cx.model.language(),
             accent: cx.shell.accent_color(),
             online: cx.model.online.is_signed_in(),
+            broadcast: cfg!(windows).then_some(cx.model.broadcast),
         };
         for action in self.in_game.show(cx.shell, cx.ctx, &events, &data) {
             let model = &mut *cx.model;
@@ -867,6 +890,7 @@ impl PanelHost {
                 InGameAction::Resume | InGameAction::Dismiss => model.return_to_game(),
                 InGameAction::Trophies => model.open(Overlay::Trophies),
                 InGameAction::Captures => model.open(Overlay::Captures),
+                InGameAction::Broadcast => model.effects.push(Effect::ToggleBroadcast),
                 InGameAction::GameSettings => model.open(Overlay::GameSettings),
                 InGameAction::Friends => model.open(Overlay::Friends),
                 InGameAction::AskClose => model.switch_overlay(Overlay::ConfirmCloseGame),
@@ -1395,7 +1419,8 @@ impl PanelHost {
         } else if !wanted && self.whats_new.is_active() {
             self.whats_new.close();
         }
-        let launcher = self.launcher_published.is_some();
+        let showcase = self.whats_new_showcase;
+        let launcher = self.launcher_published.is_some() || showcase;
         let view = match (&self.launcher_published, &self.toolkit.notes) {
             (Some(published), _) => NotesView::Ready(published),
             (None, NotesState::Ready(published)) => NotesView::Ready(published),
@@ -1403,6 +1428,7 @@ impl PanelHost {
             (None, NotesState::Idle | NotesState::Loading) => NotesView::Loading,
         };
         let tag = match &self.launcher_published {
+            _ if showcase => crate::screens::welcome::RELEASE,
             Some(published) => published.tag.as_str(),
             None => self.whats_new_tag.as_str(),
         };
@@ -1411,10 +1437,16 @@ impl PanelHost {
             view,
             language,
             launcher,
+            showcase,
+            accent: cx.shell.accent_color(),
         };
         let actions = self.whats_new.show(cx.shell, cx.ctx, &events, &data);
         for action in actions {
             match action {
+                WhatsNewAction::Close if showcase && self.welcome_standalone => {
+                    self.welcome_standalone = false;
+                    cx.model.close_overlay();
+                }
                 WhatsNewAction::Close => cx.model.switch_overlay(Overlay::Settings),
                 WhatsNewAction::OpenUrl(url) => open_url(&url),
             }
@@ -1510,19 +1542,40 @@ impl PanelHost {
     }
 
     fn library_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
+        let order = cx.model.library_order();
         if wanted && !self.library.is_active() {
-            self.library.open(cx.model.selected);
+            let at = order
+                .iter()
+                .position(|&i| i == cx.model.selected)
+                .unwrap_or(0);
+            self.library.open(at);
+            // What players found, for every game on the page (once per sign-in each).
+            let asks: Vec<(String, String)> = cx
+                .model
+                .games
+                .iter()
+                .map(|g| (g.title_id.clone(), g.version.clone()))
+                .collect();
+            for (title_id, version) in asks {
+                cx.model.online.request_runs(&title_id, &version, false);
+            }
+            if cx.model.library_sort() == crate::app::library_view::Sort::Size {
+                cx.model.measure_all();
+            }
         } else if !wanted && self.library.is_active() {
-            self.library.close();
+            if cx.model.overlay.is_some_and(Overlay::is_side_panel) {
+                self.library.dismiss();
+            } else {
+                self.library.close();
+            }
         }
         let events = self.take_events(wanted);
         let language = cx.model.language();
         let accent = cx.shell.accent_color();
-        let entries: Vec<LibraryEntry> = cx
-            .model
-            .games
+        let entries: Vec<LibraryEntry> = order
             .iter()
-            .map(|game| {
+            .map(|&i| {
+                let game = &cx.model.games[i];
                 let state = cx.model.state_of(game);
                 let label = state_label(&state, language);
                 let icon = game.icon.as_ref().and_then(|path| {
@@ -1541,6 +1594,7 @@ impl PanelHost {
                         tint: label.tint,
                         quiet: crate::screens::is_plain_ready(&state),
                     },
+                    compat: compat_line(&compat_of(cx.model, game), language),
                 }
             })
             .collect();
@@ -1550,12 +1604,13 @@ impl PanelHost {
             accent,
             folder_set: cx.model.prefs.games_folder.is_some(),
             scanning: cx.model.scanning,
+            bar: bar_data(cx.model),
         };
         for action in self.library.show(cx.shell, cx.ctx, &events, &data) {
             let model = &mut *cx.model;
             match action {
                 LibraryAction::Pick(index) => {
-                    if index < model.games.len() {
+                    if let Some(&index) = order.get(index) {
                         model.selected = index;
                         model.focus = HomeFocus::Tiles;
                         model.measure_selected();
@@ -1563,6 +1618,20 @@ impl PanelHost {
                     model.dismiss_overlay();
                 }
                 LibraryAction::Close => model.dismiss_overlay(),
+                LibraryAction::NextSort => {
+                    let next = model.library_sort().next();
+                    model.set_library_sort(next);
+                }
+                LibraryAction::NextFilter => {
+                    let next = model.library_filter().next();
+                    model.set_library_filter(next);
+                }
+                LibraryAction::OpenSearch => model.switch_overlay(Overlay::LibrarySearch),
+                LibraryAction::OpenStorage => model.switch_overlay(Overlay::Storage),
+                LibraryAction::ClearFilters => {
+                    model.set_library_filter(Filter::All);
+                    model.library_query.clear();
+                }
                 LibraryAction::ChooseFolder => {
                     model.dismiss_overlay();
                     model.request_folder_dialog();
@@ -1958,12 +2027,25 @@ impl PanelHost {
         }
     }
 
+    /// The showcase of the big release in the "What's New" panel. From About it returns to About;
+    /// shown on its own after an update (`settings_return` is `None`) it closes to the home screen.
+    fn show_welcome(&mut self, model: &mut Model, return_to: Option<usize>, standalone: bool) {
+        self.launcher_published = None;
+        self.whats_new_showcase = true;
+        self.welcome_standalone = standalone;
+        self.settings_return = return_to;
+        self.whats_new.open_showcase();
+        model.switch_overlay(Overlay::WhatsNew);
+    }
+
     /// The notes of the staged update in the "What's New" panel.
     fn open_launcher_notes(&mut self, model: &mut Model) {
         let (Some(version), Some(notes)) = (self.launcher.staged_version(), self.launcher.notes())
         else {
             return;
         };
+        self.whats_new_showcase = false;
+        self.welcome_standalone = false;
         self.launcher_published = Some(anyps5_core::releases::Published {
             tag: version.to_owned(),
             date: String::new(),
@@ -2018,6 +2100,18 @@ impl OverlayHost for PanelHost {
             Overlay::Advanced => self.advanced_ui(cx, wanted),
             Overlay::Trophies => self.trophies_ui(cx, wanted),
             Overlay::Library => self.library_ui(cx, wanted),
+            Overlay::LibrarySearch => {
+                let events = self.take_events(wanted);
+                self.library_extras.search_ui(cx, wanted, &events);
+            }
+            Overlay::Storage => {
+                let events = self.take_events(wanted);
+                self.library_extras.storage_ui(cx, wanted, &events);
+            }
+            Overlay::ConfirmRemoveCopy => {
+                let events = self.take_events(wanted);
+                self.library_extras.remove_ui(cx, wanted, &events);
+            }
             Overlay::Captures => self.captures_ui(cx, wanted),
             Overlay::Log => self.log_ui(cx, wanted),
             Overlay::Recommended => self.recommended_ui(cx, wanted),
@@ -2067,6 +2161,7 @@ impl OverlayHost for PanelHost {
             self.prepare_upstream(cx.model, &game);
             cx.model.switch_overlay(Overlay::Log);
         }
+        self.library_extras.poll(cx.model);
         self.poll_toolkit(cx.model);
         let paths = cx.model.paths.clone();
         self.launcher.tick(&paths, cx.model.prefs.check_for_updates);
@@ -2074,6 +2169,18 @@ impl OverlayHost for PanelHost {
         // A retired version meets "Update required" once, as soon as nothing else is going on.
         if cx.model.required_screen_due() {
             cx.model.show_required();
+        }
+        // The showcase of a big release meets the player once, when nothing else is going on.
+        if cx.model.onboarded()
+            && cx.model.overlay.is_none()
+            && cx.model.running.is_none()
+            && cx.model.starting.is_none()
+            && cx.model.prefs.whats_new_seen != anyps5_core::settings::WHATS_NEW_RELEASE
+        {
+            cx.model.edit_prefs(|p| {
+                p.whats_new_seen = anyps5_core::settings::WHATS_NEW_RELEASE.to_owned()
+            });
+            self.show_welcome(cx.model, None, true);
         }
         // No toolkit on this PC: fetch it now, already during the onboarding, so the first unlock
         // needs no visit to the settings. The result shows as a toast (see `poll_toolkit`).
@@ -2550,11 +2657,16 @@ mod tests {
         let mut rig = Rig::new("library");
         rig.app.model.open(Overlay::Library);
         rig.frames(3);
-        let before = rig.app.model.selected;
+        // The grid walks the games in the order of its page.
+        let order = rig.app.model.library_order();
+        let at = order
+            .iter()
+            .position(|&i| i == rig.app.model.selected)
+            .unwrap();
         rig.press(Command::Right);
         rig.press(Command::Select);
         assert_eq!(rig.app.model.overlay, None);
-        assert_eq!(rig.app.model.selected, before + 1);
+        assert_eq!(rig.app.model.selected, order[at + 1]);
     }
 
     #[test]

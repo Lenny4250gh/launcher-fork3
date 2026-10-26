@@ -137,6 +137,8 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
         OnlineAction::OpenDiscord(link) => crate::screens::calls::open_discord_link(&link),
         OnlineAction::VoiceMode(mode) => online.set_voice_mode(mode),
         OnlineAction::VoiceKey(key) => online.set_voice_key(Some(key)),
+        OnlineAction::VoicePad(pad) => online.set_voice_pad(pad),
+        OnlineAction::VoiceNoise(on) => online.set_noise_reduction(on),
         OnlineAction::VoiceDevice(kind, name) => online.set_voice_device(kind, name),
         OnlineAction::RefreshVoiceDevices => online.request_voice_devices(),
         OnlineAction::PeerVolume(account, percent) => online.set_peer_volume(account, percent),

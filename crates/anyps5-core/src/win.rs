@@ -24,8 +24,8 @@ use windows::Win32::System::Threading::{
     THREAD_MODE_BACKGROUND_BEGIN,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, SendInput,
-    VIRTUAL_KEY,
+    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    KEYEVENTF_SCANCODE, SendInput, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AllowSetForegroundWindow, BringWindowToTop, EnumWindows, GW_OWNER, GWL_EXSTYLE,
@@ -332,6 +332,13 @@ pub fn activate_window(handle: isize) -> bool {
         }
         GetForegroundWindow() == target
     }
+}
+
+/// Whether the key with this virtual-key code is down right now, whichever window is in front.
+/// Asks about one key only; nothing is hooked and nothing else is read.
+pub fn key_down(code: u32) -> bool {
+    // SAFETY: a plain call; the high bit of the result is "down".
+    unsafe { GetAsyncKeyState(code as i32) < 0 }
 }
 
 /// The window that has the foreground (0: none) and the process that owns it.

@@ -517,7 +517,9 @@ mod tests {
                 let s = diagnosis_summary(&d, language);
                 let at = s.find(&long).expect("the argument is in the sentence");
                 assert!(
-                    s[..at].contains("Options > Log") || s[..at].contains("Seçenekler > Günlük"),
+                    s[..at].contains("Options > Log")
+                        || s[..at].contains("Seçenekler > Günlük")
+                        || s[..at].contains("Optionen > Protokoll"),
                     "{d:?} {language:?}: the step must come first: {s}"
                 );
             }
@@ -549,6 +551,12 @@ mod tests {
             "kapat",
             "kullanıcını",
             "rapor",
+            "erneut",
+            "Aktualisiere",
+            "Erneutes",
+            "Schließe",
+            "Füge deinen",
+            "Bericht",
         ];
         for language in Language::ALL {
             for d in &all {
