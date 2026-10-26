@@ -172,10 +172,80 @@ impl PhoneText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            PhoneText::Title => "Telefon als Controller",
+            PhoneText::SwitchDetail => {
+                "Nutze dein Telefon als Controller. Nur Telefone in deinem Heimnetz können sich verbinden, und jedes muss zuerst gekoppelt werden."
+            }
+            PhoneText::Status => "Status",
+            PhoneText::Waiting => "Warten auf ein Telefon",
+            PhoneText::ConnectedTo => "Verbunden mit %@",
+            PhoneText::ConnectingTo => "Verbindung mit %@ wird aufgebaut",
+            PhoneText::StartFailed => {
+                "Start nicht möglich. Möglicherweise nutzt ein anderes Programm den Netzwerkport."
+            }
+            PhoneText::DelayValue => "%d ms",
+            PhoneText::Address => "Adresse",
+            PhoneText::AddressNote => {
+                "Findet die App diesen PC nicht von selbst, gib diese Adresse dort ein."
+            }
+            PhoneText::PortBusy => {
+                "Port 47700 ist belegt, daher findet die App diesen PC erst über seine Adresse, wenn er frei ist."
+            }
+            PhoneText::NotAnnounced => {
+                "Dieser PC konnte sich im Netzwerk nicht bekannt machen. Gib die Adresse in der App ein."
+            }
+            PhoneText::PairAsk => "%@ koppeln?",
+            PhoneText::Code => "Code",
+            PhoneText::CodeNote => "Koppeln nur, wenn dein Telefon denselben Code zeigt.",
+            PhoneText::PairAllow => "Telefon koppeln",
+            PhoneText::PairDeny => "Ablehnen",
+            PhoneText::Paired => "Gekoppelte Telefone",
+            PhoneText::PairedNone => {
+                "Noch kein Telefon gekoppelt. Öffne die Telefon-App und wähle diesen PC."
+            }
+            PhoneText::Remove => "%@ entfernen",
+            PhoneText::PairedOn => "Gekoppelt am %@",
+            PhoneText::Controller => "Virtueller Controller",
+            PhoneText::ControllerReady => "Bereit",
+            PhoneText::ControllerMissing => "Nicht installiert",
+            PhoneText::ControllerNoAccess => "Kein Zugriff",
+            PhoneText::ControllerUnsupported => "Nicht verfügbar",
+            PhoneText::ViGemNote => {
+                "Spiele erkennen dein Telefon über einen kleinen Treiber, ViGEmBus, als Controller. Der Launcher installiert ihn nie für dich: Lade ihn von der offiziellen Seite herunter und installiere ihn selbst. Der Autor hat das Projekt eingestellt, es funktioniert aber weiterhin unter aktuellem Windows."
+            }
+            PhoneText::ViGemOpen => "ViGEmBus-Downloadseite öffnen",
+            PhoneText::UinputNote => {
+                "Spiele erkennen dein Telefon über uinput als Controller. Der Launcher kann es noch nicht öffnen. Lade das Modul mit modprobe uinput und gib deinem Benutzer Schreibzugriff auf /dev/uinput."
+            }
+            PhoneText::UinputRule => {
+                "Eine udev-Regel erledigt das dauerhaft: KERNEL==\"uinput\", GROUP=\"input\", MODE=\"0660\". Füge dich der Gruppe input hinzu und melde dich dann neu an."
+            }
+            PhoneText::UinputOpen => "Anleitung öffnen",
+            PhoneText::ToastPair => {
+                "%@ möchte sich koppeln. Öffne Einstellungen, Telefon als Controller."
+            }
+            PhoneText::ToastConnected => "%@ verbunden",
+            PhoneText::ToastFull => {
+                "Acht Telefone sind gekoppelt. Entferne eines, bevor du ein weiteres koppelst."
+            }
+            PhoneText::ToastRemoved => "%@ entfernt",
+            PhoneText::BarLabel => "Telefon verbunden: %@",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

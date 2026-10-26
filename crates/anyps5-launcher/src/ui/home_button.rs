@@ -97,6 +97,11 @@ impl HomeButton {
         self.running.load(Ordering::Relaxed)
     }
 
+    /// The game's window as the UI last said (0: unknown).
+    pub fn game_window(&self) -> isize {
+        self.window.load(Ordering::Relaxed)
+    }
+
     /// Whether the preference is on.
     pub fn enabled(&self) -> bool {
         !self.disabled.load(Ordering::Relaxed)
@@ -170,12 +175,12 @@ impl HomeButton {
     }
 
     #[cfg(windows)]
-    fn launcher_in_front(&self) -> bool {
+    pub fn launcher_in_front(&self) -> bool {
         anyps5_core::win::foreground().1 == std::process::id()
     }
 
     #[cfg(not(windows))]
-    fn launcher_in_front(&self) -> bool {
+    pub fn launcher_in_front(&self) -> bool {
         self.focused.load(Ordering::Relaxed)
     }
 
@@ -294,10 +299,12 @@ mod xinput {
             // Nothing to switch without a game: look a few times a second at most.
             if !home.running.load(Ordering::Relaxed) {
                 before = [0; 4];
+                crate::ui::talk::shared().xinput(None);
                 std::thread::sleep(Duration::from_millis(250));
                 continue;
             }
             let mut any = false;
+            let mut talk = None;
             for (user, before) in before.iter_mut().enumerate() {
                 let mut state = State::default();
                 // SAFETY: a valid out pointer for one `XINPUT_STATE`.
@@ -307,11 +314,13 @@ mod xinput {
                     continue;
                 }
                 any = true;
+                talk = talk.or(Some((state.buttons, state.triggers)));
                 if pressed(*before, state.buttons) {
                     home.press();
                 }
                 *before = state.buttons;
             }
+            crate::ui::talk::shared().xinput(talk);
             std::thread::sleep(Duration::from_millis(if any { 16 } else { 500 }));
         }
     }

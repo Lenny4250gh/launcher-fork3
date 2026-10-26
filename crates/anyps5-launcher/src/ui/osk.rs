@@ -258,6 +258,16 @@ fn words(language: Language) -> Words {
             empty: "Type with the keys",
             hint: "Select types a key. Options deletes. Back cancels.",
         },
+        Language::German => Words {
+            shift: "Umschalt",
+            letters: "abc",
+            symbols: "123",
+            space: "Leerzeichen",
+            delete: "Löschen",
+            done: "Fertig",
+            empty: "Mit den Tasten tippen",
+            hint: "Auswählen tippt eine Taste. Optionen löscht. Zurück bricht ab.",
+        },
         Language::Turkish => Words {
             shift: "Shift",
             letters: "abc",

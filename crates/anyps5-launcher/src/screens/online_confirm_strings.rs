@@ -82,10 +82,47 @@ impl ConfirmText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            ConfirmText::BlockTitle => "%@ blockieren?",
+            ConfirmText::BlockNote => {
+                "%@ kann dir keine Nachrichten oder Freundschaftsanfragen mehr senden. Du kannst die Blockierung in den Einstellungen aufheben."
+            }
+            ConfirmText::BlockRequestNote => {
+                "%@ kann dir keine Nachrichten oder Freundschaftsanfragen mehr senden, und diese Anfrage wird entfernt. Du kannst die Blockierung in den Einstellungen aufheben."
+            }
+            ConfirmText::RemoveFriendTitle => "%@ als Freund entfernen?",
+            ConfirmText::RemoveFriendNote => {
+                "Ihr seht den Status des anderen nicht mehr. Später kann jeder von euch eine neue Anfrage senden."
+            }
+            ConfirmText::UnsendTitle => "Diese Nachricht zurückziehen?",
+            ConfirmText::UnsendNote => {
+                "Sie wird für alle in der Unterhaltung entfernt. Das lässt sich nicht rückgängig machen."
+            }
+            ConfirmText::LeavePartyTitle => "Die Party verlassen?",
+            ConfirmText::LeavePartyNote => "Um zurückzukehren, brauchst du eine neue Einladung.",
+            ConfirmText::RemoveMemberTitle => "%@ aus der Party entfernen?",
+            ConfirmText::RemoveMemberNote => {
+                "Zum Zurückkehren braucht die Person eine neue Einladung."
+            }
+            ConfirmText::LeaveConversationTitle => "Diese Unterhaltung verlassen?",
+            ConfirmText::LeaveConversationNote => {
+                "Du bekommst ihre Nachrichten nicht mehr. Jemand muss dich erneut hinzufügen, damit du zurückkommst."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

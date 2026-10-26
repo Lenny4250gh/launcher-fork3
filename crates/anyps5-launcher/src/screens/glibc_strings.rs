@@ -31,6 +31,7 @@ const fn template(language: Language) -> &'static str {
     match language {
         Language::English => "Games need glibc %@ or newer; this system has %@.",
         Language::Turkish => "Oyunlar glibc %@ veya daha yenisini ister; bu sistemde %@ var.",
+        Language::German => "Spiele brauchen glibc %@ oder neuer; dieses System hat %@.",
     }
 }
 
@@ -39,8 +40,12 @@ fn next_step(needed: Version, language: Language) -> String {
     match (releases_with(needed), language) {
         (Some(names), Language::English) => format!("Update to {names} or newer."),
         (Some(names), Language::Turkish) => format!("Güncelle: {names} veya daha yenisi."),
+        (Some(names), Language::German) => format!("Aktualisiere auf {names} oder neuer."),
         (None, Language::English) => "Update to a newer release of your distribution.".to_owned(),
         (None, Language::Turkish) => "Dağıtımını daha yeni bir sürüme güncelle.".to_owned(),
+        (None, Language::German) => {
+            "Aktualisiere auf eine neuere Version deiner Distribution.".to_owned()
+        }
     }
 }
 
@@ -62,6 +67,7 @@ pub const fn guide_title(language: Language) -> &'static str {
     match language {
         Language::English => "Read the Install Guide",
         Language::Turkish => "Kurulum Kılavuzunu Oku",
+        Language::German => "Installationsanleitung lesen",
     }
 }
 

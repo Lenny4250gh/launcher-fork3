@@ -193,6 +193,7 @@ impl OnlineService {
             // Nothing to send to: commands fail at once instead of waiting forever.
             let _ = model.online.take_outbox();
         }
+        crate::ui::talk::shared().set_writer(self.process.as_ref().map(|p| p.writer()));
         let online = model.online.is_online();
         if online && !self.was_online {
             model.effects.push(Effect::SyncTrophies);
