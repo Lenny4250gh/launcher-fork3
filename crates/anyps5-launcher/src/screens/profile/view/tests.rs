@@ -90,6 +90,7 @@ fn item(id: u64, account: Account, event: FeedEvent) -> FeedItem {
         account,
         at: NOW as u64 - 3_600,
         event,
+        // Reactions are given on items; a profile's activity does not show them.
         reactions: ReactionCounts {
             nice: 0,
             gg: 3,
@@ -316,7 +317,11 @@ fn a_friends_trophies_come_from_their_feed_and_are_named_only_when_owned() {
     // The activity is their other items, not the trophies, and not Juno's.
     assert_eq!(ready.activity.rows.len(), 1);
     assert!(ready.activity.rows[0].text.starts_with("Lumen "));
-    assert_eq!(ready.activity.rows[0].reactions, "GG 3 · Same 1");
+    let line = &ready.activity.rows[0];
+    assert!(
+        !line.when.contains("GG") && !line.text.contains("GG"),
+        "no reaction counts"
+    );
 }
 
 #[test]

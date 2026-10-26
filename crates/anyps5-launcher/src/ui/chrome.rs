@@ -490,6 +490,8 @@ pub struct PanelRow<'a> {
     pub destructive: bool,
     /// Caution: a note or row that says something may not work (the amber ink). Never danger.
     pub warning: bool,
+    /// Announced to a screen reader as a status when it appears or its words change.
+    pub live: bool,
     /// A text block that is what the page is about (a message in full): body size and ink.
     pub body: bool,
     /// A note that says what the player has to do: the detail ink instead of the quiet note ink.
@@ -547,6 +549,7 @@ impl<'a> PanelRow<'a> {
             focused: false,
             destructive: false,
             warning: false,
+            live: false,
             body: false,
             step: false,
             pad_glyph: None,
@@ -601,6 +604,10 @@ impl<'a> PanelRow<'a> {
     }
     pub fn destructive(mut self, destructive: bool) -> Self {
         self.destructive = destructive;
+        self
+    }
+    pub fn live(mut self, live: bool) -> Self {
+        self.live = live;
         self
     }
     pub fn warning(mut self, warning: bool) -> Self {
@@ -703,7 +710,18 @@ impl<'a> PanelRow<'a> {
         };
         let height = space.0 + galley.size().y + space.1;
         let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
-        response.widget_info(|| self.widget_info());
+        if self.live && !self.title.is_empty() {
+            // A node of its own per message, like a toast: it appears when the words change, and a
+            // screen reader says it once.
+            ui.interact(
+                rect,
+                ui.scope_id().with(("live-row", self.title)),
+                Sense::hover(),
+            )
+            .widget_info(|| WidgetInfo::labeled(Role::Status, true, self.title));
+        } else {
+            response.widget_info(|| self.widget_info());
+        }
         if ui.is_rect_visible(rect) {
             painter.galley(
                 pos2(rect.min.x + size::ROW_PADDING_X, rect.min.y + space.0),
@@ -1740,7 +1758,11 @@ pub fn toast_with_action(
                 vec2(w, h),
             );
             let a = v.clamp(0.0, 1.0);
-            let status = ui.interact(rect, Id::unique(("toast-status", message)), Sense::hover());
+            let status = ui.interact(
+                rect,
+                ui.scope_id().with(("toast-status", message)),
+                Sense::hover(),
+            );
             status.widget_info(|| WidgetInfo::labeled(Role::Status, true, message));
             paint_shadow(
                 &painter,

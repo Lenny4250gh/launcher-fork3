@@ -16,9 +16,7 @@
 
 use std::collections::BTreeMap;
 
-use anyps5_core::online::api::{
-    AccountId, Count, FeedEvent, FeedItem, Friend, Reaction, TrophyLevel,
-};
+use anyps5_core::online::api::{AccountId, Count, FeedEvent, FeedItem, Friend, TrophyLevel};
 use anyps5_core::online::{self, Online};
 
 use crate::screens::format;
@@ -175,8 +173,6 @@ pub struct ActivityRow {
     pub avatar: Option<Avatar>,
     pub text: String,
     pub when: String,
-    /// "GG 3 · Nice 1", only the reactions that were given.
-    pub reactions: String,
     pub press: Press,
 }
 
@@ -937,24 +933,6 @@ fn items_of<'a>(inputs: &Inputs<'a>) -> Vec<&'a FeedItem> {
 // Activity: the same for both
 // ---------------------------------------------------------------------------------------------
 
-/// "GG 3 · Nice 1": the reactions that were given, in the order of the buttons.
-pub fn reactions_text(item: &FeedItem, language: Language) -> String {
-    Reaction::ALL
-        .iter()
-        .filter(|r| item.reactions.of(**r) > 0)
-        .map(|r| {
-            let word = match r {
-                Reaction::Nice => F::ReactNice,
-                Reaction::Gg => F::ReactGg,
-                Reaction::Wow => F::ReactWow,
-                Reaction::Same => F::ReactSame,
-            };
-            format!("{} {}", word.text(language), item.reactions.of(*r))
-        })
-        .collect::<Vec<_>>()
-        .join(" · ")
-}
-
 /// The activity of an account: its items, but not the trophies, which have their own section.
 fn activity(inputs: &Inputs<'_>, ready: &mut Ready) {
     let language = inputs.language;
@@ -986,7 +964,6 @@ fn activity(inputs: &Inputs<'_>, ready: &mut Ready) {
                 handle,
                 avatar: inputs.local.avatar(hash),
                 when: when(inputs, i64::try_from(item.at).unwrap_or(0)),
-                reactions: reactions_text(item, language),
                 press: Press::OpenFeed(item.id),
             }
         })

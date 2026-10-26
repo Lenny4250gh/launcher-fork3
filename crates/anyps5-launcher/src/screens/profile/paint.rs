@@ -1082,11 +1082,6 @@ fn paint_activity(
     focused: bool,
     _language: Language,
 ) -> Response {
-    let meta = if row.reactions.is_empty() {
-        row.when.clone()
-    } else {
-        format!("{} · {}", row.when, row.reactions)
-    };
     let s = surface(
         ui,
         ctx,
@@ -1094,7 +1089,7 @@ fn paint_activity(
         slot,
         focused,
         !matches!(row.press, Press::None),
-        &format!("{}, {meta}", row.text),
+        &format!("{}, {}", row.text, row.when),
     );
     let painter = ui.painter().clone();
     let avatar = Rect::from_min_size(
@@ -1116,7 +1111,7 @@ fn paint_activity(
     let meta = clamped(
         &painter,
         ty::DETAIL,
-        &meta,
+        &row.when,
         Color32::PLACEHOLDER,
         activity_text_width(rect.width()),
         1,

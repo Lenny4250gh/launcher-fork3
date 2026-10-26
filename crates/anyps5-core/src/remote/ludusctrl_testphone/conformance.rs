@@ -134,12 +134,20 @@ fn net(check: &'static str) -> impl FnOnce(io::Error) -> Failure {
     }
 }
 
-/// How long the harness waits for an ack it expects, or for one it must not get. The waits for
-/// what must come stay under the watchdog and return as soon as it does, so a busy machine only
-/// slows them.
-const ACK_WAIT: Duration = Duration::from_millis(1200);
+/// How long the harness waits for what must come (an ack, the pad taking a state). The waits end
+/// as soon as it comes, so the generous bound costs time only when a check really fails, and a
+/// busy machine (a CI runner, a laptop with a game running) cannot turn a slow answer into a
+/// failure.
+const ACK_WAIT: Duration = Duration::from_secs(4);
+const PAD_WAIT: Duration = Duration::from_secs(4);
+/// How long the harness waits for an ack that must not come before it proves, with a packet that
+/// does get an ack, that the receiver has handled everything sent so far ([`Run::no_ack_for`]). A
+/// late ack to the dropped packet still shows then, so the wait only has to be long enough to
+/// make the usual case quick.
 const NO_ACK_WAIT: Duration = Duration::from_millis(350);
-const PAD_WAIT: Duration = Duration::from_millis(1200);
+/// What the harness adds to the PC's ack interval before the next packet that is to be acked: the
+/// PC times the interval from when it handled a packet, which a busy machine does late.
+const ACK_MARGIN: Duration = Duration::from_millis(50);
 
 /// One run at a time in a process: the checks time the receiver against the spec's timers, and
 /// runs side by side on a busy test machine starve each other's receive loops.
@@ -175,7 +183,9 @@ struct Run<'a> {
     beacon: Option<UdpSocket>,
     observable: bool,
     report: Report,
-    /// When the last packet that should be acked went out, to keep clear of the ack limiter.
+    /// An instant at or after the PC's last ack, to keep clear of its ack limiter: when that ack
+    /// reached the harness (the PC sent it before), or, for acks not read, when the packet that
+    /// earned it went out.
     last_ack_send: Option<Instant>,
     last_send: Instant,
     /// The first input packet, replayed later.
@@ -413,10 +423,27 @@ impl Run<'_> {
         self.phone.send_with_seq(seq, data).map_err(net(check))
     }
 
+    /// An ack just reached the harness: the PC sent it no later than now.
+    fn note_ack(&mut self) {
+        self.last_ack_send = Some(Instant::now());
+    }
+
+    /// Reads acks for `wait` (their seqs do not matter), noting when the last one came.
+    fn settle_acks(&mut self, check: &'static str, wait: Duration) -> Outcome {
+        let deadline = Instant::now() + wait;
+        while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+            match self.phone.recv_ack(left).map_err(net(check))? {
+                Some(_) => self.note_ack(),
+                None => break,
+            }
+        }
+        Ok(())
+    }
+
     /// Waits until a new packet can be acked: the PC sends one signed ack per 200 ms per phone.
     fn clear_ack_limiter(&self) {
         if let Some(last) = self.last_ack_send {
-            let due = last + ACK_INTERVAL + Duration::from_millis(30);
+            let due = last + ACK_INTERVAL + ACK_MARGIN;
             if let Some(wait) = due.checked_duration_since(Instant::now()) {
                 thread::sleep(wait);
             }
@@ -442,11 +469,14 @@ impl Run<'_> {
         let packet = self.phone.packet(&input);
         self.send(check, input.seq, &packet)?;
         self.last_ack_send = Some(self.last_send);
-        let received = match self
+        let answer = self
             .phone
             .ack_for(input.seq, ACK_WAIT)
-            .map_err(net(check))?
-        {
+            .map_err(net(check))?;
+        if answer.is_some() {
+            self.note_ack();
+        }
+        let received = match answer {
             Some(Ack::Signed {
                 received,
                 pad_live,
@@ -547,6 +577,8 @@ impl Run<'_> {
             thread::sleep(Duration::from_millis(3));
         }
         self.last_ack_send = Some(self.last_send);
+        // The first of them may have been acked: note when, so the next packet keeps clear.
+        self.settle_acks(check::BURST, Duration::from_millis(250))?;
         let c = PadState {
             buttons: button::Y,
             right_y: 32767,
@@ -575,13 +607,24 @@ impl Run<'_> {
         if let Some(socket) = &self.beacon {
             drain(socket).map_err(net(check::BEACON_PAUSED))?;
         }
+        let mut last_keepalive = 0;
         for _ in 0..6 {
             thread::sleep(Duration::from_millis(450));
             let input = self.phone.input(d);
             let packet = self.phone.packet(&input);
             self.send(check::BEACON_PAUSED, input.seq, &packet)?;
+            last_keepalive = input.seq;
         }
+        // Each keepalive is acked (450 ms apart); the last one's ack says when the limiter started.
         self.last_ack_send = Some(self.last_send);
+        if self
+            .phone
+            .ack_for(last_keepalive, ACK_WAIT)
+            .map_err(net(check::BEACON_PAUSED))?
+            .is_some()
+        {
+            self.note_ack();
+        }
         let port = self.phone.pc().port();
         match &self.beacon {
             Some(socket) => {
@@ -613,14 +656,64 @@ impl Run<'_> {
         let (seq, data, ack) = build(&mut self.phone);
         self.clear_ack_limiter();
         self.send(check, seq, &data)?;
-        let wait = if ack.is_some() { ACK_WAIT } else { NO_ACK_WAIT };
-        let got = self.phone.ack_for(seq, wait).map_err(net(check))?;
+        let got = if ack.is_some() {
+            let got = self.phone.ack_for(seq, ACK_WAIT).map_err(net(check))?;
+            if got.is_some() {
+                self.note_ack();
+            }
+            got
+        } else {
+            self.no_ack_for(check, seq, current)?
+        };
         if got != ack {
             return fail(check, format!("seq {seq}: want {ack:?}, got {got:?}"));
         }
         self.pad_is(check, current.masked())?;
         self.pass(check);
         Ok(())
+    }
+
+    /// The ack to `seq`, a packet that must not be acked, or None. The wait is not a bare
+    /// timeout: after it the pad is checked (the packet must not be applied), then a packet with
+    /// the pad as it is must get its ack, which proves the receiver has handled `seq` and went on.
+    /// The receiver reads its socket in order, so an ack to `seq` that is only late shows before
+    /// that one. A receiver that never answers again fails here as well.
+    fn no_ack_for(
+        &mut self,
+        check: &'static str,
+        seq: u32,
+        current: PadState,
+    ) -> Outcome<Option<Ack>> {
+        if let Some(ack) = self.phone.ack_for(seq, NO_ACK_WAIT).map_err(net(check))? {
+            self.note_ack();
+            return Ok(Some(ack));
+        }
+        self.pad_is(check, current.masked())?;
+        self.clear_ack_limiter();
+        let sentinel = self.phone.input(current);
+        let packet = self.phone.packet(&sentinel);
+        self.send(check, sentinel.seq, &packet)?;
+        let deadline = Instant::now() + ACK_WAIT;
+        while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+            match self.phone.recv_ack(left).map_err(net(check))? {
+                Some(ack) if ack.seq() == seq => {
+                    self.note_ack();
+                    return Ok(Some(ack));
+                }
+                Some(ack) if ack.seq() == sentinel.seq => {
+                    self.note_ack();
+                    return Ok(None);
+                }
+                Some(_) => {}
+                None => break,
+            }
+        }
+        fail(
+            check,
+            format!(
+                "seq {seq}: no ack for the packet after it either; the receiver stopped answering"
+            ),
+        )
     }
 
     fn stale_and_forged(&mut self) -> Outcome {
@@ -723,10 +816,7 @@ impl Run<'_> {
         let packet = self.phone.packet(&input);
         self.clear_ack_limiter();
         self.send(check, input.seq, &packet)?;
-        let got = self
-            .phone
-            .ack_for(input.seq, NO_ACK_WAIT)
-            .map_err(net(check))?;
+        let got = self.no_ack_for(check, input.seq, current)?;
         if got.is_some() {
             return fail(check, format!("got {got:?}"));
         }
@@ -748,11 +838,31 @@ impl Run<'_> {
         let last = self.last_send;
 
         let hold = last + Duration::from_millis(1200);
-        if let Some(wait) = hold.checked_duration_since(Instant::now()) {
-            thread::sleep(wait);
-        }
         if self.observable {
-            self.pad_is(check::WATCHDOG_HOLD, w)?;
+            // Watched all along, not looked at once: a harness that is late to look sees a
+            // release the watchdog was right to make. The receiver cannot release before
+            // WATCHDOG_TIMEOUT after it handled the packet, which is after `last`.
+            let early = WATCHDOG_TIMEOUT - Duration::from_millis(50);
+            loop {
+                let looked = Instant::now();
+                let pad = self.pc.pad();
+                if pad != Some(w) {
+                    if looked.duration_since(last) < early {
+                        return fail(
+                            check::WATCHDOG_HOLD,
+                            format!(
+                                "pad {pad:?} only {} ms after the last packet, want it held",
+                                looked.duration_since(last).as_millis()
+                            ),
+                        );
+                    }
+                    break;
+                }
+                if looked >= hold {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
             self.pass(check::WATCHDOG_HOLD);
             let deadline = last + Duration::from_millis(2250);
             loop {
@@ -770,6 +880,9 @@ impl Run<'_> {
         } else {
             self.skip(check::WATCHDOG_HOLD);
             self.skip(check::WATCHDOG_RELEASE);
+            if let Some(wait) = hold.checked_duration_since(Instant::now()) {
+                thread::sleep(wait);
+            }
             thread::sleep(Duration::from_millis(1050));
         }
 
