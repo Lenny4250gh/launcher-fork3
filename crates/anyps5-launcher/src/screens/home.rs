@@ -12,6 +12,7 @@ use egui::{
 
 use crate::app::model::{GameState, Model, SizeState};
 use crate::screens::glibc_strings::shortfall_text;
+use crate::screens::hub_strings::HubText;
 use crate::screens::ludus_strings::LudusText;
 use crate::screens::ludus_web_strings::BrowserText;
 use crate::screens::notification_strings::NotifyText;
@@ -1343,10 +1344,11 @@ fn paint_hero(
     let has_trophies = cx.model.trophies.get(&game.id);
     let trophy_text =
         has_trophies.map(|set| format!("{}/{}", set.unlocked_count(), set.trophies.len()));
-    // Play, then Play Together when the game can be played together, then trophies, then "...".
+    // Play, then Play Together when the game can be played together, then trophies, then the Game Hub, then "...".
     let together = crate::app::together::hostable(cx.model).is_some();
     let trophies_index = 1 + usize::from(together);
-    let settings_index = trophies_index + usize::from(trophy_text.is_some());
+    let hub_index = trophies_index + usize::from(trophy_text.is_some());
+    let settings_index = hub_index + 1;
     let (primary_title, primary_icon, primary_fill) = primary_look(&state, language);
     let mut pressed = None;
     let after_buttons = place(ui, row, |ui| {
@@ -1384,6 +1386,12 @@ fn paint_hero(
             if response.clicked() {
                 pressed = Some(HomeFocus::Actions(trophies_index));
             }
+        }
+        let hub = ConsoleButton::icon_only(Icon::SQUARES_FOUR, HubText::Overline.text(language))
+            .focused(focused(hub_index))
+            .show(ui);
+        if hub.clicked() {
+            pressed = Some(HomeFocus::Actions(hub_index));
         }
         let more = ConsoleButton::icon_only(Icon::DOTS_THREE, language.text(Key::Options))
             .focused(focused(settings_index))
@@ -1570,7 +1578,7 @@ fn ask_line(
     }
 }
 
-fn primary_look(state: &GameState, language: Language) -> (&'static str, Icon, bool) {
+pub fn primary_look(state: &GameState, language: Language) -> (&'static str, Icon, bool) {
     match state {
         GameState::Installed { .. } => (language.text(Key::Play), Icon::PLAY, true),
         GameState::Preparing { .. } => (language.text(Key::Play), Icon::PLAY, true),

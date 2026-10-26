@@ -360,6 +360,10 @@ pub struct Model {
     pub profile: Option<crate::app::profile::Target>,
     /// The comparison the trophy compare screen is on (`app::compare`).
     pub compare: Option<crate::app::compare::Target>,
+    /// Where Back leads from the Game Hub, when it was not opened from Home (`app::hub`).
+    pub hub_back: Option<Overlay>,
+    /// Where Back leads from the trophy overview (`app::hub`).
+    pub overview_back: Option<Overlay>,
     /// The profile screen opens again from the comparison: its focus stays where it was.
     pub profile_returning: bool,
     /// The Friends screen opens on the page it was left on, not on its first one: the player
@@ -449,6 +453,8 @@ impl Model {
             together: Default::default(),
             profile: None,
             compare: None,
+            hub_back: None,
+            overview_back: None,
             profile_returning: false,
             online_resume: false,
             friends_back: None,
@@ -1453,6 +1459,7 @@ impl Model {
                 }
             }
             HomeIntent::OpenTrophies => self.open(Overlay::Trophies),
+            HomeIntent::OpenHub => self.open_hub(),
             HomeIntent::OpenGameSettings => self.open(Overlay::GameSettings),
             HomeIntent::OpenLibrary => self.open(Overlay::Library),
             HomeIntent::OpenCaptures => self.open(Overlay::Captures),

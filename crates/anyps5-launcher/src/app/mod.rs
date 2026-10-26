@@ -25,6 +25,7 @@ pub mod compare;
 pub mod core_pipeline;
 mod discord;
 pub mod game_colors;
+pub mod hub;
 pub mod library_panels;
 pub mod library_view;
 pub mod links;
