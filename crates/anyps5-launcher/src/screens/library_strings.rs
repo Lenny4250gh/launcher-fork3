@@ -204,6 +204,8 @@ impl LibraryText {
         match language {
             Language::English => self.english(),
             Language::Turkish => self.turkish(),
+            // German follows in its own pass; until then it reads English.
+            Language::German => self.english(),
         }
     }
 
