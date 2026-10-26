@@ -54,6 +54,62 @@ pub const COLOURS: [(&str, [u8; 3]); 7] = [
     ("Off", [0x00, 0x00, 0x00]),
 ];
 
+/// The most degrees of hue the custom colour has: a whole turn would end where it began.
+pub const HUE_MAX: u16 = 355;
+
+/// A colour from hue (degrees, 0 to 360), saturation and value (0 to 1).
+pub fn from_hsv(hue: f32, saturation: f32, value: f32) -> [u8; 3] {
+    let h = hue.rem_euclid(360.0) / 60.0;
+    let c = value * saturation;
+    let x = c * (1.0 - (h % 2.0 - 1.0).abs());
+    let (r, g, b) = match h as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let m = value - c;
+    [r + m, g + m, b + m].map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
+}
+
+/// The custom colour for a hue (degrees) and a brightness (percent): the pure hue at that
+/// brightness. No custom colour is ever one of the presets.
+pub fn custom(hue: u16, brightness: u8) -> [u8; 3] {
+    from_hsv(f32::from(hue), 1.0, f32::from(brightness) / 100.0)
+}
+
+/// The hue (degrees, in steps of 5) and brightness (percent, in steps of 5, at least 10) a colour
+/// starts the custom sliders at: its own hue and brightness. Off starts at full red.
+pub fn custom_of(rgb: [u8; 3]) -> (u16, u8) {
+    let [r, g, b] = rgb.map(|v| f32::from(v) / 255.0);
+    let top = r.max(g).max(b);
+    let delta = top - r.min(g).min(b);
+    if top <= 0.0 {
+        return (0, 100);
+    }
+    let hue = if delta <= 0.0 {
+        0.0
+    } else if top == r {
+        ((g - b) / delta).rem_euclid(6.0) * 60.0
+    } else if top == g {
+        ((b - r) / delta + 2.0) * 60.0
+    } else {
+        ((r - g) / delta + 4.0) * 60.0
+    };
+    let hue = ((hue / 5.0).round() as u16 * 5).min(HUE_MAX);
+    let brightness = ((top * 100.0 / 5.0).round() as u8 * 5).clamp(10, 100);
+    (hue, brightness)
+}
+
+/// Whether the colour the preferences hold is one of the presets.
+pub fn is_preset(stored: Option<&str>) -> bool {
+    stored
+        .and_then(parse)
+        .is_none_or(|rgb| COLOURS.iter().any(|(_, c)| *c == rgb))
+}
+
 /// `RRGGBB` as the preferences keep it.
 pub fn hex(rgb: [u8; 3]) -> String {
     format!("{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2])
@@ -67,12 +123,16 @@ pub fn parse(text: &str) -> Option<[u8; 3]> {
     Some([byte(0)?, byte(2)?, byte(4)?])
 }
 
-/// The index in [`COLOURS`] of the colour the preferences hold, or of the pad's own.
+/// The index in [`COLOURS`] of the colour the preferences hold, or of the pad's own. A colour that
+/// is none of them (a custom one) is the entry after the last.
 pub fn index_of(stored: Option<&str>) -> usize {
-    stored
-        .and_then(parse)
-        .and_then(|rgb| COLOURS.iter().position(|(_, c)| *c == rgb))
-        .unwrap_or(0)
+    match stored.and_then(parse) {
+        None => 0,
+        Some(rgb) => COLOURS
+            .iter()
+            .position(|(_, c)| *c == rgb)
+            .unwrap_or(COLOURS.len()),
+    }
 }
 
 /// A report that makes the light bar `rgb`, for a pad on `link`. `seq` is the Bluetooth
@@ -150,6 +210,48 @@ pub fn set(_rgb: [u8; 3]) -> Result<usize, String> {
     Err("not supported on this system".to_owned())
 }
 
+/// What the writer thread has still to put on the pad: only ever the latest colour.
+static LATEST: std::sync::Mutex<Option<[u8; 3]>> = std::sync::Mutex::new(None);
+static WRITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// [`set`] without waiting for it: the colour goes to the pads on a thread of its own, and while a
+/// write is still going a newer colour replaces an older one that has not been written yet (a
+/// slider drag asks for many). The caller has checked that no game runs.
+pub fn set_soon(rgb: [u8; 3]) {
+    use std::sync::atomic::Ordering;
+    *LATEST.lock().unwrap_or_else(|e| e.into_inner()) = Some(rgb);
+    if WRITING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let spawned = std::thread::Builder::new()
+        .name("lightbar".into())
+        .spawn(|| {
+            loop {
+                let next = LATEST.lock().unwrap_or_else(|e| e.into_inner()).take();
+                match next {
+                    Some(rgb) => {
+                        if let Err(err) = set(rgb) {
+                            tracing::warn!("light bar not set: {err}");
+                        }
+                    }
+                    None => {
+                        WRITING.store(false, Ordering::Release);
+                        // A colour that arrived after the last look: write it, unless another
+                        // thread has taken the job over already.
+                        let waiting = LATEST.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+                        if !waiting || WRITING.swap(true, Ordering::AcqRel) {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    if let Err(err) = spawned {
+        WRITING.store(false, Ordering::Release);
+        tracing::warn!("light bar thread not started: {err}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,6 +297,32 @@ mod tests {
     }
 
     #[test]
+    fn a_custom_colour_comes_back_as_the_sliders_that_made_it() {
+        // Every place the hue slider and the brightness slider can stop (the pointer snaps to 5).
+        for hue in (0..=HUE_MAX).step_by(5) {
+            for brightness in (10..=100u8).step_by(5) {
+                let rgb = custom(hue, brightness);
+                assert_eq!(custom_of(rgb), (hue, brightness), "{hue} {brightness}");
+                // And none of them passes for a preset or for Off.
+                assert!(
+                    !COLOURS.iter().any(|(_, c)| *c == rgb),
+                    "{hue} {brightness} {rgb:?}"
+                );
+                assert_eq!(index_of(Some(&hex(rgb))), COLOURS.len());
+                assert!(!is_preset(Some(&hex(rgb))));
+            }
+        }
+    }
+
+    #[test]
+    fn the_pure_hues_are_where_they_should_be() {
+        assert_eq!(from_hsv(0.0, 1.0, 1.0), [255, 0, 0]);
+        assert_eq!(from_hsv(120.0, 1.0, 1.0), [0, 255, 0]);
+        assert_eq!(from_hsv(240.0, 1.0, 0.5), [0, 0, 128]);
+        assert_eq!(custom_of([0, 0, 0]), (0, 100), "Off starts at red");
+    }
+
+    #[test]
     fn colours_round_trip_through_the_preferences() {
         for (i, (_, rgb)) in COLOURS.iter().enumerate() {
             assert_eq!(parse(&hex(*rgb)), Some(*rgb));
@@ -202,6 +330,7 @@ mod tests {
         }
         assert_eq!(index_of(None), 0);
         assert_eq!(index_of(Some("nonsense")), 0);
+        assert!(is_preset(None));
         assert_eq!(parse("12345"), None);
         assert_eq!(parse("GGGGGG"), None);
     }

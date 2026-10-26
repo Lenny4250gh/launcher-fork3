@@ -17,6 +17,7 @@ use crate::screens::controllers_strings::Pads;
 use crate::screens::rows::{self, Change, Row};
 use crate::screens::side::{self, Output, SideState, SideView};
 use crate::ui::Shell;
+use crate::ui::chrome::Track;
 use crate::ui::components::corner;
 use crate::ui::focus::PanelNav;
 use crate::ui::i18n::{Arg, Language};
@@ -95,6 +96,13 @@ impl ControllersPanel {
         nav_bindings::set_capturing(false);
         pad_hub::set_watched(false);
         shell.input.capture_keys = false;
+    }
+
+    /// Previews: opens with the focus on a row.
+    pub fn open_row(&mut self, row: usize) {
+        self.open();
+        self.side.open_at(row);
+        self.settled = true;
     }
 
     /// Previews: opens the live test.
@@ -423,26 +431,36 @@ impl ControllersPanel {
             } => {
                 if data.game_running {
                     warn(out, Pads::NotWhileGame.text(language));
-                } else if let Some((_, rgb)) = lightbar::COLOURS.get(*index) {
-                    data.prefs.lightbar = Some(lightbar::hex(*rgb));
-                    out.changed = true;
-                    let rgb = *rgb;
-                    // The write is a few milliseconds of HID I/O: off the UI thread.
-                    let spawned =
-                        std::thread::Builder::new()
-                            .name("lightbar".into())
-                            .spawn(move || {
-                                if let Err(err) = lightbar::set(rgb) {
-                                    tracing::warn!("light bar not set: {err}");
-                                }
-                            });
-                    if let Err(err) = spawned {
-                        tracing::warn!("light bar thread not started: {err}");
+                } else {
+                    if let Some((_, rgb)) = lightbar::COLOURS.get(*index) {
+                        set_lightbar(data, *rgb, out);
+                    } else if lightbar::is_preset(data.prefs.lightbar.as_deref()) {
+                        // Custom: it starts from the colour the bar has now, as pure hue and
+                        // brightness. A custom colour already chosen stays as it is.
+                        let (hue, brightness) = lightbar::custom_of(light_now(data.prefs));
+                        set_lightbar(data, lightbar::custom(hue, brightness), out);
                     }
                     out.actions.push(ControllersAction::Toast(ToastRequest::new(
                         Icon::GAME_CONTROLLER,
                         Pads::LightBarSet.text(language),
                     )));
+                }
+            }
+            Change::Stepper {
+                row: row @ ("lightbarHue" | "lightbarBrightness"),
+                value,
+            } => {
+                if data.game_running {
+                    warn(out, Pads::NotWhileGame.text(language));
+                } else {
+                    let (mut hue, mut brightness) = lightbar::custom_of(light_now(data.prefs));
+                    if *row == "lightbarHue" {
+                        hue = (*value).clamp(0, i32::from(lightbar::HUE_MAX)) as u16;
+                    } else {
+                        brightness = (*value).clamp(10, 100) as u8;
+                    }
+                    // The bar is the answer: no toast for every step.
+                    set_lightbar(data, lightbar::custom(hue, brightness), out);
                 }
             }
             Change::Toggle {
@@ -600,6 +618,24 @@ fn doubled(snap: &Snapshot) -> bool {
     snap.pads.len() >= 2 && (virtual_xbox || sony)
 }
 
+/// The colour the light bar is meant to have: the one the preferences hold, or the pad's own blue.
+fn light_now(prefs: &Preferences) -> [u8; 3] {
+    prefs
+        .lightbar
+        .as_deref()
+        .and_then(lightbar::parse)
+        .unwrap_or(lightbar::COLOURS[0].1)
+}
+
+/// Keeps `rgb` as the light bar colour and puts it on the pad. The write is a few milliseconds of
+/// HID I/O, and a drag asks for many: `lightbar::set_soon` does it off the UI thread and keeps only
+/// the latest. The caller has checked that no game runs.
+fn set_lightbar(data: &mut ControllersData<'_>, rgb: [u8; 3], out: &mut Output<ControllersAction>) {
+    data.prefs.lightbar = Some(lightbar::hex(rgb));
+    out.changed = true;
+    lightbar::set_soon(rgb);
+}
+
 fn build_rows(panel: &ControllersPanel, data: &ControllersData<'_>, snap: &Snapshot) -> Vec<Row> {
     let language = data.language;
     if panel.test {
@@ -678,6 +714,7 @@ fn build_rows(panel: &ControllersPanel, data: &ControllersData<'_>, snap: &Snaps
             Pads::ColourOrange,
             Pads::ColourWhite,
             Pads::ColourOff,
+            Pads::ColourCustom,
         ]
         .iter()
         .map(|p| p.text(language).to_owned())
@@ -697,6 +734,38 @@ fn build_rows(panel: &ControllersPanel, data: &ControllersData<'_>, snap: &Snaps
             .detail(detail)
             .icon(Icon::WAVE_SINE),
         );
+        if !lightbar::is_preset(data.prefs.lightbar.as_deref()) {
+            let (hue, brightness) = lightbar::custom_of(light_now(data.prefs));
+            let percent = match language {
+                Language::Turkish => format!("%{brightness}"),
+                Language::German => format!("{brightness} %"),
+                Language::English => format!("{brightness}%"),
+            };
+            rows.push(
+                Row::slider(
+                    "lightbarHue",
+                    Pads::LightBarHue.text(language),
+                    i32::from(hue),
+                    (0, i32::from(lightbar::HUE_MAX)),
+                    10,
+                    format!("{hue}\u{b0}"),
+                )
+                .track(Track::Hue(lightbar::HUE_MAX))
+                .icon(Icon::PALETTE),
+            );
+            rows.push(
+                Row::slider(
+                    "lightbarBrightness",
+                    Pads::LightBarBrightness.text(language),
+                    i32::from(brightness),
+                    (10, 100),
+                    10,
+                    percent,
+                )
+                .track(Track::Ramp(lightbar::custom(hue, 100)))
+                .icon(Icon::CIRCLE_HALF),
+            );
+        }
     }
 
     rows.push(Row::caption("controlsCaption", Pads::CaptionControls.text(language)).group_start());

@@ -216,6 +216,7 @@ impl LauncherApp {
         let wake: std::sync::Arc<dyn Fn() + Send + Sync> =
             std::sync::Arc::new(move || repaint.request_repaint());
         let shared_pad = pad::SharedPad::new();
+        let game_colors_file = config.persist.then(|| model.paths.game_colors_file());
         Self {
             phone: phone::PhoneService::new(
                 wake.clone(),
@@ -234,7 +235,7 @@ impl LauncherApp {
             pipeline: config.pipeline,
             panels: config.panels,
             applied: Applied::default(),
-            game_colors: game_colors::GameColors::new(),
+            game_colors: game_colors::GameColors::new(game_colors_file),
             focused: true,
             rate: (std::time::Instant::now(), 0, std::time::Instant::now()),
             overlays_shown: Vec::new(),
