@@ -2,7 +2,7 @@
 //! with an icon, instead of the list of every change. It shows once after the launcher updates to
 //! the release (see `PanelHost::frame`) and again from About, "Show Again".
 //!
-//! The content is the table `SECTIONS` below, written from `docs/releases/v0.3.0.md`. An item that
+//! The content is the table `SECTIONS` below, limited to what shipped in 0.3.0. An item that
 //! did not ship is deleted from the table; nothing else changes.
 
 use egui::{Align2, Color32, Rect, ScrollArea, Ui, UiBuilder, pos2, vec2};
@@ -15,175 +15,208 @@ use crate::ui::theme::{color, radius, space, ty};
 /// The release this body presents. A newer release shows the list of its changes again.
 pub const RELEASE: &str = anyps5_core::settings::WHATS_NEW_RELEASE;
 
-/// English and Turkish side by side; any other language reads English until it has its own.
-type Pair = (&'static str, &'static str);
+/// English, Turkish and German side by side.
+type Triple = (&'static str, &'static str, &'static str);
 
 struct Item {
     icon: Icon,
-    title: Pair,
-    note: Pair,
+    title: Triple,
+    note: Triple,
 }
 
 struct Section {
-    title: Pair,
+    title: Triple,
     items: &'static [Item],
 }
 
 const SECTIONS: &[Section] = &[
     Section {
-        title: ("Play together", "Birlikte oyna"),
+        title: ("Play together", "Birlikte oyna", "Zusammen spielen"),
         items: &[
             Item {
-                icon: Icon::SQUARES_FOUR,
-                title: ("Game Hub", "Oyun Merkezi"),
-                note: (
-                    "Everything about a game on one page.",
-                    "Bir oyunla ilgili her şey tek sayfada.",
+                icon: Icon::MICROPHONE,
+                title: (
+                    "Voice in games",
+                    "Oyunlarda sesli sohbet",
+                    "Sprache im Spiel",
                 ),
-            },
-            Item {
-                icon: Icon::USERS,
-                title: ("Looking for Group", "Grup Arama"),
                 note: (
-                    "Find players for a game, and share your captures with friends.",
-                    "Bir oyun için oyuncu bul ve ekran görüntülerini arkadaşlarınla paylaş.",
+                    "Push to talk while a game is in front, a Talk Button on the pad, Open Mic and Reduce Background Noise.",
+                    "Oyun öndeyken bas-konuş, kolda konuşma düğmesi, Açık Mikrofon ve Arka Plan Gürültüsünü Azalt.",
+                    "Push-to-Talk, während ein Spiel vorne ist, eine Sprechtaste am Controller, offenes Mikrofon und Hintergrundgeräusche verringern.",
                 ),
             },
             Item {
                 icon: Icon::EXPORT,
-                title: ("Live broadcast", "Canlı yayın"),
+                title: ("Go live", "Canlı yayın", "Live gehen"),
                 note: (
-                    "Go live to Twitch or YouTube from the launcher.",
-                    "Başlatıcıdan Twitch veya YouTube'da canlı yayın yap.",
+                    "Stream to Twitch, YouTube or any RTMP address from the launcher (Windows).",
+                    "Başlatıcıdan Twitch, YouTube veya herhangi bir RTMP adresine yayın yap (Windows).",
+                    "Streame aus dem Launcher zu Twitch, YouTube oder einer RTMP-Adresse (Windows).",
                 ),
             },
             Item {
-                icon: Icon::MICROPHONE,
-                title: ("Better voice chat", "Daha iyi sesli sohbet"),
+                icon: Icon::BELL,
+                title: (
+                    "Notification Center",
+                    "Bildirim Merkezi",
+                    "Mitteilungszentrale",
+                ),
                 note: (
-                    "Push-to-talk and noise suppression.",
-                    "Bas-konuş ve gürültü engelleme.",
+                    "Everything that happened in one list, your friends' online status and an invite link.",
+                    "Olan her şey tek listede, arkadaşlarının çevrimiçi durumu ve bir davet bağlantısı.",
+                    "Alles, was passiert ist, in einer Liste, der Online-Status deiner Freunde und ein Einladungslink.",
                 ),
             },
             Item {
-                icon: Icon::SPARKLE,
-                title: ("Emoji in messages", "Mesajlarda emoji"),
+                icon: Icon::SMILEY,
+                title: ("Emoji button", "Emoji düğmesi", "Emoji-Taste"),
                 note: (
-                    "An emoji button in the message box.",
-                    "Mesaj kutusunda bir emoji düğmesi.",
+                    "Pick an emoji right from the message box.",
+                    "Emojiyi doğrudan mesaj kutusundan seç.",
+                    "Wähle ein Emoji direkt im Nachrichtenfeld.",
                 ),
             },
         ],
     },
     Section {
-        title: ("Your launcher", "Başlatıcın"),
+        title: ("Your library", "Kitaplığın", "Deine Bibliothek"),
         items: &[
             Item {
-                icon: Icon::ENVELOPE_SIMPLE,
-                title: ("Notification Center", "Bildirim Merkezi"),
+                icon: Icon::CHECK_CIRCLE,
+                title: (
+                    "What players found",
+                    "Oyuncuların bulguları",
+                    "Was Spieler herausgefunden haben",
+                ),
                 note: (
-                    "Everything that happened, in one list.",
-                    "Olan her şey tek bir listede.",
+                    "Every game shows Runs well, Runs with issues, Doesn't start or LAN, as reported by players.",
+                    "Her oyun, oyuncuların bildirdiği şekilde Sorunsuz çalışıyor, Sorunlarla çalışıyor, Başlamıyor veya LAN gösterir.",
+                    "Jedes Spiel zeigt, was Spieler melden: Läuft gut, Läuft mit Problemen, Startet nicht oder LAN.",
                 ),
             },
+            Item {
+                icon: Icon::MAGNIFYING_GLASS,
+                title: (
+                    "Sort, filter, search",
+                    "Sırala, süz, ara",
+                    "Sortieren, filtern, suchen",
+                ),
+                note: (
+                    "Storage per game, shelves on Home and a toast when new games show up.",
+                    "Oyun başına depolama, ana ekranda raflar ve yeni oyunlar geldiğinde bir bildirim.",
+                    "Speicher pro Spiel, Regale auf dem Startbildschirm und ein Hinweis, wenn neue Spiele auftauchen.",
+                ),
+            },
+            Item {
+                icon: Icon::SQUARES_FOUR,
+                title: ("Game Hub", "Oyun Merkezi", "Spielzentrale"),
+                note: (
+                    "A trophy overview and your play time this week, all in one place.",
+                    "Kupa özeti ve bu haftaki oynama süren, hepsi tek yerde.",
+                    "Eine Trophäenübersicht und deine Spielzeit diese Woche, alles an einem Ort.",
+                ),
+            },
+        ],
+    },
+    Section {
+        title: ("Make it yours", "Sana göre", "Mach es zu deinem"),
+        items: &[
             Item {
                 icon: Icon::GAME_CONTROLLER,
-                title: ("Controller Center", "Kontrolcü Merkezi"),
-                note: (
-                    "Set up and test your controllers in one place.",
-                    "Kontrolcülerini tek yerden kur ve dene.",
+                title: (
+                    "Controller Center",
+                    "Kontrolcü Merkezi",
+                    "Controller-Zentrale",
                 ),
-            },
-            Item {
-                icon: Icon::CHECK_CIRCLE,
-                title: ("Compatibility", "Uyumluluk"),
                 note: (
-                    "See how well a game runs in the library, on Home and when a new game appears.",
-                    "Bir oyunun ne kadar iyi çalıştığını kitaplıkta, ana ekranda ve yeni oyun göründüğünde gör.",
+                    "Set up your controllers in one place and remap keys.",
+                    "Kontrolcülerini tek yerden kur ve tuşları yeniden ata.",
+                    "Richte deine Controller an einem Ort ein und belege Tasten neu.",
                 ),
             },
             Item {
                 icon: Icon::PALETTE,
-                title: ("Make it yours", "Senin tarzın"),
+                title: ("Looks and sound", "Görünüm ve ses", "Aussehen und Klang"),
                 note: (
-                    "The Game Colors theme, sound volumes, Larger Text and High Contrast.",
-                    "Oyun Renkleri teması, ses seviyeleri, Daha Büyük Metin ve Yüksek Karşıtlık.",
+                    "The Game Colors theme, volumes per kind of sound, Larger Text and High Contrast.",
+                    "Oyun Renkleri teması, ses türüne göre seviyeler, Daha Büyük Metin ve Yüksek Karşıtlık.",
+                    "Das Thema Spielfarben, Lautstärke je Klangart, Größerer Text und Hoher Kontrast.",
                 ),
             },
             Item {
                 icon: Icon::TRANSLATE,
-                title: ("More languages", "Daha fazla dil"),
+                title: ("German", "Almanca", "Deutsch"),
                 note: (
-                    "German and more, so the launcher speaks your language.",
-                    "Almanca ve daha fazlası: başlatıcı senin dilini konuşur.",
+                    "The launcher now speaks German.",
+                    "Başlatıcı artık Almanca konuşuyor.",
+                    "Der Launcher spricht jetzt Deutsch.",
                 ),
             },
         ],
     },
     Section {
-        title: ("Everywhere you play", "Her oynadığın yerde"),
+        title: (
+            "Everywhere you play",
+            "Her oynadığın yerde",
+            "Überall, wo du spielst",
+        ),
         items: &[
             Item {
                 icon: Icon::STEAM_LOGO,
-                title: ("Steam Deck and Linux", "Steam Deck ve Linux"),
+                title: (
+                    "Steam Deck and Linux",
+                    "Steam Deck ve Linux",
+                    "Steam Deck und Linux",
+                ),
                 note: (
-                    "Steam Deck support, a Flatpak, and game folders on other drives through symlinks.",
-                    "Steam Deck desteği, bir Flatpak ve sembolik bağlantılarla diğer sürücülerdeki oyun klasörleri.",
+                    "Gaming Mode with an on-screen keyboard, linked copies of unlocked games and a Flatpak.",
+                    "Ekran klavyeli Oyun Modu, kilidi açılmış oyunların bağlı kopyaları ve bir Flatpak.",
+                    "Gaming-Modus mit Bildschirmtastatur, verknüpfte Kopien entsperrter Spiele und ein Flatpak.",
                 ),
             },
             Item {
                 icon: Icon::APP_WINDOW,
-                title: ("Mac: Add to Steam", "Mac: Steam'e ekle"),
+                title: ("On the Mac", "Mac'te", "Auf dem Mac"),
                 note: (
-                    "Add the launcher and your games to Steam on the Mac.",
-                    "Mac'te başlatıcıyı ve oyunlarını Steam'e ekle.",
+                    "Add to Steam, and the PS button.",
+                    "Steam'e ekle ve PS düğmesi.",
+                    "Zu Steam hinzufügen und die PS-Taste.",
+                ),
+            },
+            Item {
+                icon: Icon::STETHOSCOPE,
+                title: ("Send Report", "Rapor gönder", "Bericht senden"),
+                note: (
+                    "After a crash, send a report so we can fix what broke.",
+                    "Bir çökmeden sonra, bozulanı düzeltebilmemiz için rapor gönder.",
+                    "Sende nach einem Absturz einen Bericht, damit wir den Fehler beheben können.",
                 ),
             },
         ],
     },
-    Section {
-        title: ("Steadier", "Daha kararlı"),
-        items: &[Item {
-            icon: Icon::STETHOSCOPE,
-            title: ("Watchdog and crash reports", "Bekçi ve çökme raporları"),
-            note: (
-                "A stuck launcher is noticed, and crash reports help us fix what broke.",
-                "Takılan başlatıcı fark edilir, çökme raporları bozulanı düzeltmemize yardım eder.",
-            ),
-        }],
-    },
 ];
 
-fn pick(pair: Pair, language: Language) -> &'static str {
+fn pick(triple: Triple, language: Language) -> &'static str {
     match language {
-        Language::Turkish => pair.1,
-        _ => pair.0,
+        Language::Turkish => triple.1,
+        Language::German => triple.2,
+        Language::English => triple.0,
     }
 }
 
 fn hero(language: Language) -> (&'static str, &'static str) {
-    pick_two(
-        language,
-        (
-            "The biggest update yet.",
-            "Play together, talk, go live and make the launcher yours.",
-        ),
-        (
-            "Şimdiye dek en büyük güncelleme.",
-            "Birlikte oyna, konuş, canlı yayın yap ve başlatıcıyı kendine göre ayarla.",
-        ),
-    )
-}
-
-fn pick_two(
-    language: Language,
-    en: (&'static str, &'static str),
-    tr: (&'static str, &'static str),
-) -> (&'static str, &'static str) {
-    match language {
-        Language::Turkish => tr,
-        _ => en,
-    }
+    let headline: Triple = (
+        "The biggest update yet.",
+        "Şimdiye dek en büyük güncelleme.",
+        "Das bisher größte Update.",
+    );
+    let lead: Triple = (
+        "Talk in games, go live, see what runs well and make the launcher yours.",
+        "Oyunlarda konuş, canlı yayın yap, neyin iyi çalıştığını gör ve başlatıcıyı kendine göre ayarla.",
+        "Sprich im Spiel, geh live, sieh, was gut läuft, und mach den Launcher zu deinem.",
+    );
+    (pick(headline, language), pick(lead, language))
 }
 
 /// The widest the content gets: past this the hero and cards stay readable instead of stretching.
@@ -379,5 +412,8 @@ pub fn show(
 
 /// The About row that opens the showcase again: its detail.
 pub fn show_again(language: Language) -> &'static str {
-    pick(("Show again", "Yeniden göster"), language)
+    pick(
+        ("Show again", "Yeniden göster", "Erneut anzeigen"),
+        language,
+    )
 }
