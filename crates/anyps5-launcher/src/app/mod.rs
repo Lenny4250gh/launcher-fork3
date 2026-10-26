@@ -24,6 +24,7 @@ pub mod clock;
 pub mod compare;
 pub mod core_pipeline;
 mod discord;
+pub mod game_colors;
 pub mod library_panels;
 pub mod library_view;
 pub mod links;
@@ -158,6 +159,8 @@ pub struct LauncherApp {
     /// The live broadcast of the running game.
     broadcast: broadcast::BroadcastService,
     applied: Applied,
+    /// The colours of the selected game's art, for the Game Colors theme.
+    game_colors: game_colors::GameColors,
     focused: bool,
     /// Frames drawn since the last rate line: window start, count, last frame.
     rate: (std::time::Instant, u32, std::time::Instant),
@@ -229,6 +232,7 @@ impl LauncherApp {
             pipeline: config.pipeline,
             panels: config.panels,
             applied: Applied::default(),
+            game_colors: game_colors::GameColors::new(),
             focused: true,
             rate: (std::time::Instant::now(), 0, std::time::Instant::now()),
             overlays_shown: Vec::new(),
@@ -463,6 +467,24 @@ impl LauncherApp {
         if self.shell.backdrop.theme() != theme || self.shell.accent != wanted_accent {
             self.shell.set_theme(theme, accent);
         }
+        if theme == crate::ui::theme::Theme::GameColors {
+            let game = self.model.selected_game();
+            let art = game.and_then(|g| g.background.as_deref().or(g.icon.as_deref()));
+            let (palette, colour) = self.game_colors.update(
+                ctx,
+                game.map(|g| g.id.as_str()).zip(Some(art)),
+                self.model.prefs.reduced_motion,
+            );
+            self.shell.backdrop.set_game_palette(palette);
+            self.shell.accent_override = accent.is_none().then_some(colour);
+        } else {
+            self.shell.accent_override = None;
+        }
+        crate::ui::theme::set_larger_text(self.model.prefs.larger_text);
+        crate::ui::theme::set_high_contrast(self.model.prefs.high_contrast);
+        self.shell
+            .sounds
+            .set_volumes(screens::settings::volumes_of(&self.model.prefs));
         let reduced = self.model.prefs.reduced_motion;
         if self.applied.reduced_motion != Some(reduced) {
             self.applied.reduced_motion = Some(reduced);

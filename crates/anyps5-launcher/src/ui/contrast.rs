@@ -88,7 +88,7 @@ fn screen() -> Rect {
 fn lit(theme: Theme) -> Color32 {
     let p = theme.palette();
     let k = match theme {
-        Theme::Cosmic | Theme::Aurora => 0.35,
+        Theme::Cosmic | Theme::Aurora | Theme::GameColors => 0.35,
         Theme::Sunset => 0.5,
     };
     mix(p.middle_color(), p.bright_color(), k)

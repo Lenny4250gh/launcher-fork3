@@ -568,9 +568,9 @@ fn paint_clock(painter: &egui::Painter, right: f32, mid: f32) -> f32 {
         ink,
     );
     // Digits are as tall as capitals: 0.727 em in Inter.
-    let reach = style.size * 0.727 * 0.5 * 0.52;
+    let reach = style.px() * 0.727 * 0.5 * 0.52;
     for dy in [-reach, reach] {
-        painter.circle_filled(pos2(colon_x, mid + dy), style.size * 0.075, ink);
+        painter.circle_filled(pos2(colon_x, mid + dy), style.px() * 0.075, ink);
     }
     left
 }
@@ -1833,7 +1833,7 @@ fn baseline_offset(painter: &egui::Painter, style: theme::TextStyle, text_: &str
         .rows
         .first()
         .and_then(|row| row.glyphs.first().map(|glyph| row.pos.y + glyph.pos.y))
-        .unwrap_or(style.size)
+        .unwrap_or(style.px())
 }
 
 /// Paints `text` with its baseline at `at.y` and its left edge at `at.x`.

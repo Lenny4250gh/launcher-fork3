@@ -22,6 +22,30 @@ use rodio::cpal::BufferSize;
 use rodio::{DeviceSinkBuilder, DeviceSinkError, MixerDeviceSink};
 
 pub use self::cues::Cue;
+
+/// How loud each kind of sound is, 0 (silent) to 1 (full, as the sounds always were).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Volumes {
+    /// The cues of the interface: moves, selections, switches, opening.
+    pub interface: f32,
+    /// The home screen music.
+    pub music: f32,
+    /// The selected game's own music.
+    pub game_music: f32,
+    /// Notification cues: a notice, a message, an invitation, a call.
+    pub notifications: f32,
+}
+
+impl Default for Volumes {
+    fn default() -> Self {
+        Volumes {
+            interface: 1.0,
+            music: 1.0,
+            game_music: 1.0,
+            notifications: 1.0,
+        }
+    }
+}
 use self::engine::{Command, Engine};
 
 /// The sound engine. Keep one in the app; call [`Sounds::play`] from event handlers and
@@ -30,6 +54,7 @@ pub struct Sounds {
     /// "Interface Sounds" setting.
     pub enabled: bool,
     music: bool,
+    volumes: Volumes,
     /// Tests and the gallery never open the device, whatever the settings say.
     silent: bool,
     output: Option<Output>,
@@ -65,6 +90,7 @@ impl Sounds {
         Self {
             enabled: true,
             music: false,
+            volumes: Volumes::default(),
             silent: false,
             output: None,
             theme: theme::Picker::default(),
@@ -87,9 +113,35 @@ impl Sounds {
 
     /// Plays a cue unless sounds are off.
     pub fn play(&mut self, cue: Cue) {
-        if self.enabled {
+        let muted = if cue.is_notification() {
+            self.volumes.notifications <= 0.0
+        } else {
+            self.volumes.interface <= 0.0
+        };
+        if self.enabled && !muted {
             self.send(Command::Cue(cue));
         }
+    }
+
+    /// Sets how loud each kind of sound is. Cheap to call every frame.
+    pub fn set_volumes(&mut self, volumes: Volumes) {
+        if volumes == self.volumes {
+            return;
+        }
+        self.volumes = volumes;
+        if let Some(output) = &self.output {
+            let _ = output.commands.send(Command::Volumes(volumes));
+        }
+    }
+
+    /// Opens the device and tells it the volumes before anything else.
+    fn open_output(&mut self) -> &Output {
+        let volumes = self.volumes;
+        self.output.get_or_insert_with(|| {
+            let output = Output::open();
+            let _ = output.commands.send(Command::Volumes(volumes));
+            output
+        })
     }
 
     /// Opens the device and renders the cues ahead of the first one, so the first hover tick
@@ -97,7 +149,7 @@ impl Sounds {
     /// off, so a launcher with sounds off never touches the device.
     pub fn warm(&mut self) {
         if self.enabled && !self.silent && self.output.is_none() {
-            self.output = Some(Output::open());
+            self.open_output();
         }
     }
 
@@ -130,7 +182,7 @@ impl Sounds {
         if self.silent {
             return;
         }
-        let output = self.output.get_or_insert_with(Output::open);
+        let output = self.open_output();
         // A send fails only when no device could be opened; that was logged once.
         let _ = output.commands.send(command);
     }

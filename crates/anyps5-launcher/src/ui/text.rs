@@ -230,7 +230,7 @@ pub fn digit_cell(painter: &Painter, style: TextStyle) -> f32 {
     let ctx = painter.ctx();
     let key = Id::unique((
         "anyps5/digit-cell",
-        style.size.to_bits(),
+        style.px().to_bits(),
         style.weight,
         style.tracking.to_bits(),
         ctx.pixels_per_point().to_bits(),

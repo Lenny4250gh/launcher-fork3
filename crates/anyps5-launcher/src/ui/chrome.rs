@@ -692,7 +692,7 @@ impl<'a> PanelRow<'a> {
             text::layout_font(
                 &painter,
                 style.font(),
-                style.size * 1.45,
+                style.px() * 1.45,
                 style.tracking,
                 self.title,
                 ink,
@@ -1700,7 +1700,7 @@ pub fn toast_with_action(
                 let one_line = layout(ty::TOAST.line_height());
                 // Three rows or more read at the open leading of running text.
                 if one_line.rows.len() >= 3 {
-                    layout(ty::TOAST.size * TOAST_LONG_LEADING)
+                    layout(ty::TOAST.px() * TOAST_LONG_LEADING)
                 } else {
                     one_line
                 }

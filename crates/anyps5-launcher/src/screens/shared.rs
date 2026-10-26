@@ -152,7 +152,7 @@ pub fn paint_label(
     alpha: f32,
 ) -> Rect {
     let tint = crate::ui::theme::fade(label.tint, alpha);
-    let glyph = style.size;
+    let glyph = style.px();
     let galley = wrapped(
         painter,
         style,

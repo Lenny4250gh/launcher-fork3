@@ -1125,7 +1125,7 @@ pub fn paint_key_string(
         let c = family.face_letter(c).unwrap_or(c);
         if let Some(glyph) = PadGlyph::from_char(c) {
             flush(&mut run, &mut x);
-            let side = style.size * 0.95;
+            let side = style.px() * 0.95;
             glyph.paint(painter, pos2(x + side * 0.5, origin.y), side, color);
             x += side;
         } else {
@@ -1148,7 +1148,7 @@ pub fn key_string_width(painter: &Painter, style: TextStyle, keys: &str) -> f32 
                 width += text::width(painter, style, &run);
                 run.clear();
             }
-            width += style.size * 0.95;
+            width += style.px() * 0.95;
         } else {
             run.push(c);
         }

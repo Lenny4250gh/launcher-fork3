@@ -869,6 +869,7 @@ fn draw(
     };
     let mut geometry: Vec<(f32, f32)> = Vec::with_capacity(plan.rows.len());
     let mut area = ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden);

@@ -1070,6 +1070,39 @@ at the same durations (120, 100, 350, 120 ms): the answer to a touch is seen at 
 tuned with. The initial in the call card and the Play Together card (24 bold before) is `ty::ITEM_TITLE` (22 semibold) in `readable_ink` of the gradient's middle
 (`home::avatar_middle`), not white: white on Mint, Gold or White was 1.2 to 2.2:1.
 
+### 3.13 Game Colors (0.3.0)
+
+A fourth theme, "Game Colors" (Settings, Appearance, Theme; stored as theme 3). Its backdrop is Cosmic's
+pattern in the colours of the selected game's art, and its accent is one of those colours unless the player
+picked an accent.
+
+- **Where the colours come from.** The game's background art, else its icon, is read on a worker thread
+  (`app::game_colors`, two at a time), reduced to 64 px, and `ui::gamecolors::dominant` takes up to three
+  colours: twelve hue buckets of the colourful pixels weighted by saturation and brightness, at least 60 degrees
+  apart. The look of each game is remembered for the session; art that cannot be read or has no colour gives
+  Cosmic's look.
+- **Palette.** Deep from the first colour (brightest channel 0.08), middle from the first and second (0.46), bright
+  from the second and third (1.0), then clamped (`clamp_palette`).
+- **Contrast.** The lit tone (the middle tone a third of the way to the bright one, as the contrast table has it) may have at most the relative luminance of Aurora's
+  lit tone (0.21), the brightest built-in ground the table of `ui::contrast` measures; the deep tone stays under
+  0.10 per channel. The accent is lifted toward white until it has the luminance of Blue (0.33), the darkest built-in
+  accent, so every ink that passes on a built-in theme passes here; its ink comes from `readable_ink`.
+- **Motion.** The current colours ease to the wanted ones with a time constant of 0.30 s (`Backdrop::set_game_palette`
+  every frame, the shader pass re-runs while they move). With "Animations: Reduced" they jump. While the picture of a
+  new game is being read the colours stay.
+
+### 3.14 Larger Text and High Contrast (0.3.0)
+
+Two switches in Settings, Appearance, next to Animations.
+
+- **Larger Text** multiplies every role of the type scale by 1.12 (`theme::LARGER_TEXT`; 16 becomes 18, 22 becomes 25),
+  in `TextStyle::font`, `line_height` and `px`. Code that derives a size or a leading from a role uses `px()`, never
+  `size`.
+- **High Contrast** raises the ink levels (0.78 to 0.94, 0.55 to 0.86, 0.4 to 0.7, 0.9 to 1), the hairlines (0.08 and
+  0.12 to 0.5 and 0.55, hover 0.32 to 0.85), the surfaces one step and the focus ring to full white, and draws glass
+  as a dark plate (black 0.82 to 0.94) with a clear edge instead of the blurred backdrop. The blur is not even made.
+- Both are read from process-wide switches that the shell sets from the preferences each frame.
+
 ## 4. Materials and blur on the GPU
 
 SwiftUI `.ultraThinMaterial` is a backdrop blur with a light tint and some saturation; it is used under every panel. egui has no
@@ -2256,6 +2289,15 @@ in `docs/user/INPUT_MAPPING.md` of AnyPS5-ARM.
 
 ---
 
+### 7.7 Volumes by kind of sound (0.3.0)
+
+Settings, Behavior, Sound: each switch (Interface Sounds, Home Screen Music, Game Music, Notification Sounds) has a
+volume row under it while it is on, a stepper from Off to 100% in steps of 10 (`volume_*` preferences, 100 by default,
+so nothing is quieter than before). Notification Sounds is a new switch: off mutes the notification cues (a notice, a
+message, an invitation, a call: `Cue::is_notification`) while the interface sounds go on. The engine scales each cue by
+the volume of its kind when it starts and the two musics continuously, gliding over about 25 ms so a change does not
+click. A volume of zero never reaches the device.
+
 ### 7.4 Discord presence (AnyPS5-ARM `4a29777` to `14ef671`, after the pinned commit)
 
 The running game shows on the player's Discord profile ("Playing ..." with the time since it
@@ -2311,6 +2353,15 @@ through the AnyPlay network also gets "on AnyPlay", the size of the party and a 
   Discord status can get an invitation. They choose whether to join." (the joiner is
   asked, not the player; the text says who can use the button). Presence off sends nothing at all,
   buttons included, and hides the join row. Texts: `screens/discord_strings.rs`.
+
+### 6.x Lists drag like a phone (0.3.0)
+
+The vertical lists and grids (panel rows, library, trophies, compare, captures, activity, what's new, the profile) take
+a mouse drag on their content and carry on with momentum when it is let go (`scroll::drag_scroll`, egui's drag scroll
+with its kinetic physics). Rows and tiles still click, because egui cancels a click once the pointer has travelled.
+The pointer passing over items never moves the keyboard or pad focus: the focus moves on a click only, and a hover only
+lights the item under the pointer. The hover tick stays quiet during a drag and for 0.8 s after it, while the content
+glides.
 
 ## 8. Localization
 

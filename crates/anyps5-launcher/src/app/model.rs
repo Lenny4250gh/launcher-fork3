@@ -203,6 +203,7 @@ pub fn ui_theme(theme: settings::Theme) -> Theme {
         settings::Theme::Cosmic => Theme::Cosmic,
         settings::Theme::Aurora => Theme::Aurora,
         settings::Theme::Sunset => Theme::Sunset,
+        settings::Theme::GameColors => Theme::GameColors,
     }
 }
 
@@ -211,6 +212,7 @@ pub fn core_theme(theme: Theme) -> settings::Theme {
         Theme::Cosmic => settings::Theme::Cosmic,
         Theme::Aurora => settings::Theme::Aurora,
         Theme::Sunset => settings::Theme::Sunset,
+        Theme::GameColors => settings::Theme::GameColors,
     }
 }
 
