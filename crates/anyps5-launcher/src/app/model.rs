@@ -360,6 +360,8 @@ pub struct Model {
     pub profile: Option<crate::app::profile::Target>,
     /// The comparison the trophy compare screen is on (`app::compare`).
     pub compare: Option<crate::app::compare::Target>,
+    /// Find Players and Send to a Friend (`app::lfg`).
+    pub lfg: crate::app::lfg::State,
     /// Where Back leads from the Game Hub, when it was not opened from Home (`app::hub`).
     pub hub_back: Option<Overlay>,
     /// Where Back leads from the trophy overview (`app::hub`).
@@ -453,6 +455,7 @@ impl Model {
             together: Default::default(),
             profile: None,
             compare: None,
+            lfg: crate::app::lfg::State::default(),
             hub_back: None,
             overview_back: None,
             profile_returning: false,

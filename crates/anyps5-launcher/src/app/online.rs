@@ -22,12 +22,14 @@ use anyps5_core::play_together::Blocker;
 use crate::app::model::{Effect, GameState, Model};
 use crate::app::overlay::Overlay;
 use crate::screens::discord_strings::redeem_failure;
+use crate::screens::lfg_strings::LfgText as LT;
 use crate::screens::online_call_strings::CallText as CT;
 use crate::screens::online_feed_strings::FeedText as FT;
 use crate::screens::online_restriction_strings as restriction_text;
 use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
 use crate::screens::online_voice_strings::VoiceText as VT;
+use crate::screens::send::media_label;
 use crate::screens::together_strings::TogetherText as TT;
 use crate::ui::focus::HomeFocus;
 use crate::ui::i18n::{Arg, Language};
@@ -389,6 +391,14 @@ impl OnlineService {
                     Cue::Invite,
                 );
             }
+            Notice::LfgRequest { from, .. } => {
+                let text = LT::ToastRequest.format(language, &[Arg::Str(&from.handle)]);
+                model.toast_with(text, Icon::USER_PLUS, Cue::Notify);
+            }
+            Notice::LfgAccepted { by, .. } => {
+                let text = LT::ToastAcceptedBy.format(language, &[Arg::Str(&by.handle)]);
+                model.toast_with(text, Icon::USERS, Cue::Invite);
+            }
             // A call rings on its own card; the window comes forward so it can be answered.
             Notice::PartyInvitation(invitation) if invitation.call => {
                 model.effects.push(Effect::RestoreWindow);
@@ -426,7 +436,10 @@ impl OnlineService {
                     language,
                     &[
                         Arg::Str(&message.sender.handle),
-                        Arg::Str(&net::snippet(&message.text, MESSAGE_TOAST_CHARS)),
+                        Arg::Str(&message.media.as_ref().map_or_else(
+                            || net::snippet(&message.text, MESSAGE_TOAST_CHARS),
+                            |info| media_label(info, language),
+                        )),
                     ],
                 );
                 model.announce(
@@ -627,6 +640,57 @@ impl OnlineService {
             (Purpose::Report(_), Ok(_)) => {
                 let text = T::Reported.text(language).to_owned();
                 model.toast(text, Icon::FLAG);
+            }
+            (Purpose::LfgPost, Ok(_)) => {
+                model.toast(LT::ToastPosted.text(language), Icon::CHECK_CIRCLE);
+            }
+            (Purpose::LfgClose(_), Ok(_)) => {
+                model.toast(LT::ToastClosed.text(language), Icon::CHECK_CIRCLE);
+            }
+            (Purpose::LfgAsk(_), Ok(_)) => {
+                model.toast(LT::ToastAsked.text(language), Icon::PAPER_PLANE_RIGHT);
+            }
+            (Purpose::LfgAnswer { accept: true, .. }, Ok(_)) => {
+                model.toast(LT::ToastAccepted.text(language), Icon::USERS);
+            }
+            // The panel says it: a list that did not load, a post that was turned away.
+            (Purpose::Lfg { .. } | Purpose::LfgMine | Purpose::LfgPost, Err(failure)) => {
+                tracing::info!("net service: {}: {}", failure.code, failure.message);
+            }
+            (Purpose::SendMedia { conversation }, Ok(_)) => {
+                let me = model
+                    .online
+                    .account
+                    .as_ref()
+                    .map_or(net::api::AccountId(0), |a| a.id);
+                let handle = model
+                    .online
+                    .social
+                    .get(&conversation)
+                    .and_then(|c| net::others(c, me).first().map(|a| a.handle.clone()))
+                    .unwrap_or_default();
+                let text = LT::Sent.format(language, &[Arg::Str(&handle)]);
+                model.toast(text, Icon::CHECK_CIRCLE);
+            }
+            (Purpose::SendMedia { .. }, Err(failure)) => {
+                tracing::info!("net service: {}: {}", failure.code, failure.message);
+                let text = if failure.restriction.is_some() {
+                    LT::SendRestricted.text(language)
+                } else {
+                    crate::app::lfg::send_failure_text(&failure.code, language)
+                };
+                model.toast_failure(text);
+            }
+            (Purpose::FetchMedia { media }, Ok(_)) => {
+                if let Some(path) = model.online.media.open.remove(&media) {
+                    crate::app::panels::lfg::open_path(model, &path);
+                }
+            }
+            (Purpose::FetchMedia { media }, Err(failure)) => {
+                tracing::info!("net service: {}: {}", failure.code, failure.message);
+                if model.online.media.open.remove(&media).is_some() {
+                    model.toast_failure(LT::OpenFailed.text(language));
+                }
             }
             (Purpose::Invite | Purpose::Dialog, Ok(_)) => {}
             // The invitation a join link made arrives as the usual event; the panel's Home page
@@ -1267,6 +1331,7 @@ mod tests {
             deleted: false,
             reactions: Vec::new(),
             rev: 0,
+            media: None,
         }
     }
 

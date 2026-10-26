@@ -7,6 +7,7 @@
 //!                           captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
 //!                           game-hub|game-hub-running|game-hub-empty|trophies-all|
+//!                           find-players|find-players-mine|find-players-empty|post-listing|send-to-friend|
 //!                           about-update|behavior-links|settings-codec|settings-codec-off|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
@@ -137,6 +138,8 @@ pub enum ScreenPage {
     Captures(crate::screens::captures::sample::CapturesLook),
     /// The Game Hub of an invented game, in one of its states.
     Hub(HubLook),
+    /// Find Players or the friend picker for a capture, in one of its states.
+    Lfg(LfgLook),
     /// The trophies of all invented games together.
     TrophiesAll,
     /// The Toolkit category, in its rows: stable, an update waiting, pinned, a local build.
@@ -762,6 +765,11 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "captures-confirm" => ScreenPage::Captures(CapturesLook::Confirm),
         "captures-missing" => ScreenPage::Captures(CapturesLook::Missing),
         "captures-loading" => ScreenPage::Captures(CapturesLook::Loading),
+        "find-players" => ScreenPage::Lfg(LfgLook::List),
+        "find-players-mine" => ScreenPage::Lfg(LfgLook::Mine),
+        "find-players-empty" => ScreenPage::Lfg(LfgLook::Empty),
+        "post-listing" => ScreenPage::Lfg(LfgLook::Post),
+        "send-to-friend" => ScreenPage::Lfg(LfgLook::Send),
         "game-hub" => ScreenPage::Hub(HubLook::Full),
         "game-hub-running" => ScreenPage::Hub(HubLook::Running),
         "game-hub-empty" => ScreenPage::Hub(HubLook::Empty),
@@ -967,6 +975,100 @@ fn online_data<'a>(
 
 /// Invented friends: one plays a game you can join, one plays, one is online, one is not; a
 /// request waits, one was sent, and a friend invited you.
+/// Which state of Find Players or of the capture picker the gallery shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LfgLook {
+    /// Three listings of other players.
+    List,
+    /// The player's own listing with two requests.
+    Mine,
+    /// Nobody is looking.
+    Empty,
+    /// The page that posts a listing.
+    Post,
+    /// The friend picker for a screenshot.
+    Send,
+}
+
+/// A signed-in player with friends, and the listings of the first invented game.
+fn sample_lfg(look: LfgLook) -> anyps5_core::online::Online {
+    use anyps5_core::online::api::{
+        Account, AccountId, LfgAsk, LfgMine, LfgMode, LfgRequest, Listing,
+    };
+    let account = |id: u64, handle: &str| Account {
+        id: AccountId(id),
+        handle: handle.into(),
+    };
+    let now = SAMPLE_NOW as u64;
+    let listing =
+        |id: &str, poster: Account, mode, language: Option<&str>, note: &str, left: u64| Listing {
+            id: id.into(),
+            poster,
+            title_id: "PPSA90000".into(),
+            mode,
+            language: language.map(str::to_owned),
+            note: note.into(),
+            slots: 3,
+            filled: 1,
+            created: now - 600,
+            expires: now + left * 60,
+            ask: None,
+            requests: Vec::new(),
+        };
+    let mut state = sample_online(OnlineLook::Friends);
+    state.lfg.open("PPSA90000");
+    if look == LfgLook::Empty {
+        state.lfg.listings = Some(Vec::new());
+        return state;
+    }
+    let mut asked = listing(
+        "b",
+        account(3, "Juno"),
+        LfgMode::PlayTogether,
+        Some("de"),
+        "Second world, no rush",
+        41,
+    );
+    asked.ask = Some(LfgAsk::Pending);
+    state.lfg.listings = Some(vec![
+        listing(
+            "a",
+            account(2, "Lumen"),
+            LfgMode::Online,
+            Some("en"),
+            "Ranked tonight, mic on",
+            52,
+        ),
+        asked,
+        listing("c", account(4, "Kit"), LfgMode::Lan, None, "", 17),
+    ]);
+    let mut own = listing(
+        "own",
+        account(1, "Mira"),
+        LfgMode::Online,
+        Some("en"),
+        "Co-op campaign, evenings",
+        48,
+    );
+    own.requests = vec![
+        LfgRequest {
+            from: account(5, "Rook"),
+            created: now - 240,
+            accepted: false,
+        },
+        LfgRequest {
+            from: account(6, "Vale"),
+            created: now - 120,
+            accepted: false,
+        },
+    ];
+    state.lfg.mine = Some(LfgMine {
+        posted: vec![own],
+        asked: Vec::new(),
+    });
+    state
+}
+
 fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
     use anyps5_core::online::api::{
         Account, AccountId, Activity, Count, Friend, FriendLists, Invitation, Presence, Privacy,
@@ -1602,6 +1704,7 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
             deleted: false,
             reactions: Vec::new(),
             rev: 0,
+            media: None,
         };
     let mut lumen_messages = vec![
         said(
@@ -2026,6 +2129,8 @@ pub struct ScreenGallery {
     trophies: TrophyListPanel,
     library: LibraryGrid,
     captures: crate::screens::captures::CapturesScreen,
+    lfg_panel: crate::screens::lfg::LfgPanel,
+    send_panel: crate::screens::send::SendPanel,
     captures_sample: Option<crate::screens::captures::sample::Sample>,
     hub: crate::screens::hub::HubScreen,
     overview: crate::screens::overview::OverviewScreen,
@@ -2142,6 +2247,7 @@ impl ScreenGallery {
                     crate::screens::gallery_feed::sample_compare(&mut state, look);
                     state
                 }
+                ScreenPage::Lfg(look) => sample_lfg(look),
                 _ => anyps5_core::online::Online::default(),
             },
             controls: ControlsPanel::default(),
@@ -2152,6 +2258,8 @@ impl ScreenGallery {
             trophies: TrophyListPanel::default(),
             library: LibraryGrid::default(),
             captures: crate::screens::captures::CapturesScreen::default(),
+            lfg_panel: crate::screens::lfg::LfgPanel::default(),
+            send_panel: crate::screens::send::SendPanel::default(),
             captures_sample: None,
             hub: crate::screens::hub::HubScreen::default(),
             overview: crate::screens::overview::OverviewScreen::default(),
@@ -2327,6 +2435,31 @@ impl ScreenGallery {
             rows: &rows,
         };
         self.overview.show(shell, ctx, &[], &data);
+    }
+
+    /// Find Players, or the friend picker of Captures, over the invented library.
+    fn lfg_screen(&mut self, shell: &mut Shell, ctx: &Context, look: LfgLook) {
+        let language = shell.language;
+        let accent = shell.accent_color();
+        if look == LfgLook::Send {
+            let data = crate::screens::send::SendData {
+                name: "Screenshot 2026-10-26 20-14-03.png",
+                online: &self.online,
+                language,
+                accent,
+            };
+            self.send_panel.show(shell, ctx, &[], &data);
+            return;
+        }
+        let data = crate::screens::lfg::LfgData {
+            game: NAMES[0],
+            title_id: "PPSA90000",
+            online: &self.online,
+            now: SAMPLE_NOW as u64,
+            language,
+            accent,
+        };
+        self.lfg_panel.show(shell, ctx, &[], &data);
     }
 
     /// The Captures area over the invented folder.
@@ -2714,6 +2847,7 @@ impl ScreenGallery {
                     changes: 1,
                     needed: true,
                 }),
+                find_players: true,
                 unlock_note: Some(
                     "Unlocked with v0.1.2. v0.1.3 is installed. This update changes how games are converted."
                         .into(),
@@ -2929,6 +3063,9 @@ impl ScreenGallery {
         }
         if let ScreenPage::Hub(look) = self.page {
             self.hub_screen(shell, &ctx, look);
+        }
+        if let ScreenPage::Lfg(look) = self.page {
+            self.lfg_screen(shell, &ctx, look);
         }
         if self.page == ScreenPage::TrophiesAll {
             self.overview_screen(shell, &ctx);
@@ -3214,6 +3351,14 @@ impl ScreenGallery {
             ScreenPage::LibraryEmpty => self.library.open(0),
             ScreenPage::Captures(look) => self.open_captures(ctx, look),
             ScreenPage::Hub(_) => self.hub.open(),
+            ScreenPage::Lfg(LfgLook::Send) => self.send_panel.open(),
+            ScreenPage::Lfg(LfgLook::Post) => {
+                self.lfg_panel.open_on(crate::screens::lfg::Page::Post)
+            }
+            ScreenPage::Lfg(LfgLook::Mine) => self
+                .lfg_panel
+                .open_on(crate::screens::lfg::Page::Mine("own".into())),
+            ScreenPage::Lfg(_) => self.lfg_panel.open(),
             ScreenPage::TrophiesAll => {
                 self.overview.open();
                 self.overview.set_focus(1);

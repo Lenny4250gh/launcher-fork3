@@ -213,8 +213,12 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
                     details: String::new(),
                     conversation,
                     seq,
+                    listing: None,
                 },
             );
+        }
+        OnlineAction::OpenMedia { conversation, seq } => {
+            super::lfg::open_media(model, &conversation, seq);
         }
         OnlineAction::PlayTogether => {
             if let Some(id) = crate::app::together::hostable(model).map(|g| g.id.clone()) {

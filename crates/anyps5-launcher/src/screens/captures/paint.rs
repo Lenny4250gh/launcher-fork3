@@ -747,6 +747,7 @@ fn view(
             let (label, icon) = match action {
                 ViewAction::OpenInPlayer => (CapturesText::OpenInPlayer, Icon::PLAY),
                 ViewAction::CopyImage => (CapturesText::CopyImage, Icon::IMAGE),
+                ViewAction::SendToFriend => (CapturesText::SendToFriend, Icon::PAPER_PLANE_RIGHT),
                 ViewAction::ShowInFolder => (CapturesText::ShowInFolder, Icon::FOLDER_OPEN),
                 ViewAction::Delete => (CapturesText::Delete, Icon::TRASH),
             };

@@ -25,8 +25,18 @@ pub struct Avatar {
     pub banner: Option<[u8; 3]>,
 }
 
+/// A received screenshot that is ready to draw.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MediaThumb {
+    pub texture: TextureId,
+    /// Width over height.
+    pub aspect: f32,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Local {
+    /// The screenshots of the messages on screen, by media ID.
+    pub media: BTreeMap<String, MediaThumb>,
     /// By title ID.
     pub games: BTreeMap<String, OwnedGame>,
     /// By avatar hash.

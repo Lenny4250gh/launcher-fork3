@@ -15,7 +15,7 @@ mod voice;
 
 pub use confirm::Ask;
 pub use feed::{ago_text, monogram_colour, paint_avatar, rarity_text, sentence, theme_grade};
-pub use local::{Avatar, Local, OwnedGame};
+pub use local::{Avatar, Local, MediaThumb, OwnedGame};
 pub use voice::talk_key;
 
 use std::collections::BTreeSet;
@@ -138,6 +138,11 @@ pub enum OnlineAction {
     NeedPreviews(Vec<String>),
     /// Take a message of the player's back for everyone.
     Unsend {
+        conversation: String,
+        seq: u64,
+    },
+    /// Open the file of a media message: download it first when this PC does not hold it.
+    OpenMedia {
         conversation: String,
         seq: u64,
     },
