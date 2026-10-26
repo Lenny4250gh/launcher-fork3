@@ -757,6 +757,7 @@ impl OnlineService {
                 | Purpose::Compare(_)
                 | Purpose::Secrets { .. }
                 | Purpose::Privacy
+                | Purpose::PublicProfile
                 | Purpose::Party
                 | Purpose::JoinCode
                 | Purpose::JoinCodeRevoke

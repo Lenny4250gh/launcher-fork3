@@ -370,11 +370,13 @@ pub fn host(title_id: &str, title: &str, in_party: bool, world: &World) -> Resul
 /// How a friend's activity reads.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Line<'a> {
-    /// In a Play Together session: "Playing Minecraft together (2/4)".
+    /// In a Play Together session: "Playing Minecraft together · 2 of 4 players".
     Together {
         title: &'a str,
         taken: u16,
         total: u16,
+        /// The session is open and has a free place, so a friend may join.
+        joinable: bool,
     },
     /// In a session of a game that friends may join.
     Joinable { title: &'a str },
@@ -391,6 +393,7 @@ pub fn presence(activity: &Activity) -> Line<'_> {
             title,
             taken: session.members,
             total: session.max_members,
+            joinable: session.joinable && session.members < session.max_members,
         },
         Some(session) if session.joinable => Line::Joinable { title },
         _ => Line::Playing { title },
@@ -826,11 +829,27 @@ mod tests {
             Line::Together {
                 title: "Minecraft",
                 taken: 2,
-                total: 4
+                total: 4,
+                joinable: true
             }
         );
-        let full = activity(MC, Some(session(SessionKind::Lan, false, 4, 4)));
-        assert!(matches!(presence(&full), Line::Together { taken: 4, .. }));
+        let full = activity(MC, Some(session(SessionKind::Lan, true, 4, 4)));
+        assert!(matches!(
+            presence(&full),
+            Line::Together {
+                taken: 4,
+                joinable: false,
+                ..
+            }
+        ));
+        let closed = activity(MC, Some(session(SessionKind::Lan, false, 2, 4)));
+        assert!(matches!(
+            presence(&closed),
+            Line::Together {
+                joinable: false,
+                ..
+            }
+        ));
         let game = activity("GAME00001", Some(session(SessionKind::Game, true, 1, 4)));
         assert_eq!(presence(&game), Line::Joinable { title: "Minecraft" });
         assert_eq!(

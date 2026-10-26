@@ -67,6 +67,8 @@ pub enum TogetherText {
     // Presence
     /// `%@` = the game, places taken, places in all.
     PresenceTogether,
+    /// The same, with the way in: `%@` = the game, places taken, places in all.
+    PresenceTogetherJoinable,
     // Toasts
     /// `%@` = who. The game keeps running.
     ToastSessionEnded,
@@ -126,7 +128,10 @@ impl TogetherText {
             TogetherText::NotJoinableLine => "Try again when they start one.",
             TogetherText::NotSupportedHeadline => "%@ cannot be played together yet",
             TogetherText::NotSupportedLine => "Only some games can be played together.",
-            TogetherText::PresenceTogether => "Playing %@ together (%@/%@)",
+            TogetherText::PresenceTogether => "Playing %@ together · %@ of %@ players",
+            TogetherText::PresenceTogetherJoinable => {
+                "Playing %@ together · %@ of %@ players · You can join"
+            }
             TogetherText::ToastSessionEnded => {
                 "%@\u{2019}s session ended. Your game keeps running."
             }
@@ -191,7 +196,10 @@ impl TogetherText {
             TogetherText::NotJoinableLine => "Yeni bir oyun başlatınca tekrar dene.",
             TogetherText::NotSupportedHeadline => "%@ henüz birlikte oynanamıyor",
             TogetherText::NotSupportedLine => "Yalnızca bazı oyunlar birlikte oynanabilir.",
-            TogetherText::PresenceTogether => "%@ birlikte oynuyor (%@/%@)",
+            TogetherText::PresenceTogether => "%@ birlikte oynuyor · %@ / %@ oyuncu",
+            TogetherText::PresenceTogetherJoinable => {
+                "%@ birlikte oynuyor · %@ / %@ oyuncu · Katılabilirsin"
+            }
             TogetherText::ToastSessionEnded => {
                 "%@ kullanıcısının oturumu sona erdi. Oyunun çalışmaya devam ediyor."
             }
@@ -258,7 +266,10 @@ impl TogetherText {
             TogetherText::NotJoinableLine => "Versuche es erneut, wenn gleich eins startet.",
             TogetherText::NotSupportedHeadline => "%@ lässt sich noch nicht zusammen spielen",
             TogetherText::NotSupportedLine => "Nur manche Spiele lassen sich zusammen spielen.",
-            TogetherText::PresenceTogether => "Spielt %@ zusammen (%@/%@)",
+            TogetherText::PresenceTogether => "Spielt %@ zusammen · %@ von %@ Spielern",
+            TogetherText::PresenceTogetherJoinable => {
+                "Spielt %@ zusammen · %@ von %@ Spielern · Du kannst beitreten"
+            }
             TogetherText::ToastSessionEnded => {
                 "Die Sitzung von %@ ist beendet. Dein Spiel läuft weiter."
             }
@@ -347,27 +358,36 @@ pub fn blocker_text(blocker: &Blocker, language: Language) -> (String, String) {
     }
 }
 
-/// How a friend's activity reads in a list, a profile or the party: "Playing Minecraft together
-/// (2/4)" for a `lan` session. `None` for a line the caller words the way it always did.
-pub fn presence_line(line: &Line<'_>, language: Language) -> Option<String> {
+/// How a friend's activity reads in a list, a profile or the party: "Playing Minecraft together ·
+/// 2 of 4 players" for a `lan` session, with "· You can join" while there is a place and the list
+/// is current (`can_join`). `None` for a line the caller words the way it always did.
+pub fn presence_line(line: &Line<'_>, language: Language, can_join: bool) -> Option<String> {
     match line {
         Line::Together {
             title,
             taken,
             total,
-        } => Some(TogetherText::PresenceTogether.format(
-            language,
-            &[
-                Arg::Str(title),
-                Arg::Int(i64::from(*taken)),
-                Arg::Int(i64::from(*total)),
-            ],
-        )),
+            joinable,
+        } => Some(
+            if *joinable && can_join {
+                TogetherText::PresenceTogetherJoinable
+            } else {
+                TogetherText::PresenceTogether
+            }
+            .format(
+                language,
+                &[
+                    Arg::Str(title),
+                    Arg::Int(i64::from(*taken)),
+                    Arg::Int(i64::from(*total)),
+                ],
+            ),
+        ),
         Line::Joinable { .. } | Line::Playing { .. } => None,
     }
 }
 
-/// The caption of the player's own session in the panel: "Playing Minecraft together (2/4)" for a
+/// The caption of the player's own session in the panel: "Playing Minecraft together · 1 of 4 players" for a
 /// Play Together session, `None` for any other.
 pub fn own_session_line(
     session: &anyps5_core::online::control::Session,
@@ -404,6 +424,7 @@ mod tests {
             TogetherText::NotJoinableHeadline,
             TogetherText::NotSupportedHeadline,
             TogetherText::PresenceTogether,
+            TogetherText::PresenceTogetherJoinable,
             TogetherText::ToastSessionEnded,
             TogetherText::ToastUnlocking,
             TogetherText::UnlockFirstNote,
@@ -499,17 +520,33 @@ mod tests {
             title: "Minecraft",
             taken: 2,
             total: 4,
+            joinable: true,
         };
         assert_eq!(
-            presence_line(&line, Language::English).as_deref(),
-            Some("Playing Minecraft together (2/4)")
+            presence_line(&line, Language::English, true).as_deref(),
+            Some("Playing Minecraft together · 2 of 4 players · You can join")
+        );
+        // A stale list never offers a join, and a full or closed world has no way in.
+        assert_eq!(
+            presence_line(&line, Language::English, false).as_deref(),
+            Some("Playing Minecraft together · 2 of 4 players")
+        );
+        let full = Line::Together {
+            title: "Minecraft",
+            taken: 4,
+            total: 4,
+            joinable: false,
+        };
+        assert_eq!(
+            presence_line(&full, Language::German, true).as_deref(),
+            Some("Spielt Minecraft zusammen · 4 von 4 Spielern")
         );
         assert_eq!(
-            presence_line(&Line::Playing { title: "X" }, Language::English),
+            presence_line(&Line::Playing { title: "X" }, Language::English, true),
             None
         );
         assert_eq!(
-            presence_line(&Line::Joinable { title: "X" }, Language::English),
+            presence_line(&Line::Joinable { title: "X" }, Language::English, true),
             None
         );
     }
