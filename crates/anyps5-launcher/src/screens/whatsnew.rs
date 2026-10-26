@@ -75,6 +75,10 @@ pub struct WhatsNewData<'a> {
     /// The notes are the launcher's own (an update), not the toolkit's: the groups keep the names
     /// the release gave them, nothing repeats below, and the release page is the launcher's.
     pub launcher: bool,
+    /// A big release: the hero and the headlines of `welcome` in place of the list of changes.
+    pub showcase: bool,
+    /// The accent of the icons in the showcase.
+    pub accent: Color32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -219,6 +223,9 @@ pub struct WhatsNewPanel {
     expanded: HashSet<String>,
     /// Set when the cursor moved by command: the next frame scrolls to it.
     follow: bool,
+    /// The showcase's scroll position, and whether the pad moved it this frame.
+    scroll: f32,
+    scroll_set: bool,
 }
 
 impl WhatsNewPanel {
@@ -228,6 +235,13 @@ impl WhatsNewPanel {
         self.cursor = 1;
         self.expanded.clear();
         self.follow = true;
+    }
+
+    /// Opens the showcase of a big release, from the top.
+    pub fn open_showcase(&mut self) {
+        self.open();
+        self.scroll = 0.0;
+        self.scroll_set = true;
     }
 
     /// Opens on a launcher's notes: every group unfolded, since there are few.
@@ -341,6 +355,21 @@ impl WhatsNewPanel {
                 self.close();
                 actions.push(WhatsNewAction::Close);
             }
+            Command::Select if data.showcase => {
+                shell.play(Cue::Close);
+                self.close();
+                actions.push(WhatsNewAction::Close);
+            }
+            Command::Up | Command::Down if data.showcase => {
+                let step = if command == Command::Down {
+                    160.0
+                } else {
+                    -160.0
+                };
+                self.scroll = (self.scroll + step).max(0.0);
+                self.scroll_set = true;
+                shell.play(Cue::Move);
+            }
             Command::Select => self.activate(shell, data, actions),
             Command::Up | Command::Down => {
                 let list = self.current_lines(data);
@@ -413,6 +442,7 @@ impl WhatsNewPanel {
         buttons.spacing_mut().item_spacing.x = size::CONTROL_GAP;
         if ConsoleButton::new(language.text(crate::ui::i18n::Key::Close))
             .icon(Icon::X)
+            .focused(data.showcase)
             .show(&mut buttons)
             .clicked()
         {
@@ -429,6 +459,7 @@ impl WhatsNewPanel {
         // The release line under the title.
         let mut y = header.max.y + space::XS;
         let subtitle = match &data.view {
+            _ if data.showcase => format!("v{}", data.tag),
             NotesView::Ready(published) => {
                 let count = published.notes.changes.len();
                 let how_many = if count == 1 {
@@ -462,6 +493,19 @@ impl WhatsNewPanel {
         y += space::XXL;
 
         let body = Rect::from_min_max(pos2(area.min.x, y), area.max);
+        if data.showcase {
+            let set = std::mem::take(&mut self.scroll_set);
+            crate::screens::welcome::show(
+                ui,
+                body,
+                language,
+                data.tag,
+                data.accent,
+                &mut self.scroll,
+                set,
+            );
+            return;
+        }
         match &data.view {
             NotesView::Loading | NotesView::Unavailable => {
                 let message = if matches!(data.view, NotesView::Loading) {

@@ -177,6 +177,10 @@ pub struct PanelHost {
     whats_new_tag: String,
     /// The settings category to open on when coming back from the notes.
     settings_return: Option<usize>,
+    /// The notes panel shows the showcase of the big release, not a list of changes.
+    whats_new_showcase: bool,
+    /// The showcase opened by itself after an update: closing it leaves for the home screen.
+    welcome_standalone: bool,
     /// How many clips the folder held when it was last counted, and when.
     clips_counted: Option<(std::time::Instant, usize)>,
     /// What the catalogue recommends: the shipped one at first, a newer one once fetched.
@@ -265,6 +269,8 @@ impl PanelHost {
             required: crate::screens::required::RequiredScreen::default(),
             whats_new_tag: String::new(),
             settings_return: None,
+            whats_new_showcase: false,
+            welcome_standalone: false,
             clips_counted: None,
             catalog: Catalog::embedded(),
             catalog_asked: simulated,
@@ -526,6 +532,8 @@ impl PanelHost {
             }
             SettingsAction::OpenWhatsNew(tag) => {
                 self.launcher_published = None;
+                self.whats_new_showcase = false;
+                self.welcome_standalone = false;
                 self.toolkit.load_notes(
                     &model.paths,
                     &model.prefs.toolkit_repository,
@@ -539,6 +547,13 @@ impl PanelHost {
             SettingsAction::CancelRestart => self.launcher.cancel_hold(),
             SettingsAction::CheckLauncherUpdate => self.launcher.check_now(),
             SettingsAction::OpenLauncherNotes => self.open_launcher_notes(model),
+            SettingsAction::ShowWelcome => {
+                self.show_welcome(
+                    model,
+                    Category::ALL.iter().position(|c| *c == Category::About),
+                    false,
+                );
+            }
             SettingsAction::SetLinks(on) => self.set_links(model, on),
             SettingsAction::AddToSteam => self.add_to_steam(model, steam::Request::Launcher),
             SettingsAction::AddGamesToSteam => {
@@ -1395,7 +1410,8 @@ impl PanelHost {
         } else if !wanted && self.whats_new.is_active() {
             self.whats_new.close();
         }
-        let launcher = self.launcher_published.is_some();
+        let showcase = self.whats_new_showcase;
+        let launcher = self.launcher_published.is_some() || showcase;
         let view = match (&self.launcher_published, &self.toolkit.notes) {
             (Some(published), _) => NotesView::Ready(published),
             (None, NotesState::Ready(published)) => NotesView::Ready(published),
@@ -1403,6 +1419,7 @@ impl PanelHost {
             (None, NotesState::Idle | NotesState::Loading) => NotesView::Loading,
         };
         let tag = match &self.launcher_published {
+            _ if showcase => crate::screens::welcome::RELEASE,
             Some(published) => published.tag.as_str(),
             None => self.whats_new_tag.as_str(),
         };
@@ -1411,10 +1428,16 @@ impl PanelHost {
             view,
             language,
             launcher,
+            showcase,
+            accent: cx.shell.accent_color(),
         };
         let actions = self.whats_new.show(cx.shell, cx.ctx, &events, &data);
         for action in actions {
             match action {
+                WhatsNewAction::Close if showcase && self.welcome_standalone => {
+                    self.welcome_standalone = false;
+                    cx.model.close_overlay();
+                }
                 WhatsNewAction::Close => cx.model.switch_overlay(Overlay::Settings),
                 WhatsNewAction::OpenUrl(url) => open_url(&url),
             }
@@ -1948,12 +1971,25 @@ impl PanelHost {
         }
     }
 
+    /// The showcase of the big release in the "What's New" panel. From About it returns to About;
+    /// shown on its own after an update (`settings_return` is `None`) it closes to the home screen.
+    fn show_welcome(&mut self, model: &mut Model, return_to: Option<usize>, standalone: bool) {
+        self.launcher_published = None;
+        self.whats_new_showcase = true;
+        self.welcome_standalone = standalone;
+        self.settings_return = return_to;
+        self.whats_new.open_showcase();
+        model.switch_overlay(Overlay::WhatsNew);
+    }
+
     /// The notes of the staged update in the "What's New" panel.
     fn open_launcher_notes(&mut self, model: &mut Model) {
         let (Some(version), Some(notes)) = (self.launcher.staged_version(), self.launcher.notes())
         else {
             return;
         };
+        self.whats_new_showcase = false;
+        self.welcome_standalone = false;
         self.launcher_published = Some(anyps5_core::releases::Published {
             tag: version.to_owned(),
             date: String::new(),
@@ -2053,6 +2089,18 @@ impl OverlayHost for PanelHost {
         // A retired version meets "Update required" once, as soon as nothing else is going on.
         if cx.model.required_screen_due() {
             cx.model.show_required();
+        }
+        // The showcase of a big release meets the player once, when nothing else is going on.
+        if cx.model.onboarded()
+            && cx.model.overlay.is_none()
+            && cx.model.running.is_none()
+            && cx.model.starting.is_none()
+            && cx.model.prefs.whats_new_seen != anyps5_core::settings::WHATS_NEW_RELEASE
+        {
+            cx.model.edit_prefs(|p| {
+                p.whats_new_seen = anyps5_core::settings::WHATS_NEW_RELEASE.to_owned()
+            });
+            self.show_welcome(cx.model, None, true);
         }
         // No toolkit on this PC: fetch it now, already during the onboarding, so the first unlock
         // needs no visit to the settings. The result shows as a toast (see `poll_toolkit`).

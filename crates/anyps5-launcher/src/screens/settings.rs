@@ -302,6 +302,8 @@ pub enum SettingsAction {
     CheckLauncherUpdate,
     /// Open the notes of the staged launcher update.
     OpenLauncherNotes,
+    /// "What's New in 0.3.0, Show again": the showcase of the big release.
+    ShowWelcome,
     /// One of the About page's links (website, Discord, privacy, terms).
     OpenPage(&'static str),
     /// "Open AnyPlay Links with This Launcher" was switched: write or remove the registration.
@@ -1001,6 +1003,15 @@ pub fn build_categories(
         env.launcher_notes,
         language,
     ));
+    about.push(
+        Row::command(
+            "welcomeAgain",
+            crate::screens::update_strings::UpdateText::WhatsNewIn
+                .format(language, &[Arg::Str(crate::screens::welcome::RELEASE)]),
+        )
+        .detail(crate::screens::welcome::show_again(language))
+        .icon(Icon::SPARKLE),
+    );
     {
         use crate::screens::about_strings::AboutText as A;
         about.push(
@@ -1781,6 +1792,9 @@ impl SettingsPanel {
             Change::Run {
                 row: "launcherNotes",
             } => out.actions.push(SettingsAction::OpenLauncherNotes),
+            Change::Run {
+                row: "welcomeAgain",
+            } => out.actions.push(SettingsAction::ShowWelcome),
             Change::Run {
                 row: "launcherDownload",
             } => out.actions.push(SettingsAction::OpenPage(

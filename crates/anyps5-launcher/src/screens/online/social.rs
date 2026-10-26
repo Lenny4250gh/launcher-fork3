@@ -7,7 +7,7 @@ use anyps5_core::online::api::{
 };
 use anyps5_core::online::{Online, Purpose, others, plain};
 
-use super::{Ask, OnlineAction, OnlineData, OnlinePanel, Page, presence_text};
+use super::{Ask, OnlineAction, OnlineData, OnlinePanel, Page, presence_text_for};
 use crate::screens::format;
 use crate::screens::friends_strings::FriendsText as FX;
 use crate::screens::online_feed_strings::FeedText as FD;
@@ -234,6 +234,7 @@ impl OnlinePanel {
                 }
                 if leads
                     && !alone
+                    && online.is_online()
                     && let Some(session) = online.session.as_ref().filter(|s| {
                         s.visibility != Visibility::Closed
                             && s.members.iter().any(|m| m.account.id == me)
@@ -245,12 +246,14 @@ impl OnlinePanel {
                             .detail(session.title.clone()),
                     );
                 }
-                rows.push(Row::caption("voiceCaption", V::Voice.text(language)).group_start());
-                self.voice_rows(data, rows, false);
-                rows.push(
-                    Row::action("voiceSettings", V::VoiceSettings.text(language))
-                        .icon(Icon::GEAR_SIX),
-                );
+                if online.is_online() {
+                    rows.push(Row::caption("voiceCaption", V::Voice.text(language)).group_start());
+                    self.voice_rows(data, rows, false);
+                    rows.push(
+                        Row::action("voiceSettings", V::VoiceSettings.text(language))
+                            .icon(Icon::GEAR_SIX),
+                    );
+                }
                 super::screen::rows(data, rows);
                 rows.push(Row::caption("membersCaption", t(S::PartyMembers)).group_start());
                 let voice = &online.voice;
@@ -278,7 +281,7 @@ impl OnlinePanel {
                         detail.push(t(S::Leader).to_owned());
                     }
                     if let Some(friend) = friend {
-                        detail.push(presence_text(friend, language));
+                        detail.push(presence_text_for(friend, language, data.online.is_online()));
                     }
                     let icon = if muted {
                         Icon::SPEAKER_SLASH
@@ -345,7 +348,9 @@ impl OnlinePanel {
                             .group_start(),
                     );
                 }
-                let presence = online.friend(*id).map(|f| presence_text(f, language));
+                let presence = online
+                    .friend(*id)
+                    .map(|f| presence_text_for(f, language, data.online.is_online()));
                 (handle, presence)
             }
             Page::PartyPicker => {
@@ -359,7 +364,11 @@ impl OnlinePanel {
                             self.picked.contains(&friend.account.id),
                         )
                         .avatar(self.avatar_of(data, &friend.account, Some(&friend.presence)))
-                        .detail(presence_text(friend, language)),
+                        .detail(presence_text_for(
+                            friend,
+                            language,
+                            data.online.is_online(),
+                        )),
                     );
                 }
                 if candidates.is_empty() {
@@ -750,7 +759,7 @@ impl OnlinePanel {
             ConversationKind::Direct => others(conversation, Self::me(data))
                 .first()
                 .and_then(|a| data.online.friend(a.id))
-                .map(|f| presence_text(f, language)),
+                .map(|f| presence_text_for(f, language, data.online.is_online())),
             ConversationKind::Group => Some(
                 S::GroupPeople.format(language, &[Arg::Int(conversation.members.len() as i64)]),
             ),
