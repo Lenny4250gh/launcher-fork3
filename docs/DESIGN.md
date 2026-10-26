@@ -1311,6 +1311,8 @@ the log view. (Screenshot S-unlocking shows step "Converting for Mac", 39 %.)
 - Starting a game freezes a preparation at once (the relinker is suspended, not killed); it goes on after the game ends.
 - Failure sentences say what to do: toolkit missing, drive full, file held by another program, unusable dump, converter stopped; the technical message goes to the log.
 
+**Removing a game's unlocked copy** (Remove Installation, after the confirmation) shows its progress on Home like an unlock does, as the game state `Uninstalling { fraction }` (the key keeps the old name; the word is "Removing"). The tile shows the installing overlay with the removed fraction; the state line reads "Removing" with the trash glyph; the primary button shows the same word, greyed out, and does nothing on press; the bar beside the buttons runs as for an unlock (overall fraction, label, no pause). Once started it cannot be cancelled: a half-removed copy is useless. Library sorts the game with the other busy games, and the phone remote reports it as `unavailable`. Gallery scene `home-uninstalling` (40 %, focus on the primary button).
+
 ### 5.5 Launch splash ("start screen with timer")
 
 Shown from the press of Play until the game's first window appears (poll every 400 ms for a visible top-level window of the game
@@ -2895,7 +2897,7 @@ Everything the launcher tells the player on its own is kept in one list, so a to
   PNG at 1600 x 900 without opening a window, with deterministic data (profile name "Utku", sounds off, Turkish unless
   `ANYPS5_PREVIEW_LANGUAGE=en`, `ANYPS5_PREVIEW_SELECT=<title id>`, `ANYPS5_PREVIEW_BANNER_BACKDROP=<png>`). Build the same for visual
   regression, with these states: `home-theme0..2` (artwork off), `home-artwork`, `home-actions` (focus on actions 0), `home-unlocking`
-  (copy step, 40 %), `starting`, `game-settings` (row 1), `controls` (row 1), `controls-capture` (row 3 waiting, "Square"), `advanced`
+  (copy step, 40 %), `home-uninstalling` (removal, 40 %), `starting`, `game-settings` (row 1), `controls` (row 1), `controls-capture` (row 3 waiting, "Square"), `advanced`
   (row 4), `home-trophies` (focus on actions 1), `trophies` (index 1), `settings` (row 0) and `settings1..13` (each tab, in rail order), `library`
   (index 1), `trophy-banner` (settled card over a backdrop picture), `onboarding0..2`. Theme stills are rendered at `time = 260` (full
   frame) and `time = 200` (660 x 372 cards); the selected game in previews is index 1.
