@@ -76,27 +76,25 @@ jobs:
             sleep 30
           done
 
-  # The licences of every third-party crate in the launcher and the net service it carries. Every
-  # package ships the file, and the release carries it beside the portable exe.
-  notices:
+  # The anyplaynet/network revision whose net service the launcher carries: the input of a run by
+  # hand, else the repository variable NETWORK_REF, else the commit in network.ref. A full commit SHA,
+  # never a branch: a release is built from a revision somebody chose. Bump network.ref by a pull
+  # request. Resolved once, in seconds, so every build starts at once and none waits for the licence
+  # job; every job below builds from this output, so the files of one release cannot come from two
+  # revisions of main. (A full SHA is its own commit: the checkout of a SHA that does not exist fails.)
+  network:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
-      # The exact anyplaynet/network commit of the pin (network.ref), resolved once. Every job below builds
-      # from it, so the files of one release cannot come from two revisions of main.
-      network: ${{ steps.network.outputs.commit }}
-    defaults:
-      run:
-        working-directory: launcher
+      commit: ${{ steps.pin.outputs.ref }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           path: launcher
-      # The anyplaynet/network revision whose net service the launcher carries: the input of a run
-      # by hand, else the repository variable NETWORK_REF, else the commit in network.ref. A full
-      # commit SHA, never a branch: a release is built from a revision somebody chose. Bump
-      # network.ref by a pull request.
-      - id: network-pin
+          sparse-checkout: network.ref
+          sparse-checkout-cone-mode: false
+      - id: pin
         name: Network revision
         shell: bash
         env:
@@ -105,18 +103,29 @@ jobs:
           ref=${NETWORK_OVERRIDE:-$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/launcher/network.ref")}
           [[ $ref =~ ^[0-9a-f]{40}$ ]] || { echo "the network revision must be one full commit SHA, got '$ref'" >&2; exit 1; }
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+  # The licences of every third-party crate in the launcher and the net service it carries. Every
+  # package ships the file, and the release carries it beside the portable exe.
+  notices:
+    needs: network
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: launcher
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           repository: anyplaynet/network
-          ref: ${{ steps.network-pin.outputs.ref }}
+          ref: ${{ needs.network.outputs.commit }}
           path: network
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - name: Network commit
-        id: network
-        run: echo "commit=$(git -C ../network rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Third-party licences
         run: tools/notices.sh dist/THIRD-PARTY-LICENSES.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -126,8 +135,11 @@ jobs:
           if-no-files-found: error
 
   windows:
-    needs: notices
+    needs: network
     runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
     defaults:
       run:
         shell: pwsh
@@ -144,7 +156,7 @@ jobs:
         with:
           persist-credentials: false
           repository: anyplaynet/network
-          ref: ${{ needs.notices.outputs.network }}
+          ref: ${{ needs.network.outputs.commit }}
           path: network
 
       - name: Version
@@ -239,6 +251,13 @@ jobs:
           if (-not (Test-Path "$dir/ISCC.exe")) { throw 'Inno Setup did not install' }
           "INNO_DIR=$dir" >> $env:GITHUB_ENV
 
+      # The licence file comes from the `notices` job, which runs next to this one: wait for it here, at
+      # the step that needs it, not before the job starts.
+      - name: Wait for the licence file
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/wait-artifact.sh dist-notices
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist-notices
@@ -262,14 +281,14 @@ jobs:
   # 2.35): only two weak symbols of Rust's std (pidfd_spawnp, pidfd_getpid) name 2.39, and std
   # does without them. The linux job below carries it.
   linux-share-worker:
-    needs: notices
+    needs: network
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           repository: anyplaynet/network
-          ref: ${{ needs.notices.outputs.network }}
+          ref: ${{ needs.network.outputs.commit }}
           path: network
       - name: System packages
         run: |
@@ -292,8 +311,11 @@ jobs:
   # Built on the oldest runner image still offered: a binary links against the glibc it is built
   # with, and an older one runs on more distributions.
   linux:
-    needs: [notices, linux-share-worker]
+    needs: [network, linux-share-worker]
     runs-on: ubuntu-22.04
+    permissions:
+      actions: read
+      contents: read
     defaults:
       run:
         working-directory: launcher
@@ -307,7 +329,7 @@ jobs:
         with:
           persist-credentials: false
           repository: anyplaynet/network
-          ref: ${{ needs.notices.outputs.network }}
+          ref: ${{ needs.network.outputs.commit }}
           path: network
 
       - name: Version
@@ -369,6 +391,13 @@ jobs:
           check ../network/target/release/anyplay-net anyplay-net
           check ../share-worker/anyplay-share anyplay-share-worker
 
+      # The licence file comes from the `notices` job, which runs next to this one: wait for it here, at
+      # the step that needs it, not before the job starts.
+      - name: Wait for the licence file
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/wait-artifact.sh dist-notices
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist-notices
@@ -434,8 +463,11 @@ jobs:
 
   # Apple silicon app, signed ad hoc. No Developer ID or notarization secret is used.
   macos:
-    needs: notices
+    needs: network
     runs-on: macos-15
+    permissions:
+      actions: read
+      contents: read
     env:
       MACOSX_DEPLOYMENT_TARGET: '11.0'
     defaults:
@@ -451,7 +483,7 @@ jobs:
         with:
           persist-credentials: false
           repository: anyplaynet/network
-          ref: ${{ needs.notices.outputs.network }}
+          ref: ${{ needs.network.outputs.commit }}
           path: network
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
@@ -467,6 +499,13 @@ jobs:
         run: |
           rust-audit-info target/aarch64-apple-darwin/release/anyplay-launcher \
             | jq -e '[.packages[].name] | index("anyps5-launcher") != null'
+      # The licence file comes from the `notices` job, which runs next to this one: wait for it here, at
+      # the step that needs it, not before the job starts.
+      - name: Wait for the licence file
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/wait-artifact.sh dist-notices
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist-notices
@@ -503,7 +542,7 @@ jobs:
         with:
           persist-credentials: false
           path: launcher
-      # The same revision `notices` resolves (the input of a run by hand, else NETWORK_REF, else
+      # The same revision the `network` job resolves (the input of a run by hand, else NETWORK_REF, else
       # network.ref); `publish` checks that both found the same commit.
       - id: network-pin
         name: Network revision
@@ -603,7 +642,7 @@ jobs:
   # the dry run of the signing happen here; no secret and no write access: what signs and what
   # publishes are the jobs `sign` and `release` below.
   publish:
-    needs: [notices, prepare, windows, linux, macos]
+    needs: [network, notices, prepare, windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
       # Only the file the dry run reads (a cone checkout takes the files of the root as well).
@@ -618,7 +657,7 @@ jobs:
         env:
           BUILT_VERSION: ${{ needs.windows.outputs.version }}
           PREPARED_VERSION: ${{ needs.prepare.outputs.version }}
-          BUILT_NETWORK: ${{ needs.notices.outputs.network }}
+          BUILT_NETWORK: ${{ needs.network.outputs.commit }}
           PREPARED_NETWORK: ${{ needs.prepare.outputs.network }}
         run: |
           [ "$BUILT_VERSION" = "$PREPARED_VERSION" ] || { echo "::error::the builds are version $BUILT_VERSION, the SBOMs $PREPARED_VERSION"; exit 1; }
@@ -637,7 +676,7 @@ jobs:
       - name: Build info
         env:
           VERSION: ${{ needs.windows.outputs.version }}
-          NETWORK_COMMIT: ${{ needs.notices.outputs.network }}
+          NETWORK_COMMIT: ${{ needs.network.outputs.commit }}
         run: |
           {
             echo "AnyPlay Launcher $VERSION"

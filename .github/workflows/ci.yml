@@ -198,7 +198,12 @@ jobs:
   # Every gallery scene, rendered once by a DEBUG build: egui's debug lock panics after 10 s on a
   # deadlock where a release build only hangs (0.2.8 shipped one in the chat composer). A panic,
   # a hang (60 s per scene) or a missing picture fails the job and names the scene.
-  scenes:
+  #
+  # Three steps so the 300 scenes do not take half an hour on one runner: `scenes-build` makes the
+  # debug binary once, `scenes-shard` renders one eighth of the scenes per runner (8 runners side by
+  # side, tools/gallery-sweep.sh with a shard), and `scenes` is the one check the rest of the
+  # repository knows: it is green when every shard is.
+  scenes-build:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -219,10 +224,11 @@ jobs:
           repository: anyplaynet/network
           ref: ${{ steps.network-pin.outputs.ref }}
           path: network
+      # Only what the build needs: the shards install the runtime side.
       - name: System packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends             pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev             xvfb mesa-vulkan-drivers libvulkan1 libx11-6 libxcursor1 libxi6 libxrandr2             libxkbcommon-x11-0 libgl1
+          sudo apt-get install -y --no-install-recommends             pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
@@ -230,13 +236,73 @@ jobs:
         with:
           workspaces: launcher
           # Only main writes the cache; pull requests restore it (a PR run used to save its own
-          # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit).
+          # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit). One shared key for
+          # this kind of job: the debug build never shares a cache with the release builds above.
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: scenes-debug
+          shared-key: scenes-debug
+      # Line tables instead of full debug info: a panic still names its file and line, the binary
+      # is a fraction of the size to link, cache and hand to the shards.
       - name: Debug build
+        env:
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
         run: cargo build -p anyps5-launcher
-      - name: Render every scene
-        run: tools/gallery-sweep.sh target/debug/anyplay-launcher 4 60
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scenes-debug-binary
+          path: launcher/target/debug/anyplay-launcher
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 1
+
+  scenes-shard:
+    needs: scenes-build
+    name: scenes-shard ${{ matrix.shard }}/8
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      # The script and the scene names (read from the source); no build, no network checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: launcher
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: scenes-debug-binary
+          path: launcher/target/debug
+      # Runtime libraries of the binary (the same names as the -dev packages of the build, without
+      # the headers), a virtual X server and a software Vulkan device (lavapipe).
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends             libasound2t64 libudev1 libxkbcommon0 libwayland-client0 libwayland-cursor0 libwayland-egl1             xvfb mesa-vulkan-drivers libvulkan1 libx11-6 libxcursor1 libxi6 libxrandr2             libxkbcommon-x11-0 libgl1
+      - name: The binary finds its libraries
+        run: |
+          chmod +x target/debug/anyplay-launcher
+          if ldd target/debug/anyplay-launcher | grep 'not found'; then exit 1; fi
+      - name: Render this shard's scenes
+        run: tools/gallery-sweep.sh target/debug/anyplay-launcher 4 60 ${{ matrix.shard }}/8
+
+  # The check name the rest of the repository counts. Green only when the build and every shard are.
+  scenes:
+    if: always()
+    needs: [scenes-build, scenes-shard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Every shard rendered all of its scenes
+        env:
+          BUILD: ${{ needs.scenes-build.result }}
+          SHARDS: ${{ needs.scenes-shard.result }}
+        run: |
+          echo "build: $BUILD, shards: $SHARDS"
+          [ "$BUILD" = success ] && [ "$SHARDS" = success ]
 
   macos:
     needs: changes
