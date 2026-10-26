@@ -54,21 +54,25 @@ impl Service {
     pub fn preset_url(self) -> Option<&'static str> {
         match self {
             Service::Twitch => Some("rtmp://live.twitch.tv/app"),
-            Service::YouTube => Some("rtmp://a.rtmp.youtube.com/live2"),
+            // YouTube recommends the secure address.
+            Service::YouTube => Some("rtmps://a.rtmps.youtube.com:443/live2"),
             Service::Custom => None,
         }
     }
 }
 
 /// The address to publish to for the stored service and custom address; `None` while a custom
-/// address is missing or is not an `rtmp://` one.
+/// address is missing or is not an `rtmp://` or `rtmps://` one.
 pub fn server_url(service: &str, custom: &str) -> Option<String> {
     let service = Service::from_id(service);
     if let Some(url) = service.preset_url() {
         return Some(url.to_owned());
     }
     let custom = custom.trim();
-    (custom.starts_with("rtmp://") && custom.len() > "rtmp://".len()).then(|| custom.to_owned())
+    ["rtmp://", "rtmps://"]
+        .into_iter()
+        .any(|scheme| custom.len() > scheme.len() && custom.starts_with(scheme))
+        .then(|| custom.to_owned())
 }
 
 /// A picture size, rate and bit rate.
@@ -307,6 +311,13 @@ pub enum EndKind {
     BadKey,
     /// The address is wrong or the server did not answer.
     NoServer,
+    /// The secure connection failed because the certificate is not one this PC trusts, or is
+    /// for another server.
+    CertUntrusted,
+    /// The certificate is not valid at this PC's date and time.
+    CertExpired,
+    /// The secure connection failed for another reason.
+    SecureFailed,
     /// The connection broke while live.
     Lost,
     NoEncoder,
@@ -324,6 +335,12 @@ pub fn end_kind(reason: &str) -> EndKind {
         EndKind::NoWindow
     } else if reason.contains("stream key") {
         EndKind::BadKey
+    } else if reason.contains("tls_untrusted") {
+        EndKind::CertUntrusted
+    } else if reason.contains("tls_expired") {
+        EndKind::CertExpired
+    } else if reason.contains("tls_failed") {
+        EndKind::SecureFailed
     } else if reason.starts_with("connect_failed") {
         EndKind::NoServer
     } else if reason.starts_with("disconnected") {
@@ -453,15 +470,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_services_have_their_servers_and_a_custom_one_must_be_rtmp() {
+    fn the_services_have_their_servers_and_a_custom_one_must_be_rtmp_or_rtmps() {
         assert_eq!(
             server_url("twitch", ""),
             Some("rtmp://live.twitch.tv/app".into())
         );
         assert_eq!(
             server_url("youtube", "ignored"),
-            Some("rtmp://a.rtmp.youtube.com/live2".into())
+            Some("rtmps://a.rtmps.youtube.com:443/live2".into())
         );
+        assert_eq!(
+            server_url("custom", "rtmps://example.com:443/live"),
+            Some("rtmps://example.com:443/live".into())
+        );
+        assert_eq!(server_url("custom", "rtmps://"), None);
         assert_eq!(
             server_url("custom", " rtmp://example.com/live "),
             Some("rtmp://example.com/live".into())
@@ -559,6 +581,18 @@ mod tests {
         assert_eq!(
             end_kind("disconnected: the server closed the connection"),
             EndKind::Lost
+        );
+        assert_eq!(
+            end_kind("connect_failed: tls_untrusted: this PC does not trust the server's certificate"),
+            EndKind::CertUntrusted
+        );
+        assert_eq!(
+            end_kind("connect_failed: tls_expired: the server's certificate is not valid at this PC's date and time"),
+            EndKind::CertExpired
+        );
+        assert_eq!(
+            end_kind("connect_failed: tls_failed: the secure connection to x failed"),
+            EndKind::SecureFailed
         );
         assert_eq!(end_kind("no_encoder"), EndKind::NoEncoder);
         assert_eq!(end_kind("no_window"), EndKind::NoWindow);
