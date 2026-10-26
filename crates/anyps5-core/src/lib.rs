@@ -23,6 +23,7 @@ pub mod library;
 pub mod linkreg;
 pub mod links;
 pub mod location;
+pub mod logflood;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod notes;

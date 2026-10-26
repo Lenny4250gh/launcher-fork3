@@ -1775,6 +1775,15 @@ impl PanelHost {
                         self.make_report(cx.model, game);
                     }
                 }
+                LogAction::OpenOnlineLog => {
+                    let path = cx.model.paths.network_log();
+                    if let Some(dir) = path.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    if let Err(error) = report::reveal_in_explorer(&path) {
+                        tracing::warn!("cannot show the online log: {error}");
+                    }
+                }
             }
         }
     }
@@ -1830,6 +1839,7 @@ impl PanelHost {
                 settings,
                 crash: Diagnosis::crash_name(&session, None),
                 session,
+                controllers: connected_controllers(),
                 now: clock::rfc3339_utc(clock::unix_seconds()),
             };
             (paths, input)
@@ -2249,6 +2259,17 @@ impl OverlayHost for PanelHost {
             self.events.clear();
         }
         self.poll_work(cx.model);
+        // "Send Report" on the toast of a game that ended in trouble: the log view opens on the
+        // report, which shows the player what would be sent.
+        if let Some(id) = cx.model.report_request.take()
+            && let Some(index) = cx.model.games.iter().position(|g| g.id == id)
+        {
+            cx.model.selected = index;
+            let game = cx.model.games[index].clone();
+            self.prepare_log(cx.model, &game);
+            self.prepare_upstream(cx.model, &game);
+            cx.model.switch_overlay(Overlay::Log);
+        }
         self.library_extras.poll(cx.model);
         self.poll_toolkit(cx.model);
         let paths = cx.model.paths.clone();
@@ -2345,6 +2366,19 @@ fn store_game_settings(model: &mut Model, id: &GameId, settings: GameSettings) {
 
 /// Opens the issue form of a report in the browser. A report too long for the link is copied
 /// first, to be pasted into the form; when the browser does not open, the link is copied instead.
+/// The names of the controllers connected now, for the report. Reads the system on the caller's
+/// thread: call it from the report worker.
+fn connected_controllers() -> Vec<String> {
+    match gilrs::Gilrs::new() {
+        Ok(gilrs) => gilrs
+            .gamepads()
+            .filter(|(_, pad)| pad.is_connected())
+            .map(|(_, pad)| pad.name().to_owned())
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
 fn open_upstream(ctx: &Context, model: &mut Model, prepared: &issue::Prepared) {
     let language = model.language();
     if let Some(text) = &prepared.clipboard {

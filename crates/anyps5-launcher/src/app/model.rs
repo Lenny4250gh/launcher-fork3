@@ -84,6 +84,8 @@ pub struct Toast {
     pub icon: Icon,
     /// UI-clock time at which it starts to leave; infinite while it stays until dismissed.
     pub until: f64,
+    /// A game ended in trouble: the toast offers "Send Report" for it (Options, or the button).
+    pub report: Option<GameId>,
 }
 
 impl Toast {
@@ -376,6 +378,8 @@ pub struct Model {
     cards_asked: f64,
     started_without_window: bool,
     toast_counter: u64,
+    /// A crash report the player asked for on the toast; the panels take it ([`Model::send_crash_report`]).
+    pub report_request: Option<GameId>,
 }
 
 impl Model {
@@ -454,6 +458,7 @@ impl Model {
             cards_asked: f64::NEG_INFINITY,
             started_without_window: false,
             toast_counter: 0,
+            report_request: None,
         }
     }
 
@@ -640,6 +645,24 @@ impl Model {
         }
     }
 
+    /// A failure toast of a game that ended in trouble, with "Send Report" for that game.
+    pub fn toast_crash(&mut self, text: impl Into<String>, game: GameId) {
+        self.toast_failure(text);
+        if let Some(toast) = self.toast.as_mut() {
+            toast.report = Some(game);
+        }
+    }
+
+    /// The player asked for the report of the game on the toast (Options, or its button). The
+    /// toast goes; the panels pick the request up in their next frame.
+    pub fn send_crash_report(&mut self) {
+        let game = self.toast.as_ref().and_then(|t| t.report.clone());
+        if let Some(game) = game {
+            self.dismiss_toast();
+            self.report_request = Some(game);
+        }
+    }
+
     fn toast_silent(&mut self, text: impl Into<String>, icon: Icon) {
         self.toast_counter += 1;
         self.toast = Some(Toast {
@@ -648,6 +671,7 @@ impl Model {
             text: text.into(),
             icon,
             until: self.now + TOAST_SECONDS,
+            report: None,
         });
     }
 
@@ -1042,7 +1066,7 @@ impl Model {
                 match diagnosis {
                     Some(summary) => {
                         let name = self.game(&game).map(|g| g.name.clone()).unwrap_or_default();
-                        self.toast_failure(format!("{name}: {summary}"));
+                        self.toast_crash(format!("{name}: {summary}"), game.clone());
                         self.diagnoses.insert(game, summary);
                     }
                     None if without_window => {
@@ -1322,6 +1346,14 @@ impl Model {
             && self.toast.as_ref().is_some_and(Toast::stays)
         {
             self.dismiss_toast();
+            return Routed::Done;
+        }
+        // The same toast offers the report of the game that ended in trouble: Options sends it.
+        if command == Command::Options
+            && self.toast_visible()
+            && self.toast.as_ref().is_some_and(|t| t.report.is_some())
+        {
+            self.send_crash_report();
             return Routed::Done;
         }
         if !self.onboarded() {
