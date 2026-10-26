@@ -26,7 +26,9 @@ defaults:
 
 jobs:
   build:
-    runs-on: blacksmith-8vcpu-windows-2025
+    # GitHub's Windows runner, not Blacksmith's: some core tests need an interactive desktop
+    # (a global hotkey, real window sizes, the phone receiver), which Blacksmith's headless VM lacks.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
