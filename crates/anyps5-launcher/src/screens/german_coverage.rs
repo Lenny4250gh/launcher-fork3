@@ -31,21 +31,35 @@ fn function<'a>(source: &'a str, name: &str) -> Option<&'a str> {
     Some(&rest[..end])
 }
 
-/// `Enum::Variant` at the start of an arm.
+/// Every `Enum::Variant` named in the head of an arm (`A::X | A::Y =>` names two).
 fn arms(body: &str) -> Vec<String> {
     let mut found = Vec::new();
     for line in body.lines() {
-        let line = line.trim_start().trim_start_matches('|').trim_start();
-        let Some((head, _)) = line.split_once("::") else {
+        let line = line.trim_start();
+        let starts_an_arm = line.starts_with('|')
+            || line.split_once("::").is_some_and(|(head, _)| {
+                head.chars().next().is_some_and(char::is_uppercase)
+                    && head.chars().all(|c| c.is_alphanumeric() || c == '_')
+            });
+        if !starts_an_arm {
             continue;
-        };
-        let ident = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_');
-        let tail: String = line[head.len() + 2..]
-            .chars()
-            .take_while(|c| c.is_alphanumeric() || *c == '_')
-            .collect();
-        if ident(head) && ident(&tail) && head.chars().next().is_some_and(char::is_uppercase) {
-            found.push(format!("{head}::{tail}"));
+        }
+        let head = line.split("=>").next().unwrap_or(line);
+        for part in head.split('|') {
+            let part = part.trim();
+            let Some((en, variant)) = part.split_once("::") else {
+                continue;
+            };
+            let variant: String = variant
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !en.is_empty()
+                && en.chars().all(|c| c.is_alphanumeric() || c == '_')
+                && !variant.is_empty()
+            {
+                found.push(format!("{en}::{variant}"));
+            }
         }
     }
     found
