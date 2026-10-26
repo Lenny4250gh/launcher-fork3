@@ -205,7 +205,7 @@ fn a_clip_plays_on_select_and_a_screenshot_goes_to_its_buttons() {
 #[test]
 fn the_buttons_of_the_view_differ_by_kind_and_stop_at_the_ends() {
     let mut rig = Rig::new();
-    // A screenshot: Copy Image, Show in Folder, Delete.
+    // A screenshot: Copy Image, Send to a Friend, Show in Folder, Delete.
     rig.screen.mode = Mode::View {
         place: 0,
         focus: ViewFocus::Action(0),
@@ -213,6 +213,11 @@ fn the_buttons_of_the_view_differ_by_kind_and_stop_at_the_ends() {
     assert_eq!(
         rig.press(Command::Select).actions,
         vec![CapturesAction::CopyImage(10)]
+    );
+    rig.press(Command::Right);
+    assert_eq!(
+        rig.press(Command::Select).actions,
+        vec![CapturesAction::SendToFriend(10)]
     );
     rig.press(Command::Right);
     assert_eq!(
@@ -243,13 +248,18 @@ fn a_file_the_launcher_did_not_name_has_no_delete() {
     rig.deletable[0] = false;
     rig.screen.mode = Mode::View {
         place: 0,
-        focus: ViewFocus::Action(1),
+        focus: ViewFocus::Action(2),
     };
-    // Copy Image and Show in Folder only: Right at the second button has nowhere to go.
+    // Copy Image, Send to a Friend and Show in Folder only: Right at the last button has nowhere
+    // to go.
     assert_eq!(rig.press(Command::Right).cues, vec![Cue::Bump]);
     assert_eq!(
         ViewAction::list(Kind::Screenshot, false),
-        &[ViewAction::CopyImage, ViewAction::ShowInFolder]
+        &[
+            ViewAction::CopyImage,
+            ViewAction::SendToFriend,
+            ViewAction::ShowInFolder
+        ]
     );
 }
 
@@ -258,7 +268,7 @@ fn delete_asks_first_opens_on_cancel_and_deletes_only_on_a_second_choice() {
     let mut rig = Rig::new();
     rig.screen.mode = Mode::View {
         place: 4,
-        focus: ViewFocus::Action(2),
+        focus: ViewFocus::Action(3),
     };
     let out = rig.press(Command::Select);
     assert!(out.actions.is_empty(), "nothing is deleted by asking");
@@ -276,7 +286,7 @@ fn delete_asks_first_opens_on_cancel_and_deletes_only_on_a_second_choice() {
         rig.screen.mode(),
         Mode::View {
             place: 4,
-            focus: ViewFocus::Action(2)
+            focus: ViewFocus::Action(3)
         }
     );
     // Back is Cancel too.
@@ -400,7 +410,7 @@ fn a_press_with_the_pointer_does_what_the_keys_do() {
     // Clicking Delete asks; a click beside the card cancels, back to the Delete button; then
     // Delete again and its Delete answer.
     rig.pointer(paint::Pressed {
-        action: Some(2),
+        action: Some(3),
         ..Default::default()
     });
     rig.pointer(paint::Pressed {
@@ -411,11 +421,11 @@ fn a_press_with_the_pointer_does_what_the_keys_do() {
         rig.screen.mode(),
         Mode::View {
             place: 2,
-            focus: ViewFocus::Action(2)
+            focus: ViewFocus::Action(3)
         }
     );
     rig.pointer(paint::Pressed {
-        action: Some(2),
+        action: Some(3),
         ..Default::default()
     });
     assert_eq!(

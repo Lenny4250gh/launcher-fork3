@@ -39,6 +39,8 @@ pub enum CapturesText {
     OpenInPlayer,
     ShowInFolder,
     CopyImage,
+    /// The button that opens the friend picker.
+    SendToFriend,
     Delete,
     Previous,
     Next,
@@ -99,6 +101,7 @@ impl CapturesText {
             CapturesText::OpenInPlayer => "Open in Player",
             CapturesText::ShowInFolder => "Show in Folder",
             CapturesText::CopyImage => "Copy Image",
+            CapturesText::SendToFriend => "Send to a Friend",
             CapturesText::Delete => "Delete",
             CapturesText::Previous => "Previous capture",
             CapturesText::Next => "Next capture",
@@ -154,6 +157,7 @@ impl CapturesText {
             CapturesText::OpenInPlayer => "Oynatıcıda Aç",
             CapturesText::ShowInFolder => "Klasörde Göster",
             CapturesText::CopyImage => "Görüntüyü Kopyala",
+            CapturesText::SendToFriend => "Bir Arkadaşa Gönder",
             CapturesText::Delete => "Sil",
             CapturesText::Previous => "Önceki yakalama",
             CapturesText::Next => "Sonraki yakalama",
@@ -232,6 +236,7 @@ impl CapturesText {
             CapturesText::CopyFailed => "Das Bild konnte nicht kopiert werden.",
             CapturesText::PlayerFailed => "Der Videoplayer konnte nicht geöffnet werden.",
             CapturesText::FolderFailed => "Der Ordner konnte nicht geöffnet werden.",
+            CapturesText::SendToFriend => "An einen Freund senden",
             _ => return None,
         })
     }
@@ -251,7 +256,7 @@ impl CapturesText {
         substitute(self.text(language), args)
     }
 
-    pub const ALL: [CapturesText; 42] = [
+    pub const ALL: [CapturesText; 43] = [
         CapturesText::Title,
         CapturesText::FilterAll,
         CapturesText::FilterScreenshots,
@@ -277,6 +282,7 @@ impl CapturesText {
         CapturesText::OpenInPlayer,
         CapturesText::ShowInFolder,
         CapturesText::CopyImage,
+        CapturesText::SendToFriend,
         CapturesText::Delete,
         CapturesText::Previous,
         CapturesText::Next,

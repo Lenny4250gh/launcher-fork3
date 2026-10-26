@@ -875,7 +875,13 @@ impl<'a> PanelRow<'a> {
             response.id,
             self.focused && focusable && sense == Sense::click(),
         );
-        let hovered = focusable && (input::hovered(&ctx, &response) || self.force.is_some());
+        // A row with buttons on it stays hovered while the pointer is on one of them.
+        let over = if matches!(self.control, RowControl::Buttons { .. }) {
+            input::hovered_within(&ctx, &response)
+        } else {
+            input::hovered(&ctx, &response)
+        };
+        let hovered = focusable && (over || self.force.is_some());
         if hovered {
             ctx.set_cursor_icon(CursorIcon::PointingHand);
         }

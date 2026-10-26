@@ -70,9 +70,15 @@ impl FriendsScreen {
         self.land(data);
     }
 
-    /// Types `text` into the field of the request page (a friend link names the handle).
-    pub fn set_friend_text(&mut self, text: String) {
-        self.panel.friend_text = text;
+    /// Types `text` into the field of the request page (a friend link names the handle) and puts
+    /// the focus on Send Request.
+    pub fn set_friend_text(&mut self, text: String, data: &OnlineData<'_>) {
+        self.panel.prefill_friend(text, data);
+    }
+
+    /// Treats the last friend request answer as news (previews).
+    pub fn show_answer_as_news(&mut self) {
+        self.panel.show_answer_as_news();
     }
 
     /// Shows `page` (a profile sent the player to one; previews jump straight to one).
@@ -118,9 +124,9 @@ impl FriendsScreen {
         self.panel.set_local(local);
     }
 
-    /// Puts the focus of the activity page on a card, or on one of its reactions (previews).
-    pub fn set_feed_focus(&mut self, item: usize, slot: Option<usize>) {
-        self.panel.set_feed_focus(item, slot);
+    /// Puts the focus of the activity page on a card (previews).
+    pub fn set_feed_focus(&mut self, item: usize) {
+        self.panel.set_feed_focus(item);
     }
 
     /// Puts the focus on a message of the open thread (previews).

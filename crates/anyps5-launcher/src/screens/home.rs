@@ -135,6 +135,8 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
 struct ShelfPlan {
     shelves: Vec<crate::app::library_view::Shelf>,
     cap: usize,
+    /// The side of a game icon: the largest the room allows.
+    tile: f32,
 }
 
 /// The shelves fit between the tile row and the hero's title (a one-line title, with its state
@@ -149,21 +151,24 @@ fn shelf_plan(
     if all.is_empty() {
         return None;
     }
-    let cap = shelves::cap(screen, all.len());
-    if cap == 0 {
-        return None;
-    }
     let (_, hint_height) = hint_bar_size(painter, language, true);
     let geometry = hero_geometry(screen, hint_height, 0.0);
     let state_height = ty::STATE_LABEL.line_height() + STATE_GAP;
-    let bottom = shelves::top(screen) + shelves::height();
-    if geometry.title_bottom - ty::HERO_TITLE.line_height() - state_height - shelves::BELOW < bottom
-    {
+    // The room from the tile row down to the hero's title (a one-line title, its state above it).
+    let room = geometry.title_bottom
+        - ty::HERO_TITLE.line_height()
+        - state_height
+        - shelves::BELOW
+        - shelves::top(screen);
+    let tile = shelves::tile_for(room)?;
+    let cap = shelves::cap(screen, all.len(), tile);
+    if cap == 0 {
         return None;
     }
     Some(ShelfPlan {
         shelves: model.shelves_with(cap),
         cap,
+        tile,
     })
 }
 
@@ -176,7 +181,14 @@ fn shelf_band(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Ve
     };
     cx.model.shelf_cap = plan.cap;
     cx.model.shelf_count = plan.shelves.iter().map(|s| s.items.len()).sum();
-    shelves::show(ui, cx, shelves::top(screen), &plan.shelves, presses);
+    shelves::show(
+        ui,
+        cx,
+        shelves::top(screen),
+        plan.tile,
+        &plan.shelves,
+        presses,
+    );
 }
 
 /// Draws one part of the screen at its intro stage: faded and lowered while it arrives, directly
@@ -1306,8 +1318,8 @@ fn paint_hero(
     let mut tiles_bottom =
         screen.min.y + pad::HOME_TOP + size::ICON_BUTTON + 34.0 + size::TILE_LARGE + 24.0;
     // The shelves, when they are drawn, are part of what the title must not run into.
-    if shelf_plan(cx.model, &painter, screen, language).is_some() {
-        tiles_bottom = shelves::top(screen) + shelves::height() + shelves::BELOW;
+    if let Some(plan) = shelf_plan(cx.model, &painter, screen, language) {
+        tiles_bottom = shelves::top(screen) + shelves::height(plan.tile) + shelves::BELOW;
     }
     if geometry.title_bottom - title.size().y - state_height < tiles_bottom {
         title = wrapped(
@@ -1380,7 +1392,6 @@ fn paint_hero(
                 .icon(Icon::TROPHY)
                 .icon_fill(true)
                 .tabular(true)
-                .size(ControlSize::Small)
                 .focused(focused(trophies_index))
                 .show(ui);
             if response.clicked() {

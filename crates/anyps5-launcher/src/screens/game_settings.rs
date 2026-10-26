@@ -7,6 +7,7 @@ use anyps5_core::settings::{ConsoleLanguage, GameSettings, Overlay};
 use egui::{Color32, Context};
 
 use crate::screens::dialog;
+use crate::screens::lfg_strings::LfgText;
 use crate::screens::rows::{self, Change, Row, RowId};
 use crate::screens::saves;
 use crate::screens::share_strings::Share;
@@ -42,6 +43,8 @@ pub enum GameSettingsAction {
     AskUninstall,
     /// The backups of the game's saves.
     OpenSaves,
+    /// The players who own this game and look for a group.
+    OpenFindPlayers,
 }
 
 /// What the catalogue has for this game, for the row that opens it.
@@ -66,6 +69,8 @@ pub struct GameSettingsData<'a> {
     pub saves: Option<usize>,
     /// Shown only when the catalogue has something for this game.
     pub recommended: Option<RecommendedRow>,
+    /// The row that opens Find Players is offered.
+    pub find_players: bool,
     /// Why unlocking again is offered ("Unlocked with v0.1.2. v0.1.3 is installed.").
     pub unlock_note: Option<String>,
     /// The releases the game can stay on (docs/DESIGN.md 3.8).
@@ -183,6 +188,7 @@ impl GameSettingsPanel {
             "cache" => Some(GameSettingsAction::ClearShaderCache),
             "uninstall" => Some(GameSettingsAction::AskUninstall),
             "saves" => Some(GameSettingsAction::OpenSaves),
+            "findPlayers" => Some(GameSettingsAction::OpenFindPlayers),
             _ => None,
         };
         if let (Change::Run { .. }, Some(action)) = (change, action) {
@@ -258,6 +264,13 @@ pub fn build_rows(data: &GameSettingsData<'_>) -> Vec<Row> {
         );
     }
     rows.push(Row::action("controls", t(Key::Controls)).icon(Icon::KEYBOARD));
+    if data.find_players {
+        rows.push(
+            Row::action("findPlayers", LfgText::FindPlayers.text(data.language))
+                .detail(LfgText::FindPlayersDetail.text(data.language))
+                .icon(Icon::USERS),
+        );
+    }
     if let Some(count) = data.saves {
         rows.push(
             Row::action("saves", Extra::SavesTitle.text(data.language))
@@ -503,6 +516,7 @@ mod tests {
             installed: true,
             saves: None,
             recommended: None,
+            find_players: false,
             unlock_note: None,
             pin: &NO_PINS,
             language: Language::English,
@@ -546,6 +560,18 @@ mod tests {
             ],
             "no resolution row without a patch, no trophies row without a list"
         );
+    }
+
+    #[test]
+    fn find_players_follows_the_controls_when_offered() {
+        let mut s = GameSettings::default();
+        let mut d = data(&mut s);
+        d.find_players = true;
+        let rows = build_rows(&d);
+        let ids = ids(&rows);
+        let at = ids.iter().position(|i| *i == "findPlayers").unwrap();
+        assert_eq!(ids[at - 1], "controls");
+        assert_eq!(rows[at].control, rows::Control::Action);
     }
 
     #[test]

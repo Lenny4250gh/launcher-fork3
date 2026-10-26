@@ -572,7 +572,6 @@ fn status(
     state: State,
     pressed: &mut Pressed,
 ) {
-    let painter = ui.painter().clone();
     let language = data.language;
     let (icon, title, body): (Icon, CapturesText, Option<String>) = match state {
         State::Loading => (Icon::IMAGES, CapturesText::Loading, None),
@@ -613,80 +612,20 @@ fn status(
         }
         State::Items => return,
     };
-    let wrap = 520.0f32.min(rect.width() - 40.0);
-    let body_galley = body.as_ref().map(|b| centred_galley(&painter, b, wrap));
+    // The shared state page, like every other empty page: centred on the window.
     let button = button_for(data);
-    let body_h = body_galley.as_ref().map_or(0.0, |g| g.size().y + 14.0);
-    let button_h = if button.is_some() {
-        28.0 + size::CONTROL_L
-    } else {
-        0.0
+    let note = body;
+    let page = crate::ui::state_page::StatePage {
+        icon,
+        title: title.text(language),
+        note: note.as_deref(),
+        loading: state == State::Loading,
+        action: button.as_ref().map(|spec| spec.label.text(language)),
     };
-    let block = 44.0 + 18.0 + ty::EMPTY_TITLE.line_height() + body_h + button_h;
-    let mut y = (rect.center().y - block * 0.5 - 24.0).max(rect.min.y + 8.0);
-    let cx = rect.center().x;
-    if state == State::Loading {
-        let time = ui.ctx().clock();
-        paint_spinner_arc(&painter, pos2(cx, y + 22.0), 14.0, time, 3.0, white(0.7));
-        ui.ctx().request_repaint();
-    } else {
-        painter.text(
-            pos2(cx, y + 22.0),
-            Align2::CENTER_CENTER,
-            icon.glyph(),
-            icon.font(text::quantize_size(40.0), false),
-            white(0.5),
-        );
+    let focused = screen.zone == Zone::Button;
+    if crate::ui::state_page::show(ui, rect, &page, focused) {
+        pressed.button = true;
     }
-    y += 44.0 + 18.0;
-    text::paint(
-        &painter,
-        pos2(cx, y),
-        Align2::CENTER_TOP,
-        ty::EMPTY_TITLE,
-        title.text(language),
-        Color32::WHITE,
-    );
-    y += ty::EMPTY_TITLE.line_height();
-    if let Some(galley) = body_galley {
-        y += 14.0;
-        let at = pos2(cx - galley.rect.center().x, y);
-        let h = galley.size().y;
-        painter.galley(at, galley, color::text_empty());
-        y += h;
-    }
-    if let Some(spec) = button {
-        y += 28.0;
-        let area = Rect::from_min_size(pos2(rect.min.x, y), vec2(rect.width(), size::CONTROL_L));
-        let mut row = ui.new_child(
-            UiBuilder::new()
-                .max_rect(area)
-                .layout(UiLayout::top_down(Align::Center)),
-        );
-        let focused = screen.zone == Zone::Button;
-        let response = ConsoleButton::new(spec.label.text(language))
-            .prominent(true)
-            .focused(focused)
-            .show(&mut row);
-        crate::ui::a11y::follow(ui.ctx(), response.id, focused);
-        if response.clicked() {
-            pressed.button = true;
-        }
-    }
-}
-
-/// Centred text, wrapped to `width`, in the colour the host paints it with.
-fn centred_galley(
-    painter: &egui::Painter,
-    text_: &str,
-    width: f32,
-) -> std::sync::Arc<egui::Galley> {
-    let style = ty::QUESTION;
-    let mut job =
-        egui::text::LayoutJob::simple(text_.to_owned(), style.font(), Color32::WHITE, width);
-    job.halign = Align::Center;
-    job.sections[0].format.line_height = Some(style.line_height() + 4.0);
-    painter.layout_job(job)
 }
 
 // --- one capture -------------------------------------------------------------------------------
@@ -747,6 +686,7 @@ fn view(
             let (label, icon) = match action {
                 ViewAction::OpenInPlayer => (CapturesText::OpenInPlayer, Icon::PLAY),
                 ViewAction::CopyImage => (CapturesText::CopyImage, Icon::IMAGE),
+                ViewAction::SendToFriend => (CapturesText::SendToFriend, Icon::PAPER_PLANE_RIGHT),
                 ViewAction::ShowInFolder => (CapturesText::ShowInFolder, Icon::FOLDER_OPEN),
                 ViewAction::Delete => (CapturesText::Delete, Icon::TRASH),
             };

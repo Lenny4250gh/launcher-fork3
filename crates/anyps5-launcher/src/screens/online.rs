@@ -15,15 +15,15 @@ mod voice;
 
 pub use confirm::Ask;
 pub use feed::{ago_text, monogram_colour, paint_avatar, rarity_text, sentence, theme_grade};
-pub use local::{Avatar, Local, OwnedGame};
+pub use local::{Avatar, Local, MediaThumb, OwnedGame};
 pub use voice::talk_key;
 
 use std::collections::BTreeSet;
 
-use anyps5_core::online::api::{AccountId, Audience, Count, Reaction, ReportReason};
+use anyps5_core::online::api::{AccountId, Audience, Count, ReportReason};
 use anyps5_core::online::{
-    self, Cloud, DeviceKind, Link, Online, Pending, Purpose, ScreenCommand, VoiceMode,
-    VoiceProvider,
+    self, Cloud, DeviceKind, FriendRequestOutcome, FriendRequestResult, Link, Online, Pending,
+    Purpose, ScreenCommand, VoiceMode, VoiceProvider,
 };
 use egui::{Color32, Context, Ui};
 
@@ -94,6 +94,8 @@ pub enum OnlineAction {
     Dialog(Option<Vec<AccountId>>),
     /// Keep every tunnel on a relay, or let them go direct again.
     RelayOnly(bool),
+    /// Make a party of one; the player invites friends from inside it.
+    PartyCreate,
     /// Invite friends to the party; a party is made when the player is in none.
     PartyInvite(Vec<AccountId>),
     PartyAnswer {
@@ -141,6 +143,11 @@ pub enum OnlineAction {
         conversation: String,
         seq: u64,
     },
+    /// Open the file of a media message: download it first when this PC does not hold it.
+    OpenMedia {
+        conversation: String,
+        seq: u64,
+    },
     /// Mute or pin a conversation.
     ConversationSettings {
         conversation: String,
@@ -157,8 +164,6 @@ pub enum OnlineAction {
     FeedRefresh,
     /// Read the next older items of the feed.
     FeedOlder,
-    /// Set the player's reaction to a feed item, or take it back.
-    React(u64, Option<Reaction>),
     /// Read the profile of this account (the profile screen asks again).
     Profile(AccountId),
     /// Open the profile screen on this account.
@@ -366,6 +371,10 @@ pub struct OnlinePanel {
     pub page: Page,
     pub cloud_text: String,
     pub friend_text: String,
+    /// The last friend request answer the page has shown and cleared its field for.
+    add_cleared: u64,
+    /// The last friend request answer from before the page opened: it is not news.
+    add_seen: u64,
     /// The appeal being written.
     appeal_text: String,
     reason: usize,
@@ -551,7 +560,7 @@ impl OnlinePanel {
             return false;
         }
         if self.feed_is_list(data) {
-            return self.feed_focus.slot.is_none();
+            return true;
         }
         if self.room_is_page() {
             return self.room_left_leaves();
@@ -589,9 +598,24 @@ impl OnlinePanel {
         self.local = local;
     }
 
-    /// Puts the feed's focus on a card, or on one of its reactions (previews).
-    pub fn set_feed_focus(&mut self, item: usize, slot: Option<usize>) {
-        self.feed_focus = feed::FeedFocus { item, slot };
+    /// Puts the feed's focus on a card (previews).
+    pub fn set_feed_focus(&mut self, item: usize) {
+        self.feed_focus = feed::FeedFocus { item };
+    }
+
+    /// Treats the last friend request answer as news (previews show one without a visit before).
+    pub fn show_answer_as_news(&mut self) {
+        self.add_seen = 0;
+    }
+
+    /// Fills the field of Add a Friend with a name that came from a link; the focus waits on Send
+    /// Request, so one press sends it.
+    pub fn prefill_friend(&mut self, text: String, data: &OnlineData<'_>) {
+        self.friend_text = friend_handle(&text);
+        let rows = self.rows(data).2;
+        if let Some(send) = rows::position(&rows, "sendRequest") {
+            self.side.open_at(send);
+        }
     }
 
     /// Shows `page` (previews jump straight to one).
@@ -608,6 +632,12 @@ impl OnlinePanel {
     pub fn go(&mut self, page: Page, data: &OnlineData<'_>) {
         if page == Page::Cloud {
             self.cloud_text = data.cloud.unwrap_or_default().to_owned();
+        }
+        if page == Page::AddFriend && self.page != page {
+            // An answer from an earlier visit is not news.
+            let serial = data.online.friend_request.as_ref().map_or(0, |o| o.serial);
+            self.add_seen = serial;
+            self.add_cleared = serial;
         }
         if page == Page::Picker {
             self.picked.clear();
@@ -672,11 +702,41 @@ impl OnlinePanel {
         self.side.open_at(first);
     }
 
+    /// A request that went out empties the field, ready for the next name. One that was refused
+    /// leaves the name where it is, to be mended.
+    fn clear_sent_name(&mut self, data: &OnlineData<'_>) {
+        if self.page != Page::AddFriend {
+            return;
+        }
+        let Some(outcome) = data.online.friend_request.as_ref() else {
+            return;
+        };
+        if outcome.serial <= self.add_cleared {
+            return;
+        }
+        self.add_cleared = outcome.serial;
+        if !matches!(outcome.result, FriendRequestResult::Failed(_))
+            && friend_handle(&self.friend_text).eq_ignore_ascii_case(&outcome.handle)
+        {
+            self.friend_text.clear();
+        }
+    }
+
+    /// What the last request came to, while the field still holds that name or nothing.
+    fn friend_answer<'a>(&self, online: &'a Online) -> Option<&'a FriendRequestOutcome> {
+        let outcome = online.friend_request.as_ref()?;
+        let typed = friend_handle(&self.friend_text);
+        (outcome.serial > self.add_seen
+            && (typed.is_empty() || typed.eq_ignore_ascii_case(&outcome.handle)))
+        .then_some(outcome)
+    }
+
     /// Follows the service: a finished sign-in leads to the friends, a sign-out back to the
     /// start, and a page whose friend or invitation is gone back to the list.
     fn follow(&mut self, data: &OnlineData<'_>) {
         let online = data.online;
         self.settle_focus(data);
+        self.clear_sent_name(data);
         let wanted = match &self.page {
             Page::Restriction(_) => self.restriction_follow(data),
             Page::Start | Page::Browser if online.is_signed_in() => Some(Page::Home),
@@ -1156,7 +1216,18 @@ impl OnlinePanel {
                 self.go(Page::AddFriend, data);
             }
             ("sendRequest", _) => {
-                actions.push(OnlineAction::AddFriend(self.friend_text.trim().into()));
+                let handle = friend_handle(&self.friend_text);
+                if online.is_waiting(|p| matches!(p, Purpose::AddFriend(_))) {
+                    // One request at a time; the row says it is sending.
+                } else if handle.is_empty() {
+                    // Nothing to send yet: the field is where the player goes next.
+                    let rows = self.rows(data).2;
+                    if let Some(field) = rows::position(&rows, "friend") {
+                        self.side.open_at(field);
+                    }
+                } else {
+                    actions.push(OnlineAction::AddFriend(handle));
+                }
             }
             ("reconnect", _) => actions.push(OnlineAction::Reconnect),
             ("signOut", _) => actions.push(OnlineAction::SignOut),
@@ -1436,14 +1507,36 @@ impl OnlinePanel {
                 } else {
                     rows.push(
                         Row::text("friend", t(T::Handle), self.friend_text.clone())
-                            .icon(Icon::USER_CIRCLE),
+                            .icon(Icon::USER_CIRCLE)
+                            .wide(),
                     );
-                    rows.push(busy(
+                    let send = busy(
                         Row::command("sendRequest", t(T::SendRequest)).icon(Icon::USER_PLUS),
                         |p| matches!(p, Purpose::AddFriend(_)),
-                    ));
+                    );
+                    rows.push(send);
                 }
-                rows.push(Row::info("hint", t(T::AddFriendHint), None).group_start());
+                // What came of the last request, plainly, where the player looks next; the hint
+                // only while there is nothing to report.
+                match self.friend_answer(online).map(|o| (&o.handle, &o.result)) {
+                    Some((handle, FriendRequestResult::Requested)) => rows.push(
+                        Row::info("addStatus", f(T::RequestSent, &[Arg::Str(handle)]), None)
+                            .icon(Icon::CHECK)
+                            .group_start(),
+                    ),
+                    Some((handle, FriendRequestResult::Friends)) => rows.push(
+                        Row::info("addStatus", f(T::NowFriends, &[Arg::Str(handle)]), None)
+                            .icon(Icon::CHECK)
+                            .group_start(),
+                    ),
+                    Some((_, FriendRequestResult::Failed(text))) => rows.push(
+                        Row::info("addStatus", text.clone(), None)
+                            .icon(Icon::WARNING)
+                            .warning()
+                            .group_start(),
+                    ),
+                    None => rows.push(Row::info("hint", t(T::AddFriendHint), None).group_start()),
+                }
                 (
                     t(T::AddFriend).to_owned(),
                     Some(t(T::AddFriendSubtitle).to_owned()),
@@ -1900,6 +1993,14 @@ enum FriendGroup {
     Playing,
     Online,
     Offline,
+}
+
+/// The name behind what the player typed or pasted into the Add a Friend field: no spaces, no
+/// leading `@`, and the name alone out of a pasted friend link.
+pub fn friend_handle(text: &str) -> String {
+    let text = text.trim().trim_end_matches('/');
+    let name = text.rsplit('/').next().unwrap_or(text);
+    name.trim().trim_start_matches('@').trim().to_owned()
 }
 
 fn friend_group(friend: &online::api::Friend) -> FriendGroup {
@@ -2498,6 +2599,64 @@ mod tests {
     }
 
     #[test]
+    fn a_pasted_link_or_an_at_sign_is_still_a_name() {
+        assert_eq!(friend_handle("  Lumen "), "Lumen");
+        assert_eq!(friend_handle("@Lumen"), "Lumen");
+        assert_eq!(friend_handle("anyps5://v1/friend/Lumen"), "Lumen");
+        assert_eq!(friend_handle("anyps5://v1/friend/Lumen/"), "Lumen");
+        assert_eq!(friend_handle("  "), "");
+    }
+
+    #[test]
+    fn add_a_friend_is_one_field_one_button_and_the_answer_below() {
+        let mut online = signed_in();
+        let mut panel = OnlinePanel::default();
+        panel.open(&data(&online));
+        panel.go(Page::AddFriend, &data(&online));
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(ids(&rows), ["friend", "sendRequest", "hint"]);
+        // Send with nothing typed: the focus goes to the field, nothing is sent.
+        panel.side.nav.row = 1;
+        let mut actions = Vec::new();
+        panel.run("sendRequest", &data(&online), &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(panel.side.nav.row, 0);
+        // A name typed with an @ goes out as the name.
+        panel.typed("friend", " @Lumen ".into(), &mut actions);
+        panel.run("sendRequest", &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::AddFriend("Lumen".into())]);
+        // The answer replaces the hint, and a sent request empties the field.
+        online.record_friend_request("Lumen", online::FriendRequestResult::Requested);
+        panel.follow(&data(&online));
+        assert!(panel.friend_text.is_empty());
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(ids(&rows), ["friend", "sendRequest", "addStatus"]);
+        assert_eq!(rows[2].title, "Request sent to Lumen");
+        // Typing another name hides it again.
+        panel.typed("friend", "Kit".into(), &mut actions);
+        assert_eq!(
+            ids(&panel.rows(&data(&online)).2),
+            ["friend", "sendRequest", "hint"]
+        );
+        // A refusal keeps the name and says why.
+        online.record_friend_request(
+            "Kit",
+            online::FriendRequestResult::Failed("No account has this name.".into()),
+        );
+        panel.follow(&data(&online));
+        assert_eq!(panel.friend_text, "Kit");
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(rows[2].title, "No account has this name.");
+        // An answer from an earlier visit is not shown again.
+        panel.go(Page::Home, &data(&online));
+        panel.go(Page::AddFriend, &data(&online));
+        assert_eq!(
+            ids(&panel.rows(&data(&online)).2),
+            ["friend", "sendRequest", "hint"]
+        );
+    }
+
+    #[test]
     fn enter_says_what_it_does_on_a_field() {
         let online = signed_in();
         let ctx = Context::default();
@@ -2945,7 +3104,7 @@ mod tests {
         assert_eq!(panel.page, Page::Home);
     }
 
-    fn feed_item(id: u64, reaction: Option<Reaction>) -> online::api::FeedItem {
+    fn feed_item(id: u64) -> online::api::FeedItem {
         online::api::FeedItem {
             id,
             account: account(2, "Lumen"),
@@ -2954,7 +3113,7 @@ mod tests {
                 title_id: "GAME00001".into(),
             },
             reactions: online::api::ReactionCounts::default(),
-            mine: reaction,
+            mine: None,
         }
     }
 
@@ -3031,10 +3190,10 @@ mod tests {
     }
 
     #[test]
-    fn a_reaction_press_sets_it_and_the_own_one_takes_it_back() {
+    fn a_card_opens_its_profile_and_the_row_after_the_cards_reads_older_items() {
         let mut online = signed_in();
         online.feed.merge_newest(online::api::Feed {
-            items: vec![feed_item(9, None), feed_item(8, Some(Reaction::Gg))],
+            items: vec![feed_item(9), feed_item(8)],
             next: Some(8),
         });
         let mut panel = OnlinePanel::default();
@@ -3042,24 +3201,13 @@ mod tests {
         assert!(panel.feed_is_list(&data(&online)));
         assert!(panel.rows(&data(&online)).2.is_empty());
         let mut actions = Vec::new();
-        let focus = |item, slot| feed::FeedFocus { item, slot };
-        panel.feed_press(focus(0, Some(1)), &data(&online), &mut actions);
-        panel.feed_press(focus(1, Some(1)), &data(&online), &mut actions);
-        panel.feed_press(focus(1, Some(2)), &data(&online), &mut actions);
+        let focus = |item| feed::FeedFocus { item };
         // The row after the cards reads older items.
-        panel.feed_press(focus(2, None), &data(&online), &mut actions);
-        assert_eq!(
-            actions,
-            [
-                OnlineAction::React(9, Some(Reaction::Gg)),
-                OnlineAction::React(8, None),
-                OnlineAction::React(8, Some(Reaction::Wow)),
-                OnlineAction::FeedOlder,
-            ]
-        );
+        panel.feed_press(focus(2), &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::FeedOlder]);
         // A card opens its account's profile screen; the panel stays on the feed.
         panel.queued.clear();
-        panel.feed_press(focus(0, None), &data(&online), &mut actions);
+        panel.feed_press(focus(0), &data(&online), &mut actions);
         assert_eq!(panel.page, Page::Feed);
         assert_eq!(panel.queued, [OnlineAction::OpenProfile(AccountId(2))]);
     }

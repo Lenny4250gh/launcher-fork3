@@ -14,7 +14,7 @@ use anyps5_core::library::Game;
 use anyps5_core::notifications::{Act, Kind};
 use anyps5_core::online::api::{ErrorCode, FriendState, SessionKind};
 use anyps5_core::online::{
-    self as net, Command, Failure, Join, NetProcess, Notice, Purpose, Status,
+    self as net, Command, Failure, FriendRequestResult, Join, NetProcess, Notice, Purpose, Status,
 };
 use anyps5_core::paths::GameId;
 use anyps5_core::play_together::Blocker;
@@ -22,12 +22,13 @@ use anyps5_core::play_together::Blocker;
 use crate::app::model::{Effect, GameState, Model};
 use crate::app::overlay::Overlay;
 use crate::screens::discord_strings::redeem_failure;
+use crate::screens::lfg_strings::LfgText as LT;
 use crate::screens::online_call_strings::CallText as CT;
-use crate::screens::online_feed_strings::FeedText as FT;
 use crate::screens::online_restriction_strings as restriction_text;
 use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
 use crate::screens::online_voice_strings::VoiceText as VT;
+use crate::screens::send::media_label;
 use crate::screens::together_strings::TogetherText as TT;
 use crate::ui::focus::HomeFocus;
 use crate::ui::i18n::{Arg, Language};
@@ -389,6 +390,14 @@ impl OnlineService {
                     Cue::Invite,
                 );
             }
+            Notice::LfgRequest { from, .. } => {
+                let text = LT::ToastRequest.format(language, &[Arg::Str(&from.handle)]);
+                model.toast_with(text, Icon::USER_PLUS, Cue::Notify);
+            }
+            Notice::LfgAccepted { by, .. } => {
+                let text = LT::ToastAcceptedBy.format(language, &[Arg::Str(&by.handle)]);
+                model.toast_with(text, Icon::USERS, Cue::Invite);
+            }
             // A call rings on its own card; the window comes forward so it can be answered.
             Notice::PartyInvitation(invitation) if invitation.call => {
                 model.effects.push(Effect::RestoreWindow);
@@ -426,7 +435,10 @@ impl OnlineService {
                     language,
                     &[
                         Arg::Str(&message.sender.handle),
-                        Arg::Str(&net::snippet(&message.text, MESSAGE_TOAST_CHARS)),
+                        Arg::Str(&message.media.as_ref().map_or_else(
+                            || net::snippet(&message.text, MESSAGE_TOAST_CHARS),
+                            |info| media_label(info, language),
+                        )),
                     ],
                 );
                 model.announce(
@@ -608,13 +620,46 @@ impl OnlineService {
             (Purpose::AddFriend(handle), Ok(value)) => {
                 let friends = serde_json::from_value::<net::control::FriendAdded>(value)
                     .is_ok_and(|a| a.result == FriendState::Friends);
-                let text = if friends {
-                    T::NowFriends
+                // The page that asked says it where the field is; the toast is for a player who has
+                // left the page.
+                let result = if friends {
+                    FriendRequestResult::Friends
                 } else {
-                    T::RequestSent
+                    FriendRequestResult::Requested
+                };
+                model.online.record_friend_request(&handle, result);
+                if model.overlay != Some(Overlay::Friends) {
+                    let text = if friends {
+                        T::NowFriends
+                    } else {
+                        T::RequestSent
+                    }
+                    .format(language, &[Arg::Str(&handle)]);
+                    model.toast(text, Icon::USER_PLUS);
                 }
-                .format(language, &[Arg::Str(&handle)]);
-                model.toast(text, Icon::USER_PLUS);
+            }
+            (Purpose::AddFriend(handle), Err(failure)) => {
+                let what = model.online.blocked_by(&Purpose::AddFriend(handle.clone()));
+                let text = match &failure.restriction {
+                    Some(restriction) => restriction_text::toast(restriction, what, None, language),
+                    None if failure.is(ErrorCode::BadRequest) => {
+                        T::AddSelf.text(language).to_owned()
+                    }
+                    None if failure.is(ErrorCode::Forbidden) => {
+                        T::AddBlocked.text(language).to_owned()
+                    }
+                    None if failure.is(ErrorCode::Limit) => T::AddLimit.text(language).to_owned(),
+                    None => failure_text(&failure, language),
+                };
+                model
+                    .online
+                    .record_friend_request(&handle, FriendRequestResult::Failed(text.clone()));
+                if model.overlay != Some(Overlay::Friends) {
+                    model.toast(text, Icon::WARNING);
+                } else {
+                    // The page says why, beside the field.
+                    model.sound(Cue::Error);
+                }
             }
             (Purpose::Accept(id), Ok(_)) => {
                 let text = T::NowFriends.format(language, &[Arg::Str(&handle_of(model, id))]);
@@ -627,6 +672,57 @@ impl OnlineService {
             (Purpose::Report(_), Ok(_)) => {
                 let text = T::Reported.text(language).to_owned();
                 model.toast(text, Icon::FLAG);
+            }
+            (Purpose::LfgPost, Ok(_)) => {
+                model.toast(LT::ToastPosted.text(language), Icon::CHECK_CIRCLE);
+            }
+            (Purpose::LfgClose(_), Ok(_)) => {
+                model.toast(LT::ToastClosed.text(language), Icon::CHECK_CIRCLE);
+            }
+            (Purpose::LfgAsk(_), Ok(_)) => {
+                model.toast(LT::ToastAsked.text(language), Icon::PAPER_PLANE_RIGHT);
+            }
+            (Purpose::LfgAnswer { accept: true, .. }, Ok(_)) => {
+                model.toast(LT::ToastAccepted.text(language), Icon::USERS);
+            }
+            // The panel says it: a list that did not load, a post that was turned away.
+            (Purpose::Lfg { .. } | Purpose::LfgMine | Purpose::LfgPost, Err(failure)) => {
+                tracing::info!("net service: {}: {}", failure.code, failure.message);
+            }
+            (Purpose::SendMedia { conversation }, Ok(_)) => {
+                let me = model
+                    .online
+                    .account
+                    .as_ref()
+                    .map_or(net::api::AccountId(0), |a| a.id);
+                let handle = model
+                    .online
+                    .social
+                    .get(&conversation)
+                    .and_then(|c| net::others(c, me).first().map(|a| a.handle.clone()))
+                    .unwrap_or_default();
+                let text = LT::Sent.format(language, &[Arg::Str(&handle)]);
+                model.toast(text, Icon::CHECK_CIRCLE);
+            }
+            (Purpose::SendMedia { .. }, Err(failure)) => {
+                tracing::info!("net service: {}: {}", failure.code, failure.message);
+                let text = if failure.restriction.is_some() {
+                    LT::SendRestricted.text(language)
+                } else {
+                    crate::app::lfg::send_failure_text(&failure.code, language)
+                };
+                model.toast_failure(text);
+            }
+            (Purpose::FetchMedia { media }, Ok(_)) => {
+                if let Some(path) = model.online.media.open.remove(&media) {
+                    crate::app::panels::lfg::open_path(model, &path);
+                }
+            }
+            (Purpose::FetchMedia { media }, Err(failure)) => {
+                tracing::info!("net service: {}: {}", failure.code, failure.message);
+                if model.online.media.open.remove(&media).is_some() {
+                    model.toast_failure(LT::OpenFailed.text(language));
+                }
             }
             (Purpose::Invite | Purpose::Dialog, Ok(_)) => {}
             // The invitation a join link made arrives as the usual event; the panel's Home page
@@ -696,16 +792,6 @@ impl OnlineService {
                 | Purpose::ScreenLeave,
                 Err(failure),
             ) => super::online_screen::failed(model, &failure),
-            // The count went back by itself; the player is told why it did.
-            (Purpose::React { .. }, Err(failure)) => {
-                tracing::info!("net service: {}: {}", failure.code, failure.message);
-                let text = if failure.is(ErrorCode::RateLimited) {
-                    failure_text(&failure, language)
-                } else {
-                    FT::ReactFailed.text(language).to_owned()
-                };
-                model.toast(text, Icon::WARNING);
-            }
             (Purpose::SetPrivacy, Err(failure)) => {
                 // The choice the panel shows goes back to what the cloud keeps.
                 model.online.send(Purpose::Privacy, Command::Privacy);
@@ -1267,6 +1353,7 @@ mod tests {
             deleted: false,
             reactions: Vec::new(),
             rev: 0,
+            media: None,
         }
     }
 

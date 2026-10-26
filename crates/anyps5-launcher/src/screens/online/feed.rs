@@ -1,11 +1,11 @@
 //! The Feed page (docs/DESIGN.md 17, "Feed"): what the player and their friends did, newest first,
-//! each item a card with the four reactions under it. The cards are drawn here rather than as
-//! rows, because a card has two levels of focus: the card as a unit, and the reactions in it,
-//! reached with left and right.
+//! each item a calm card: who, what and when. The cards are drawn here rather than as rows,
+//! because a card holds a picture, a sentence of up to three lines and a trophy fact. A card
+//! opens the profile of whoever did it; there is nothing else to press on it.
 //!
 //! The states without items (loading, offline, empty, failed) are ordinary rows.
 
-use anyps5_core::online::api::{AccountId, FeedEvent, FeedItem, Grade, Reaction};
+use anyps5_core::online::api::{AccountId, FeedEvent, FeedItem, Grade};
 use anyps5_core::online::{self, Ago, Rarity};
 use egui::containers::scroll_area::ScrollBarVisibility;
 use egui::{Align2, Color32, Margin, Rect, ScrollArea, Sense, Ui, pos2, vec2};
@@ -19,7 +19,7 @@ use crate::screens::scroll::Follow;
 use crate::ui::Shell;
 use crate::ui::anim::{AnimExt, Motion};
 use crate::ui::chrome::{PanelRow, RowControl};
-use crate::ui::components::{self, corner, paint_capsule};
+use crate::ui::components::{self, corner};
 use crate::ui::i18n::{Arg, Language};
 use crate::ui::icons::Icon;
 use crate::ui::input::{self, Command};
@@ -35,26 +35,16 @@ const PAD_X: f32 = 16.0;
 const PAD_Y: f32 = 14.0;
 const AVATAR: f32 = 40.0;
 const AVATAR_GAP: f32 = 14.0;
-/// The reaction buttons.
-const REACTION_HEIGHT: f32 = size::CONTROL_S;
-const REACTION_GAP: f32 = 12.0;
-const REACTION_PAD_X: f32 = 10.0;
-/// Room for the check in front of the label of the player's own reaction.
-const CHECK_SLOT: f32 = 15.0;
-
 const HANDLE: TextStyle = ty::ROW_TITLE;
 const SENTENCE: TextStyle = TextStyle::new(14.0, Weight::Regular);
 const WHEN: TextStyle = ty::DETAIL;
 const FACT: TextStyle = TextStyle::new(14.0, Weight::Medium);
-const REACTION: TextStyle = TextStyle::new(14.0, Weight::Medium);
 
 /// Where the focus stands in the list.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FeedFocus {
     /// The item; one past the last is the "Show Older Activity" row.
     pub item: usize,
-    /// `None` is the card as a unit, `Some(n)` its n-th reaction.
-    pub slot: Option<usize>,
 }
 
 /// What a command does to the focus.
@@ -68,8 +58,8 @@ pub enum Step {
 }
 
 /// Applies `command` to `focus` in a list of `items` cards, with a "Show Older" row after them
-/// when `older`. Up and down keep the reaction column, so a run of GGs is down, select, down,
-/// select.
+/// when `older`. The list is one column: left and right have nowhere to go (the screen takes
+/// left to the rail).
 pub fn step(focus: FeedFocus, command: Command, items: usize, older: bool) -> Step {
     let last = if older {
         items
@@ -78,40 +68,16 @@ pub fn step(focus: FeedFocus, command: Command, items: usize, older: bool) -> St
     };
     let focus = FeedFocus {
         item: focus.item.min(last),
-        slot: focus.slot.filter(|_| focus.item < items),
     };
     let moved = |next: FeedFocus| Step::Moved(next, next != focus);
     match command {
         Command::Up => moved(FeedFocus {
             item: focus.item.saturating_sub(1),
-            ..focus
         }),
-        Command::Down => {
-            let item = (focus.item + 1).min(last);
-            moved(FeedFocus {
-                item,
-                slot: focus.slot.filter(|_| item < items),
-            })
-        }
-        Command::Left => moved(FeedFocus {
-            slot: match focus.slot {
-                Some(0) | None => None,
-                Some(n) => Some(n - 1),
-            },
-            ..focus
+        Command::Down => moved(FeedFocus {
+            item: (focus.item + 1).min(last),
         }),
-        Command::Right => moved(FeedFocus {
-            slot: if focus.item >= items {
-                None
-            } else {
-                Some(
-                    focus
-                        .slot
-                        .map_or(0, |n| (n + 1).min(Reaction::ALL.len() - 1)),
-                )
-            },
-            ..focus
-        }),
+        Command::Left | Command::Right => moved(focus),
         Command::Select => Step::Press(focus),
         Command::Back | Command::Options => Step::Back,
     }
@@ -252,15 +218,6 @@ pub fn ago_text(now: i64, at: u64, utc_offset: i32, language: Language) -> Strin
     }
 }
 
-fn reaction_label(reaction: Reaction) -> F {
-    match reaction {
-        Reaction::Nice => F::ReactNice,
-        Reaction::Gg => F::ReactGg,
-        Reaction::Wow => F::ReactWow,
-        Reaction::Same => F::ReactSame,
-    }
-}
-
 /// A calm colour for an avatar without a picture, from the account number.
 pub fn monogram_colour(account: AccountId) -> Color32 {
     // Each has at least 5:1 with white.
@@ -285,8 +242,6 @@ struct Card {
     when: String,
     /// "Rare, 2.3%" and the trophy's grade.
     fact: Option<(String, theme::Grade)>,
-    counts: [u32; 4],
-    mine: Option<Reaction>,
 }
 
 fn prepare(item: &FeedItem, data: &OnlineData<'_>, local: &Local) -> Card {
@@ -322,8 +277,6 @@ fn prepare(item: &FeedItem, data: &OnlineData<'_>, local: &Local) -> Card {
         sentence: sentence(item, me, language, local),
         when: ago_text(data.now, item.at, utc_offset, language),
         fact,
-        counts: Reaction::ALL.map(|r| item.reactions.of(r)),
-        mine: item.mine,
     }
 }
 
@@ -430,15 +383,7 @@ impl OnlinePanel {
             actions.push(OnlineAction::FeedOlder);
             return;
         };
-        match focus.slot.and_then(|n| Reaction::ALL.get(n)) {
-            Some(reaction) => {
-                actions.push(OnlineAction::React(
-                    item.id,
-                    online::toggled(item.mine, *reaction),
-                ));
-            }
-            None => self.open_profile(item.account.id),
-        }
+        self.open_profile(item.account.id);
     }
 
     /// The list is fetched further when the focus comes near its end.
@@ -569,7 +514,7 @@ fn list(
                     let shown = ui
                         .scope(|ui| {
                             ui.multiply_opacity(fade_amount);
-                            show_card(ui, card, index, focused_here, language, &mut events)
+                            show_card(ui, card, index, focused_here, &mut events)
                         })
                         .inner;
                     geometry.push((shown.min.y - origin, shown.height()));
@@ -591,10 +536,7 @@ fn list(
                     }
                     let out = ui.push_id("feed-older", |ui| row.show(ui)).inner;
                     if out.response.clicked() {
-                        events.push(Mouse::Press(FeedFocus {
-                            item: index,
-                            slot: None,
-                        }));
+                        events.push(Mouse::Press(FeedFocus { item: index }));
                     }
                     geometry.push((out.response.rect.min.y - origin, out.response.rect.height()));
                 } else if ended {
@@ -634,7 +576,6 @@ fn show_card(
     card: &Card,
     index: usize,
     focus: Option<FeedFocus>,
-    language: Language,
     events: &mut Vec<Mouse>,
 ) -> Rect {
     let ctx = ui.ctx().clone();
@@ -677,11 +618,11 @@ fn show_card(
     };
     let fact_height = if card.fact.is_some() { 6.0 + 20.0 } else { 0.0 };
     let top_block = handle.size().y + 3.0 + sentence.size().y + fact_height;
-    let height = PAD_Y + top_block.max(AVATAR) + 12.0 + REACTION_HEIGHT + PAD_Y;
+    let height = PAD_Y + top_block.max(AVATAR) + PAD_Y;
 
     let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click());
     let card_focused = focus.is_some();
-    crate::ui::a11y::follow(&ctx, response.id, focus.is_some_and(|f| f.slot.is_none()));
+    crate::ui::a11y::follow(&ctx, response.id, card_focused);
     response.widget_info(|| {
         egui::WidgetInfo::labeled(
             egui::Role::Button,
@@ -698,10 +639,7 @@ fn show_card(
         )
     });
     if response.clicked() {
-        events.push(Mouse::Press(FeedFocus {
-            item: index,
-            slot: None,
-        }));
+        events.push(Mouse::Press(FeedFocus { item: index }));
     }
     let hovered = input::hovered(&ctx, &response);
     if hovered {
@@ -712,8 +650,7 @@ fn show_card(
         return rect;
     }
 
-    // The card is a row: lighter under the pointer, lighter with the focus, and the ring when the
-    // card itself (not one of its reactions) has it.
+    // The card is a row: lighter under the pointer, lighter with the focus, and the ring.
     let hover_t = ctx.animate_to((response.id, "hover"), f32::from(hovered), Motion::Hover);
     let bg = rect;
     components::paint_surface(
@@ -724,11 +661,7 @@ fn show_card(
         hover_t,
         t,
         0.0,
-        if focus.is_some_and(|f| f.slot.is_some()) {
-            0.0
-        } else {
-            size::FOCUS_RING
-        },
+        size::FOCUS_RING,
     );
     let fg = Color32::WHITE;
     let dim = |factor: f32| fade(fg, factor);
@@ -773,119 +706,6 @@ fn show_card(
         );
     }
 
-    // The reactions, left-aligned under the words.
-    let row_top = rect.max.y - PAD_Y - REACTION_HEIGHT;
-    let mut left = x;
-    // One width for all four, the same on every card, so the columns line up and the focus can
-    // keep its column; never wider than the room.
-    let widest = Reaction::ALL
-        .iter()
-        .map(|r| {
-            text::width(
-                &painter,
-                REACTION,
-                &format!("{} 99", reaction_label(*r).text(language)),
-            )
-        })
-        .fold(0.0, f32::max);
-    let uniform =
-        (widest + 2.0 * REACTION_PAD_X + CHECK_SLOT).min((text_width - 3.0 * REACTION_GAP) / 4.0);
-    for (n, reaction) in Reaction::ALL.into_iter().enumerate() {
-        let label = reaction_label(reaction).text(language);
-        let count = card.counts[n];
-        let own = card.mine == Some(reaction);
-        let caption = if count > 99 {
-            format!("{label} 99+")
-        } else if count > 0 {
-            format!("{label} {count}")
-        } else {
-            label.to_owned()
-        };
-        let galley = text::layout_font(
-            &painter,
-            REACTION.font(),
-            REACTION.line_height(),
-            0.0,
-            &caption,
-            Color32::PLACEHOLDER,
-            f32::INFINITY,
-        );
-        let check = if own { CHECK_SLOT } else { 0.0 };
-        let pill_width = uniform.max(galley.size().x + 2.0 * REACTION_PAD_X + check);
-        let pill = Rect::from_min_size(pos2(left, row_top), vec2(pill_width, REACTION_HEIGHT));
-        left += pill_width + REACTION_GAP;
-        let slot_focused = focus.is_some_and(|f| f.slot == Some(n));
-        let pill_response = ui.interact(pill, response.id.with(("reaction", n)), Sense::click());
-        pill_response.widget_info(|| {
-            let name = if own {
-                F::ReactionMine.format(language, &[Arg::Str(label), Arg::Int(i64::from(count))])
-            } else {
-                F::ReactionCount.format(language, &[Arg::Str(label), Arg::Int(i64::from(count))])
-            };
-            egui::WidgetInfo::selected(egui::Role::Button, true, own, name)
-        });
-        if pill_response.clicked() {
-            events.push(Mouse::Press(FeedFocus {
-                item: index,
-                slot: Some(n),
-            }));
-        }
-        crate::ui::a11y::follow(&ctx, pill_response.id, slot_focused);
-        let pt = ctx.focus_t((response.id, "pill", n), slot_focused);
-        // Like every control: the pointer lights a pill only while it is the device in use.
-        let pill_hover = input::hovered(&ctx, &pill_response);
-        let pill_down = pill_hover && pill_response.is_pointer_button_down_on();
-        if pill_hover {
-            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        // At rest a pill is a quiet shape of the card's own ink; yours is stronger and carries a
-        // check, so it never rests on colour alone; the focused one has the ring.
-        // A pill with no count that is not yours is only text until its card is the one in use
-        // (pointer or focus): four shapes on every card were noise. The label stays, so it is
-        // still a control to read; the shape comes with the card.
-        let quiet = count == 0 && !own;
-        let card_up = t.max(hover_t);
-        let rest_fill = if pill_down {
-            dim(0.34)
-        } else if own {
-            dim(0.24)
-        } else if pill_hover {
-            dim(0.18)
-        } else if quiet {
-            fade(color::surface(), card_up)
-        } else {
-            color::surface()
-        };
-        let fill = mix(rest_fill, dim(0.34), pt);
-        paint_capsule(&painter, pill, fill);
-        components::paint_focus_ring(&painter, pill, REACTION_HEIGHT * 0.5, pt);
-        let ink = if own {
-            dim(1.0)
-        } else if quiet {
-            mix(color::text_detail(), color::text_label(), card_up)
-        } else {
-            color::text_label()
-        };
-        // The label and the check sit in the middle of the pill.
-        let content = galley.size().x + check;
-        let mut text_x = pill.center().x - content * 0.5;
-        if own {
-            painter.text(
-                pos2(text_x + 6.0, pill.center().y),
-                Align2::CENTER_CENTER,
-                Icon::CHECK.glyph(),
-                Icon::CHECK.font(13.0, false),
-                ink,
-            );
-            text_x += check;
-        }
-        let galley_height = galley.size().y;
-        painter.galley(
-            pos2(text_x, pill.center().y - galley_height * 0.5),
-            galley,
-            ink,
-        );
-    }
     rect
 }
 
@@ -1113,34 +933,28 @@ mod tests {
     }
 
     #[test]
-    fn the_focus_walks_the_cards_and_their_reactions() {
-        let f = |item, slot| FeedFocus { item, slot };
+    fn the_focus_walks_the_cards_in_one_column() {
+        let f = |item| FeedFocus { item };
         let go = |focus, command| match step(focus, command, 3, true) {
             Step::Moved(focus, _) => focus,
             other => panic!("{other:?}"),
         };
-        assert_eq!(go(f(0, None), Command::Right), f(0, Some(0)));
-        assert_eq!(go(f(0, Some(0)), Command::Right), f(0, Some(1)));
-        assert_eq!(go(f(0, Some(3)), Command::Right), f(0, Some(3)), "no wrap");
-        assert_eq!(go(f(0, Some(1)), Command::Left), f(0, Some(0)));
-        assert_eq!(go(f(0, Some(0)), Command::Left), f(0, None));
-        assert_eq!(go(f(0, None), Command::Left), f(0, None));
-        // Down keeps the reaction; up does too.
-        assert_eq!(go(f(0, Some(2)), Command::Down), f(1, Some(2)));
-        assert_eq!(go(f(1, Some(2)), Command::Up), f(0, Some(2)));
-        assert_eq!(go(f(0, None), Command::Up), f(0, None));
-        // The "Show Older" row has no reactions.
-        assert_eq!(go(f(2, Some(1)), Command::Down), f(3, None));
-        assert_eq!(go(f(3, None), Command::Right), f(3, None));
-        assert_eq!(go(f(3, None), Command::Down), f(3, None));
+        assert_eq!(go(f(0), Command::Down), f(1));
+        assert_eq!(go(f(1), Command::Up), f(0));
+        assert_eq!(go(f(0), Command::Up), f(0));
+        // The "Show Older" row follows the cards and is the last stop.
+        assert_eq!(go(f(2), Command::Down), f(3));
+        assert_eq!(go(f(3), Command::Down), f(3));
+        // There is nothing beside a card: left and right stay put.
+        assert_eq!(go(f(1), Command::Left), f(1));
+        assert_eq!(go(f(1), Command::Right), f(1));
     }
 
     #[test]
     fn without_older_items_the_list_ends_at_the_last_card() {
-        let f = |item, slot| FeedFocus { item, slot };
         assert_eq!(
-            step(f(2, None), Command::Down, 3, false),
-            Step::Moved(f(2, None), false)
+            step(FeedFocus { item: 2 }, Command::Down, 3, false),
+            Step::Moved(FeedFocus { item: 2 }, false)
         );
     }
 
@@ -1158,10 +972,7 @@ mod tests {
 
     #[test]
     fn select_presses_and_back_leaves() {
-        let f = FeedFocus {
-            item: 1,
-            slot: Some(2),
-        };
+        let f = FeedFocus { item: 1 };
         assert_eq!(step(f, Command::Select, 3, false), Step::Press(f));
         assert_eq!(step(f, Command::Back, 3, false), Step::Back);
         assert_eq!(step(f, Command::Options, 3, false), Step::Back);

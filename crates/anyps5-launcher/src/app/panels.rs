@@ -25,6 +25,7 @@ mod captures;
 mod compare;
 mod friends;
 mod hub;
+pub(crate) mod lfg;
 mod notifications;
 mod profile;
 
@@ -172,6 +173,10 @@ pub struct PanelHost {
     profile: crate::screens::profile::ProfileScreen,
     /// The trophy comparison (`Overlay::Compare`).
     compare: crate::screens::compare::CompareScreen,
+    /// Find Players (`Overlay::FindPlayers`) and the friend picker of Captures
+    /// (`Overlay::SendCapture`).
+    lfg: crate::screens::lfg::LfgPanel,
+    send: crate::screens::send::SendPanel,
     /// The Game Hub (`Overlay::GameHub`) and its own reading of the captures folder.
     hub: crate::screens::hub::HubScreen,
     hub_service: crate::app::captures::CaptureService,
@@ -284,6 +289,8 @@ impl PanelHost {
             notifications: crate::screens::notifications::NotificationsScreen::default(),
             profile: crate::screens::profile::ProfileScreen::default(),
             compare: crate::screens::compare::CompareScreen::default(),
+            lfg: crate::screens::lfg::LfgPanel::default(),
+            send: crate::screens::send::SendPanel::default(),
             hub: crate::screens::hub::HubScreen::default(),
             hub_service: crate::app::captures::CaptureService::new(ctx),
             overview: crate::screens::overview::OverviewScreen::default(),
@@ -776,6 +783,7 @@ impl PanelHost {
                 .then(|| self.save_view.as_ref().map(|v| v.backups.len()))
                 .flatten(),
             recommended,
+            find_players: true,
             unlock_note,
             pin: &pin,
             language,
@@ -816,6 +824,7 @@ impl PanelHost {
             GameSettingsAction::OpenControls => model.switch_overlay(Overlay::Controls),
             GameSettingsAction::OpenAdvanced => model.switch_overlay(Overlay::Advanced),
             GameSettingsAction::OpenRecommended => model.switch_overlay(Overlay::Recommended),
+            GameSettingsAction::OpenFindPlayers => model.open_find_players(Overlay::GameSettings),
             GameSettingsAction::AskUninstall => model.switch_overlay(Overlay::ConfirmUninstall),
             GameSettingsAction::OpenSaves => {
                 self.saves_stale = true;
@@ -2273,6 +2282,8 @@ impl OverlayHost for PanelHost {
             Overlay::Notifications => self.notifications_ui(cx, wanted),
             Overlay::Profile => self.profile_ui(cx, wanted),
             Overlay::Compare => self.compare_ui(cx, wanted),
+            Overlay::FindPlayers => self.find_players_ui(cx, wanted),
+            Overlay::SendCapture => self.send_capture_ui(cx, wanted),
             Overlay::GameHub => self.hub_ui(cx, wanted),
             Overlay::TrophyOverview => self.overview_ui(cx, wanted),
         }
@@ -2306,6 +2317,7 @@ impl OverlayHost for PanelHost {
             self.events.clear();
         }
         self.poll_work(cx.model);
+        self.continue_media_send(cx.model);
         // "Send Report" on the toast of a game that ended in trouble: the log view opens on the
         // report, which shows the player what would be sent.
         if let Some(id) = cx.model.report_request.take()

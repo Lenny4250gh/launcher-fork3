@@ -199,7 +199,7 @@ pub fn sample(state: &mut Online, look: OnlineLook) {
     state.avatars.insert(AccountId(2), Some(LUMEN.into()));
     state.avatars.insert(AccountId(3), Some(JUNO.into()));
     match look {
-        L::Feed | L::FeedReaction => {
+        L::Feed => {
             state.feed.merge_newest(Feed {
                 items: items(),
                 next: Some(3),
