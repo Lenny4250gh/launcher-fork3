@@ -357,6 +357,26 @@ pub struct KeyCapSpec {
     pub keyboard: bool,
 }
 
+/// How the rail of a slider is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Track {
+    /// A rail that fills with ink up to the thumb.
+    Plain,
+    /// Every hue from 0 degrees at the left to this many at the right.
+    Hue(u16),
+    /// From black at the left to this colour at the right.
+    Ramp([u8; 3]),
+}
+
+/// What a slider asked for this frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Slide {
+    /// The pointer is down at this place on the rail, 0 (left) to 1 (right).
+    To(f32),
+    /// Page Up (+1) or Page Down (-1).
+    Page(i8),
+}
+
 /// The value control on the right of a row.
 pub enum RowControl<'a> {
     /// `<  value  >`: chevrons step, the row advances (wrapping).
@@ -374,6 +394,14 @@ pub enum RowControl<'a> {
         value: &'a str,
         can_decrement: bool,
         can_increment: bool,
+    },
+    /// `----o----  70%`: a rail with a thumb and the value after it. The pointer drags it, the
+    /// arrows and the pad step it (the row's model), Page Up and Page Down move it by two steps.
+    Slider {
+        value: &'a str,
+        /// 0 (minimum) to 1 (maximum).
+        fraction: f32,
+        track: Track,
     },
     /// Trailing chevron: the row opens a picker or a panel.
     Action,
@@ -527,6 +555,77 @@ pub struct RowOutput {
     pub submitted: bool,
     /// One of a row's buttons was clicked: its index.
     pub pressed: Option<usize>,
+    /// A slider was dragged or paged.
+    pub slide: Option<Slide>,
+}
+
+/// A slider's rail and thumb. `held` (0 to 1) is how much the pointer holds the thumb.
+fn paint_slider(
+    painter: &Painter,
+    (x0, x1): (f32, f32),
+    (x, y): (f32, f32),
+    ink: Color32,
+    held: f32,
+    track: Track,
+) {
+    let rail =
+        |height: f32| Rect::from_min_max(pos2(x0, y - height * 0.5), pos2(x1, y + height * 0.5));
+    let mut core = ink;
+    match track {
+        Track::Plain => {
+            let height = size::SLIDER_RAIL;
+            paint_capsule(painter, rail(height), fade(ink, 0.34));
+            let filled = Rect::from_min_max(pos2(x0, y - height * 0.5), pos2(x, y + height * 0.5));
+            paint_capsule(painter, filled, fade(ink, 0.92));
+        }
+        Track::Hue(degrees) => {
+            let stops = |t: f32| {
+                let c = crate::ui::lightbar::from_hsv(t * f32::from(degrees), 1.0, 1.0);
+                Color32::from_rgb(c[0], c[1], c[2])
+            };
+            paint_gradient(painter, rail(size::SLIDER_RAIL_COLOUR), &stops);
+            let t = ((x - x0) / (x1 - x0)).clamp(0.0, 1.0);
+            core = stops(t);
+        }
+        Track::Ramp(rgb) => {
+            let top = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+            let stops = |t: f32| mix(Color32::BLACK, top, t);
+            paint_gradient(painter, rail(size::SLIDER_RAIL_COLOUR), &stops);
+            let t = ((x - x0) / (x1 - x0)).clamp(0.0, 1.0);
+            core = stops(t);
+        }
+    }
+    let thumb = pos2(x, y);
+    let radius = size::SLIDER_THUMB;
+    painter.circle_filled(thumb, radius + 5.0 * held, fade(ink, 0.16 * held));
+    painter.circle_filled(thumb + vec2(0.0, 1.0), radius + 0.5, black(0.35));
+    painter.circle_filled(thumb, radius, ink);
+    if !matches!(track, Track::Plain) {
+        painter.circle_filled(thumb, radius - 3.5, core);
+    }
+}
+
+/// A horizontal gradient: `colour_at(0)` at the left of `rect` to `colour_at(1)` at the right,
+/// with round ends.
+fn paint_gradient(painter: &Painter, rect: Rect, colour_at: &dyn Fn(f32) -> Color32) {
+    const SEGMENTS: usize = 36;
+    let mut mesh = egui::Mesh::default();
+    for i in 0..=SEGMENTS {
+        let t = i as f32 / SEGMENTS as f32;
+        let x = lerp(rect.min.x, rect.max.x, t);
+        let colour = colour_at(t);
+        mesh.colored_vertex(pos2(x, rect.min.y), colour);
+        mesh.colored_vertex(pos2(x, rect.max.y), colour);
+        if i > 0 {
+            let base = (i * 2) as u32;
+            mesh.add_triangle(base - 2, base - 1, base);
+            mesh.add_triangle(base - 1, base + 1, base);
+        }
+    }
+    painter.add(egui::Shape::mesh(mesh));
+    let end = rect.height() * 0.5;
+    painter.circle_filled(pos2(rect.min.x, rect.center().y), end, colour_at(0.0));
+    painter.circle_filled(pos2(rect.max.x, rect.center().y), end, colour_at(1.0));
 }
 
 /// The buttons at a row's end: 32 dp high, 12 dp apart, their text 14 dp in from the edge.
@@ -666,6 +765,7 @@ impl<'a> PanelRow<'a> {
             text_changed: false,
             submitted: false,
             pressed: None,
+            slide: None,
         }
     }
 
@@ -736,6 +836,7 @@ impl<'a> PanelRow<'a> {
             text_changed: false,
             submitted: false,
             pressed: None,
+            slide: None,
         }
     }
 
@@ -759,6 +860,15 @@ impl<'a> PanelRow<'a> {
             }
             RowControl::Choice { value, .. } | RowControl::Stepper { value, .. } => {
                 let mut info = WidgetInfo::labeled(Role::Button, true, self.title);
+                info.current_text_value = Some((*value).to_owned());
+                info
+            }
+            RowControl::Slider {
+                value, fraction, ..
+            } => {
+                // The value as a percentage of the range for the numeric value, as shown for the text.
+                let mut info =
+                    WidgetInfo::slider(true, f64::from((*fraction * 100.0).round()), self.title);
                 info.current_text_value = Some((*value).to_owned());
                 info
             }
@@ -888,6 +998,13 @@ impl<'a> PanelRow<'a> {
         };
         let (rect, response) = ui.allocate_exact_size(vec2(width, height), sense);
         response.widget_info(|| self.widget_info());
+        if matches!(self.control, RowControl::Slider { .. }) {
+            // The range a screen reader gives the value: a percentage.
+            ctx.accesskit_node_builder(response.id, |node| {
+                node.set_min_numeric_value(0.0);
+                node.set_max_numeric_value(100.0);
+            });
+        }
         crate::ui::a11y::follow(
             &ctx,
             response.id,
@@ -911,6 +1028,7 @@ impl<'a> PanelRow<'a> {
             text_changed: false,
             submitted: false,
             pressed: None,
+            slide: None,
         };
         if !ui.is_rect_visible(rect) {
             return out;
@@ -1067,6 +1185,7 @@ impl<'a> PanelRow<'a> {
                 chevron * 2.0 + w + 24.0
             }
             RowControl::Stepper { .. } => chevron * 2.0 + size::STEPPER_VALUE_WIDTH + 24.0,
+            RowControl::Slider { .. } => size::SLIDER_TRACK_WIDTH + 12.0 + size::SLIDER_VALUE_WIDTH,
             RowControl::Toggle { .. } => size::SWITCH.0,
             RowControl::Action => 14.0,
             RowControl::Caption | RowControl::Command => 0.0,
@@ -1300,6 +1419,63 @@ impl<'a> PanelRow<'a> {
                     size::CHEVRON_GLYPH,
                 );
                 out.step = a.or(b);
+            }
+            RowControl::Slider {
+                value,
+                fraction,
+                track,
+            } => {
+                let (fraction, track) = (*fraction, *track);
+                let value_cell = Rect::from_min_max(
+                    pos2(rect.max.x - size::SLIDER_VALUE_WIDTH, rect.min.y),
+                    rect.max,
+                );
+                text::paint_tabular_aligned(
+                    &painter,
+                    value_cell,
+                    Align::Max,
+                    ty::CHOICE_VALUE,
+                    value,
+                    fg,
+                );
+                // The whole height of the row is the grip, so the target is far over 44 dp.
+                let area = Rect::from_min_max(rect.min, pos2(value_cell.min.x - 12.0, rect.max.y));
+                let grip = ui.interact(area, row_id.with("slider"), Sense::click_and_drag());
+                let radius = size::SLIDER_THUMB;
+                let (x0, x1) = (area.min.x + radius, area.max.x - radius);
+                let down = grip.is_pointer_button_down_on();
+                if down && let Some(at) = grip.interact_pointer_pos() {
+                    out.slide = Some(Slide::To(((at.x - x0) / (x1 - x0)).clamp(0.0, 1.0)));
+                }
+                if self.focused {
+                    let (up, lower) = ctx.input(|i| {
+                        (
+                            i.key_pressed(egui::Key::PageUp),
+                            i.key_pressed(egui::Key::PageDown),
+                        )
+                    });
+                    if up {
+                        out.slide = Some(Slide::Page(1));
+                    } else if lower {
+                        out.slide = Some(Slide::Page(-1));
+                    }
+                }
+                if down {
+                    ctx.set_cursor_icon(CursorIcon::Grabbing);
+                } else if input::hovered(ctx, &grip) {
+                    ctx.set_cursor_icon(CursorIcon::Grab);
+                }
+                // The thumb follows the value in a tenth of a second, so a step of the arrows or
+                // the pad slides instead of jumping and the drag keeps up with the pointer.
+                let shown = ctx.animate_to((row_id, "slider-at"), fraction, Motion::Press);
+                let held = ctx.animate_to(
+                    (row_id, "slider-held"),
+                    f32::from(down || self.force == Some(Force::Press)),
+                    Motion::Press,
+                );
+                let x = lerp(x0, x1, shown.clamp(0.0, 1.0));
+                let y = rect.center().y;
+                paint_slider(&painter, (x0, x1), (x, y), fg, held, track);
             }
             RowControl::Toggle { on, accent } => {
                 let switch_rect = Rect::from_center_size(

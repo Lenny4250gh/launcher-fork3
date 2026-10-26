@@ -10,7 +10,7 @@ use egui::{Color32, Margin, ScrollArea, Ui};
 
 use crate::screens::scroll::Follow;
 use crate::ui::Shell;
-use crate::ui::chrome::{KeyCapSpec, PanelRow, RowAvatar, RowControl};
+use crate::ui::chrome::{KeyCapSpec, PanelRow, RowAvatar, RowControl, Slide, Track};
 use crate::ui::components::{Force, PadGlyph};
 use crate::ui::focus::{PanelEffect, PanelNav, RowKind};
 use crate::ui::i18n::{Key, Language};
@@ -39,6 +39,22 @@ pub enum Control {
         step: i32,
         /// The value as shown (`75%`, `1.0×`).
         text: String,
+    },
+    /// A stepper drawn as a rail with a thumb (docs/DESIGN.md 5.9): the same keys and pad
+    /// steps and the same [`Change::Stepper`], and the pointer can drag it.
+    Slider {
+        value: i32,
+        min: i32,
+        max: i32,
+        /// What an arrow key, the pad or a held direction moves by. The pointer snaps to half of it,
+        /// Page Up and Page Down move two of them.
+        step: i32,
+        /// The value as shown (`70%`, `210°`).
+        text: String,
+        track: Track,
+        /// The screen plays the tick itself, after it has applied the value (a volume slider's
+        /// tick sounds at the volume it sets).
+        own_tick: bool,
     },
     /// Opens a picker or a panel: a trailing chevron.
     Action,
@@ -215,6 +231,46 @@ impl Row {
         )
     }
 
+    /// A stepper drawn as a slider (see [`Control::Slider`]).
+    pub fn slider(
+        id: RowId,
+        title: impl Into<String>,
+        value: i32,
+        range: (i32, i32),
+        step: i32,
+        text: impl Into<String>,
+    ) -> Row {
+        Row::new(
+            id,
+            title,
+            Control::Slider {
+                value,
+                min: range.0,
+                max: range.1,
+                step,
+                text: text.into(),
+                track: Track::Plain,
+                own_tick: false,
+            },
+        )
+    }
+
+    /// How a slider's rail is drawn (hue, brightness).
+    pub fn track(mut self, to: Track) -> Row {
+        if let Control::Slider { track, .. } = &mut self.control {
+            *track = to;
+        }
+        self
+    }
+
+    /// The screen plays this slider's tick itself.
+    pub fn own_tick(mut self) -> Row {
+        if let Control::Slider { own_tick, .. } = &mut self.control {
+            *own_tick = true;
+        }
+        self
+    }
+
     pub fn action(id: RowId, title: impl Into<String>) -> Row {
         Row::new(id, title, Control::Action)
     }
@@ -305,7 +361,7 @@ impl Row {
         match self.control {
             Control::Choice { .. } | Control::Buttons { .. } => RowKind::Choice,
             Control::Toggle(_) => RowKind::Toggle,
-            Control::Stepper { .. } => RowKind::Stepper,
+            Control::Stepper { .. } | Control::Slider { .. } => RowKind::Stepper,
             Control::Action | Control::Command => RowKind::Action,
             Control::Info(_) | Control::Caption | Control::Qr(_) | Control::Link(_) => {
                 RowKind::Info
@@ -422,6 +478,13 @@ pub fn resolve(rows: &[Row], effect: PanelEffect) -> Option<Change> {
                     max,
                     step,
                     ..
+                }
+                | Control::Slider {
+                    value,
+                    min,
+                    max,
+                    step,
+                    ..
                 } => {
                     let next = (value + i32::from(direction) * step).clamp(*min, *max);
                     (next != *value).then_some(Change::Stepper {
@@ -447,6 +510,13 @@ pub fn resolve(rows: &[Row], effect: PanelEffect) -> Option<Change> {
                 }),
                 Control::Toggle(on) => Some(Change::Toggle { row: r.id, on: !on }),
                 Control::Stepper {
+                    value,
+                    min,
+                    max,
+                    step,
+                    ..
+                }
+                | Control::Slider {
                     value,
                     min,
                     max,
@@ -478,6 +548,37 @@ pub struct Driven {
     pub close: bool,
 }
 
+/// Where a slider ends up after the pointer or Page Up and Page Down moved it: the pointer snaps
+/// to half a step, a page is two steps. `None` when it stays where it is, or the row is no slider.
+pub fn slide_target(control: &Control, slide: Slide) -> Option<i32> {
+    let Control::Slider {
+        value,
+        min,
+        max,
+        step,
+        ..
+    } = control
+    else {
+        return None;
+    };
+    let target = match slide {
+        Slide::To(at) => {
+            let fine = (*step / 2).max(1);
+            let raw = *min as f32 + at.clamp(0.0, 1.0) * (*max - *min) as f32;
+            *min + ((raw - *min as f32) / fine as f32).round() as i32 * fine
+        }
+        Slide::Page(direction) => value + i32::from(direction) * 2 * step,
+    }
+    .clamp(*min, *max);
+    (target != *value).then_some(target)
+}
+
+/// Whether the screen plays the tick of this row's changes itself (a volume slider).
+fn ticks_itself(rows: &[Row], id: RowId) -> bool {
+    rows.iter()
+        .any(|r| r.id == id && matches!(r.control, Control::Slider { own_tick: true, .. }))
+}
+
 /// Runs `commands` through the navigation model: moves focus, plays the cues and collects the
 /// value changes. `nav.row` is kept inside `rows`.
 pub fn drive(shell: &mut Shell, nav: &mut PanelNav, rows: &[Row], commands: &[Command]) -> Driven {
@@ -497,6 +598,7 @@ pub fn drive(shell: &mut Shell, nav: &mut PanelNav, rows: &[Row], commands: &[Co
         };
         match (&change, step.sound) {
             (Some(change @ Change::Toggle { .. }), _) => shell.play(change.cue()),
+            (Some(Change::Stepper { row, .. }), _) if ticks_itself(rows, row) => {}
             (_, Some(cue)) => shell.play(cue),
             _ => {}
         }
@@ -514,7 +616,7 @@ pub fn drive(shell: &mut Shell, nav: &mut PanelNav, rows: &[Row], commands: &[Co
 }
 
 /// What the mouse did in the list.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ListEvent {
     /// A row was clicked or its control used: it takes the focus.
     Focus(usize),
@@ -533,6 +635,11 @@ pub enum ListEvent {
     Press {
         row: usize,
         index: usize,
+    },
+    /// A slider was dragged or paged.
+    Slide {
+        row: usize,
+        slide: Slide,
     },
 }
 
@@ -787,6 +894,22 @@ fn show_row(
             can_decrement: *value > *min,
             can_increment: *value < *max,
         },
+        Control::Slider {
+            value,
+            min,
+            max,
+            text,
+            track,
+            ..
+        } => RowControl::Slider {
+            value: text.as_str(),
+            fraction: if max > min {
+                (*value - *min) as f32 / (*max - *min) as f32
+            } else {
+                0.0
+            },
+            track: *track,
+        },
         Control::Buttons { labels, selected } => RowControl::Buttons {
             labels,
             selected: *selected,
@@ -846,7 +969,16 @@ fn show_row(
         Control::Buttons { labels, .. } => Some(labels.len()),
         _ => None,
     };
-    if let Some(pressed) = out.pressed {
+    let is_slider = matches!(&*control, Control::Slider { .. });
+    if let Some(slide) = out.slide {
+        events.push(ListEvent::Focus(index));
+        events.push(ListEvent::Slide { row: index, slide });
+    } else if is_slider {
+        // The body of a slider row only takes the focus: a click must not step it.
+        if out.response.clicked() {
+            events.push(ListEvent::Focus(index));
+        }
+    } else if let Some(pressed) = out.pressed {
         events.push(ListEvent::Focus(index));
         events.push(ListEvent::Press {
             row: index,
@@ -912,7 +1044,20 @@ pub fn apply_mouse(
             }
             ListEvent::Effect { effect, .. } => {
                 if let Some(change) = resolve(rows, effect) {
-                    shell.play(change.cue());
+                    if !ticks_itself(rows, change.row()) {
+                        shell.play(change.cue());
+                    }
+                    changes.push(change);
+                }
+            }
+            ListEvent::Slide { row, slide } => {
+                if let Some(r) = rows.get(row)
+                    && let Some(value) = slide_target(&r.control, slide)
+                {
+                    let change = Change::Stepper { row: r.id, value };
+                    if !ticks_itself(rows, r.id) {
+                        shell.play(change.cue());
+                    }
                     changes.push(change);
                 }
             }
@@ -1005,6 +1150,44 @@ mod tests {
             })
         );
         assert_eq!(resolve(&rows, adjust(4, 1)), None, "actions do not adjust");
+    }
+
+    #[test]
+    fn a_slider_steps_like_a_stepper_and_the_pointer_snaps_to_half_a_step() {
+        let mut rows = rows();
+        rows[3] = Row::slider("step", "Step", 50, (0, 100), 10, "50%");
+        // The model: left and right move by a step, clamped; select wraps.
+        assert_eq!(
+            resolve(&rows, adjust(3, 1)),
+            Some(Change::Stepper {
+                row: "step",
+                value: 60
+            })
+        );
+        assert_eq!(rows[3].kind(), RowKind::Stepper);
+        let slider = &rows[3].control;
+        assert_eq!(slide_target(slider, Slide::To(0.0)), Some(0));
+        assert_eq!(slide_target(slider, Slide::To(1.0)), Some(100));
+        assert_eq!(slide_target(slider, Slide::To(0.72)), Some(70));
+        assert_eq!(slide_target(slider, Slide::To(0.76)), Some(75));
+        assert_eq!(slide_target(slider, Slide::To(0.5)), None, "already there");
+        assert_eq!(slide_target(slider, Slide::Page(1)), Some(70));
+        assert_eq!(slide_target(slider, Slide::Page(-1)), Some(30));
+        let mut end = rows[3].clone();
+        end.control = Control::Slider {
+            value: 100,
+            min: 0,
+            max: 100,
+            step: 10,
+            text: String::new(),
+            track: Track::Plain,
+            own_tick: false,
+        };
+        assert_eq!(slide_target(&end.control, Slide::Page(1)), None);
+        assert_eq!(slide_target(&rows[0].control, Slide::To(0.5)), None);
+        // A range that does not start at zero snaps from its minimum.
+        let hue = Row::slider("hue", "Hue", 0, (10, 100), 10, "").control;
+        assert_eq!(slide_target(&hue, Slide::To(0.5)), Some(55));
     }
 
     #[test]

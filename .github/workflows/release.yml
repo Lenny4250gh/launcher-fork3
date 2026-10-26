@@ -126,26 +126,46 @@ jobs:
           if-no-files-found: error
 
   windows:
-    needs: notices
     runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
     defaults:
       run:
         shell: pwsh
         working-directory: launcher
     outputs:
       version: ${{ steps.version.outputs.version }}
+      network: ${{ steps.network.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           path: launcher
       # The online crates come from anyplaynet/network, checked out beside the launcher.
+      # The anyplaynet/network revision whose net service the launcher carries: the input of a run by
+      # hand, else the repository variable NETWORK_REF, else the commit in network.ref. A full commit
+      # SHA, never a branch. Resolved here, in the job itself, so it starts at once (it used to wait
+      # for the licence job); `publish` checks that every job and `prepare` found the same commit.
+      - id: network-pin
+        name: Network revision
+        shell: bash
+        env:
+          NETWORK_OVERRIDE: ${{ inputs.network_ref || vars.NETWORK_REF }}
+        run: |
+          ref=${NETWORK_OVERRIDE:-$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/launcher/network.ref")}
+          [[ $ref =~ ^[0-9a-f]{40}$ ]] || { echo "the network revision must be one full commit SHA, got '$ref'" >&2; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           repository: anyplaynet/network
-          ref: ${{ needs.notices.outputs.network }}
+          ref: ${{ steps.network-pin.outputs.ref }}
           path: network
+      - name: Network commit
+        id: network
+        shell: bash
+        run: echo "commit=$(git -C "$GITHUB_WORKSPACE/network" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Version
         id: version
@@ -239,6 +259,13 @@ jobs:
           if (-not (Test-Path "$dir/ISCC.exe")) { throw 'Inno Setup did not install' }
           "INNO_DIR=$dir" >> $env:GITHUB_ENV
 
+      # The licence file comes from the `notices` job, which runs next to this one: wait for it here, at
+      # the step that needs it, not before the job starts.
+      - name: Wait for the licence file
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/wait-artifact.sh dist-notices
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist-notices
@@ -262,15 +289,39 @@ jobs:
   # 2.35): only two weak symbols of Rust's std (pidfd_spawnp, pidfd_getpid) name 2.39, and std
   # does without them. The linux job below carries it.
   linux-share-worker:
-    needs: notices
     runs-on: ubuntu-latest
+    outputs:
+      network: ${{ steps.network.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          path: launcher
+          sparse-checkout: network.ref
+          sparse-checkout-cone-mode: false
+      # The anyplaynet/network revision whose net service the launcher carries: the input of a run by
+      # hand, else the repository variable NETWORK_REF, else the commit in network.ref. A full commit
+      # SHA, never a branch. Resolved here, in the job itself, so it starts at once (it used to wait
+      # for the licence job); `publish` checks that every job and `prepare` found the same commit.
+      - id: network-pin
+        name: Network revision
+        shell: bash
+        env:
+          NETWORK_OVERRIDE: ${{ inputs.network_ref || vars.NETWORK_REF }}
+        run: |
+          ref=${NETWORK_OVERRIDE:-$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/launcher/network.ref")}
+          [[ $ref =~ ^[0-9a-f]{40}$ ]] || { echo "the network revision must be one full commit SHA, got '$ref'" >&2; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
           repository: anyplaynet/network
-          ref: ${{ needs.notices.outputs.network }}
+          ref: ${{ steps.network-pin.outputs.ref }}
           path: network
+      - name: Network commit
+        id: network
+        shell: bash
+        run: echo "commit=$(git -C "$GITHUB_WORKSPACE/network" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: System packages
         run: |
           sudo apt-get update
@@ -292,8 +343,13 @@ jobs:
   # Built on the oldest runner image still offered: a binary links against the glibc it is built
   # with, and an older one runs on more distributions.
   linux:
-    needs: [notices, linux-share-worker]
+    needs: linux-share-worker
     runs-on: ubuntu-22.04
+    outputs:
+      network: ${{ steps.network.outputs.commit }}
+    permissions:
+      actions: read
+      contents: read
     defaults:
       run:
         working-directory: launcher
@@ -303,12 +359,29 @@ jobs:
           persist-credentials: false
           path: launcher
       # The online crates come from anyplaynet/network, checked out beside the launcher.
+      # The anyplaynet/network revision whose net service the launcher carries: the input of a run by
+      # hand, else the repository variable NETWORK_REF, else the commit in network.ref. A full commit
+      # SHA, never a branch. Resolved here, in the job itself, so it starts at once (it used to wait
+      # for the licence job); `publish` checks that every job and `prepare` found the same commit.
+      - id: network-pin
+        name: Network revision
+        shell: bash
+        env:
+          NETWORK_OVERRIDE: ${{ inputs.network_ref || vars.NETWORK_REF }}
+        run: |
+          ref=${NETWORK_OVERRIDE:-$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/launcher/network.ref")}
+          [[ $ref =~ ^[0-9a-f]{40}$ ]] || { echo "the network revision must be one full commit SHA, got '$ref'" >&2; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           repository: anyplaynet/network
-          ref: ${{ needs.notices.outputs.network }}
+          ref: ${{ steps.network-pin.outputs.ref }}
           path: network
+      - name: Network commit
+        id: network
+        shell: bash
+        run: echo "commit=$(git -C "$GITHUB_WORKSPACE/network" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Version
         id: version
@@ -369,6 +442,13 @@ jobs:
           check ../network/target/release/anyplay-net anyplay-net
           check ../share-worker/anyplay-share anyplay-share-worker
 
+      # The licence file comes from the `notices` job, which runs next to this one: wait for it here, at
+      # the step that needs it, not before the job starts.
+      - name: Wait for the licence file
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/wait-artifact.sh dist-notices
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist-notices
@@ -434,8 +514,12 @@ jobs:
 
   # Apple silicon app, signed ad hoc. No Developer ID or notarization secret is used.
   macos:
-    needs: notices
     runs-on: macos-15
+    outputs:
+      network: ${{ steps.network.outputs.commit }}
+    permissions:
+      actions: read
+      contents: read
     env:
       MACOSX_DEPLOYMENT_TARGET: '11.0'
     defaults:
@@ -447,12 +531,29 @@ jobs:
         with:
           persist-credentials: false
           path: launcher
+      # The anyplaynet/network revision whose net service the launcher carries: the input of a run by
+      # hand, else the repository variable NETWORK_REF, else the commit in network.ref. A full commit
+      # SHA, never a branch. Resolved here, in the job itself, so it starts at once (it used to wait
+      # for the licence job); `publish` checks that every job and `prepare` found the same commit.
+      - id: network-pin
+        name: Network revision
+        shell: bash
+        env:
+          NETWORK_OVERRIDE: ${{ inputs.network_ref || vars.NETWORK_REF }}
+        run: |
+          ref=${NETWORK_OVERRIDE:-$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/launcher/network.ref")}
+          [[ $ref =~ ^[0-9a-f]{40}$ ]] || { echo "the network revision must be one full commit SHA, got '$ref'" >&2; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           repository: anyplaynet/network
-          ref: ${{ needs.notices.outputs.network }}
+          ref: ${{ steps.network-pin.outputs.ref }}
           path: network
+      - name: Network commit
+        id: network
+        shell: bash
+        run: echo "commit=$(git -C "$GITHUB_WORKSPACE/network" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -467,6 +568,13 @@ jobs:
         run: |
           rust-audit-info target/aarch64-apple-darwin/release/anyplay-launcher \
             | jq -e '[.packages[].name] | index("anyps5-launcher") != null'
+      # The licence file comes from the `notices` job, which runs next to this one: wait for it here, at
+      # the step that needs it, not before the job starts.
+      - name: Wait for the licence file
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/wait-artifact.sh dist-notices
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist-notices
@@ -603,7 +711,7 @@ jobs:
   # the dry run of the signing happen here; no secret and no write access: what signs and what
   # publishes are the jobs `sign` and `release` below.
   publish:
-    needs: [notices, prepare, windows, linux, macos]
+    needs: [notices, prepare, windows, linux-share-worker, linux, macos]
     runs-on: ubuntu-latest
     steps:
       # Only the file the dry run reads (a cone checkout takes the files of the root as well).
@@ -618,11 +726,17 @@ jobs:
         env:
           BUILT_VERSION: ${{ needs.windows.outputs.version }}
           PREPARED_VERSION: ${{ needs.prepare.outputs.version }}
-          BUILT_NETWORK: ${{ needs.notices.outputs.network }}
+          LICENCES_NETWORK: ${{ needs.notices.outputs.network }}
+          WINDOWS_NETWORK: ${{ needs.windows.outputs.network }}
+          SHARE_WORKER_NETWORK: ${{ needs.linux-share-worker.outputs.network }}
+          LINUX_NETWORK: ${{ needs.linux.outputs.network }}
+          MACOS_NETWORK: ${{ needs.macos.outputs.network }}
           PREPARED_NETWORK: ${{ needs.prepare.outputs.network }}
         run: |
           [ "$BUILT_VERSION" = "$PREPARED_VERSION" ] || { echo "::error::the builds are version $BUILT_VERSION, the SBOMs $PREPARED_VERSION"; exit 1; }
-          [ "$BUILT_NETWORK" = "$PREPARED_NETWORK" ] || { echo "::error::the builds used network $BUILT_NETWORK, the SBOMs $PREPARED_NETWORK"; exit 1; }
+          for built in "$LICENCES_NETWORK" "$WINDOWS_NETWORK" "$SHARE_WORKER_NETWORK" "$LINUX_NETWORK" "$MACOS_NETWORK"; do
+            [ "$built" = "$PREPARED_NETWORK" ] || { echo "::error::a job used network $built, the SBOMs $PREPARED_NETWORK (licences $LICENCES_NETWORK, windows $WINDOWS_NETWORK, share worker $SHARE_WORKER_NETWORK, linux $LINUX_NETWORK, macos $MACOS_NETWORK)"; exit 1; }
+          done
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: dist-*

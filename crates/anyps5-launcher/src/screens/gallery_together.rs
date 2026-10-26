@@ -141,7 +141,7 @@ pub fn paint(
     together::paint(ctx, accent, &card(look), language, 1.0, true, 0.0, pad);
 }
 
-/// Friends of the panel pages: Lumen plays Minecraft together (2/4), Juno plays it with no
+/// Friends of the panel pages: Lumen plays Minecraft together (2 of 4 players), Juno plays it with no
 /// session (online play is off), Kit is a plain friend.
 pub fn sample(state: &mut Online) {
     let account = |id: u64, handle: &str| Account {

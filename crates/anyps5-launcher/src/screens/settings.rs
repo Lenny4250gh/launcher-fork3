@@ -1535,9 +1535,11 @@ fn about_page(row: &str) -> Option<&'static str> {
     })
 }
 
-/// A volume row: 0 to 100 percent in steps of ten, Off at zero.
+/// A volume row: a slider from 0 to 100 percent. The arrows, the pad and a held direction move it
+/// in steps of ten, the pointer in steps of five; Off at zero. Its tick is the screen's own (see
+/// `tick_volume`).
 fn volume_row(id: rows::RowId, title: FeelText, percent: u8, language: Language) -> Row {
-    Row::stepper(
+    Row::slider(
         id,
         title.text(language),
         i32::from(percent),
@@ -1545,6 +1547,19 @@ fn volume_row(id: rows::RowId, title: FeelText, percent: u8, language: Language)
         10,
         volume_text(percent, language),
     )
+    .own_tick()
+}
+
+/// A volume slider moved: the sound engine learns the new volume before the tick plays, so the
+/// tick sounds as loud as the volume it sets (and not at all at Off). Notification volume ticks
+/// with a notification cue, the others with the interface's.
+fn tick_volume(shell: &mut Shell, prefs: &Preferences, row: &str) {
+    shell.sounds.set_volumes(volumes_of(prefs));
+    shell.play(if row == "volNotif" {
+        Cue::Notify
+    } else {
+        Cue::Move
+    });
 }
 
 fn percent(value: i32) -> u8 {
@@ -1973,6 +1988,14 @@ impl SettingsPanel {
     ) {
         let language = convert::language(prefs.language);
         let mut changed = apply_value(prefs, change);
+        if let Change::Stepper {
+            row: row @ ("volInterface" | "volMusic" | "volGameMusic" | "volNotif"),
+            ..
+        } = change
+            && changed
+        {
+            tick_volume(shell, prefs, row);
+        }
         match change {
             Change::Choice {
                 row: "backdrop",

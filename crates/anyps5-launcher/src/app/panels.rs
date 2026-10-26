@@ -36,6 +36,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use anyps5_core::community::{self, CommunityLayout};
 use anyps5_core::compat;
 use anyps5_core::diagnosis::{self, Diagnosis};
+use anyps5_core::events::CancelToken;
 use anyps5_core::gamefiles::GameInput;
 use anyps5_core::issue;
 use anyps5_core::library::Game;
@@ -103,6 +104,11 @@ enum Work {
     Uninstalled {
         game: GameId,
         result: Result<(), String>,
+    },
+    /// How much of a game's copy is gone, 0..=1.
+    UninstallProgress {
+        game: GameId,
+        fraction: f32,
     },
     /// What a game's files say about its controls.
     GameInput {
@@ -887,6 +893,7 @@ impl PanelHost {
                     {
                         let backups = model.paths.game_backups_dir(&game.title_id);
                         self.start_uninstall(&game, root, backups, model.language());
+                        model.begin_uninstall(&game.id);
                     }
                 }
             }
@@ -1900,7 +1907,8 @@ impl PanelHost {
     }
 
     /// Deletes the unlocked copy on a worker thread (a game can be tens of gigabytes). Its saves go
-    /// with it, so they are backed up first, and when that fails nothing is removed.
+    /// with it, so they are backed up first, and when that fails nothing is removed. The worker
+    /// reports how far it is; once it started it is not stopped (a half removed copy is useless).
     fn start_uninstall(
         &mut self,
         game: &Game,
@@ -1922,7 +1930,21 @@ impl PanelHost {
                     return;
                 }
             }
-            let result = unlock::remove_unlocked(&title_id, &id, &root).map_err(|e| e.to_string());
+            let result = unlock::remove_unlocked_progress(
+                &title_id,
+                &id,
+                &root,
+                &CancelToken::new(),
+                |fraction| {
+                    let _ = tx.send(Work::UninstallProgress {
+                        game: id.clone(),
+                        fraction,
+                    });
+                    ctx.request_repaint();
+                },
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string());
             let _ = tx.send(Work::Uninstalled { game: id, result });
             ctx.request_repaint();
         });
@@ -1996,20 +2018,28 @@ impl PanelHost {
                         }
                     }
                 }
-                Work::Uninstalled { game, result } => match result {
-                    Ok(()) => {
-                        if let Some(g) = model.games.iter_mut().find(|g| g.id == game) {
-                            g.unlocked_with = None;
+                Work::UninstallProgress { game, fraction } => {
+                    if let Some(done) = model.uninstalling.get_mut(&game) {
+                        *done = fraction;
+                    }
+                }
+                Work::Uninstalled { game, result } => {
+                    model.uninstalling.remove(&game);
+                    match result {
+                        Ok(()) => {
+                            if let Some(g) = model.games.iter_mut().find(|g| g.id == game) {
+                                g.unlocked_with = None;
+                            }
+                            model.failures.remove(&game);
+                            model.trophies.remove(&game);
+                            model.toast(language.text(Key::UninstallDone), Icon::TRASH);
                         }
-                        model.failures.remove(&game);
-                        model.trophies.remove(&game);
-                        model.toast(language.text(Key::UninstallDone), Icon::TRASH);
+                        Err(error) => {
+                            tracing::warn!("cannot uninstall: {error}");
+                            model.toast_failure(error);
+                        }
                     }
-                    Err(error) => {
-                        tracing::warn!("cannot uninstall: {error}");
-                        model.toast_failure(error);
-                    }
-                },
+                }
             }
         }
     }

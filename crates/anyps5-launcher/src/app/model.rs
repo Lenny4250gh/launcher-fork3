@@ -53,6 +53,10 @@ pub enum GameState {
         step: UnlockStep,
         fraction: f32,
     },
+    /// The unlocked copy is being removed; `fraction` is how much of it is gone, 0..=1.
+    Uninstalling {
+        fraction: f32,
+    },
     /// The launcher unlocks the game on its own while the PC is idle. `progress` is `None` until
     /// the work starts.
     Preparing {
@@ -276,6 +280,8 @@ pub struct Model {
 
     /// Unlock progress of the game that is being unlocked.
     pub progress: HashMap<GameId, (UnlockStep, f32)>,
+    /// Games whose unlocked copy is being removed, and how much of it is gone (0..=1).
+    pub uninstalling: HashMap<GameId, f32>,
     /// Games waiting for their unlock.
     pub queue: Vec<GameId>,
     /// Preparing in the background, and the time left of every unlock (`app/prepare.rs`).
@@ -415,6 +421,7 @@ impl Model {
             library_loaded: false,
             settings_page: None,
             progress: HashMap::new(),
+            uninstalling: HashMap::new(),
             queue: Vec::new(),
             prep: Default::default(),
             failures: HashMap::new(),
@@ -730,6 +737,9 @@ impl Model {
         }
         if self.running.as_ref() == Some(id) {
             return GameState::Running;
+        }
+        if let Some(&fraction) = self.uninstalling.get(id) {
+            return GameState::Uninstalling { fraction };
         }
         if let Some(preparing) = self.preparing_state(id) {
             return preparing;
@@ -1107,7 +1117,8 @@ impl Model {
             GameState::Running => self
                 .effects
                 .push(Effect::Pipeline(PipelineCommand::Activate(game.id))),
-            GameState::Starting => {}
+            // Nothing to press: the button is greyed out while the copy is removed.
+            GameState::Starting | GameState::Uninstalling { .. } => {}
             GameState::Unreadable => {
                 let text = self.text(Key::UnreadableDump);
                 self.toast(text, Icon::X_CIRCLE);
@@ -1158,6 +1169,11 @@ impl Model {
         self.queue.push(id.clone());
         self.sound(Cue::Select);
         self.effects.push(Effect::Pipeline(command));
+    }
+
+    /// The removal of a game's copy started: the home screen shows it like an unlock.
+    pub fn begin_uninstall(&mut self, id: &GameId) {
+        self.uninstalling.insert(id.clone(), 0.0);
     }
 
     pub fn cancel_unlock(&mut self, id: &GameId) {
@@ -1833,6 +1849,24 @@ mod tests {
         assert_eq!(m.state_of(&g), GameState::Running);
         m.starting = Some(id);
         assert_eq!(m.state_of(&g), GameState::Starting);
+    }
+
+    #[test]
+    fn a_game_being_removed_shows_its_progress_and_ignores_the_primary_button() {
+        let g = game("a", Some("v1"), ExecutableKind::Elf);
+        let id = g.id.clone();
+        let mut m = model_with(vec![g.clone()]);
+        m.begin_uninstall(&id);
+        assert_eq!(m.state_of(&g), GameState::Uninstalling { fraction: 0.0 });
+        m.uninstalling.insert(id.clone(), 0.4);
+        assert_eq!(m.state_of(&g), GameState::Uninstalling { fraction: 0.4 });
+        // Nothing starts and nothing is queued while the copy is removed.
+        m.selected = 0;
+        m.primary_action();
+        assert_eq!(m.state_of(&g), GameState::Uninstalling { fraction: 0.4 });
+        assert!(m.queue.is_empty() && m.starting.is_none());
+        m.uninstalling.remove(&id);
+        assert_eq!(m.state_of(&g), GameState::Installed { outdated: false });
     }
 
     #[test]

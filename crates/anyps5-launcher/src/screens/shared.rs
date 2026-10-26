@@ -9,6 +9,7 @@ use egui::{
 
 use crate::app::model::{GameState, Model};
 use crate::app::textures::Textures;
+use crate::screens::strings::Extra;
 use crate::ui::Shell;
 use crate::ui::i18n::{Key, Language};
 use crate::ui::icons::Icon;
@@ -86,6 +87,12 @@ pub fn state_label(state: &GameState, language: Language) -> StateLabel {
             true,
             color::text_active(),
             language.text(step.title_key()).to_owned(),
+        ),
+        GameState::Uninstalling { .. } => (
+            Icon::TRASH,
+            true,
+            color::text_active(),
+            Extra::Uninstalling.text(language).to_owned(),
         ),
         GameState::Preparing { paused, .. } => (
             Icon::ARROW_CIRCLE_DOWN,

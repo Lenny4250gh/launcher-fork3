@@ -704,6 +704,13 @@ pub mod size {
     pub const CHEVRON_GLYPH: f32 = 13.0;
     pub const CHOICE_VALUE_WIDTH: (f32, f32) = (100.0, 190.0);
     pub const STEPPER_VALUE_WIDTH: f32 = 100.0;
+    /// A slider row: the track, and the value after it (tabular, right-aligned).
+    pub const SLIDER_TRACK_WIDTH: f32 = 184.0;
+    pub const SLIDER_VALUE_WIDTH: f32 = 56.0;
+    /// The thumb's radius, the rail's height, and the height of a colour rail (hue, brightness).
+    pub const SLIDER_THUMB: f32 = 9.0;
+    pub const SLIDER_RAIL: f32 = 4.0;
+    pub const SLIDER_RAIL_COLOUR: f32 = 8.0;
     pub const TEXT_FIELD_WIDTH: f32 = 200.0;
     /// A QR code's white card (5.8), and the light margin around the modules, in modules (the
     /// standard's quiet zone).
