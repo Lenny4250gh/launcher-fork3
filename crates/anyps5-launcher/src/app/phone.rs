@@ -290,7 +290,10 @@ pub fn trophy_message(trophy: &Trophy) -> Message {
 /// How the phone words a game's state.
 pub fn state_name(state: &GameState) -> &'static str {
     match state {
-        GameState::Unreadable | GameState::Failed(_) => "unavailable",
+        // A game being removed cannot be played or unlocked: the phone has no word of its own for it.
+        GameState::Unreadable | GameState::Failed(_) | GameState::Uninstalling { .. } => {
+            "unavailable"
+        }
         GameState::Locked => "locked",
         GameState::Queued | GameState::Installing { .. } | GameState::Preparing { .. } => {
             "installing"
@@ -741,6 +744,10 @@ mod tests {
         assert_eq!(state_name(&GameState::Unreadable), "unavailable");
         assert_eq!(state_name(&GameState::Failed("x".into())), "unavailable");
         assert_eq!(state_name(&GameState::Queued), "installing");
+        assert_eq!(
+            state_name(&GameState::Uninstalling { fraction: 0.5 }),
+            "unavailable"
+        );
     }
 
     #[test]

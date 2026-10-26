@@ -362,6 +362,18 @@ pub fn remove_unlocked(title_id: &str, game: &GameId, root: &Path) -> io::Result
     fsx::remove_tree_retry(&unlocked_copy(title_id, game, root))
 }
 
+/// [`remove_unlocked`] that tells how far it is (0..=1) and stops between two files when `cancel`
+/// is set. A stopped removal leaves a game that no longer starts: unlocking it again replaces it.
+pub fn remove_unlocked_progress(
+    title_id: &str,
+    game: &GameId,
+    root: &Path,
+    cancel: &CancelToken,
+    progress: impl FnMut(f32),
+) -> io::Result<fsx::Removal> {
+    fsx::remove_tree_progress(&unlocked_copy(title_id, game, root), cancel, progress)
+}
+
 // ---------------------------------------------------------------------------------------------
 // Module discovery
 
