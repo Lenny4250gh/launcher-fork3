@@ -207,10 +207,84 @@ impl TogetherText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            TogetherText::PlayTogether => "Play Together",
+            TogetherText::PlayTogetherDetail => "%@ starten und Freunde beitreten lassen",
+            TogetherText::OfferHeadline => "%@ spielt %@. Beitreten?",
+            TogetherText::OfferPlaces => "%@ von %@ Spielern",
+            TogetherText::OfferNoPlaces => "Dein Spiel startet in ihrer Sitzung",
+            TogetherText::Join => "Beitreten",
+            TogetherText::Decline => "Ablehnen",
+            TogetherText::Close => "Schließen",
+            TogetherText::TryAnyway => "Trotzdem versuchen",
+            TogetherText::SignIn => "Anmelden",
+            TogetherText::SwitchOn => "Einschalten",
+            TogetherText::SignedOutHeadline => "Melde dich an, um Play Together zu nutzen",
+            TogetherText::SignedOutLine => "Play Together nutzt dein AnyPlay-Konto.",
+            TogetherText::OfflineHeadline => "Du bist offline",
+            TogetherText::OfflineLine => {
+                "Play Together braucht eine Verbindung. Versuche es gleich noch einmal."
+            }
+            TogetherText::OnlineOffHeadline => "Online-Spiel ist ausgeschaltet",
+            TogetherText::OnlineOffLine => "Schalte es ein, um zusammen zu spielen.",
+            TogetherText::NotOwnedHeadline => "Zum Beitreten brauchst du %@",
+            TogetherText::NotOwnedLine => {
+                "Es ist nicht in deiner Bibliothek. Füge es hinzu und tritt dann erneut bei."
+            }
+            TogetherText::WrongVersionHeadline => "Du brauchst %@ %@; du hast %@",
+            TogetherText::WrongVersionLine => "Aktualisiere das Spiel und tritt dann erneut bei.",
+            TogetherText::WrongVersionLineAhead => {
+                "Bitte deinen Freund, zu aktualisieren, oder installiere %@ %@."
+            }
+            TogetherText::TryAnywayNote => "Ein Versuch kann scheitern oder nicht synchron laufen.",
+            TogetherText::WrongBuildHeadline => "Du brauchst Toolkit %@; du hast %@",
+            TogetherText::WrongBuildLine => {
+                "Wähle es unter Toolkit für dieses Spiel und tritt dann erneut bei."
+            }
+            TogetherText::FullHeadline => "Dieses Spiel ist voll",
+            TogetherText::FullLine => "Versuche es erneut, wenn jemand geht.",
+            TogetherText::BusyHeadline => "Ein anderes Spiel läuft",
+            TogetherText::BusyLine => "Beende es und tritt dann bei.",
+            TogetherText::EndedHeadline => "Diese Sitzung ist beendet",
+            TogetherText::EndedLine => "Bitte deinen Freund, eine neue zu starten.",
+            TogetherText::NoSessionHeadline => "%@ hat noch nichts zum Beitreten",
+            TogetherText::NoSessionLine => {
+                "Das Online-Spiel ist aus, oder %@ wurde ohne Play Together gestartet."
+            }
+            TogetherText::NotJoinableHeadline => "%@ ist in keinem Spiel, dem du beitreten kannst",
+            TogetherText::NotJoinableLine => "Versuche es erneut, wenn gleich eins startet.",
+            TogetherText::NotSupportedHeadline => "%@ lässt sich noch nicht zusammen spielen",
+            TogetherText::NotSupportedLine => "Nur manche Spiele lassen sich zusammen spielen.",
+            TogetherText::PresenceTogether => "Spielt %@ zusammen (%@/%@)",
+            TogetherText::ToastSessionEnded => {
+                "Die Sitzung von %@ ist beendet. Dein Spiel läuft weiter."
+            }
+            TogetherText::ToastHostFailed => {
+                "Niemand kann beitreten: Play Together konnte nicht starten. Dein Spiel läuft trotzdem."
+            }
+            TogetherText::ToastHostTimedOut => {
+                "Niemand kann beitreten: Das Netzwerk hat nicht geantwortet. Dein Spiel läuft trotzdem."
+            }
+            TogetherText::ToastUnlocking => "%@ wird freigeschaltet, dann geht es los",
+            TogetherText::ToastUnlockFailed => {
+                "Das Freischalten wurde nicht abgeschlossen, du bist nicht beigetreten"
+            }
+            TogetherText::UnlockFirstNote => "%@ wird zuerst freigeschaltet",
+            _ => return None,
+        })
+    }
+
     pub fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

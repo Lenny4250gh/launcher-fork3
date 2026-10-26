@@ -255,6 +255,8 @@ pub struct Options {
     /// `--fullscreen`: fill the screen the window opens on, as the launcher does.
     pub fullscreen: bool,
     pub turkish: bool,
+    /// `--de`: German (`--tr` wins when both are given).
+    pub german: bool,
     /// `--pad`: hint bars show gamepad buttons instead of keys.
     pub pad: bool,
     /// `--theme=aurora|sunset|cosmic`: the backdrop theme (the scenes `home-theme1` and `-2` set it too).
@@ -314,6 +316,7 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
         at: None,
         fullscreen: false,
         turkish: false,
+        german: false,
         pad: false,
         theme: None,
         bright: false,
@@ -367,6 +370,8 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
             options.fullscreen = true;
         } else if arg == "--tr" {
             options.turkish = true;
+        } else if arg == "--de" {
+            options.german = true;
         }
     }
     seen.then_some(options)
@@ -1034,6 +1039,8 @@ impl PreviewApp {
         let prefs = Preferences {
             language: if options.turkish {
                 CoreLanguage::Turkish
+            } else if options.german {
+                CoreLanguage::German
             } else {
                 CoreLanguage::English
             },
@@ -1053,6 +1060,8 @@ impl PreviewApp {
         }
         shell.language = if options.turkish {
             crate::ui::i18n::Language::Turkish
+        } else if options.german {
+            crate::ui::i18n::Language::German
         } else {
             crate::ui::i18n::Language::English
         };

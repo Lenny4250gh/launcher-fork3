@@ -207,10 +207,85 @@ impl VoiceText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            VoiceText::Voice => "Sprache",
+            VoiceText::VoiceSubtitle => "Sprich mit deiner Party",
+            VoiceText::PartyVoice => "Party-Sprachchat",
+            VoiceText::StatusOff => "Aus",
+            VoiceText::StatusNoParty => "Startet, sobald du in einer Party bist",
+            VoiceText::StatusConnecting => "Verbindet…",
+            VoiceText::StatusOn => "An",
+            VoiceText::FailedGeneric => {
+                "Der Sprachchat konnte nicht starten. Prüfe Mikrofon und Lautsprecher und schalte ihn dann wieder ein."
+            }
+            VoiceText::FailedDenied => {
+                "Das System hat den Mikrofonzugriff nicht erlaubt. Erlaube ihn in den Datenschutzeinstellungen des Systems und schalte den Sprachchat dann wieder ein."
+            }
+            VoiceText::FailedReason => "Grund: %@",
+            VoiceText::Microphone => "Mikrofon",
+            VoiceText::MicOff => "Aus",
+            VoiceText::MicMuted => "Stumm · zum Sprechen %@ halten",
+            VoiceText::MicOpen => "Offen",
+            VoiceText::MicListening => "Hört zu",
+            VoiceText::MicTalking => "Spricht",
+            VoiceText::Mode => "Modus",
+            VoiceText::PushToTalk => "Push-to-Talk",
+            VoiceText::VoiceActivity => "Sprachaktivierung",
+            VoiceText::PttNote => "Push-to-Talk funktioniert, solange der Launcher vorne ist.",
+            VoiceText::PttInGameNote => {
+                "Ein Spiel hat die Tastatur, deshalb erreicht die Taste den Launcher nicht. Wechsle zu Sprachaktivierung, um beim Spielen zu sprechen."
+            }
+            VoiceText::ActivityNote => {
+                "Das Mikrofon öffnet sich, sobald du sprichst. Ohne Kopfhörer hören die anderen sich selbst."
+            }
+            VoiceText::CallModeNote => {
+                "Im Anruf öffnet sich das Mikrofon, sobald du sprichst. Push-to-Talk ist nach dem Anruf wieder da."
+            }
+            VoiceText::TalkKey => "Sprechtaste",
+            VoiceText::TalkKeyNote => "Drücke eine Taste. Esc behält die aktuelle.",
+            VoiceText::Speakers => "Lautsprecher",
+            VoiceText::SystemDefault => "Systemstandard",
+            VoiceText::InUse => "In Verwendung",
+            VoiceText::RefreshDevices => "Geräte aktualisieren",
+            VoiceText::DevicesNote => "Eine Änderung startet den Sprachchat kurz neu.",
+            VoiceText::NoMicrophone => {
+                "Kein Mikrofon gefunden. Schließe eines an oder prüfe die Soundeinstellungen des Systems und aktualisiere dann."
+            }
+            VoiceText::NoSound => {
+                "Der Netzdienst meldet keine Audiogeräte. Schließe Mikrofon und Lautsprecher an oder prüfe die Soundeinstellungen des Systems."
+            }
+            VoiceText::DevicesUnknown => "Geräte erscheinen, sobald der Netzdienst antwortet.",
+            VoiceText::PickMicrophone => "Mikrofon wählen",
+            VoiceText::PickSpeakers => "Lautsprecher wählen",
+            VoiceText::DeviceGone => "Dieses Gerät ist gerade nicht verbunden.",
+            VoiceText::Volume => "Lautstärke",
+            VoiceText::VolumeValue => "%@%",
+            VoiceText::Mute => "Stummschalten",
+            VoiceText::MuteDetail => "Nur du hörst %@ nicht mehr",
+            VoiceText::Speaking => "Spricht",
+            VoiceText::MutedByYou => "Stumm",
+            VoiceText::NotInVoice => "Nicht im Sprachchat",
+            VoiceText::VoiceSettings => "Spracheinstellungen",
+            VoiceText::ToastFailed => {
+                "Der Sprachchat konnte nicht starten. Prüfe Mikrofon und Lautsprecher."
+            }
+            VoiceText::ToastDenied => "Das System hat das Mikrofon nicht erlaubt.",
+            VoiceText::ToastNoDevice => "Dieses Gerät ist nicht verfügbar. Aktualisiere die Liste.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

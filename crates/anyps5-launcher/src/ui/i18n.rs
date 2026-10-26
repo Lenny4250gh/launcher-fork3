@@ -1,5 +1,5 @@
 //! Ported from utkuhalis/AnyPS5-ARM (Localization.swift, GPL-2.0-only) and changed since; see README "Credits".
-//! Localisation (docs/DESIGN.md section 8): English and Turkish, 213 keys generated from the
+//! Localisation (docs/DESIGN.md section 8): English, Turkish and German, 213 keys generated from the
 //! macOS launcher's `Localization.swift` by `tools/gen-i18n.mjs`, with the Windows replacements
 //! of section 9.3 already applied.
 //!
@@ -8,6 +8,7 @@
 //! documented contract.
 
 include!("i18n_table.rs");
+include!("i18n_german.rs");
 
 /// Interface languages.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -15,16 +16,18 @@ pub enum Language {
     Turkish,
     #[default]
     English,
+    German,
 }
 
 impl Language {
-    pub const ALL: [Language; 2] = [Language::Turkish, Language::English];
+    pub const ALL: [Language; 3] = [Language::Turkish, Language::English, Language::German];
 
     /// Preference value (`"tr"` / `"en"`).
     pub const fn code(self) -> &'static str {
         match self {
             Language::Turkish => "tr",
             Language::English => "en",
+            Language::German => "de",
         }
     }
 
@@ -32,6 +35,7 @@ impl Language {
         match code {
             "tr" => Some(Language::Turkish),
             "en" => Some(Language::English),
+            "de" => Some(Language::German),
             _ => None,
         }
     }
@@ -41,6 +45,7 @@ impl Language {
         match self {
             Language::Turkish => "Türkçe",
             Language::English => "English",
+            Language::German => "Deutsch",
         }
     }
 
@@ -49,6 +54,7 @@ impl Language {
         match self {
             Language::Turkish => "TR",
             Language::English => "EN",
+            Language::German => "DE",
         }
     }
 
@@ -57,14 +63,27 @@ impl Language {
         match self {
             Language::Turkish => 19,
             Language::English => 1,
+            Language::German => 4,
         }
     }
 
-    /// Turkish when the OS UI language starts with `tr`, else English.
+    /// Turkish when the OS UI language starts with `tr`, German for `de`, else English.
     pub fn system() -> Language {
         match sys_locale::get_locale() {
-            Some(locale) if locale.to_ascii_lowercase().starts_with("tr") => Language::Turkish,
-            _ => Language::English,
+            Some(locale) => Language::from_locale(&locale),
+            None => Language::English,
+        }
+    }
+
+    /// The language a locale tag (`de-AT`, `tr_TR`) asks for; English for any other.
+    pub fn from_locale(tag: &str) -> Language {
+        let tag = tag.to_ascii_lowercase();
+        if tag.starts_with("tr") {
+            Language::Turkish
+        } else if tag.starts_with("de") {
+            Language::German
+        } else {
+            Language::English
         }
     }
 
@@ -81,6 +100,10 @@ impl Language {
         match self {
             Language::Turkish => key.turkish(),
             Language::English => key.english(),
+            Language::German => match key.german() {
+                Some(text) => text,
+                None => key.english(),
+            },
         }
     }
 
@@ -94,6 +117,7 @@ impl Language {
         match self {
             Language::Turkish => "tr-TR",
             Language::English => "en-US",
+            Language::German => "de-DE",
         }
     }
 }
@@ -311,7 +335,7 @@ pub fn byte_text(bytes: i64, language: Language) -> String {
     } else {
         format!("{value:.2}")
     };
-    let text = if language == Language::Turkish {
+    let text = if matches!(language, Language::Turkish | Language::German) {
         text.replace('.', ",")
     } else {
         text
@@ -462,16 +486,46 @@ mod tests {
     }
 
     #[test]
+    fn every_core_key_has_a_german_text() {
+        for key in Key::ALL {
+            let text = key
+                .german()
+                .unwrap_or_else(|| panic!("{} has no German text", key.name()));
+            assert!(!text.trim().is_empty(), "{}", key.name());
+            assert_eq!(
+                text.matches("%@").count() + text.matches("%d").count(),
+                key.english().matches("%@").count() + key.english().matches("%d").count(),
+                "{} changes its placeholders",
+                key.name()
+            );
+        }
+    }
+
+    #[test]
+    fn german_is_picked_from_the_system_locale() {
+        assert_eq!(Language::from_locale("de-AT"), Language::German);
+        assert_eq!(Language::from_locale("DE_CH"), Language::German);
+        assert_eq!(Language::from_locale("tr-TR"), Language::Turkish);
+        assert_eq!(Language::from_locale("fr-FR"), Language::English);
+        assert_eq!(
+            Language::German.format(Key::GamesFound, &[3usize.into()]),
+            "3 Spiele gefunden"
+        );
+    }
+
+    #[test]
     fn language_codes_round_trip() {
         for language in Language::ALL {
             assert_eq!(Language::from_code(language.code()), Some(language));
         }
-        assert_eq!(Language::from_code("de"), None);
+        assert_eq!(Language::from_code("de"), Some(Language::German));
+        assert_eq!(Language::from_code("xx"), None);
     }
 
     #[test]
     fn byte_text_uses_decimal_units() {
         assert_eq!(byte_text(8_390_000_000, Language::Turkish), "8,39 GB");
+        assert_eq!(byte_text(8_390_000_000, Language::German), "8,39 GB");
         assert_eq!(byte_text(8_390_000_000, Language::English), "8.39 GB");
         assert_eq!(byte_text(-1, Language::English), "…");
         assert_eq!(byte_text(999, Language::English), "999 bytes");

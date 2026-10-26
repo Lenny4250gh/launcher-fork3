@@ -68,10 +68,29 @@ impl InGameText {
         }
     }
 
+    pub const fn german(self) -> &'static str {
+        match self {
+            InGameText::Setting => "Home-Taste öffnet den Launcher",
+            InGameText::SettingDetail => {
+                "Während ein Spiel läuft, holt die Home-Taste den Launcher nach vorn. Drück sie noch einmal, um zurückzukehren."
+            }
+            InGameText::Running => "Das Spiel läuft hinter dem Launcher weiter.",
+            InGameText::BackToGame => "Zurück zum Spiel",
+            InGameText::Friends => "Freunde und Gruppe",
+            InGameText::CloseGame => "Spiel beenden",
+            InGameText::CloseAsk => {
+                "%@ wird sofort beendet. Alles, was das Spiel nicht gespeichert hat, geht verloren."
+            }
+            InGameText::CloseTitle => "Spiel beenden?",
+            InGameText::KeepPlaying => "Weiterspielen",
+        }
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => self.german(),
         }
     }
 

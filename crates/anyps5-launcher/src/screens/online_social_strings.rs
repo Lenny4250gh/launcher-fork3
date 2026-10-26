@@ -341,10 +341,123 @@ impl SocialText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            SocialText::Party => "Party",
+            SocialText::StartParty => "Party starten",
+            SocialText::StartPartyDetail => "Bleibt über Spiele hinweg zusammen",
+            SocialText::PartySubtitle => "%@ von %@ Mitgliedern",
+            SocialText::PartyMembers => "Mitglieder",
+            SocialText::Leader => "Anführer",
+            SocialText::PartyChat => "Party-Chat",
+            SocialText::InviteFriends => "Freunde einladen",
+            SocialText::InviteToParty => "In die Party einladen",
+            SocialText::LeaveParty => "Party verlassen",
+            SocialText::TakeParty => "Party in mein Spiel mitnehmen",
+            SocialText::MakeLeader => "Zum Anführer machen",
+            SocialText::RemoveFromParty => "Aus der Party entfernen",
+            SocialText::JoinParty => "Party beitreten",
+            SocialText::LeaveFirst => "Verlasse zuerst deine Party, um dieser beizutreten.",
+            SocialText::PartyInvitationDetail => "Party mit %@",
+            SocialText::NobodyToInvite => "Keiner deiner Freunde ist online und frei zum Einladen.",
+            SocialText::MakeLeaderDetail => "%@ führt die Party an",
+            SocialText::RemoveDetail => "%@ wird aus der Party entfernt",
+            SocialText::PickFirst => "Wähle zuerst einen Freund",
+            SocialText::PartyFull => "Die Party ist voll",
+            SocialText::Messages => "Nachrichten",
+            SocialText::RequestsCount => "Anfragen: %@",
+            SocialText::MessageRequests => "Nachrichtenanfragen",
+            SocialText::Conversations => "Unterhaltungen",
+            SocialText::NoConversations => {
+                "Noch keine Unterhaltungen. Öffne die Seite eines Freundes und wähle Nachricht senden."
+            }
+            SocialText::SendMessage => "Nachricht senden",
+            SocialText::NoMessages => "Noch keine Nachrichten. Sag Hallo.",
+            SocialText::NoPreview => "Noch keine Nachrichten",
+            SocialText::RequestTag => "Anfrage",
+            SocialText::Loading => "Wird geladen…",
+            SocialText::NewCount => "%@ neu",
+            SocialText::WantsToMessage => "Möchte dir schreiben",
+            SocialText::Opening => "Wird geöffnet…",
+            SocialText::ShowEarlier => "Frühere Nachrichten anzeigen",
+            SocialText::MessageField => "Nachricht",
+            SocialText::Send => "Senden",
+            SocialText::TooLong => "Kürze auf 2.000 Zeichen",
+            SocialText::LeaveConversation => "Unterhaltung verlassen",
+            SocialText::GroupPeople => "%@ Personen",
+            SocialText::Seen => "Gesehen",
+            SocialText::CopyText => "Text kopieren",
+            SocialText::Copied => "Kopiert",
+            SocialText::RequestNote => {
+                "Die Person sieht nicht, dass du das gelesen hast. Links in Nachrichten öffnen sich nicht."
+            }
+            SocialText::ReplyingTo => "Antwort an %@: %@",
+            SocialText::EditingMessage => "Du bearbeitest deine Nachricht",
+            SocialText::Reply => "Antworten",
+            SocialText::Edit => "Bearbeiten",
+            SocialText::EditDetail => "15 Minuten nach dem Senden",
+            SocialText::Unsend => "Zurückziehen",
+            SocialText::UnsendDetail => "Entfernt den Text für alle",
+            SocialText::Removed => "Nachricht entfernt",
+            SocialText::Edited => "Bearbeitet",
+            SocialText::Delivered => "Zugestellt",
+            SocialText::SeenBy => "Gesehen von %@",
+            SocialText::TypingOne => "%@ schreibt…",
+            SocialText::TypingTwo => "%@ und %@ schreiben…",
+            SocialText::TypingMany => "Mehrere Personen schreiben…",
+            SocialText::Muted => "Stumm",
+            SocialText::Pinned => "Angeheftet",
+            SocialText::Mute => "Unterhaltung stummschalten",
+            SocialText::Unmute => "Stummschaltung aufheben",
+            SocialText::MuteDetail => "Keine Hinweise und kein Zähler dafür",
+            SocialText::Pin => "Oben anheften",
+            SocialText::Unpin => "Lösen",
+            SocialText::PinsFull => "Löse zuerst eine andere Unterhaltung",
+            SocialText::QuickReplies => "Schnellantworten",
+            SocialText::LoadFailed => "Die Nachrichten konnten nicht geladen werden.",
+            SocialText::ListFailed => "Deine Unterhaltungen konnten nicht geladen werden.",
+            SocialText::BlockedNote => {
+                "Du hast %@ blockiert. Hebe die Blockierung auf, um zu schreiben."
+            }
+            SocialText::Keyboard => "Bildschirmtastatur",
+            SocialText::KeyboardDetail => "Mit dem Controller tippen",
+            SocialText::KeyboardEmpty => "Noch nichts getippt",
+            SocialText::KeyboardDone => "Fertig",
+            SocialText::KeyShift => "Umschalt",
+            SocialText::KeySymbols => "123",
+            SocialText::KeyLetters => "ABC",
+            SocialText::KeySpace => "Leertaste",
+            SocialText::KeyDelete => "Löschen",
+            SocialText::ChatOptions => "Optionen der Unterhaltung",
+            SocialText::QuickRepliesDetail => "Kurze Antwort senden, ohne zu tippen",
+            SocialText::OpenFriends => "Freunde öffnen",
+            SocialText::ReplyTo => "%@: %@",
+            SocialText::InReplyTo => "Antwort an %@: %@",
+            SocialText::Quick1 => "Bin unterwegs",
+            SocialText::Quick2 => "Einen Moment",
+            SocialText::Quick3 => "Bereit, wenn du es bist",
+            SocialText::Quick4 => "Danke",
+            SocialText::Quick5 => "GG",
+            SocialText::Quick6 => "Kann gerade nicht reden",
+            SocialText::PartyInvitationArrived => "%@ lädt dich in eine Party ein",
+            SocialText::MessageArrived => "%@: %@",
+            SocialText::MessageRequestArrived => "%@ möchte dir schreiben",
+            SocialText::ProfileUnread => "%@ ungelesen",
+            SocialText::FriendsOnline => "Freunde, %@ online",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
