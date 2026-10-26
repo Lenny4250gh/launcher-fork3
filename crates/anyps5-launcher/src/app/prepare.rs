@@ -167,7 +167,8 @@ impl Model {
 
     /// A scan found the library. Games that were not there before are prepared (those already
     /// there the first time the launcher looks are not: that could be a whole shelf).
-    pub(crate) fn note_new_games(&mut self) {
+    /// Returns the games that were not there before (none on the first look).
+    pub(crate) fn note_new_games(&mut self) -> Vec<GameId> {
         let present: std::collections::BTreeSet<String> = self
             .games
             .iter()
@@ -175,11 +176,17 @@ impl Model {
             .collect();
         let Some(known) = self.prefs.known_games.clone() else {
             self.edit_prefs(|p| p.known_games = Some(present));
-            return;
+            return Vec::new();
         };
         if present.is_subset(&known) {
-            return;
+            return Vec::new();
         }
+        let fresh: Vec<GameId> = self
+            .games
+            .iter()
+            .filter(|g| !known.contains(g.id.as_str()))
+            .map(|g| g.id.clone())
+            .collect();
         let wanted: Vec<String> = self
             .games
             .iter()
@@ -196,6 +203,7 @@ impl Model {
                 p.prepare_pending.extend(wanted);
             }
         });
+        fresh
     }
 
     /// Forgets which games the launcher met (the games folder changed).

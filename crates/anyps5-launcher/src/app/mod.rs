@@ -23,6 +23,8 @@ pub mod clock;
 pub mod compare;
 pub mod core_pipeline;
 mod discord;
+pub mod library_panels;
+pub mod library_view;
 pub mod links;
 pub mod ludus;
 pub mod ludus_web;
@@ -886,6 +888,18 @@ impl LauncherApp {
             Motion::Overlay,
         );
         let mut closed = false;
+        // A toast about a game carries the game's icon; the chrome reads it from the context.
+        let art = self
+            .model
+            .toast
+            .as_ref()
+            .and_then(|t| t.art.clone())
+            .and_then(|path| self.textures.get(&path, 96))
+            .map(|l| chrome::TileImage {
+                texture: l.id,
+                aspect: l.aspect,
+            });
+        ctx.data_mut(|d| d.insert_temp(egui::Id::unique("toast-art"), art));
         if let Some(toast) = &self.model.toast {
             let close = toast
                 .stays()

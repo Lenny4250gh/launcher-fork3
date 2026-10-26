@@ -48,6 +48,8 @@ use anyps5_core::unlock;
 use egui::{Context, Ui, ViewportCommand};
 
 use crate::app::clock;
+use crate::app::library_panels::{LibraryExtras, bar_data, compat_line};
+use crate::app::library_view::{Filter, compat_of};
 use crate::app::links;
 use crate::app::model::UpdateRequest;
 use crate::app::model::{Effect, GameState, Model};
@@ -147,6 +149,8 @@ pub struct PanelHost {
     advanced: AdvancedPanel,
     trophies: TrophyListPanel,
     library: LibraryGrid,
+    /// Search, storage and the removal of an unlocked copy, around the library page.
+    library_extras: LibraryExtras,
     /// The Captures area (`Overlay::Captures`) and the files and pictures it shows.
     captures: crate::screens::captures::CapturesScreen,
     capture_service: crate::app::captures::CaptureService,
@@ -246,6 +250,7 @@ impl PanelHost {
             advanced: AdvancedPanel::default(),
             trophies: TrophyListPanel::default(),
             library: LibraryGrid::default(),
+            library_extras: LibraryExtras::new(ctx),
             captures: crate::screens::captures::CapturesScreen::default(),
             capture_service: crate::app::captures::CaptureService::new(ctx),
             log: LogView::default(),
@@ -1510,19 +1515,40 @@ impl PanelHost {
     }
 
     fn library_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
+        let order = cx.model.library_order();
         if wanted && !self.library.is_active() {
-            self.library.open(cx.model.selected);
+            let at = order
+                .iter()
+                .position(|&i| i == cx.model.selected)
+                .unwrap_or(0);
+            self.library.open(at);
+            // What players found, for every game on the page (once per sign-in each).
+            let asks: Vec<(String, String)> = cx
+                .model
+                .games
+                .iter()
+                .map(|g| (g.title_id.clone(), g.version.clone()))
+                .collect();
+            for (title_id, version) in asks {
+                cx.model.online.request_runs(&title_id, &version, false);
+            }
+            if cx.model.library_sort() == crate::app::library_view::Sort::Size {
+                cx.model.measure_all();
+            }
         } else if !wanted && self.library.is_active() {
-            self.library.close();
+            if cx.model.overlay.is_some_and(Overlay::is_side_panel) {
+                self.library.dismiss();
+            } else {
+                self.library.close();
+            }
         }
         let events = self.take_events(wanted);
         let language = cx.model.language();
         let accent = cx.shell.accent_color();
-        let entries: Vec<LibraryEntry> = cx
-            .model
-            .games
+        let entries: Vec<LibraryEntry> = order
             .iter()
-            .map(|game| {
+            .map(|&i| {
+                let game = &cx.model.games[i];
                 let state = cx.model.state_of(game);
                 let label = state_label(&state, language);
                 let icon = game.icon.as_ref().and_then(|path| {
@@ -1541,6 +1567,7 @@ impl PanelHost {
                         tint: label.tint,
                         quiet: crate::screens::is_plain_ready(&state),
                     },
+                    compat: compat_line(&compat_of(cx.model, game), language),
                 }
             })
             .collect();
@@ -1550,12 +1577,13 @@ impl PanelHost {
             accent,
             folder_set: cx.model.prefs.games_folder.is_some(),
             scanning: cx.model.scanning,
+            bar: bar_data(cx.model),
         };
         for action in self.library.show(cx.shell, cx.ctx, &events, &data) {
             let model = &mut *cx.model;
             match action {
                 LibraryAction::Pick(index) => {
-                    if index < model.games.len() {
+                    if let Some(&index) = order.get(index) {
                         model.selected = index;
                         model.focus = HomeFocus::Tiles;
                         model.measure_selected();
@@ -1563,6 +1591,20 @@ impl PanelHost {
                     model.dismiss_overlay();
                 }
                 LibraryAction::Close => model.dismiss_overlay(),
+                LibraryAction::NextSort => {
+                    let next = model.library_sort().next();
+                    model.set_library_sort(next);
+                }
+                LibraryAction::NextFilter => {
+                    let next = model.library_filter().next();
+                    model.set_library_filter(next);
+                }
+                LibraryAction::OpenSearch => model.switch_overlay(Overlay::LibrarySearch),
+                LibraryAction::OpenStorage => model.switch_overlay(Overlay::Storage),
+                LibraryAction::ClearFilters => {
+                    model.set_library_filter(Filter::All);
+                    model.library_query.clear();
+                }
                 LibraryAction::ChooseFolder => {
                     model.dismiss_overlay();
                     model.request_folder_dialog();
@@ -2008,6 +2050,18 @@ impl OverlayHost for PanelHost {
             Overlay::Advanced => self.advanced_ui(cx, wanted),
             Overlay::Trophies => self.trophies_ui(cx, wanted),
             Overlay::Library => self.library_ui(cx, wanted),
+            Overlay::LibrarySearch => {
+                let events = self.take_events(wanted);
+                self.library_extras.search_ui(cx, wanted, &events);
+            }
+            Overlay::Storage => {
+                let events = self.take_events(wanted);
+                self.library_extras.storage_ui(cx, wanted, &events);
+            }
+            Overlay::ConfirmRemoveCopy => {
+                let events = self.take_events(wanted);
+                self.library_extras.remove_ui(cx, wanted, &events);
+            }
             Overlay::Captures => self.captures_ui(cx, wanted),
             Overlay::Log => self.log_ui(cx, wanted),
             Overlay::Recommended => self.recommended_ui(cx, wanted),
@@ -2046,6 +2100,7 @@ impl OverlayHost for PanelHost {
             self.events.clear();
         }
         self.poll_work(cx.model);
+        self.library_extras.poll(cx.model);
         self.poll_toolkit(cx.model);
         let paths = cx.model.paths.clone();
         self.launcher.tick(&paths, cx.model.prefs.check_for_updates);
@@ -2516,11 +2571,16 @@ mod tests {
         let mut rig = Rig::new("library");
         rig.app.model.open(Overlay::Library);
         rig.frames(3);
-        let before = rig.app.model.selected;
+        // The grid walks the games in the order of its page.
+        let order = rig.app.model.library_order();
+        let at = order
+            .iter()
+            .position(|&i| i == rig.app.model.selected)
+            .unwrap();
         rig.press(Command::Right);
         rig.press(Command::Select);
         assert_eq!(rig.app.model.overlay, None);
-        assert_eq!(rig.app.model.selected, before + 1);
+        assert_eq!(rig.app.model.selected, order[at + 1]);
     }
 
     #[test]
