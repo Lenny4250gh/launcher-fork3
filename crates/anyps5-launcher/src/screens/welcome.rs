@@ -15,7 +15,8 @@ use crate::ui::theme::{color, radius, space, ty};
 /// The release this body presents. A newer release shows the list of its changes again.
 pub const RELEASE: &str = anyps5_core::settings::WHATS_NEW_RELEASE;
 
-/// English and Turkish side by side; any other language reads English until it has its own.
+/// English and Turkish side by side; German is looked up by the English text in `german`, and any
+/// other language reads English until it has its own.
 type Pair = (&'static str, &'static str);
 
 struct Item {
@@ -157,8 +158,69 @@ const SECTIONS: &[Section] = &[
 fn pick(pair: Pair, language: Language) -> &'static str {
     match language {
         Language::Turkish => pair.1,
+        Language::German => german(pair.0).unwrap_or(pair.0),
         _ => pair.0,
     }
+}
+
+/// German for an English text of the table; `None` reads English.
+fn german(english: &str) -> Option<&'static str> {
+    Some(match english {
+        "Play together" => "Zusammen spielen",
+        "Game Hub" => "Spiele-Hub",
+        "Everything about a game on one page." => "Alles zu einem Spiel auf einer Seite.",
+        "Looking for Group" => "Mitspieler finden",
+        "Find players for a game, and share your captures with friends." => {
+            "Finde Mitspieler für ein Spiel und teile deine Aufnahmen mit Freunden."
+        }
+        "Live broadcast" => "Live-Übertragung",
+        "Go live to Twitch or YouTube from the launcher." => {
+            "Gehe direkt aus dem Launcher auf Twitch oder YouTube live."
+        }
+        "Better voice chat" => "Besserer Sprachchat",
+        "Push-to-talk and noise suppression." => "Push-to-Talk und Rauschunterdrückung.",
+        "Emoji in messages" => "Emoji in Nachrichten",
+        "An emoji button in the message box." => "Eine Emoji-Taste im Nachrichtenfeld.",
+        "Your launcher" => "Dein Launcher",
+        "Notification Center" => "Benachrichtigungen",
+        "Everything that happened, in one list." => "Alles, was passiert ist, in einer Liste.",
+        "Controller Center" => "Controller-Zentrale",
+        "Set up and test your controllers in one place." => {
+            "Richte deine Controller an einem Ort ein und teste sie."
+        }
+        "Compatibility" => "Kompatibilität",
+        "See how well a game runs in the library, on Home and when a new game appears." => {
+            "Sieh in der Bibliothek, auf der Startseite und bei neuen Spielen, wie gut ein Spiel läuft."
+        }
+        "Make it yours" => "Ganz nach deinem Geschmack",
+        "The Game Colors theme, sound volumes, Larger Text and High Contrast." => {
+            "Das Design Spielfarben, Lautstärken, größerer Text und hoher Kontrast."
+        }
+        "More languages" => "Mehr Sprachen",
+        "German and more, so the launcher speaks your language." => {
+            "Deutsch und mehr, damit der Launcher deine Sprache spricht."
+        }
+        "Everywhere you play" => "Überall, wo du spielst",
+        "Steam Deck and Linux" => "Steam Deck und Linux",
+        "Steam Deck support, a Flatpak, and game folders on other drives through symlinks." => {
+            "Unterstützung für das Steam Deck, ein Flatpak und Spielordner auf anderen Laufwerken über Symlinks."
+        }
+        "Mac: Add to Steam" => "Mac: Zu Steam hinzufügen",
+        "Add the launcher and your games to Steam on the Mac." => {
+            "Füge auf dem Mac den Launcher und deine Spiele zu Steam hinzu."
+        }
+        "Steadier" => "Stabiler",
+        "Watchdog and crash reports" => "Wächter und Absturzberichte",
+        "A stuck launcher is noticed, and crash reports help us fix what broke." => {
+            "Ein hängender Launcher wird bemerkt, und Absturzberichte helfen uns, Fehler zu beheben."
+        }
+        "Show again" => "Erneut anzeigen",
+        "The biggest update yet." => "Das bisher größte Update.",
+        "Play together, talk, go live and make the launcher yours." => {
+            "Spiele zusammen, sprich miteinander, geh live und mach den Launcher zu deinem."
+        }
+        _ => return None,
+    })
 }
 
 fn hero(language: Language) -> (&'static str, &'static str) {
@@ -182,6 +244,7 @@ fn pick_two(
 ) -> (&'static str, &'static str) {
     match language {
         Language::Turkish => tr,
+        Language::German => (german(en.0).unwrap_or(en.0), german(en.1).unwrap_or(en.1)),
         _ => en,
     }
 }
