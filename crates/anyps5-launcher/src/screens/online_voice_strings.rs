@@ -269,10 +269,18 @@ impl VoiceText {
             VoiceText::MicTalking => "Spricht",
             VoiceText::Mode => "Modus",
             VoiceText::PushToTalk => "Push-to-Talk",
-            VoiceText::VoiceActivity => "Sprachaktivierung",
-            VoiceText::PttNote => "Push-to-Talk funktioniert, solange der Launcher vorne ist.",
+            VoiceText::VoiceActivity => "Offenes Mikrofon",
+            VoiceText::PttNote => {
+                "Halte die Sprechtaste zum Sprechen. Sie funktioniert auch, wenn ein Spiel vorne ist."
+            }
             VoiceText::PttInGameNote => {
-                "Ein Spiel hat die Tastatur, deshalb erreicht die Taste den Launcher nicht. Wechsle zu Sprachaktivierung, um beim Spielen zu sprechen."
+                "Halte die Sprechtaste oder die Controller-Taste zum Sprechen. Wähle eine, die das Spiel nicht nutzt."
+            }
+            VoiceText::PttNoteOther => {
+                "Halte die Sprechtaste zum Sprechen, solange der Launcher vorne ist. Eine Sprechtaste am Controller funktioniert auch im Spiel."
+            }
+            VoiceText::PttInGameNoteOther => {
+                "Ein Spiel hat die Tastatur, deshalb erreicht die Taste den Launcher nicht. Nutze eine Sprechtaste am Controller oder wechsle zu Offenes Mikrofon."
             }
             VoiceText::ActivityNote => {
                 "Das Mikrofon öffnet sich, sobald du sprichst. Ohne Kopfhörer hören die anderen sich selbst."
@@ -282,6 +290,12 @@ impl VoiceText {
             }
             VoiceText::TalkKey => "Sprechtaste",
             VoiceText::TalkKeyNote => "Drücke eine Taste. Esc behält die aktuelle.",
+            VoiceText::TalkButton => "Sprechtaste am Controller",
+            VoiceText::TalkButtonNone => "Keine",
+            VoiceText::NoiseReduction => "Hintergrundgeräusche reduzieren",
+            VoiceText::NoiseNote => {
+                "Filtert Tastaturklicken, Lüfter und andere gleichmäßige Geräusche aus deinem Mikrofon."
+            }
             VoiceText::Speakers => "Lautsprecher",
             VoiceText::SystemDefault => "Systemstandard",
             VoiceText::InUse => "In Verwendung",

@@ -102,30 +102,34 @@ impl SteamText {
         Some(match self {
             SteamText::Add => "Zu Steam hinzufügen",
             SteamText::AddDetail => {
-                "Fügt den Launcher deiner Steam-Bibliothek für Big Picture und das Steam Deck hinzu. Schließe Steam zuerst."
+                "Legt den Launcher in deiner Steam-Bibliothek ab, damit Big Picture und das Steam Deck ihn starten können. Steam muss geschlossen sein."
             }
             SteamText::AddGames => "Meine Spiele zu Steam hinzufügen",
             SteamText::AddGamesDetail => {
-                "Fügt jedes Spiel deiner Bibliothek mit eigenem Artwork zu Steam hinzu. Schließe Steam zuerst."
+                "Legt jedes Spiel deiner Bibliothek mit eigenem Artwork in Steam ab. Steam muss geschlossen sein."
             }
-            SteamText::Added => "Zu Steam hinzugefügt. Starte Steam neu, um es zu sehen.",
+            SteamText::Added => "Zu Steam hinzugefügt. Öffne Steam erneut, dann ist er dort.",
             SteamText::Updated => {
-                "In Steam aktualisiert. Starte Steam neu, um die Änderung zu sehen."
+                "Steam-Eintrag aktualisiert. Öffne Steam erneut, um ihn zu sehen."
             }
-            SteamText::GameAdded => "1 Spiel ist in Steam. Starte Steam neu, um es zu sehen.",
-            SteamText::GamesAdded => "%@ Spiele sind in Steam. Starte Steam neu, um sie zu sehen.",
-            SteamText::Running => "Steam läuft. Schließe Steam und versuche es erneut.",
+            SteamText::GameAdded => {
+                "1 Spiel wurde zu Steam hinzugefügt. Öffne Steam erneut, dann ist es dort."
+            }
+            SteamText::GamesAdded => {
+                "%@ Spiele wurden zu Steam hinzugefügt. Öffne Steam erneut, dann sind sie dort."
+            }
+            SteamText::Running => "Steam ist noch offen. Beende es und versuche es noch einmal.",
             SteamText::NoSteam => {
-                "Steam wurde auf diesem PC nicht gefunden. Installiere Steam und melde dich einmal an, dann versuche es erneut."
+                "Auf diesem PC wurde keine Steam-Installation gefunden. Richte Steam ein, melde dich einmal an und komm zurück."
             }
             SteamText::NoUsers => {
-                "Steam hat auf diesem PC noch kein Konto. Melde dich einmal bei Steam an, dann versuche es erneut."
+                "Auf diesem PC ist in Steam kein Konto angemeldet. Melde dich einmal bei Steam an und komm zurück."
             }
             SteamText::Unreadable => {
-                "Die Verknüpfungsliste von Steam konnte nicht gelesen werden, deshalb wurde nichts geändert."
+                "Die Verknüpfungsliste von Steam konnte nicht gelesen werden. Es wurde nichts geändert."
             }
             SteamText::Failed => {
-                "Im Steam-Ordner konnte nicht gespeichert werden. Prüfe, dass er nicht schreibgeschützt ist, dann versuche es erneut."
+                "Das Schreiben in deinen Steam-Ordner ist fehlgeschlagen. Prüfe, dass der Ordner nicht schreibgeschützt ist, und versuche es noch einmal."
             }
             SteamText::NoGames => "Noch keine Spiele in der Bibliothek.",
             _ => return None,

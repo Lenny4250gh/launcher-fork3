@@ -71,7 +71,7 @@ use crate::screens::log::{LogData, LogView, ReviewData};
 use crate::screens::recommended::{RecommendedData, RecommendedPanel};
 use crate::screens::saves::{RestorePanel, SavesData, SavesPanel};
 use crate::screens::settings::{
-    LauncherUpdate, SettingsEnv, SettingsPanel, UpdateState, apply_preferences,
+    Category, LauncherUpdate, SettingsEnv, SettingsPanel, UpdateState, apply_preferences,
 };
 use crate::screens::share_strings::Share;
 use crate::screens::start::{StartData, StartScreen};
@@ -935,8 +935,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         }
         other => {
             let n: usize = other.strip_prefix("settings")?.parse().ok()?;
-            (n < crate::screens::settings::Category::ALL.len())
-                .then_some(ScreenPage::Settings(n))?
+            (n < Category::ALL.len()).then_some(ScreenPage::Settings(n))?
         }
     })
 }
@@ -3221,17 +3220,18 @@ impl ScreenGallery {
             }
             ScreenPage::ControlsEnd => self.controls.open_row(30),
             ScreenPage::Toolkit(look) => {
-                self.settings.open_at(5, true);
+                self.settings.open_at(Category::Toolkit.index(), true);
                 // The update page lands on the install row.
                 if look == ToolkitLook::Update {
                     self.settings.focus_row(3);
                 }
                 if look == ToolkitLook::Unused {
-                    self.settings.focus_row(7);
+                    self.settings
+                        .focus_row_id(crate::screens::toolkit_pin::REMOVE_ROWS[0]);
                 }
             }
             ScreenPage::AboutUpdate(look) => {
-                self.settings.open_at(7, true);
+                self.settings.open_at(Category::About.index(), true);
                 // The row that acts, when there is one; else the first row that can be focused.
                 self.settings.focus_row(match look {
                     UpdateLook::Ready
@@ -3247,12 +3247,12 @@ impl ScreenGallery {
                 self.whats_new.open_showcase();
             }
             ScreenPage::BehaviourLinks => {
-                self.settings.open_at(3, true);
+                self.settings.open_at(Category::ConnectedApps.index(), true);
                 self.settings.focus_row_id("links");
             }
             ScreenPage::SettingsCodec(on) => {
                 self.prefs.online_openh264 = on;
-                self.settings.open_at(6, true);
+                self.settings.open_at(Category::Advanced.index(), true);
             }
             ScreenPage::UnlockedLocation(look) => {
                 if look != LocationLook::Default {
@@ -3261,17 +3261,17 @@ impl ScreenGallery {
                 if look == LocationLook::Left {
                     self.prefs.unlocked_moving_from = Some("D:\\Games\\PS5".into());
                 }
-                self.settings.open_at(1, true);
+                self.settings.open_at(Category::Library.index(), true);
                 self.settings.focus_row(2);
             }
             ScreenPage::BehaviourClipsOff => {
                 self.prefs.clips_seconds = 0;
-                self.settings.open_at(3, true);
+                self.settings.open_at(Category::Captures.index(), true);
                 self.settings.focus_row_id("clips");
             }
             ScreenPage::BehaviourClips | ScreenPage::BehaviourClipsKey => {
                 self.prefs.clips_seconds = 30;
-                self.settings.open_at(3, true);
+                self.settings.open_at(Category::Captures.index(), true);
                 self.settings
                     .focus_row_id(if self.page == ScreenPage::BehaviourClipsKey {
                         "clipsKey"
@@ -3280,11 +3280,11 @@ impl ScreenGallery {
                     });
             }
             ScreenPage::BehaviourSteam => {
-                self.settings.open_at(3, true);
+                self.settings.open_at(Category::ConnectedApps.index(), true);
                 self.settings.focus_row_id("addToSteam");
             }
             ScreenPage::Phone(look) => {
-                self.settings.open_at(4, true);
+                self.settings.open_at(Category::Phone.index(), true);
                 // The question lands on its first answer.
                 if look == PhoneLook::Pairing {
                     self.settings.focus_row_id("pairAllow");

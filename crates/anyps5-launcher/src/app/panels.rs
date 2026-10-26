@@ -576,7 +576,9 @@ impl PanelHost {
                 model.switch_overlay(Overlay::WhatsNew);
             }
             SettingsAction::OpenControllers => {
-                self.settings_return = Category::ALL.iter().position(|c| *c == Category::Behaviour);
+                self.settings_return = Category::ALL
+                    .iter()
+                    .position(|c| *c == Category::Controllers);
                 model.switch_overlay(Overlay::Controllers);
             }
             SettingsAction::RestartNow => self.restart_launcher(model, cx.ctx),
@@ -2761,7 +2763,8 @@ mod tests {
         let mut rig = Rig::new("theme");
         rig.app.model.open(Overlay::Settings);
         rig.frames(2);
-        // Appearance, into its rows (theme row first), one step right.
+        // Appearance (the second page, after General), into its rows (theme row first), one step right.
+        rig.press(Command::Down);
         rig.press(Command::Select);
         rig.press(Command::Right);
         assert_eq!(rig.app.model.prefs.theme, CoreTheme::Aurora);
