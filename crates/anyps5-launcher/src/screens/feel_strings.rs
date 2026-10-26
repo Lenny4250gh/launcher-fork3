@@ -83,8 +83,28 @@ impl FeelText {
         }
     }
 
+    pub const fn german(self) -> &'static str {
+        match self {
+            FeelText::ThemeGameColors => "Spielfarben",
+            FeelText::VolumeInterface => "Lautstärke der Oberfläche",
+            FeelText::VolumeMusic => "Lautstärke der Startbildschirm-Musik",
+            FeelText::VolumeGameMusic => "Lautstärke der Spielmusik",
+            FeelText::NotificationSounds => "Benachrichtigungstöne",
+            FeelText::NotificationSoundsDetail => {
+                "Ein Klang für eine Nachricht, eine Anfrage, eine Einladung oder einen Anruf."
+            }
+            FeelText::VolumeNotifications => "Lautstärke der Benachrichtigungen",
+            FeelText::LargerText => "Größere Schrift",
+            FeelText::LargerTextDetail => "Macht jeden Text eine Stufe größer.",
+            FeelText::HighContrast => "Hoher Kontrast",
+            FeelText::HighContrastDetail => "Hellere Schrift und Kanten, kein Milchglas.",
+            FeelText::VolumeOff => "Aus",
+        }
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
+            Language::German => self.german(),
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
         }
@@ -98,6 +118,7 @@ pub fn volume_text(percent: u8, language: Language) -> String {
     } else {
         match language {
             Language::Turkish => format!("%{percent}"),
+            Language::German => format!("{percent} %"),
             Language::English => format!("{percent}%"),
         }
     }

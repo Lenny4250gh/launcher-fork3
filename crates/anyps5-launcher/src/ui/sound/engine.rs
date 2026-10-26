@@ -130,7 +130,7 @@ impl Duck {
         let (depth_db, hold) = match cue {
             Cue::Move => (1.5, 0.12),
             // A pointer sweeping a row must not make the music pump.
-            Cue::Hover => return,
+            Cue::Hover | Cue::TalkOn | Cue::TalkOff => return,
             Cue::Select | Cue::Back | Cue::Error => (3.0, 0.25),
             Cue::Unlocked => (6.0, 1.2),
             Cue::Boot => (6.0, 1.5),

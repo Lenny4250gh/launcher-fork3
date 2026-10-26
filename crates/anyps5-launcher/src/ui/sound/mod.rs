@@ -68,6 +68,17 @@ struct Output {
     _alive: Sender<()>,
 }
 
+/// A way to play cues from another thread: push to talk answers while the launcher draws
+/// nothing. The audio thread stays up whatever the window does.
+#[derive(Clone)]
+pub struct CueSender(Sender<Command>);
+
+impl CueSender {
+    pub fn play(&self, cue: Cue) {
+        let _ = self.0.send(Command::Cue(cue));
+    }
+}
+
 impl Default for Sounds {
     fn default() -> Self {
         Self::new()
@@ -93,6 +104,11 @@ impl Sounds {
             silent: true,
             ..Self::new()
         }
+    }
+
+    /// A sender for cues once the device is open (see [`Sounds::warm`]).
+    pub fn cue_sender(&self) -> Option<CueSender> {
+        self.output.as_ref().map(|o| CueSender(o.commands.clone()))
     }
 
     /// Plays a cue unless sounds are off.

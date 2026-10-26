@@ -186,6 +186,7 @@ impl Services {
             .unwrap_or(match prefs.language {
                 anyps5_core::settings::Language::Turkish => 19,
                 anyps5_core::settings::Language::English => 1,
+                anyps5_core::settings::Language::German => 4,
             });
         let languages: Vec<String> = ConsoleLanguage::tag(number)
             .map(|tag| vec![tag.to_owned()])
@@ -262,6 +263,7 @@ impl Services {
             .unwrap_or(match prefs.language {
                 anyps5_core::settings::Language::Turkish => 19,
                 anyps5_core::settings::Language::English => 1,
+                anyps5_core::settings::Language::German => 4,
             });
         let languages: Vec<String> = ConsoleLanguage::tag(number)
             .map(|tag| vec![tag.to_owned()])

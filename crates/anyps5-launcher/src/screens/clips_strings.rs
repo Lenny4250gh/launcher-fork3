@@ -104,10 +104,49 @@ impl ClipsText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            ClipsText::Title => "Clips",
+            ClipsText::Detail => "Behält die letzten Sekunden eines laufenden Spiels, ohne Ton",
+            ClipsText::Off => "Aus",
+            ClipsText::Seconds15 => "15 Sekunden",
+            ClipsText::Seconds30 => "30 Sekunden",
+            ClipsText::Minute1 => "1 Minute",
+            ClipsText::Minutes2 => "2 Minuten",
+            ClipsText::Key => "Clip-Taste",
+            ClipsText::KeyDetail => {
+                "Speichert die behaltenen Sekunden als Clip. Die Create-Taste tut das auch"
+            }
+            ClipsText::KeyPrompt => {
+                "Drücke die Tasten, die du nutzen willst. Esc behält die aktuellen."
+            }
+            ClipsText::Show => "Clips anzeigen",
+            ClipsText::CountNone => "Noch keine Clips",
+            ClipsText::CountOne => "1 Clip",
+            ClipsText::CountMany => "%@ Clips",
+            ClipsText::Saved => "Clip gespeichert",
+            ClipsText::SaveFailed => "Der Clip konnte nicht gespeichert werden.",
+            ClipsText::NothingYet => "Noch nichts aufgenommen. Versuche es gleich noch einmal.",
+            ClipsText::IsOff => "Clips sind aus. Schalte sie in den Einstellungen ein.",
+            ClipsText::NoEncoder => "Clips brauchen eine Grafikkarte mit Video-Encoder.",
+            ClipsText::NoWindow => "Clips konnten das Spielfenster nicht finden.",
+            ClipsText::Stopped => "Clips wurden gestoppt. Starte das Spiel neu, um aufzunehmen.",
+            ClipsText::NoWorker => "Clips sind nicht Teil dieser Version.",
+            ClipsText::KeyTaken => "Ein anderes Programm nutzt %@. Wähle eine andere Clip-Taste.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

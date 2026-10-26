@@ -108,10 +108,47 @@ impl CompareText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            CompareText::Overline => "Trophäen vergleichen",
+            CompareText::With => "Mit %@",
+            CompareText::You => "Du",
+            CompareText::Level => "Level %@",
+            CompareText::Points => "%@ Punkte",
+            CompareText::GamePoints => "%@ Punkte in diesem Spiel",
+            CompareText::NotYet => "Noch nicht",
+            CompareText::NoneInGame => "keine Trophäen",
+            CompareText::NumberedTrophy => "Trophäe %@",
+            CompareText::NotOwnedNote => {
+                "Dieses Spiel ist nicht in deiner Bibliothek, deshalb erscheinen die Trophäen mit Nummer."
+            }
+            CompareText::LoadingNote => "Lade den Vergleich…",
+            CompareText::OfflineTitle => "Du bist offline",
+            CompareText::OfflineNote => "Trophäen werden verglichen, sobald du wieder online bist.",
+            CompareText::FailedTitle => "Der Vergleich wurde nicht geladen",
+            CompareText::FailedNote => "Prüfe deine Verbindung und versuche es erneut.",
+            CompareText::HiddenTitle => "Die Trophäen sind verborgen",
+            CompareText::HiddenNote => "%@ teilt keine Trophäen mit dir.",
+            CompareText::EmptyTitle => "Noch nichts zu vergleichen",
+            CompareText::EmptyNote => "Keiner von euch hat in diesem Spiel eine Trophäe erhalten.",
+            CompareText::SideName => "%@: Level %@, %@ Punkte, %@, %@ Punkte in diesem Spiel",
+            CompareText::RowName => "%@. %@: %@. %@: %@",
+            CompareText::EarnedOn => "Erhalten am %@",
+            CompareText::ScreenName => "Trophäen von %@ im Vergleich mit %@",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

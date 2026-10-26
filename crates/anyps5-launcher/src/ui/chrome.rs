@@ -1586,6 +1586,8 @@ pub fn fullscreen_panel<R>(
 const TOAST_ROWS: usize = 3;
 const TOAST_STAYING_ROWS: usize = 8;
 const TOAST_GLYPH: f32 = 17.0;
+/// The side of a game's icon in a toast: it sits on the glyph's place and reaches a little past it.
+const TOAST_ART: f32 = 32.0;
 const TOAST_MAX_WIDTH: f32 = 760.0;
 const TOAST_BAR_RESERVE: f32 = 442.0;
 const TOAST_TRAVEL: f32 = 80.0;
@@ -1618,6 +1620,10 @@ pub fn toast(
     }
     let mut pressed = false;
     let screen = ctx.content_rect();
+    // A toast about a game shows the game's icon in place of the glyph (the app sets it).
+    let art = ctx
+        .data(|d| d.get_temp::<Option<TileImage>>(Id::unique("toast-art")))
+        .flatten();
     Area::new(Id::unique(id))
         .order(Order::Tooltip)
         .fixed_pos(screen.min)
@@ -1692,13 +1698,25 @@ pub fn toast(
             let mut style = GlassStyle::toast();
             style.black *= a;
             paint_glass(ctx, &painter, rect, style);
-            painter.text(
-                pos2(rect.min.x + PAD_X + GLYPH * 0.5, rect.center().y),
-                Align2::CENTER_CENTER,
-                icon.glyph(),
-                icon.font(GLYPH, true),
-                fade(color::text(), a),
-            );
+            let glyph_centre = pos2(rect.min.x + PAD_X + GLYPH * 0.5, rect.center().y);
+            if let Some(image) = art {
+                let mut tile = TileStyle::new(color::text());
+                tile.image = Some(image);
+                tile.opacity = a;
+                paint_tile(
+                    &painter,
+                    Rect::from_center_size(glyph_centre, vec2(TOAST_ART, TOAST_ART)),
+                    &tile,
+                );
+            } else {
+                painter.text(
+                    glyph_centre,
+                    Align2::CENTER_CENTER,
+                    icon.glyph(),
+                    icon.font(GLYPH, true),
+                    fade(color::text(), a),
+                );
+            }
             let text_x = rect.min.x + PAD_X + GLYPH + GAP;
             painter.galley(
                 pos2(text_x, rect.center().y - galley.size().y * 0.5),

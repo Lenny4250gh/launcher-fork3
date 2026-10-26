@@ -17,6 +17,7 @@
 #![allow(dead_code)]
 
 pub mod avatars;
+pub mod broadcast;
 pub mod captures;
 pub mod clips;
 pub mod clock;
@@ -24,6 +25,8 @@ pub mod compare;
 pub mod core_pipeline;
 mod discord;
 pub mod game_colors;
+pub mod library_panels;
+pub mod library_view;
 pub mod links;
 pub mod ludus;
 pub mod ludus_web;
@@ -153,6 +156,8 @@ pub struct LauncherApp {
     pub ludus: ludus::LudusService,
     /// The recorder and the hotkey of Clips.
     clips: clips::ClipsService,
+    /// The live broadcast of the running game.
+    broadcast: broadcast::BroadcastService,
     applied: Applied,
     /// The colours of the selected game's art, for the Game Colors theme.
     game_colors: game_colors::GameColors,
@@ -218,6 +223,7 @@ impl LauncherApp {
             ),
             ludus: ludus::LudusService::new(wake.clone(), simulated, shared_pad),
             clips: clips::ClipsService::new(wake.clone(), simulated),
+            broadcast: broadcast::BroadcastService::new(wake.clone(), simulated),
             online: online::OnlineService::new(wake, simulated),
             shell,
             model,
@@ -346,6 +352,7 @@ impl LauncherApp {
         self.sync_phone(ctx);
         self.ludus.sync(&mut self.model);
         self.clips.frame(&mut self.model, &*self.pipeline);
+        self.broadcast.frame(&mut self.model);
         self.watch_trophies();
 
         self.services.set_busy(self.model.busy());
@@ -354,16 +361,51 @@ impl LauncherApp {
 
     /// Tells the net service whether the talk key is down. Only a launcher in front sees keys:
     /// when it loses the focus, or the player types somewhere, the key counts as up. A game that
-    /// has the keyboard gets no push to talk; voice activity is for playing (docs/DESIGN.md 17).
+    /// has the keyboard is read by the watcher thread of `ui::talk` (docs/DESIGN.md 17).
     fn push_to_talk(&mut self, ctx: &Context) {
+        use crate::ui::sound::Cue;
+        use crate::ui::talk::{self, PadButton};
         let focused = self.assume_focus || ctx.input(|i| i.viewport().focused).unwrap_or(true);
         let key = crate::screens::online::talk_key(&self.model.online);
-        let held = focused
-            && !self.shell.input.capture_keys
+        let voice = &self.model.online.voice;
+        let active =
+            voice.runs_here() && voice.mode_in_use() == anyps5_core::online::VoiceMode::PushToTalk;
+        let button = voice.prefs().pad.as_deref().and_then(PadButton::from_name);
+        let talk = talk::shared();
+        // Cues from the watcher thread need the sound device open.
+        self.shell.sounds.warm();
+        if !talk.has_cues()
+            && let Some(cues) = self.shell.sounds.cue_sender()
+        {
+            talk.set_cues(cues);
+        }
+        talk.configure(talk::Setup {
+            ctx,
+            home: &self.shell.home,
+            active,
+            key: talk::virtual_key(key),
+            button,
+            cues_on: self.shell.sounds.enabled,
+        });
+        if !focused {
+            // Something else is in front: the watcher thread tells the service, and this side
+            // takes its state over.
+            self.model.online.adopt_talking(talk.told());
+            return;
+        }
+        let held = (!self.shell.input.capture_keys
             && !self.shell.input.blocked
             && !crate::ui::a11y::foreign_focus(ctx)
-            && ctx.input(|i| i.key_down(key) && !i.modifiers.any());
+            && ctx.input(|i| i.key_down(key) && !i.modifiers.any()))
+            || (active && talk.pad_down());
+        let before = self.model.online.is_talking();
         self.model.online.set_talking(held);
+        let after = self.model.online.is_talking();
+        talk.set_told(after);
+        if after != before {
+            self.shell
+                .play(if after { Cue::TalkOn } else { Cue::TalkOff });
+        }
     }
 
     /// Writes the preferences when something changed (atomic, see `Preferences::save`).
@@ -550,7 +592,9 @@ impl LauncherApp {
                         (_, false) => Command::Down,
                         (_, true) => Command::Up,
                     };
+                    self.shell.input.via_tab = true;
                     self.handle_event(ctx, InputEvent::Command(command));
+                    self.shell.input.via_tab = false;
                 } else {
                     self.model.tab_home(backwards);
                 }
@@ -662,6 +706,7 @@ impl LauncherApp {
             }
             Effect::Pipeline(command) => self.submit(command, None),
             Effect::SaveClip => self.clips.save(&mut self.model),
+            Effect::ToggleBroadcast => self.broadcast.toggle(&mut self.model, &*self.pipeline),
             Effect::StartOnline => self.online.start(&mut self.model),
             Effect::StopOnline => self.online.stop(&mut self.model),
             Effect::RelayOnlyChanged => self.online.relay_only_changed(&mut self.model),
@@ -908,6 +953,18 @@ impl LauncherApp {
             Motion::Overlay,
         );
         let mut closed = false;
+        // A toast about a game carries the game's icon; the chrome reads it from the context.
+        let art = self
+            .model
+            .toast
+            .as_ref()
+            .and_then(|t| t.art.clone())
+            .and_then(|path| self.textures.get(&path, 96))
+            .map(|l| chrome::TileImage {
+                texture: l.id,
+                aspect: l.aspect,
+            });
+        ctx.data_mut(|d| d.insert_temp(egui::Id::unique("toast-art"), art));
         if let Some(toast) = &self.model.toast {
             let close = toast
                 .stays()
@@ -1165,6 +1222,7 @@ impl eframe::App for App {
         }
         self.app.step(&ctx);
         self.app.paint(ui);
+        self.app.broadcast.paint(&ctx, &self.app.model);
         self.app.finish_frame(&ctx);
         crate::ui::latency::frame_done();
     }

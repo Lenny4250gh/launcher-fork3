@@ -19,6 +19,7 @@ use egui::{Align2, Color32, Context, Rect, Sense, Ui, UiBuilder, pos2, vec2};
 
 use crate::app::ludus::LudusState;
 use crate::app::phone::PhoneState;
+use crate::screens::broadcast_strings::BroadcastText;
 use crate::screens::clips_strings::ClipsText;
 use crate::screens::convert;
 use crate::screens::dialogs;
@@ -185,6 +186,8 @@ pub struct ClipsEnv {
     pub count: usize,
     /// The clip key row waits for a key press.
     pub capturing: bool,
+    /// A stream key is kept for Broadcast (the key itself never reaches the settings).
+    pub broadcast_key: bool,
 }
 
 /// What the settings show that is not a preference.
@@ -274,6 +277,8 @@ pub enum SettingsAction {
     ShowScreenshots,
     /// "Show Clips": the folder the clips are in.
     ShowClips,
+    /// The stream key field changed: the key to keep, or `None` to remove it.
+    BroadcastKey(Option<String>),
     /// "Check now" (or the check was switched on).
     CheckForUpdates,
     /// Download and install the latest toolkit (first install or update).
@@ -303,6 +308,8 @@ pub enum SettingsAction {
     CheckLauncherUpdate,
     /// Open the notes of the staged launcher update.
     OpenLauncherNotes,
+    /// "What's New in 0.3.0, Show again": the showcase of the big release.
+    ShowWelcome,
     /// One of the About page's links (website, Discord, privacy, terms).
     OpenPage(&'static str),
     /// "Open AnyPlay Links with This Launcher" was switched: write or remove the registration.
@@ -736,6 +743,7 @@ pub fn build_categories(
         behaviour
             .push(Row::caption("capturesCaption", words::Captures.text(language)).group_start());
         push_clips_rows(&mut behaviour, prefs, env, language);
+        push_broadcast_rows(&mut behaviour, prefs, env, language);
     }
     behaviour.push(Row::caption("appsCaption", words::ConnectedApps.text(language)).group_start());
     behaviour.push(
@@ -776,7 +784,7 @@ pub fn build_categories(
         );
     }
     // Steam keeps its shortcuts in files of the user folder; the rows write them (DESIGN.md 9.9).
-    if cfg!(any(windows, target_os = "linux")) {
+    if cfg!(any(windows, target_os = "linux", target_os = "macos")) {
         behaviour.push(
             Row::command("addToSteam", SteamText::Add.text(language))
                 .detail(SteamText::AddDetail.text(language))
@@ -1074,6 +1082,15 @@ pub fn build_categories(
         env.launcher_notes,
         language,
     ));
+    about.push(
+        Row::command(
+            "welcomeAgain",
+            crate::screens::update_strings::UpdateText::WhatsNewIn
+                .format(language, &[Arg::Str(crate::screens::welcome::RELEASE)]),
+        )
+        .detail(crate::screens::welcome::show_again(language))
+        .icon(Icon::SPARKLE),
+    );
     {
         use crate::screens::about_strings::AboutText as A;
         about.push(
@@ -1110,6 +1127,75 @@ pub fn build_categories(
     .zip(Category::ALL)
     .map(|(rows, category)| CategoryRows { category, rows })
     .collect()
+}
+
+/// Broadcast: where it goes, the server of a custom service, the stream key and the quality.
+fn push_broadcast_rows(
+    rows: &mut Vec<Row>,
+    prefs: &Preferences,
+    env: &SettingsEnv<'_>,
+    language: Language,
+) {
+    use anyps5_core::broadcast::{self, Service};
+    rows.push(Row::caption("broadcastCaption", BroadcastText::Title.text(language)).group_start());
+    let service = Service::from_id(&prefs.broadcast_service);
+    let selected = Service::ALL.iter().position(|s| *s == service).unwrap_or(0);
+    let services = [
+        BroadcastText::Twitch,
+        BroadcastText::YouTube,
+        BroadcastText::Custom,
+    ]
+    .iter()
+    .map(|t| t.text(language).to_owned())
+    .collect();
+    rows.push(
+        Row::choice(
+            "broadcastService",
+            BroadcastText::Service.text(language),
+            services,
+            selected,
+        )
+        .detail(BroadcastText::ServiceDetail.text(language))
+        .icon(Icon::WIFI_HIGH),
+    );
+    if service == Service::Custom {
+        rows.push(
+            Row::text(
+                "broadcastServer",
+                BroadcastText::Server.text(language),
+                prefs.broadcast_server.clone(),
+            )
+            .detail(BroadcastText::ServerDetail.text(language))
+            .icon(Icon::KEYBOARD),
+        );
+    }
+    let shown = if env.clips.broadcast_key {
+        broadcast::MASK
+    } else {
+        ""
+    };
+    rows.push(
+        Row::text("broadcastKey", BroadcastText::Key.text(language), shown)
+            .detail(BroadcastText::KeyDetail.text(language))
+            .icon(Icon::KEYBOARD),
+    );
+    let qualities = [
+        BroadcastText::Quality720p30,
+        BroadcastText::Quality720p60,
+        BroadcastText::Quality1080p60,
+    ]
+    .iter()
+    .map(|t| t.text(language).to_owned())
+    .collect();
+    rows.push(
+        Row::choice(
+            "broadcastQuality",
+            BroadcastText::Quality.text(language),
+            qualities,
+            (prefs.broadcast_quality as usize).min(broadcast::QUALITIES.len() - 1),
+        )
+        .icon(Icon::SLIDERS_HORIZONTAL),
+    );
 }
 
 /// The lengths of Clips as the choice row shows them, Off first.
@@ -1474,6 +1560,22 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             on,
         } => prefs.phone_ludusctrl = *on,
         Change::Choice {
+            row: "broadcastService",
+            index,
+        } => {
+            if let Some(service) = anyps5_core::broadcast::Service::ALL.get(*index) {
+                prefs.broadcast_service = service.id().to_owned();
+            }
+        }
+        Change::Choice {
+            row: "broadcastQuality",
+            index,
+        } => {
+            if *index < anyps5_core::broadcast::QUALITIES.len() {
+                prefs.broadcast_quality = *index as u32;
+            }
+        }
+        Change::Choice {
             row: "clips",
             index,
         } => {
@@ -1701,6 +1803,13 @@ impl SettingsPanel {
                     if id == "name" && prefs.profile_name != value {
                         prefs.profile_name = value;
                         out.changed = true;
+                    } else if id == "broadcastServer" && prefs.broadcast_server != value {
+                        prefs.broadcast_server = value;
+                        out.changed = true;
+                    } else if id == "broadcastKey" {
+                        out.actions.push(SettingsAction::BroadcastKey(
+                            anyps5_core::broadcast::key_from_field(&value),
+                        ));
                     }
                 }
             }
@@ -1915,6 +2024,9 @@ impl SettingsPanel {
             Change::Run {
                 row: "launcherNotes",
             } => out.actions.push(SettingsAction::OpenLauncherNotes),
+            Change::Run {
+                row: "welcomeAgain",
+            } => out.actions.push(SettingsAction::ShowWelcome),
             Change::Run {
                 row: "launcherDownload",
             } => out.actions.push(SettingsAction::OpenPage(
@@ -2929,6 +3041,7 @@ mod tests {
                 "soundCaption",
                 "controllerCaption",
                 "capturesCaption",
+                "broadcastCaption",
                 "appsCaption"
             ]
         );

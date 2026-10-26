@@ -39,6 +39,10 @@ pub enum Cue {
     Ring,
     /// A direction had nowhere to go: the end of a row or a list. Barely there.
     Bump,
+    /// The microphone opened for push to talk: one soft tick, a little higher than the focus tick.
+    TalkOn,
+    /// ... and closed: a quieter, lower one.
+    TalkOff,
 }
 
 impl Cue {
@@ -47,7 +51,7 @@ impl Cue {
         matches!(self, Cue::Notify | Cue::Message | Cue::Invite | Cue::Ring)
     }
 
-    pub const ALL: [Cue; 16] = [
+    pub const ALL: [Cue; 18] = [
         Cue::Move,
         Cue::Hover,
         Cue::Select,
@@ -64,6 +68,8 @@ impl Cue {
         Cue::Boot,
         Cue::Ring,
         Cue::Bump,
+        Cue::TalkOn,
+        Cue::TalkOff,
     ];
 }
 
@@ -125,6 +131,28 @@ fn recipe(cue: Cue) -> (Mix, Draw) {
         // use it as is; the pointer's `Hover` is the same tick 3 dB lower.
         Cue::Move => tick(-22.0),
         Cue::Hover => tick(-25.0),
+        // Push to talk: the tick shape at G4, nearly dry and quiet, so it confirms without
+        // taking over the game; the closing one is lower and softer.
+        Cue::TalkOn => (
+            Mix {
+                peak_db: -24.0,
+                send: 0.03,
+                rt60: 0.3,
+                cutoff: 5000.0,
+                length: 0.2,
+            },
+            |o, r| tone(o, r, 0.0, G4, 1.0, shape(0.006, 0.022), TICK, 0.0),
+        ),
+        Cue::TalkOff => (
+            Mix {
+                peak_db: -27.0,
+                send: 0.03,
+                rt60: 0.3,
+                cutoff: 4000.0,
+                length: 0.2,
+            },
+            |o, r| tone(o, r, 0.0, E4, 1.0, shape(0.006, 0.022), TICK, 0.0),
+        ),
         // An open fifth, C5 and G5, the G a moment later.
         Cue::Select => (
             Mix {
@@ -563,8 +591,8 @@ mod tests {
 
     #[test]
     fn the_sound_map_is_balanced() {
-        // The three ticks are the quietest cues and a run of them stays soft.
-        let ticks = [Cue::Hover, Cue::Move, Cue::Bump];
+        // The ticks are the quietest cues and a run of them stays soft.
+        let ticks = [Cue::Hover, Cue::Move, Cue::Bump, Cue::TalkOn, Cue::TalkOff];
         let loudest_tick = ticks.iter().map(|&c| peak_db(c)).fold(f32::MIN, f32::max);
         for cue in Cue::ALL {
             if !ticks.contains(&cue) {
