@@ -15,16 +15,16 @@ use egui::{
     Ui, UiBuilder, pos2, vec2,
 };
 
-use crate::screens::clamped;
 use crate::screens::convert;
 use crate::screens::format;
 use crate::screens::scroll::Follow;
 use crate::screens::side::commands;
 use crate::screens::strings::Extra;
+use crate::screens::{BACK_ROW, back_button, clamped, footer_hints};
 use crate::ui::Shell;
 use crate::ui::anim::{AnimExt, Motion};
 use crate::ui::chrome::fullscreen_panel;
-use crate::ui::components::{self, corner, paint_progress};
+use crate::ui::components::{self, HintSet, corner, paint_progress};
 use crate::ui::glass::GlassStyle;
 use crate::ui::i18n::{Key, Language};
 use crate::ui::icons::Icon;
@@ -266,15 +266,21 @@ impl TrophyListPanel {
         let open = self.open;
         let mut clicked = None;
         let mut shown = None;
+        let mut back = false;
         let drawn = fullscreen_panel(
             ctx,
             "trophy-list",
             open,
             GlassStyle::fullscreen_panel(),
-            |ui, _| self.draw(ui, data, &mut clicked, &mut shown),
+            |ui, _| self.draw(ui, data, &mut clicked, &mut shown, &mut back),
         );
         if drawn.is_none() {
             self.closing = false;
+        }
+        if back && open {
+            shell.play(Cue::Close);
+            self.close();
+            actions.push(TrophyAction::Close);
         }
         if let Some(i) = clicked.filter(|i| open && *i != self.index) {
             self.index = i;
@@ -294,11 +300,25 @@ impl TrophyListPanel {
         data: &TrophyData<'_>,
         clicked: &mut Option<usize>,
         shown: &mut Option<usize>,
+        back: &mut bool,
     ) {
         let area = ui
             .max_rect()
             .shrink2(vec2(theme::pad::TROPHIES.0, theme::pad::TROPHIES.1));
-        let header = Rect::from_min_size(area.min, vec2(area.width(), size::TROPHY_HEADER_ICON));
+        // The Back button at the top, the hints at the bottom right, as on every full-screen area.
+        if back_button(ui, area, data.language) {
+            *back = true;
+        }
+        footer_hints(
+            ui,
+            ui.max_rect(),
+            data.language,
+            HintSet::BASIC.without_back(),
+        );
+        let header = Rect::from_min_size(
+            pos2(area.min.x, area.min.y + BACK_ROW),
+            vec2(area.width(), size::TROPHY_HEADER_ICON),
+        );
         self.draw_header(ui, header, data);
         // The scroll margin puts the rows on the header's edges.
         let list = Rect::from_min_max(
@@ -343,14 +363,12 @@ impl TrophyListPanel {
         } else {
             set.title.as_str()
         };
-        // The title gives way to the hint bar at the trailing edge, as wide as it measures.
-        let hint_w = components::hint_bar_size(&painter, language, false).0 + theme::space::XL;
         let title_galley = clamped(
             &painter,
             title_style,
             title,
             Color32::PLACEHOLDER,
-            (header.max.x - x - hint_w).max(200.0),
+            (header.max.x - x).max(200.0),
             1,
         );
         let title_y = top + overline.line_height() + 12.0;
@@ -399,9 +417,6 @@ impl TrophyListPanel {
             );
             cx += w + 16.0;
         }
-
-        // The hint bar, right aligned and centred on the header.
-        crate::screens::right_aligned_hints(ui, header, language);
     }
 
     fn draw_rows(

@@ -101,10 +101,43 @@ impl LudusText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            LudusText::Title => "LudusCtrl",
+            LudusText::SwitchDetail => {
+                "Spiele mit einem Controller, der an dein Telefon angeschlossen ist: Scanne den Code mit der Telefonkamera oder nutze die LudusCtrl-App auf Android. Ein Telefon mit der App muss zuerst gekoppelt werden."
+            }
+            LudusText::StartFailed => {
+                "Die Verbindung für die LudusCtrl-App konnte nicht gestartet werden. Möglicherweise nutzt ein anderes Programm, etwa der LudusCtrl-Empfänger, den Netzwerkport."
+            }
+            LudusText::AppStatus => "App",
+            LudusText::NoController => "Verbunden mit %@, kein Controller",
+            LudusText::Paired => "Gekoppelte LudusCtrl-Telefone",
+            LudusText::PairedNone => {
+                "Noch kein Telefon gekoppelt. Öffne die LudusCtrl-App auf deinem Telefon und starte die Verbindung."
+            }
+            LudusText::AppNote => {
+                "LudusCtrl läuft auf Android-Telefonen und -Tablets. Koppele deinen Controller per Bluetooth mit dem Telefon und öffne dann die App."
+            }
+            LudusText::AppOpen => "LudusCtrl-Seite öffnen",
+            LudusText::BarLabel => "LudusCtrl verbunden: %@",
+            LudusText::Firewall => {
+                "Beim ersten Start von LudusCtrl fragt Windows, ob der AnyPlay Launcher das Netzwerk nutzen darf. Erlaube es in privaten Netzwerken, sonst erreichen weder App noch Seite diesen PC."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

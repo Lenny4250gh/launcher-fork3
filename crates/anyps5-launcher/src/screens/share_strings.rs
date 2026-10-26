@@ -92,10 +92,49 @@ impl Share {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            Share::LayoutCommunity => "Community: %@",
+            Share::LayoutExport => "Layout exportieren",
+            Share::LayoutImport => "Layout importieren",
+            Share::LayoutExported => "Layout gespeichert",
+            Share::LayoutNotSaved => "Das Layout konnte nicht gespeichert werden.",
+            Share::LayoutImported => "Layout importiert",
+            Share::LayoutImportFailed => "Layout nicht importiert. %@",
+            Share::LayoutUnreadable => "Die Datei kann nicht gelesen werden.",
+            Share::LayoutImportedPartly => {
+                "Layout importiert. Einige Aktionen werden in dieser Liste nicht angezeigt."
+            }
+            Share::Report => "Problem melden",
+            Share::ReportDetail => {
+                "Prüfe den Bericht, dann speichere ihn oder öffne ihn auf GitHub"
+            }
+            Share::ReportHint => {
+                "Das ist der Bericht. Speichere ihn als Datei oder öffne ihn mit ausgefülltem Formular auf GitHub. Nichts wird gesendet, bevor du es dort absendest."
+            }
+            Share::ReportPasteHint => {
+                "Das Protokoll ist für den Link zu lang. Öffnen auf GitHub kopiert den ganzen Bericht; füge ihn ins Formular ein."
+            }
+            Share::ReportOpen => "Auf GitHub öffnen",
+            Share::ReportOpenedPaste => "Bericht kopiert. Füge ihn ins GitHub-Formular ein.",
+            Share::ReportOpened => "Das Formular ist in deinem Browser geöffnet",
+            Share::ReportOpenFailed => {
+                "Der Browser konnte nicht geöffnet werden. Der Link wurde kopiert. Füge ihn in deinen Browser ein."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

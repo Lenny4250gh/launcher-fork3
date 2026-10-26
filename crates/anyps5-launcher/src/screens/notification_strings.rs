@@ -130,10 +130,51 @@ impl NotifyText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            NotifyText::Title => "Benachrichtigungen",
+            NotifyText::BellUnread => "Benachrichtigungen, %@ neu",
+            NotifyText::ClearAll => "Alle löschen",
+            NotifyText::KindFriendRequest => "Freundschaftsanfrage",
+            NotifyText::KindInvitation => "Einladung",
+            NotifyText::KindMessage => "Nachricht",
+            NotifyText::KindTrophy => "Trophäe",
+            NotifyText::KindUpdate => "Update",
+            NotifyText::KindTogether => "Gemeinsam spielen",
+            NotifyText::KindSystem => "Hinweis",
+            NotifyText::Accept => "Annehmen",
+            NotifyText::Join => "Beitreten",
+            NotifyText::Open => "Öffnen",
+            NotifyText::Dismiss => "Schließen",
+            NotifyText::EntryName => "%@, %@, %@",
+            NotifyText::EmptyTitle => "Keine Benachrichtigungen",
+            NotifyText::EmptyBody => {
+                "Freundschaftsanfragen, Einladungen, Nachrichten, Trophäen und Updates erscheinen hier."
+            }
+            NotifyText::CopyInviteLink => "Einladungslink kopieren",
+            NotifyText::CopyInviteLinkDetail => {
+                "Ein Link, der zum Beitreten einlädt; er tritt nie von selbst bei"
+            }
+            NotifyText::InviteLinkCopied => "Einladungslink kopiert",
+            NotifyText::InviteLinkWaiting => "Dein Einladungslink wird erstellt…",
+            NotifyText::InviteLinkOffline => {
+                "Melde dich im AnyPlay-Netzwerk an, um einen Einladungslink zu erhalten."
+            }
+            NotifyText::InviteLinkFailed => {
+                "Der Einladungslink konnte nicht erstellt werden. Versuche es gleich noch einmal."
+            }
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

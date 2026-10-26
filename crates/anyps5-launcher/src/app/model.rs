@@ -78,6 +78,8 @@ pub enum SizeState {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Toast {
     pub id: u64,
+    /// A game whose icon the toast shows in place of its glyph.
+    pub art: Option<std::path::PathBuf>,
     pub text: String,
     pub icon: Icon,
     /// UI-clock time at which it starts to leave; infinite while it stays until dismissed.
@@ -150,6 +152,8 @@ pub enum Effect {
     RelayOnlyChanged,
     /// Save the last seconds of the running game as a clip (`app::clips`).
     SaveClip,
+    /// Start or stop the live broadcast of the running game (`app::broadcast`).
+    ToggleBroadcast,
     /// The player came online: read what they earned in every unlocked game for the network.
     SyncTrophies,
     /// Look at the unlocked games location (is the drive there, how much is free).
@@ -180,6 +184,7 @@ pub fn ui_language(language: settings::Language) -> Language {
     match language {
         settings::Language::Turkish => Language::Turkish,
         settings::Language::English => Language::English,
+        settings::Language::German => Language::German,
     }
 }
 
@@ -187,6 +192,7 @@ pub fn core_language(language: Language) -> settings::Language {
     match language {
         Language::Turkish => settings::Language::Turkish,
         Language::English => settings::Language::English,
+        Language::German => settings::Language::German,
     }
 }
 
@@ -251,6 +257,8 @@ pub struct Model {
     pub panel: PanelNav,
     /// The focused tile of the library grid.
     pub library_index: usize,
+    /// What the player typed to search the library page; empty shows every game.
+    pub library_query: String,
     /// The focused row of the trophy list.
     pub trophy_index: usize,
     pub onboarding: Onboarding,
@@ -272,6 +280,10 @@ pub struct Model {
     /// The game from the press of Play until its first window shows.
     pub starting: Option<GameId>,
     pub running: Option<GameId>,
+    /// Where the live broadcast of the running game stands.
+    pub broadcast: anyps5_core::broadcast::Phase,
+    /// A stream key is kept (the key itself is never held here).
+    pub broadcast_key_set: bool,
     /// The Home button brought the launcher in front of the running game: Back returns to the
     /// game (`Model::show_in_game`).
     pub summoned: bool,
@@ -284,6 +296,9 @@ pub struct Model {
     pub notes: Notifications,
     /// The invite link the player asked for (`app::discord`).
     pub invite_link: crate::app::discord::InviteLink,
+    /// A handle a link asked to befriend: the Friends screen opens on the request with it typed
+    /// in, and the player sends it.
+    pub friend_request: Option<String>,
     /// Where the launcher's own update stands, copied in every frame by the panel host.
     pub update: crate::screens::settings::LauncherUpdate,
     /// The version whose notice the player sent away with "Later" (until the next start).
@@ -293,6 +308,10 @@ pub struct Model {
     /// The notice fits in the top bar as drawn last frame. The focus order reads it, so the pad
     /// never lands on a notice that is not there.
     pub notice_fits: bool,
+    /// How many games the shelves on the home screen show now; the screen sets it each frame.
+    pub shelf_count: usize,
+    /// The most games a shelf shows at this window width, set by the home screen.
+    pub shelf_cap: usize,
     /// This launcher must update before it goes online: the signed manifest or the cloud said so
     /// (copied in every frame by the panel host). Offline play is never affected.
     pub update_required: bool,
@@ -377,6 +396,7 @@ impl Model {
             overlay: None,
             panel: PanelNav::single(0),
             library_index: 0,
+            library_query: String::new(),
             trophy_index: 0,
             onboarding: Onboarding::default(),
             sign_in_after_onboarding: None,
@@ -388,6 +408,8 @@ impl Model {
             failures: HashMap::new(),
             starting: None,
             running: None,
+            broadcast: Default::default(),
+            broadcast_key_set: false,
             summoned: false,
             sizes: HashMap::new(),
             trophies: HashMap::new(),
@@ -395,10 +417,13 @@ impl Model {
             toast: None,
             notes,
             invite_link: Default::default(),
+            friend_request: None,
             update: Default::default(),
             update_dismissed: None,
             update_request: None,
             notice_fits: true,
+            shelf_count: 0,
+            shelf_cap: crate::app::library_view::SHELF_MAX,
             update_required: false,
             required_seen: false,
             required_online: false,
@@ -619,6 +644,7 @@ impl Model {
         self.toast_counter += 1;
         self.toast = Some(Toast {
             id: self.toast_counter,
+            art: None,
             text: text.into(),
             icon,
             until: self.now + TOAST_SECONDS,
@@ -747,6 +773,7 @@ impl Model {
             card: crate::app::together::card(self).map_or(0, |card| {
                 crate::screens::together::card_actions(&card).len() as u8
             }),
+            shelf: self.shelf_count,
         }
     }
 
@@ -871,10 +898,11 @@ impl Model {
                 self.games = games;
                 self.scanning = false;
                 self.library_loaded = true;
-                self.note_new_games();
+                let fresh = self.note_new_games();
                 self.selected = current
                     .and_then(|id| self.games.iter().position(|g| g.id == id))
                     .unwrap_or_else(|| self.selected.min(self.games.len().saturating_sub(1)));
+                self.announce_new_games(&fresh);
                 self.library_index = self.library_index.min(self.games.len().saturating_sub(1));
                 self.measure_selected();
             }
@@ -1328,6 +1356,14 @@ impl Model {
         if matches!(self.focus, HomeFocus::Update(_)) && self.update_notice().is_none() {
             self.focus = HomeFocus::Tiles;
         }
+        // The shelves may have gone (the window got low, the friend left) while the focus was
+        // on one, or have fewer games now.
+        if let HomeFocus::Shelf(i) = self.focus {
+            self.focus = match self.shelf_count {
+                0 => HomeFocus::Tiles,
+                n => HomeFocus::Shelf(i.min(n - 1)),
+            };
+        }
         // The same for the Play Together card, which goes when it is answered or put away, or
         // comes back with fewer buttons.
         if let HomeFocus::Card(i) = self.focus {
@@ -1376,6 +1412,7 @@ impl Model {
             HomeIntent::AnswerRun(i) => self.answer_run(i),
             HomeIntent::UpdateAction(i) => self.update_action(i),
             HomeIntent::CardAction(i) => self.card_action(i),
+            HomeIntent::ShelfItem(i) => self.shelf_action(i),
             HomeIntent::PlayTogether => {
                 if let Some(id) = crate::app::together::hostable(self).map(|g| g.id.clone()) {
                     crate::app::together::host_game(self, &id);
@@ -1475,6 +1512,7 @@ impl Model {
             HomeFocus::Ask(i) => HomeIntent::AnswerRun(i),
             HomeFocus::Update(i) => HomeIntent::UpdateAction(usize::from(i)),
             HomeFocus::Card(i) => HomeIntent::CardAction(usize::from(i)),
+            HomeFocus::Shelf(i) => HomeIntent::ShelfItem(i),
         };
         self.apply_intent(intent);
     }
@@ -1567,7 +1605,7 @@ impl Model {
         let choice = self.onboarding_choice();
         match self.onboarding.step {
             0 => {
-                let language = core_language(Language::ALL[choice.min(1)]);
+                let language = core_language(Language::ALL[choice.min(Language::ALL.len() - 1)]);
                 self.edit_prefs(|p| p.language = language);
             }
             1 => {

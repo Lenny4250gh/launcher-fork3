@@ -195,10 +195,82 @@ impl CallText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            CallText::IncomingName => "Anruf von %@",
+            CallText::IncomingLine => "ruft dich an",
+            CallText::IncomingDiscordLine => "Dein Sprachchat ist auf Discord eingestellt",
+            CallText::Accept => "Annehmen",
+            CallText::Decline => "Ablehnen",
+            CallText::InCall => "Im Anruf",
+            CallText::Calling => "%@ wird angerufen",
+            CallText::Cancel => "Abbrechen",
+            CallText::Mute => "Stummschalten",
+            CallText::Unmute => "Stummschaltung aufheben",
+            CallText::Deafen => "Ton ausschalten",
+            CallText::Undeafen => "Ton einschalten",
+            CallText::Leave => "Anruf verlassen",
+            CallText::SpeakingSuffix => "spricht",
+            CallText::YouMuted => "Du bist stummgeschaltet",
+            CallText::YouDeafened => "Du hörst niemanden",
+            CallText::WaitingForOthers => "Warten auf die anderen",
+            CallText::VoiceOnDiscord => "Sprachchat auf Discord",
+            CallText::AnswerOnDiscord => "Auf Discord annehmen",
+            CallText::OpenInDiscord => "In Discord öffnen",
+            CallText::DiscordSetNote => {
+                "Dein Sprachchat ist auf Discord eingestellt. Tritt dem Anruf dort bei; AnyPlay öffnet dein Mikrofon nicht."
+            }
+            CallText::MissedAgo => "Verpasster Anruf · %@",
+            CallText::MissedNow => "Verpasster Anruf · gerade eben",
+            CallText::CallFriend => "Anrufen",
+            CallText::CallFriendDetail => "Klingelt 30 Sekunden",
+            CallText::AddToCall => "Zum Anruf hinzufügen",
+            CallText::CallNeedsLeader => {
+                "Nur wer den Anruf gestartet hat, kann Personen hinzufügen."
+            }
+            CallText::CallFriendBusy => "Bereits in einer Party",
+            CallText::VoiceOn => "Sprachdienst",
+            CallText::ProviderAnyPlay => "AnyPlay",
+            CallText::ProviderDiscord => "Discord",
+            CallText::ProviderDiscordNote => {
+                "Bei Discord öffnet AnyPlay dein Mikrofon nie für Partys oder Anrufe. Anrufe klingeln trotzdem hier."
+            }
+            CallText::ProviderAnyPlayNote => {
+                "Partys und Anrufe nutzen den eigenen Sprachchat von AnyPlay."
+            }
+            CallText::StatusDiscord => "Auf Discord",
+            CallText::DiscordLink => "Discord-Link",
+            CallText::DiscordLinkNone => "Nicht festgelegt",
+            CallText::DiscordLinkField => "discord.com/channels/… oder discord.gg/…",
+            CallText::SetLink => "Link speichern",
+            CallText::RemoveLink => "Link entfernen",
+            CallText::LinkNote => {
+                "Alle in der Party sehen diesen Link. Nur die Leitung kann ihn ändern."
+            }
+            CallText::LinkInvalid => {
+                "Das ist kein Discord-Link. Nutze eine Adresse von discord.com/channels oder discord.gg."
+            }
+            CallText::ToastMissed => "Verpasster Anruf von %@",
+            CallText::ToastNoAnswer => "%@ hat nicht geantwortet.",
+            CallText::ToastDeclined => "%@ hat den Anruf abgelehnt.",
+            CallText::ToastUnreachable => "%@ kann gerade keinen Anruf annehmen.",
+            CallText::ToastNeedsLeader => {
+                "Nur wer den Anruf gestartet hat, kann Personen hinzufügen."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
@@ -217,6 +289,14 @@ pub fn ago(seconds: u64, language: Language) -> String {
     };
     let how = match language {
         Language::English => format!("{n} {unit} ago"),
+        Language::German => format!(
+            "vor {n} {}",
+            match unit {
+                "min" => "Min.",
+                "h" => "Std.",
+                _ => "Tg.",
+            }
+        ),
         Language::Turkish => format!(
             "{n} {} önce",
             match unit {
@@ -258,6 +338,7 @@ mod tests {
         assert_eq!(ago(300, Language::English), "Missed call · 5 min ago");
         assert_eq!(ago(7300, Language::English), "Missed call · 2 h ago");
         assert_eq!(ago(3 * 86_400, Language::English), "Missed call · 3 d ago");
+        assert_eq!(ago(300, Language::German), "Verpasster Anruf · vor 5 Min.");
         assert_eq!(ago(300, Language::Turkish), "Cevapsız arama · 5 dk önce");
     }
 }

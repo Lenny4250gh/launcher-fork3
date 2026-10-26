@@ -365,7 +365,7 @@ impl Room {
             icon: Icon::USER_PLUS,
             destructive: false,
         });
-        let cards = cards(data, leads && !alone);
+        let cards = cards(data, leads && !alone && online.is_online());
 
         // The player's voice.
         let mut voice_buttons = Vec::new();
@@ -422,6 +422,10 @@ impl Room {
             });
         }
         voice_buttons.push(settings);
+        // Voice goes through the cloud: offline there is nothing to press.
+        if !online.is_online() {
+            voice_buttons.clear();
+        }
 
         // The party's actions.
         let mut actions = Vec::new();
@@ -511,6 +515,12 @@ impl Room {
                 FX::NotInParty.text(language),
                 FX::NotInPartyNote.text(language),
                 S::StartParty.text(language),
+            )
+        } else if online.cloud != Some(anyps5_core::online::Cloud::Offline) {
+            (
+                T::StatusConnecting.text(language),
+                FX::ConnectingNote.text(language),
+                FX::TryAgain.text(language),
             )
         } else {
             (

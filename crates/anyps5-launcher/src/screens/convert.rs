@@ -10,6 +10,7 @@ pub fn language(value: core::Language) -> Language {
     match value {
         core::Language::Turkish => Language::Turkish,
         core::Language::English => Language::English,
+        core::Language::German => Language::German,
     }
 }
 
@@ -17,6 +18,7 @@ pub fn language_to_core(value: Language) -> core::Language {
     match value {
         Language::Turkish => core::Language::Turkish,
         Language::English => core::Language::English,
+        Language::German => core::Language::German,
     }
 }
 

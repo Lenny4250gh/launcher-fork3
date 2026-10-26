@@ -48,10 +48,31 @@ impl OnboardingText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            OnboardingText::OnlineTitle => "Play Together",
+            OnboardingText::OnlineSubtitle => {
+                "Melde dich an, um deine Freunde zu sehen, ihren Partys und Anrufen beizutreten und deine Trophäen im Profil zu behalten. Die Anmeldung öffnet kurz deinen Browser."
+            }
+            OnboardingText::NotNow => "Nicht jetzt",
+            OnboardingText::OnlineLater => {
+                "Du kannst dich jederzeit in der oberen Leiste anmelden."
+            }
+            OnboardingText::StepOf => "Schritt %@ von %@",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
