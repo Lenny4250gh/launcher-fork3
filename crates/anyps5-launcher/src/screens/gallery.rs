@@ -362,6 +362,14 @@ pub enum OnlineLook {
     PartyNone,
     /// Every friend request on a page of its own.
     Requests,
+    /// Add a Friend, nothing typed yet.
+    AddFriend,
+    /// A name came from a friend link: Send Request has the focus.
+    AddFriendLink,
+    /// The request went out; the field is empty again.
+    AddFriendSent,
+    /// The cloud found no such account; the name stays to be mended.
+    AddFriendMissing,
     Friend,
     Account,
     Picker,
@@ -848,6 +856,10 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-rail" => ScreenPage::Online(OnlineLook::FriendsRail),
         "friends-party-none" => ScreenPage::Online(OnlineLook::PartyNone),
         "friends-requests" => ScreenPage::Online(OnlineLook::Requests),
+        "friends-add" => ScreenPage::Online(OnlineLook::AddFriend),
+        "friends-add-link" => ScreenPage::Online(OnlineLook::AddFriendLink),
+        "friends-add-sent" => ScreenPage::Online(OnlineLook::AddFriendSent),
+        "friends-add-missing" => ScreenPage::Online(OnlineLook::AddFriendMissing),
         "friends-friend" => ScreenPage::Online(OnlineLook::Friend),
         "friends-settings" => ScreenPage::Online(OnlineLook::Account),
         "friends-settings-appearing" => ScreenPage::Online(OnlineLook::AccountAppearing),
@@ -1093,6 +1105,24 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
             since: 0,
         })
         .collect();
+    }
+    // Add a Friend after an answer: the page shows it as news.
+    match look {
+        OnlineLook::AddFriendSent => {
+            state.record_friend_request(
+                "Lumen",
+                anyps5_core::online::FriendRequestResult::Requested,
+            );
+        }
+        OnlineLook::AddFriendMissing => {
+            state.record_friend_request(
+                "Lumne",
+                anyps5_core::online::FriendRequestResult::Failed(
+                    "No account has this name.".into(),
+                ),
+            );
+        }
+        _ => {}
     }
     if matches!(look, OnlineLook::FriendsEmpty | OnlineLook::MessagesEmpty) {
         state.friends = FriendLists::default();
@@ -3027,6 +3057,20 @@ impl ScreenGallery {
                 self.friends.open(&data);
                 match look {
                     OnlineLook::Requests => self.friends.show_page(Page::Requests, &data),
+                    OnlineLook::AddFriend => self.friends.show_page(Page::AddFriend, &data),
+                    OnlineLook::AddFriendSent => {
+                        self.friends.show_page(Page::AddFriend, &data);
+                        self.friends.show_answer_as_news();
+                    }
+                    OnlineLook::AddFriendLink => {
+                        self.friends.show_page(Page::AddFriend, &data);
+                        self.friends.set_friend_text("Lumen".into(), &data);
+                    }
+                    OnlineLook::AddFriendMissing => {
+                        self.friends.show_page(Page::AddFriend, &data);
+                        self.friends.set_friend_text("Lumne".into(), &data);
+                        self.friends.show_answer_as_news();
+                    }
                     OnlineLook::FriendsFocus => {
                         self.friends.focus_row("friendRow", 1, &data);
                     }

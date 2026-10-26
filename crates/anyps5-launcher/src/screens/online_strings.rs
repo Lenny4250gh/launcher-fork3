@@ -106,6 +106,12 @@ pub enum OnlineText {
     RequestSent,
     /// `%@` = the handle.
     NowFriends,
+    /// Under the field of Add a Friend: what the cloud refused.
+    AddSelf,
+    AddBlocked,
+    AddLimit,
+    /// Under the field: the name cannot be one.
+    AddEnterName,
     /// `%@` = the handle.
     RequestArrived,
     /// `%@` = who, `%@` = the game.
@@ -260,6 +266,10 @@ impl OnlineText {
             OnlineText::SignedOut => "Signed out",
             OnlineText::RequestSent => "Request sent to %@",
             OnlineText::NowFriends => "You and %@ are friends",
+            OnlineText::AddSelf => "You cannot add yourself.",
+            OnlineText::AddBlocked => "You blocked this account. Unblock it first.",
+            OnlineText::AddLimit => "A limit on friends or requests is reached. Try again later.",
+            OnlineText::AddEnterName => "Enter their name first",
             OnlineText::RequestArrived => "%@ wants to be your friend",
             OnlineText::InvitationArrived => "%@ invites you to %@",
             OnlineText::BlockedToast => "%@ is blocked",
@@ -415,6 +425,10 @@ impl OnlineText {
             OnlineText::SignedOut => "Çıkış yapıldı",
             OnlineText::RequestSent => "%@ kişisine istek gönderildi",
             OnlineText::NowFriends => "%@ ile artık arkadaşsınız",
+            OnlineText::AddSelf => "Kendini ekleyemezsin.",
+            OnlineText::AddBlocked => "Bu hesabı engelledin. Önce engeli kaldır.",
+            OnlineText::AddLimit => "Arkadaş veya istek sınırına ulaşıldı. Sonra yeniden dene.",
+            OnlineText::AddEnterName => "Önce adını gir",
             OnlineText::RequestArrived => "%@ arkadaşın olmak istiyor",
             OnlineText::InvitationArrived => "%@ seni %@ oyununa davet ediyor",
             OnlineText::BlockedToast => "%@ engellendi",
@@ -571,6 +585,14 @@ impl OnlineText {
             OnlineText::SignedOut => "Abgemeldet",
             OnlineText::RequestSent => "Anfrage an %@ gesendet",
             OnlineText::NowFriends => "Du und %@ seid jetzt Freunde",
+            OnlineText::AddSelf => "Du kannst dich nicht selbst hinzufügen.",
+            OnlineText::AddBlocked => {
+                "Du hast dieses Konto blockiert. Hebe die Blockierung zuerst auf."
+            }
+            OnlineText::AddLimit => {
+                "Das Limit für Freunde oder Anfragen ist erreicht. Versuche es später erneut."
+            }
+            OnlineText::AddEnterName => "Gib zuerst den Namen ein",
             OnlineText::RequestArrived => "%@ möchte dein Freund sein",
             OnlineText::InvitationArrived => "%@ lädt dich zu %@ ein",
             OnlineText::BlockedToast => "%@ ist blockiert",

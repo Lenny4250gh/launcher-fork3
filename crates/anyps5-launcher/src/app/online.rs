@@ -14,7 +14,7 @@ use anyps5_core::library::Game;
 use anyps5_core::notifications::{Act, Kind};
 use anyps5_core::online::api::{ErrorCode, FriendState, SessionKind};
 use anyps5_core::online::{
-    self as net, Command, Failure, Join, NetProcess, Notice, Purpose, Status,
+    self as net, Command, Failure, FriendRequestResult, Join, NetProcess, Notice, Purpose, Status,
 };
 use anyps5_core::paths::GameId;
 use anyps5_core::play_together::Blocker;
@@ -608,13 +608,46 @@ impl OnlineService {
             (Purpose::AddFriend(handle), Ok(value)) => {
                 let friends = serde_json::from_value::<net::control::FriendAdded>(value)
                     .is_ok_and(|a| a.result == FriendState::Friends);
-                let text = if friends {
-                    T::NowFriends
+                // The page that asked says it where the field is; the toast is for a player who has
+                // left the page.
+                let result = if friends {
+                    FriendRequestResult::Friends
                 } else {
-                    T::RequestSent
+                    FriendRequestResult::Requested
+                };
+                model.online.record_friend_request(&handle, result);
+                if model.overlay != Some(Overlay::Friends) {
+                    let text = if friends {
+                        T::NowFriends
+                    } else {
+                        T::RequestSent
+                    }
+                    .format(language, &[Arg::Str(&handle)]);
+                    model.toast(text, Icon::USER_PLUS);
                 }
-                .format(language, &[Arg::Str(&handle)]);
-                model.toast(text, Icon::USER_PLUS);
+            }
+            (Purpose::AddFriend(handle), Err(failure)) => {
+                let what = model.online.blocked_by(&Purpose::AddFriend(handle.clone()));
+                let text = match &failure.restriction {
+                    Some(restriction) => restriction_text::toast(restriction, what, None, language),
+                    None if failure.is(ErrorCode::BadRequest) => {
+                        T::AddSelf.text(language).to_owned()
+                    }
+                    None if failure.is(ErrorCode::Forbidden) => {
+                        T::AddBlocked.text(language).to_owned()
+                    }
+                    None if failure.is(ErrorCode::Limit) => T::AddLimit.text(language).to_owned(),
+                    None => failure_text(&failure, language),
+                };
+                model
+                    .online
+                    .record_friend_request(&handle, FriendRequestResult::Failed(text.clone()));
+                if model.overlay != Some(Overlay::Friends) {
+                    model.toast(text, Icon::WARNING);
+                } else {
+                    // The page says why, beside the field.
+                    model.sound(Cue::Error);
+                }
             }
             (Purpose::Accept(id), Ok(_)) => {
                 let text = T::NowFriends.format(language, &[Arg::Str(&handle_of(model, id))]);

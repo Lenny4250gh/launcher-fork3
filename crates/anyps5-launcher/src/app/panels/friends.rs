@@ -40,8 +40,9 @@ impl PanelHost {
         } else {
             None
         };
-        // A friend link: the request page with the handle typed in.
-        let prefill = if opening {
+        // A friend link: the request page with the handle typed in. Signed out, it waits for the
+        // sign-in.
+        let prefill = if wanted && cx.model.online.is_signed_in() {
             cx.model.friend_request.take()
         } else {
             None
@@ -66,7 +67,7 @@ impl PanelHost {
                     // The profile screen sent the player to a page.
                     self.friends.show_page(page, &data);
                     if let Some(handle) = prefill {
-                        self.friends.set_friend_text(handle);
+                        self.friends.set_friend_text(handle, &data);
                     }
                     if let Some(index) =
                         item.and_then(|id| data.online.feed.items.iter().position(|i| i.id == id))
@@ -78,6 +79,12 @@ impl PanelHost {
                     self.friends.resume(&data);
                 } else {
                     self.friends.open(&data);
+                }
+            } else if wanted && self.friends.is_open() && prefill.is_some() {
+                // The link came while the panel was open.
+                self.friends.show_page(Page::AddFriend, &data);
+                if let Some(handle) = prefill {
+                    self.friends.set_friend_text(handle, &data);
                 }
             } else if !wanted && self.friends.is_active() && self.friends.is_open() {
                 self.friends.close();

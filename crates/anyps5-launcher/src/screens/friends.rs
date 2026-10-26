@@ -70,9 +70,15 @@ impl FriendsScreen {
         self.land(data);
     }
 
-    /// Types `text` into the field of the request page (a friend link names the handle).
-    pub fn set_friend_text(&mut self, text: String) {
-        self.panel.friend_text = text;
+    /// Types `text` into the field of the request page (a friend link names the handle) and puts
+    /// the focus on Send Request.
+    pub fn set_friend_text(&mut self, text: String, data: &OnlineData<'_>) {
+        self.panel.prefill_friend(text, data);
+    }
+
+    /// Treats the last friend request answer as news (previews).
+    pub fn show_answer_as_news(&mut self) {
+        self.panel.show_answer_as_news();
     }
 
     /// Shows `page` (a profile sent the player to one; previews jump straight to one).

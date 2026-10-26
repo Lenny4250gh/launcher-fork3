@@ -572,9 +572,31 @@ pub enum Notice {
     Banned(control::Restriction),
 }
 
+/// What the last friend request came to, for the page that sent it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FriendRequestOutcome {
+    /// Counts up with every answer, so a page can tell a new one from one it has shown.
+    pub serial: u64,
+    /// The name the player typed.
+    pub handle: String,
+    pub result: FriendRequestResult,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FriendRequestResult {
+    /// The request waits for the other player.
+    Requested,
+    /// The other player had asked first, or the two already were friends.
+    Friends,
+    /// The cloud said no; the text says why, in the player's language.
+    Failed(String),
+}
+
 /// What the launcher knows about the player's online state.
 #[derive(Debug, Default)]
 pub struct Online {
+    /// What the last friend request came to; the Add a Friend page shows it.
+    pub friend_request: Option<FriendRequestOutcome>,
     pub status: Status,
     pub cloud: Option<Cloud>,
     pub account: Option<SignedIn>,
@@ -629,6 +651,16 @@ pub struct Online {
 }
 
 impl Online {
+    /// Keeps what a friend request came to.
+    pub fn record_friend_request(&mut self, handle: &str, result: FriendRequestResult) {
+        let serial = self.friend_request.as_ref().map_or(1, |o| o.serial + 1);
+        self.friend_request = Some(FriendRequestOutcome {
+            serial,
+            handle: handle.to_owned(),
+            result,
+        });
+    }
+
     /// Queues `command`; [`Online::take_outbox`] hands it to the process.
     pub fn send(&mut self, purpose: Purpose, command: Command) -> u64 {
         self.next += 1;
