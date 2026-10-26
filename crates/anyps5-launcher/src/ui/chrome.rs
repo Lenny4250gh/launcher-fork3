@@ -1378,6 +1378,14 @@ impl<'a> PanelRow<'a> {
                 } else {
                     (Align2::RIGHT_CENTER, Layout::right_to_left(Align::Center))
                 };
+                // What the on-screen keyboard typed into this row since the last frame.
+                let edit_id = row_id.with("text-edit");
+                let keyboard = crate::ui::osk::take_output(ctx, edit_id);
+                if let Some((typed, _)) = &keyboard {
+                    value.clear();
+                    value.push_str(typed);
+                }
+                let typed_now = value.to_string();
                 let edit = TextEdit::singleline(*value)
                     .font(ty::CHOICE_VALUE.font())
                     .hint_text(
@@ -1393,17 +1401,25 @@ impl<'a> PanelRow<'a> {
                 // The hint takes the row's ink, a little dimmer, on the light focused row too.
                 child.visuals_mut().weak_text_color = Some(fade(fg, 0.62));
                 // A keyboard or pad "select" on the row asks for the caret (see `screens::rows`).
-                let edit_id = row_id.with("text-edit");
                 let want_focus = ctx
                     .data_mut(|d| d.remove_temp::<bool>(Id::unique("panel-text-focus")))
                     .unwrap_or(false);
-                if want_focus {
+                // A pad (or Gaming Mode) has no keys: the on-screen keyboard opens instead of
+                // the caret.
+                let keyboard_wanted = crate::ui::osk::wanted(ctx);
+                if want_focus && keyboard_wanted {
+                    crate::ui::osk::open(ctx, edit_id, title, &typed_now);
+                } else if want_focus {
                     ctx.memory_mut(|m| m.request_focus(edit_id));
                 }
                 let response = child.add(edit.id(edit_id));
-                out.text_changed = response.changed();
-                out.submitted =
-                    response.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter));
+                if keyboard_wanted && response.gained_focus() {
+                    ctx.memory_mut(|m| m.surrender_focus(edit_id));
+                    crate::ui::osk::open(ctx, edit_id, title, &typed_now);
+                }
+                out.text_changed = response.changed() || keyboard.is_some();
+                out.submitted = keyboard.is_some_and(|(_, done)| done)
+                    || (response.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)));
             }
             RowControl::Keys {
                 caps,

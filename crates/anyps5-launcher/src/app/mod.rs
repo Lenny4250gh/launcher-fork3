@@ -497,6 +497,12 @@ impl LauncherApp {
             self.shell.input.last_direction = Some(*command);
         }
         match event {
+            // The on-screen keyboard takes every command while it is open.
+            InputEvent::Command(command) if crate::ui::osk::is_open(ctx) => {
+                if let Some(cue) = crate::ui::osk::command(ctx, command) {
+                    self.shell.play(cue);
+                }
+            }
             InputEvent::Command(command) => match self.model.handle(command) {
                 Routed::Overlay(overlay) => {
                     let mut cx = OverlayCx {
@@ -783,6 +789,10 @@ impl LauncherApp {
         self.paint_toast(&ctx);
         self.calls.show(&ctx, &mut self.model, &mut self.shell);
         self.together.show(&ctx, &mut self.model, &mut self.shell);
+        crate::ui::osk::show(&ctx, self.model.language());
+        if let Some(cue) = crate::ui::osk::take_cue(&ctx) {
+            self.shell.play(cue);
+        }
         let mut cx = OverlayCx {
             model: &mut self.model,
             shell: &mut self.shell,
@@ -1042,7 +1052,9 @@ pub fn run(inbox: Option<crate::instance::Inbox>, arguments: Vec<String>) -> efr
     // Read before the window exists: it opens filling its screen unless the player chose a window.
     let fullscreen = AppPaths::from_env()
         .map(|paths| Preferences::load(&paths).fullscreen)
-        .unwrap_or(true);
+        .unwrap_or(true)
+        // Gaming Mode shows one full-screen window, whatever was chosen before.
+        || crate::ui::osk::gaming_mode();
     let viewport = egui::ViewportBuilder::default()
         .with_title("AnyPlay Launcher")
         // The launcher draws its own caption (ui::caption).
