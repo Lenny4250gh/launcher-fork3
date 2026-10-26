@@ -194,6 +194,11 @@ impl AppPaths {
             .join(if name.is_empty() { "unknown" } else { &name })
     }
 
+    /// `notifications.json`: the notification history (docs/DESIGN.md 9.12).
+    pub fn notifications_file(&self) -> PathBuf {
+        self.data.join("notifications.json")
+    }
+
     pub fn cache_dir(&self) -> PathBuf {
         self.data.join("Cache")
     }

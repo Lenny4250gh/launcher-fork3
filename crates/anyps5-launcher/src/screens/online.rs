@@ -83,6 +83,8 @@ pub enum OnlineAction {
     Join(AccountId),
     /// Invite a friend to the player's session.
     Invite(AccountId),
+    /// Copy a link that asks whoever opens it to join the player's session or party.
+    InviteLink,
     AnswerInvitation {
         id: String,
         accept: bool,
@@ -184,6 +186,10 @@ pub enum OnlineAction {
     VoiceMode(VoiceMode),
     /// The key held to talk, by its egui name.
     VoiceKey(String),
+    /// The pad button held to talk, by name; `None` for none.
+    VoicePad(Option<String>),
+    /// "Reduce Background Noise".
+    VoiceNoise(bool),
     /// A microphone or speakers by name; `None` is the system's default.
     VoiceDevice(DeviceKind, Option<String>),
     RefreshVoiceDevices,
@@ -1260,6 +1266,7 @@ impl OnlinePanel {
                 for (id, page) in [("termsPage", Legal::Terms), ("privacyPage", Legal::Privacy)] {
                     rows.push(Row::command(id, page.name(language)).icon(Icon::FILE_TEXT));
                 }
+                // The cloud is the one quiet row after the terms; the long note under it is gone.
                 let shown = match data.cloud {
                     Some(_) if !data.custom_cloud => t(T::CloudOfficial),
                     Some(url) => url,
@@ -1271,7 +1278,6 @@ impl OnlinePanel {
                         .detail(shown)
                         .group_start(),
                 );
-                rows.push(Row::info("note", t(T::SignInNote), None).group_start());
                 (t(T::Online).to_owned(), Some(t(T::Subtitle).to_owned()))
             }
             Page::Cloud => {
@@ -1319,7 +1325,7 @@ impl OnlinePanel {
             }
             Page::Friend(id) => {
                 let friend = online.friend(*id);
-                let presence = friend.map(|f| presence_text(f, language));
+                let presence = friend.map(|f| presence_text_for(f, language, online.is_online()));
                 let joinable = friend
                     .and_then(|f| f.presence.activity.as_ref())
                     .and_then(|a| a.session.as_ref())
@@ -2047,11 +2053,20 @@ fn friend_detail(data: &OnlineData<'_>, friend: &online::api::Friend) -> String 
                 .saturating_sub(missed.at),
             data.language,
         ),
-        None => presence_text(friend, data.language),
+        None => presence_text_for(friend, data.language, data.online.is_online()),
     }
 }
 
 pub fn presence_text(friend: &online::api::Friend, language: Language) -> String {
+    presence_text_for(friend, language, true)
+}
+
+/// What a friend does. Offline the list may be old, so it never offers a join (`can_join`).
+pub fn presence_text_for(
+    friend: &online::api::Friend,
+    language: Language,
+    can_join: bool,
+) -> String {
     match &friend.presence.activity {
         Some(activity) => {
             // A Play Together session reads "Playing Minecraft together (2/4)".
@@ -2059,11 +2074,12 @@ pub fn presence_text(friend: &online::api::Friend, language: Language) -> String
             if let Some(line) = super::together_strings::presence_line(&together, language) {
                 return line;
             }
-            let joinable = activity.session.as_ref().is_some_and(|s| s.joinable);
-            let text = if joinable {
-                T::PlayingJoinable
-            } else {
-                T::Playing
+            // In a session of the network the line says so; a game with no session is just played.
+            let joinable = can_join && activity.session.as_ref().is_some_and(|s| s.joinable);
+            let text = match (activity.session.is_some(), joinable) {
+                (true, true) => T::PlayingOnlineJoinable,
+                (true, false) => T::PlayingOnline,
+                (false, _) => T::Playing,
             };
             text.format(language, &[Arg::Str(&activity.title)])
         }
@@ -2178,8 +2194,7 @@ mod tests {
                 "consent",
                 "termsPage",
                 "privacyPage",
-                "cloudPage",
-                "note"
+                "cloudPage"
             ]
         );
         assert_eq!(rows[5].detail.as_deref(), Some("https://cloud.example.org"));
@@ -2257,7 +2272,7 @@ mod tests {
         );
         assert_eq!(
             rows[4].detail.as_deref(),
-            Some("Playing Test Game · You can join")
+            Some("Playing Test Game · Online · You can join")
         );
         // The first row that takes focus, not a caption.
         assert_eq!(panel.side.nav.row, 1);

@@ -53,10 +53,35 @@ impl DiscordText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            DiscordText::Button => "Beitreten-Button auf Discord zeigen",
+            DiscordText::ButtonDetail => {
+                "Während du online spielst, können Leute, die deinen Discord-Status sehen, eine Einladung erhalten. Sie entscheiden selbst, ob sie beitreten."
+            }
+            DiscordText::SignIn => "Melde dich bei AnyPlay an, um diesen Beitrittslink zu nutzen.",
+            DiscordText::Gone => {
+                "Dieser Beitrittslink ist abgelaufen oder die Person hat das Spiel verlassen. Bitte um einen neuen."
+            }
+            DiscordText::Full => {
+                "Dieses Spiel oder diese Party ist voll. Versuche es später erneut."
+            }
+            DiscordText::Already => "Du bist schon dort oder in einer anderen Party.",
+            DiscordText::Own => "Das ist dein eigener Beitrittslink. Sende ihn an einen Freund.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

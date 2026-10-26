@@ -61,10 +61,27 @@ impl RunText {
         }
     }
 
+    pub const fn german(self) -> &'static str {
+        match self {
+            RunText::Question => "Wie lief es?",
+            RunText::NoStart => "Startet nicht",
+            RunText::Menus => "Menüs",
+            RunText::InGame => "Im Spiel",
+            RunText::Playable => "Spielbar",
+            RunText::Dismiss => "Schließen",
+            RunText::Runs => "Läufe",
+            RunText::Verdict => "%@ · %@ Meldungen",
+            RunText::OnePlaying => "%@ spielt das gerade",
+            RunText::TwoPlaying => "%@ und %@ spielen das gerade",
+            RunText::ManyPlaying => "%@ Freunde spielen das gerade",
+        }
+    }
+
     pub fn text(self, language: Language) -> &'static str {
         match language {
             Language::English => self.english(),
             Language::Turkish => self.turkish(),
+            Language::German => self.german(),
         }
     }
 

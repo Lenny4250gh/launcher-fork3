@@ -273,6 +273,9 @@ pub struct UnlockRequest {
     /// ones are passed.
     pub relink_flags: Vec<String>,
     pub link_mode: LinkMode,
+    /// Where the dump cannot be hard-linked (another drive), link its files symbolically when the
+    /// system allows it, instead of copying them. The dump is only ever read.
+    pub symlinks: bool,
     /// Test hook: `Some(free)` replaces the games folder's real free space; `Some(None)`
     /// simulates a volume whose free space cannot be read; `None` asks the volume.
     pub free_space_override: Option<Option<u64>>,
@@ -299,6 +302,7 @@ impl UnlockRequest {
             resolution: None,
             relink_flags: Vec::new(),
             link_mode: LinkMode::Auto,
+            symlinks: true,
             free_space_override: None,
             backup_dir: None,
             background: false,
@@ -1027,7 +1031,24 @@ fn preflight(
             None => Ok(()),
         }
     };
-    let dump_probe = probe(&plan, &request.folder);
+    let mut dump_probe = probe(&plan, &request.folder);
+    if let Some(reason) = dump_probe.as_ref().err().cloned()
+        && request.symlinks
+        && request.link_mode == LinkMode::Auto
+        && let Some(file) = first_file(&plan, &request.folder)
+    {
+        // Another drive: the copy can point at the dump's files instead of holding them.
+        match fsx::symlink_probe(&file, &games) {
+            Ok(()) => {
+                reporter.log(format!(
+                    "files linked symbolically, not copied: {reason}; saves {} GB",
+                    gb_down(plan.bytes)
+                ));
+                dump_probe = Ok(());
+            }
+            Err(error) => reporter.log(format!("symbolic links are not possible here: {error}")),
+        }
+    }
     let libs_plan = fsx::plan_tree(request.toolkit.libs(), &[]).unwrap_or_default();
     let libs_probe = probe(&libs_plan, request.toolkit.libs());
     let need = SpaceNeed {
@@ -1098,6 +1119,13 @@ pub fn run_unlock(
         last: None,
     };
     let linker = Linker::new(request.link_mode);
+    // The dump stays where it is, so its files may be symbolic links when a hard link is not
+    // possible. Nothing else is: the toolkit and the work folder can go away.
+    let dump_linker = if request.symlinks {
+        Linker::with_symlinks(request.link_mode)
+    } else {
+        Linker::new(request.link_mode)
+    };
     let mut clock = Stopwatch::new(control);
 
     // 0. Enough room on the games folder's volume, before anything is written.
@@ -1235,15 +1263,18 @@ pub fn run_unlock(
         background: control.is_background(),
     };
     match &dump_plan {
-        Some(plan) => {
-            fsx::link_tree_planned(&request.folder, plan, &app0, &linker, &tree, &mut |f| {
-                reporter.progress(Step::Copy, f)
-            })
-        }
+        Some(plan) => fsx::link_tree_planned(
+            &request.folder,
+            plan,
+            &app0,
+            &dump_linker,
+            &tree,
+            &mut |f| reporter.progress(Step::Copy, f),
+        ),
         None => fsx::link_tree(
             &request.folder,
             &app0,
-            &linker,
+            &dump_linker,
             &[STORE_NAME],
             &tree,
             &mut |f| reporter.progress(Step::Copy, f),
@@ -1281,12 +1312,19 @@ pub fn run_unlock(
             ));
         }
     }
-    if let Some(note) = linker.take_note() {
+    for note in [dump_linker.take_note(), linker.take_note()]
+        .into_iter()
+        .flatten()
+    {
         reporter.log(note);
     }
-    let (linked, copied) = linker.counts();
+    let (linked, copied) = (
+        linker.counts().0 + dump_linker.counts().0,
+        linker.counts().1 + dump_linker.counts().1,
+    );
+    let symlinked = dump_linker.symlinked();
     reporter.log(format!(
-        "layout: {linked} files linked, {copied} copied, {} threads",
+        "layout: {linked} files linked, {symlinked} symbolic links, {copied} copied, {} threads",
         fsx::link_threads()
     ));
 

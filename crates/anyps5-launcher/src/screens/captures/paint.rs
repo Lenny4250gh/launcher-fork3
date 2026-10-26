@@ -293,6 +293,7 @@ fn grid(
     let (follow, scroll_to) =
         Follow::begin(&ctx, id, focused_place.and_then(|p| layout.band_of(p)));
     let mut scroll = egui::ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden);

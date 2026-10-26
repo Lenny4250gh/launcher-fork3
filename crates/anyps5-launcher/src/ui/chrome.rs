@@ -692,7 +692,7 @@ impl<'a> PanelRow<'a> {
             text::layout_font(
                 &painter,
                 style.font(),
-                style.size * 1.45,
+                style.px() * 1.45,
                 style.tracking,
                 self.title,
                 ink,
@@ -1378,6 +1378,14 @@ impl<'a> PanelRow<'a> {
                 } else {
                     (Align2::RIGHT_CENTER, Layout::right_to_left(Align::Center))
                 };
+                // What the on-screen keyboard typed into this row since the last frame.
+                let edit_id = row_id.with("text-edit");
+                let keyboard = crate::ui::osk::take_output(ctx, edit_id);
+                if let Some((typed, _)) = &keyboard {
+                    value.clear();
+                    value.push_str(typed);
+                }
+                let typed_now = value.to_string();
                 let edit = TextEdit::singleline(*value)
                     .font(ty::CHOICE_VALUE.font())
                     .hint_text(
@@ -1393,17 +1401,25 @@ impl<'a> PanelRow<'a> {
                 // The hint takes the row's ink, a little dimmer, on the light focused row too.
                 child.visuals_mut().weak_text_color = Some(fade(fg, 0.62));
                 // A keyboard or pad "select" on the row asks for the caret (see `screens::rows`).
-                let edit_id = row_id.with("text-edit");
                 let want_focus = ctx
                     .data_mut(|d| d.remove_temp::<bool>(Id::unique("panel-text-focus")))
                     .unwrap_or(false);
-                if want_focus {
+                // A pad (or Gaming Mode) has no keys: the on-screen keyboard opens instead of
+                // the caret.
+                let keyboard_wanted = crate::ui::osk::wanted(ctx);
+                if want_focus && keyboard_wanted {
+                    crate::ui::osk::open(ctx, edit_id, title, &typed_now);
+                } else if want_focus {
                     ctx.memory_mut(|m| m.request_focus(edit_id));
                 }
                 let response = child.add(edit.id(edit_id));
-                out.text_changed = response.changed();
-                out.submitted =
-                    response.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter));
+                if keyboard_wanted && response.gained_focus() {
+                    ctx.memory_mut(|m| m.surrender_focus(edit_id));
+                    crate::ui::osk::open(ctx, edit_id, title, &typed_now);
+                }
+                out.text_changed = response.changed() || keyboard.is_some();
+                out.submitted = keyboard.is_some_and(|(_, done)| done)
+                    || (response.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)));
             }
             RowControl::Keys {
                 caps,
@@ -1586,6 +1602,8 @@ pub fn fullscreen_panel<R>(
 const TOAST_ROWS: usize = 3;
 const TOAST_STAYING_ROWS: usize = 8;
 const TOAST_GLYPH: f32 = 17.0;
+/// The side of a game's icon in a toast: it sits on the glyph's place and reaches a little past it.
+const TOAST_ART: f32 = 32.0;
 const TOAST_MAX_WIDTH: f32 = 760.0;
 const TOAST_BAR_RESERVE: f32 = 442.0;
 const TOAST_TRAVEL: f32 = 80.0;
@@ -1606,6 +1624,23 @@ pub fn toast(
     live: bool,
     v: f32,
 ) -> bool {
+    toast_with_action(ctx, id, icon, message, close, None, live, v).0
+}
+
+/// A toast with one action beside Close ("Send Report" on a crash). With a pad or keys in use the
+/// action shows as a hint (Options); with the mouse it is a button. Returns whether Close and
+/// whether the action was pressed.
+#[allow(clippy::too_many_arguments)]
+pub fn toast_with_action(
+    ctx: &Context,
+    id: impl std::hash::Hash + std::fmt::Debug,
+    icon: Icon,
+    message: &str,
+    close: Option<&str>,
+    action: Option<&str>,
+    live: bool,
+    v: f32,
+) -> (bool, bool) {
     const ROWS: usize = TOAST_ROWS;
     const STAYING_ROWS: usize = TOAST_STAYING_ROWS;
     const GLYPH: f32 = TOAST_GLYPH;
@@ -1614,10 +1649,15 @@ pub fn toast(
     const GAP: f32 = space::M;
     const CLOSE_INSET: f32 = TOAST_CLOSE_INSET;
     if v <= 0.001 {
-        return false;
+        return (false, false);
     }
     let mut pressed = false;
+    let mut acted = false;
     let screen = ctx.content_rect();
+    // A toast about a game shows the game's icon in place of the glyph (the app sets it).
+    let art = ctx
+        .data(|d| d.get_temp::<Option<TileImage>>(Id::unique("toast-art")))
+        .flatten();
     Area::new(Id::unique(id))
         .order(Order::Tooltip)
         .fixed_pos(screen.min)
@@ -1636,8 +1676,25 @@ pub fn toast(
             let hint_w = hint
                 .as_ref()
                 .map_or(0.0, |h| h.width(&painter, input::device(ctx)) + GAP);
+            // The action: a hint for keys and the pad, a button for the mouse.
+            let action_hint = action
+                .filter(|_| input::focus_visible(ctx))
+                .map(|label| Hint {
+                    action: HintAction::Options,
+                    label,
+                });
+            let action_w = match (action, &action_hint) {
+                (None, _) => 0.0,
+                (Some(_), Some(hint)) => hint.width(&painter, input::device(ctx)) + GAP,
+                (Some(label), None) => {
+                    ConsoleButton::new(label)
+                        .size(ControlSize::Small)
+                        .width(&painter)
+                        + GAP
+                }
+            };
             let tail = if close.is_some() {
-                hint_w + GAP + size_close + CLOSE_INSET
+                action_w + hint_w + GAP + size_close + CLOSE_INSET
             } else {
                 PAD_X
             };
@@ -1659,7 +1716,7 @@ pub fn toast(
                 let one_line = layout(ty::TOAST.line_height());
                 // Three rows or more read at the open leading of running text.
                 if one_line.rows.len() >= 3 {
-                    layout(ty::TOAST.size * TOAST_LONG_LEADING)
+                    layout(ty::TOAST.px() * TOAST_LONG_LEADING)
                 } else {
                     one_line
                 }
@@ -1692,13 +1749,25 @@ pub fn toast(
             let mut style = GlassStyle::toast();
             style.black *= a;
             paint_glass(ctx, &painter, rect, style);
-            painter.text(
-                pos2(rect.min.x + PAD_X + GLYPH * 0.5, rect.center().y),
-                Align2::CENTER_CENTER,
-                icon.glyph(),
-                icon.font(GLYPH, true),
-                fade(color::text(), a),
-            );
+            let glyph_centre = pos2(rect.min.x + PAD_X + GLYPH * 0.5, rect.center().y);
+            if let Some(image) = art {
+                let mut tile = TileStyle::new(color::text());
+                tile.image = Some(image);
+                tile.opacity = a;
+                paint_tile(
+                    &painter,
+                    Rect::from_center_size(glyph_centre, vec2(TOAST_ART, TOAST_ART)),
+                    &tile,
+                );
+            } else {
+                painter.text(
+                    glyph_centre,
+                    Align2::CENTER_CENTER,
+                    icon.glyph(),
+                    icon.font(GLYPH, true),
+                    fade(color::text(), a),
+                );
+            }
             let text_x = rect.min.x + PAD_X + GLYPH + GAP;
             painter.galley(
                 pos2(text_x, rect.center().y - galley.size().y * 0.5),
@@ -1722,6 +1791,43 @@ pub fn toast(
                         .size(ControlSize::Small)
                         .show(&mut child)
                         .clicked();
+                if let Some(label) = action {
+                    let right = button.min.x - hint_w - GAP;
+                    if let Some(hint) = action_hint {
+                        let w = hint.width(&painter, input::device(ctx));
+                        let at = Rect::from_min_size(
+                            pos2(right - w, rect.center().y - size::HINT_CAP * 0.5),
+                            vec2(w, size::HINT_CAP),
+                        );
+                        let mut hint_ui = ui.new_child(
+                            UiBuilder::new()
+                                .max_rect(at)
+                                .layout(Layout::left_to_right(Align::Center)),
+                        );
+                        hint_ui.set_opacity(a);
+                        hint.show(&mut hint_ui);
+                        // The pad and the keys reach it through Options; no focus stop here.
+                    } else {
+                        let w = ConsoleButton::new(label)
+                            .size(ControlSize::Small)
+                            .width(&painter);
+                        let at = Rect::from_center_size(
+                            pos2(right - w * 0.5, rect.center().y),
+                            vec2(w, size_close),
+                        );
+                        let mut child = ui.new_child(
+                            UiBuilder::new()
+                                .max_rect(at)
+                                .layout(Layout::top_down(Align::Center)),
+                        );
+                        child.set_opacity(a);
+                        acted = live
+                            && ConsoleButton::new(label)
+                                .size(ControlSize::Small)
+                                .show(&mut child)
+                                .clicked();
+                    }
+                }
                 if let Some(hint) = hint {
                     let at = Rect::from_min_size(
                         pos2(
@@ -1740,7 +1846,7 @@ pub fn toast(
                 }
             }
         });
-    pressed
+    (pressed, acted)
 }
 
 /// A frosted card with a hairline, used by onboarding and diagnosis boxes: glass at `rect`.

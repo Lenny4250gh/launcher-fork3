@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use anyps5_core::events::Notifier;
 use anyps5_core::library::Game;
+use anyps5_core::notifications::{Act, Kind};
 use anyps5_core::online::api::{ErrorCode, FriendState, SessionKind};
 use anyps5_core::online::{
     self as net, Command, Failure, Join, NetProcess, Notice, Purpose, Status,
@@ -195,6 +196,7 @@ impl OnlineService {
             // Nothing to send to: commands fail at once instead of waiting forever.
             let _ = model.online.take_outbox();
         }
+        crate::ui::talk::shared().set_writer(self.process.as_ref().map(|p| p.writer()));
         let online = model.online.is_online();
         if online && !self.was_online {
             model.effects.push(Effect::SyncTrophies);
@@ -352,13 +354,20 @@ impl OnlineService {
             Notice::Answered(purpose, result) => self.answered(model, purpose, result, ready),
             Notice::Request(account) => {
                 let text = T::RequestArrived.format(language, &[Arg::Str(&account.handle)]);
-                model.toast_with(text, Icon::USER_PLUS, Cue::Notify);
+                model.announce(
+                    Kind::FriendRequest,
+                    Act::AcceptFriend(account.id.0),
+                    text,
+                    Icon::USER_PLUS,
+                    Cue::Notify,
+                );
             }
             // A Play Together invitation is the card's: "Mira is playing Minecraft. Join?".
             Notice::Invitation(invitation) if invitation.kind == SessionKind::Lan => {}
             Notice::SessionEnded { session, host, .. } => {
                 model.together.dismiss(&session);
                 let text = TT::ToastSessionEnded.format(language, &[Arg::Str(&host.handle)]);
+                model.note(Kind::Together, text.clone(), Act::None);
                 model.toast(text, Icon::USERS);
             }
             Notice::HostFailed(reason) => {
@@ -374,7 +383,13 @@ impl OnlineService {
                         Arg::Str(&invitation.title),
                     ],
                 );
-                model.toast_with(text, Icon::ENVELOPE_SIMPLE, Cue::Invite);
+                model.announce(
+                    Kind::Together,
+                    Act::JoinInvitation(invitation.id.clone()),
+                    text,
+                    Icon::ENVELOPE_SIMPLE,
+                    Cue::Invite,
+                );
             }
             Notice::LfgRequest { from, .. } => {
                 let text = LT::ToastRequest.format(language, &[Arg::Str(&from.handle)]);
@@ -390,7 +405,7 @@ impl OnlineService {
             }
             Notice::MissedCall(call) => {
                 let text = CT::ToastMissed.format(language, &[Arg::Str(&call.from.handle)]);
-                model.toast_with(text, Icon::USERS, Cue::Notify);
+                model.announce(Kind::System, Act::None, text, Icon::USERS, Cue::Notify);
             }
             Notice::CallEnded(callee, reason) => {
                 let text = match reason {
@@ -407,7 +422,13 @@ impl OnlineService {
             Notice::PartyInvitation(invitation) => {
                 let text = S::PartyInvitationArrived
                     .format(language, &[Arg::Str(&invitation.from.handle)]);
-                model.toast_with(text, Icon::USERS, Cue::Invite);
+                model.announce(
+                    Kind::Invitation,
+                    Act::JoinParty(invitation.id.clone()),
+                    text,
+                    Icon::USERS,
+                    Cue::Invite,
+                );
             }
             // A message toast only tells what the open panel does not already show.
             Notice::Message { message, .. } if model.overlay != Some(Overlay::Friends) => {
@@ -421,7 +442,13 @@ impl OnlineService {
                         )),
                     ],
                 );
-                model.toast_with(text, Icon::ENVELOPE_SIMPLE, Cue::Message);
+                model.announce(
+                    Kind::Message,
+                    Act::OpenMessages(Some(message.conversation.clone())),
+                    text,
+                    Icon::ENVELOPE_SIMPLE,
+                    Cue::Message,
+                );
             }
             Notice::MessageRequest(request) if model.overlay != Some(Overlay::Friends) => {
                 let me = model.online.account.as_ref().map(|a| a.id);
@@ -430,7 +457,13 @@ impl OnlineService {
                     .map(|a| a.handle.clone())
                     .unwrap_or_default();
                 let text = S::MessageRequestArrived.format(language, &[Arg::Str(&from)]);
-                model.toast_with(text, Icon::ENVELOPE_SIMPLE, Cue::Message);
+                model.announce(
+                    Kind::Message,
+                    Act::OpenMessages(Some(request.id.clone())),
+                    text,
+                    Icon::ENVELOPE_SIMPLE,
+                    Cue::Message,
+                );
             }
             // The open panel shows it; the sound still says it arrived.
             Notice::Message { .. } | Notice::MessageRequest(_) => model.sound(Cue::Message),

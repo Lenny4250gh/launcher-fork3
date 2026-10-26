@@ -178,10 +178,77 @@ impl CapturesText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            CapturesText::Title => "Aufnahmen",
+            CapturesText::FilterAll => "Alle",
+            CapturesText::FilterScreenshots => "Screenshots",
+            CapturesText::FilterClips => "Clips",
+            CapturesText::Screenshot => "Screenshot",
+            CapturesText::Clip => "Clip",
+            CapturesText::Loading => "Aufnahmen werden geladen",
+            CapturesText::EmptyTitle => "Noch keine Aufnahmen",
+            CapturesText::EmptyBody => {
+                "Mach in einem Spiel einen Screenshot (standardmäßig F12). Schalte Clips ein, um die letzten Sekunden als Video zu behalten."
+            }
+            CapturesText::EmptyBodyShotsOnly => {
+                "Mach in einem Spiel einen Screenshot (standardmäßig F12)."
+            }
+            CapturesText::OpenClipsSettings => "Clip-Einstellungen öffnen",
+            CapturesText::NoScreenshots => "Noch keine Screenshots",
+            CapturesText::NoClips => "Noch keine Clips",
+            CapturesText::NoClipsBody => {
+                "Schalte Clips in den Einstellungen ein, um die letzten Sekunden eines Spiels als Video zu behalten."
+            }
+            CapturesText::ShowAll => "Alle Aufnahmen anzeigen",
+            CapturesText::MissingTitle => "Screenshot-Ordner nicht gefunden",
+            CapturesText::MissingBody => {
+                "%@ fehlt. Mach in einem Spiel einen Screenshot, um den Ordner zu erstellen, oder wähle in den Einstellungen einen anderen."
+            }
+            CapturesText::OpenFolderSettings => "Ordner-Einstellungen öffnen",
+            CapturesText::FailedTitle => "Aufnahmen konnten nicht gelesen werden",
+            CapturesText::FailedBody => {
+                "AnyPlay konnte %@ nicht lesen. Prüfe, ob du den Ordner öffnen darfst, und versuche es dann erneut."
+            }
+            CapturesText::TryAgain => "Erneut versuchen",
+            CapturesText::OtherGame => "Weitere Aufnahmen",
+            CapturesText::OpenInPlayer => "Im Player öffnen",
+            CapturesText::ShowInFolder => "Im Ordner anzeigen",
+            CapturesText::CopyImage => "Bild kopieren",
+            CapturesText::Delete => "Löschen",
+            CapturesText::Previous => "Vorherige Aufnahme",
+            CapturesText::Next => "Nächste Aufnahme",
+            CapturesText::Position => "%@ von %@",
+            CapturesText::ClipNote => "Wird in deinem Videoplayer abgespielt",
+            CapturesText::DeleteScreenshotTitle => "Diesen Screenshot löschen?",
+            CapturesText::DeleteClipTitle => "Diesen Clip löschen?",
+            CapturesText::DeleteBody => {
+                "%@ wird von deinem PC entfernt. Das lässt sich nicht rückgängig machen."
+            }
+            CapturesText::DeleteScreenshot => "Screenshot löschen",
+            CapturesText::DeleteClip => "Clip löschen",
+            CapturesText::Cancel => "Abbrechen",
+            CapturesText::Deleted => "%@ gelöscht",
+            CapturesText::DeleteFailed => "%@ konnte nicht gelöscht werden.",
+            CapturesText::Copied => "Bild kopiert",
+            CapturesText::CopyFailed => "Das Bild konnte nicht kopiert werden.",
+            CapturesText::PlayerFailed => "Der Videoplayer konnte nicht geöffnet werden.",
+            CapturesText::FolderFailed => "Der Ordner konnte nicht geöffnet werden.",
+            CapturesText::SendToFriend => "An einen Freund senden",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

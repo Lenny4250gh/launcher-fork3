@@ -143,6 +143,19 @@ impl Os {
 }
 
 /// Reads one environment variable; empty values count as unset. A parameter so tests can fake it.
+/// Whether the launcher runs in the Steam Deck's Gaming Mode (or another gamescope session): a
+/// pad is the only input there, and the window fills the screen.
+pub fn gaming_mode(var: Vars) -> bool {
+    let set = |name: &str| var(name).is_some_and(|v| v != "0");
+    if set("SteamDeck") || set("SteamGamepadUI") || set("GAMESCOPE_WAYLAND_DISPLAY") {
+        return true;
+    }
+    let text = |name: &str| var(name).map(|v| v.to_string_lossy().to_ascii_lowercase());
+    text("XDG_CURRENT_DESKTOP").is_some_and(|d| d.contains("gamescope"))
+        || text("XDG_SESSION_DESKTOP").is_some_and(|d| d.contains("gamescope"))
+        || text("WAYLAND_DISPLAY").is_some_and(|d| d.starts_with("gamescope"))
+}
+
 pub type Vars<'a> = &'a dyn Fn(&str) -> Option<OsString>;
 
 /// The real environment.
@@ -468,6 +481,15 @@ mod tests {
                 .find(|(k, v)| *k == name && !v.is_empty())
                 .map(|(_, v)| OsString::from(*v))
         }
+    }
+    #[test]
+    fn gaming_mode_is_the_deck_or_gamescope() {
+        assert!(gaming_mode(&vars(&[("SteamDeck", "1")])));
+        assert!(gaming_mode(&vars(&[("XDG_CURRENT_DESKTOP", "gamescope")])));
+        assert!(gaming_mode(&vars(&[("WAYLAND_DISPLAY", "gamescope-0")])));
+        assert!(!gaming_mode(&vars(&[("SteamDeck", "0")])));
+        assert!(!gaming_mode(&vars(&[("XDG_CURRENT_DESKTOP", "KDE")])));
+        assert!(!gaming_mode(&vars(&[])));
     }
 
     #[test]

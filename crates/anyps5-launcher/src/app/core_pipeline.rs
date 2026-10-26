@@ -431,6 +431,7 @@ impl CorePipeline {
         let launcher_language = match prefs.language {
             settings::Language::Turkish => 19,
             settings::Language::English => 1,
+            settings::Language::German => 4,
         };
         let fonts = fonts::resolve(
             &self.paths,

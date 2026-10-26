@@ -19,7 +19,7 @@ use egui::{Context, Painter, Rect, pos2};
 use crate::ui::anim::{AnimExt, Motion};
 use crate::ui::blur::{BlurChain, BlurPipelines, BlurSettings, DOWNSCALE};
 use crate::ui::gpu::{self, BACKDROP_FORMAT, Target};
-use crate::ui::theme::Theme;
+use crate::ui::theme::{Palette, Theme};
 
 /// Slot used by the main window backdrop (blurred by glass panels).
 pub const SLOT_MAIN: u32 = 0;
@@ -111,6 +111,8 @@ pub struct Backdrop {
     /// Mac style: the window is see-through. The backdrop is a still of the theme over a dark
     /// plate, seen through at `GLASS_VEIL`; nothing moves, so nothing is redrawn.
     pub window_glass: bool,
+    /// The tones of Game Colors, which the app moves toward the selected game's colours.
+    game_palette: Palette,
 }
 
 /// The theme still's opacity over the plate while the window is see-through (docs/DESIGN.md 19.2).
@@ -129,6 +131,7 @@ impl Backdrop {
             paused: false,
             blur: Some(BlurSettings::default()),
             window_glass: false,
+            game_palette: Theme::GameColors.palette(),
         }
     }
 
@@ -142,6 +145,17 @@ impl Backdrop {
 
     pub fn theme(&self) -> Theme {
         self.theme
+    }
+
+    /// The tones Game Colors paints with, now.
+    pub fn game_palette(&self) -> Palette {
+        self.game_palette
+    }
+
+    /// Sets the tones Game Colors paints with. The app calls it every frame while it eases from
+    /// one game's colours to the next; other themes ignore it.
+    pub fn set_game_palette(&mut self, palette: Palette) {
+        self.game_palette = palette;
     }
 
     /// Changes the theme; the old one fades out over `Motion::Fade` (easeInOut 0.55 s).
@@ -179,6 +193,7 @@ impl Backdrop {
             (self.clock.time(), 1.0)
         };
         let mut layer = Background::new(SLOT_MAIN, self.theme, time);
+        layer.palette = (self.theme == Theme::GameColors).then_some(self.game_palette);
         layer.blur = self.blur;
         layer.alpha = veil;
         layer.paint(painter, rect);
@@ -189,6 +204,7 @@ impl Backdrop {
                 self.fade_from = None;
             } else {
                 let mut old = Background::new(SLOT_FADE, from, time);
+                old.palette = (from == Theme::GameColors).then_some(self.game_palette);
                 old.alpha = alpha * veil;
                 old.paint(painter, rect);
             }
@@ -207,6 +223,8 @@ pub struct Background {
     /// Offscreen texture to render into; layers with different content need different slots.
     pub slot: u32,
     pub theme: Theme,
+    /// Tones to paint with instead of the theme's own (Game Colors).
+    pub palette: Option<Palette>,
     pub time: f32,
     /// Opacity of the layer when drawn (cross-fade).
     pub alpha: f32,
@@ -223,6 +241,7 @@ impl Background {
         Self {
             slot,
             theme,
+            palette: None,
             time,
             alpha: 1.0,
             blur: None,
@@ -272,6 +291,7 @@ struct BlitUniforms {
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct RenderKey {
     theme: Theme,
+    palette: [u32; 9],
     time_bits: u32,
     size: (u32, u32),
 }
@@ -591,20 +611,22 @@ impl egui_wgpu::CallbackTrait for BackgroundCallback {
             layer.slot,
             size,
         );
+        let palette = layer.palette.unwrap_or_else(|| layer.theme.palette());
+        let [d, m, b] = [palette.deep, palette.middle, palette.bright].map(|t| t.map(f32::to_bits));
         let key = RenderKey {
             theme: layer.theme,
+            palette: [d[0], d[1], d[2], m[0], m[1], m[2], b[0], b[1], b[2]],
             time_bits: layer.time.to_bits(),
             size,
         };
         if slot.last_key != Some(key) {
-            let palette = layer.theme.palette();
             let uniforms = BgUniforms {
                 deep: [palette.deep[0], palette.deep[1], palette.deep[2], 1.0],
                 middle: [palette.middle[0], palette.middle[1], palette.middle[2], 1.0],
                 bright: [palette.bright[0], palette.bright[1], palette.bright[2], 1.0],
                 size: [size.0 as f32, size.1 as f32],
                 time: layer.time,
-                theme: layer.theme.index(),
+                theme: layer.theme.shader_index(),
             };
             queue.write_buffer(&slot.bg_uniform, 0, bytemuck::bytes_of(&uniforms));
             let mut pass = gpu::begin_pass(encoder, "theme background", &slot.target.view);

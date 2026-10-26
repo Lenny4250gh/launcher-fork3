@@ -76,6 +76,11 @@ fn yes() -> bool {
     true
 }
 
+/// A volume that has not been touched: full, as the sounds always were.
+fn hundred() -> u8 {
+    100
+}
+
 fn default_window_size() -> u32 {
     75
 }
@@ -97,6 +102,9 @@ impl Playtime {
         self.seconds > 0 || self.sessions > 0
     }
 }
+
+/// How many games of [`Preferences::new_games`] are kept.
+pub const NEW_GAMES_KEPT: usize = 12;
 
 /// How many days of [`Preferences::playtime_days`] are kept.
 pub const PLAYTIME_DAYS: i64 = 60;
@@ -362,13 +370,18 @@ pub enum Language {
     #[default]
     #[serde(rename = "en")]
     English,
+    #[serde(rename = "de")]
+    German,
 }
 
 impl Language {
-    /// Turkish for any locale tag starting with `tr`, English otherwise.
+    /// Turkish for any locale tag starting with `tr`, German for `de`, English otherwise.
     pub fn from_locale(tag: &str) -> Language {
-        if tag.to_ascii_lowercase().starts_with("tr") {
+        let tag = tag.to_ascii_lowercase();
+        if tag.starts_with("tr") {
             Language::Turkish
+        } else if tag.starts_with("de") {
+            Language::German
         } else {
             Language::English
         }
@@ -379,6 +392,7 @@ impl Language {
         match self {
             Language::Turkish => 19,
             Language::English => 1,
+            Language::German => 4,
         }
     }
 }
@@ -390,6 +404,8 @@ pub enum Theme {
     Cosmic,
     Aurora,
     Sunset,
+    /// The colours of the selected game's art (0.3.0).
+    GameColors,
 }
 
 impl Serialize for Theme {
@@ -398,6 +414,7 @@ impl Serialize for Theme {
             Theme::Cosmic => 0,
             Theme::Aurora => 1,
             Theme::Sunset => 2,
+            Theme::GameColors => 3,
         })
     }
 }
@@ -407,6 +424,7 @@ impl<'de> Deserialize<'de> for Theme {
         Ok(match u64::deserialize(d)? {
             1 => Theme::Aurora,
             2 => Theme::Sunset,
+            3 => Theme::GameColors,
             _ => Theme::Cosmic,
         })
     }
@@ -465,7 +483,17 @@ fn one() -> u32 {
     1
 }
 
+/// The stick dead zone of the launcher's pad navigation, in percent.
+pub const DEFAULT_PAD_DEADZONE: u8 = 25;
+
+fn default_pad_deadzone() -> u8 {
+    DEFAULT_PAD_DEADZONE
+}
+
 /// The launcher's own settings (`%APPDATA%\AnyPS5\preferences.json`).
+/// The release whose "What's New" showcase is shown once after an update (and again from About).
+pub const WHATS_NEW_RELEASE: &str = "0.3.0";
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Preferences {
@@ -473,6 +501,10 @@ pub struct Preferences {
     pub version: u32,
     #[serde(default)]
     pub onboarded: bool,
+    /// The release whose showcase the player has seen. A file without it is from an older
+    /// launcher, so the showcase shows once; a first start has nothing to catch up on.
+    #[serde(default)]
+    pub whats_new_seen: String,
     #[serde(default, deserialize_with = "lenient")]
     pub language: Language,
     #[serde(default, deserialize_with = "lenient")]
@@ -496,6 +528,27 @@ pub struct Preferences {
     /// The selected game's own music (`sce_sys/snd0.at9`) in place of the home screen music.
     #[serde(default = "yes")]
     pub game_music: bool,
+    /// How loud the interface sounds are, 0 to 100 percent.
+    #[serde(default = "hundred")]
+    pub volume_interface: u8,
+    /// How loud the home screen music is, 0 to 100 percent.
+    #[serde(default = "hundred")]
+    pub volume_music: u8,
+    /// How loud the selected game's own music is, 0 to 100 percent.
+    #[serde(default = "hundred")]
+    pub volume_game_music: u8,
+    /// How loud notification sounds (a message, a request, an invitation, a call) are, 0 to 100.
+    #[serde(default = "hundred")]
+    pub volume_notifications: u8,
+    /// Notification sounds are on; off mutes them while the interface sounds go on.
+    #[serde(default = "yes")]
+    pub notification_sounds: bool,
+    /// Larger Text: the type scale one step up.
+    #[serde(default)]
+    pub larger_text: bool,
+    /// High Contrast: brighter ink and edges, no glass blur.
+    #[serde(default)]
+    pub high_contrast: bool,
     /// The running game on the player's Discord profile. Off until the player turns it on: it
     /// tells other people what they play (7.4).
     #[serde(default)]
@@ -513,6 +566,17 @@ pub struct Preferences {
     /// there at that moment is not prepared, only what comes later.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub known_games: Option<BTreeSet<String>>,
+    /// How the library page orders the games (`recent`, `name`, `size`, `status`); empty is
+    /// `name`, the order of the home screen. The launcher ignores what it does not know.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub library_sort: String,
+    /// Which games the library page shows (`all`, `ready`, `locked`, `together`); empty is `all`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub library_filter: String,
+    /// The games that appeared after the first scan, oldest first: the home screen shelf "New"
+    /// shows those not played yet. At most [`NEW_GAMES_KEPT`] stay.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub new_games: Vec<String>,
     /// Games that appeared and still wait for their preparation.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub prepare_pending: BTreeSet<String>,
@@ -523,6 +587,21 @@ pub struct Preferences {
     /// How strongly the controller vibrates to answer an action; never while a game has the pad.
     #[serde(default)]
     pub vibration: Vibration,
+    /// How far the left stick must lean before the launcher's own pad navigation hears it, in
+    /// percent (Controllers page). 25 is the long-standing feel.
+    #[serde(default = "default_pad_deadzone")]
+    pub pad_deadzone: u8,
+    /// The pad buttons the player moved off their default jobs in the launcher's own navigation
+    /// (`select`, `back`, `options`, `previous`, `next` to button names); a role that is not
+    /// listed keeps its default. Games keep their own bindings.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub nav_pad: BTreeMap<String, Vec<String>>,
+    /// The same for the keyboard (key names).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub nav_keys: BTreeMap<String, Vec<String>>,
+    /// The DualSense light bar colour the player chose (`RRGGBB`); `None` leaves it alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lightbar: Option<String>,
     /// Hidden trophies that are not earned show their name and description in the trophy list.
     /// Local only: the network never sees it.
     #[serde(default)]
@@ -625,6 +704,16 @@ pub struct Preferences {
     /// The hotkey that saves a clip, like `Alt+F12`; `None` is [`crate::clips::DEFAULT_HOTKEY`].
     #[serde(default)]
     pub clips_hotkey: Option<String>,
+    /// Broadcast: the service (`twitch`, `youtube` or `custom`; see [`crate::broadcast::Service`]).
+    /// The stream key is not a preference: it is kept by [`crate::broadcast::save_key`].
+    #[serde(default)]
+    pub broadcast_service: String,
+    /// Broadcast: the server address of a custom service.
+    #[serde(default)]
+    pub broadcast_server: String,
+    /// Broadcast: the index of the quality preset ([`crate::broadcast::QUALITIES`]).
+    #[serde(default)]
+    pub broadcast_quality: u32,
     /// The run-report questions already answered or dismissed, by [`run_question_key`]: each is
     /// asked once.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
@@ -639,6 +728,7 @@ impl Default for Preferences {
         Preferences {
             version: 1,
             onboarded: false,
+            whats_new_seen: WHATS_NEW_RELEASE.to_owned(),
             language: Language::English,
             theme: Theme::Cosmic,
             accent: None,
@@ -649,14 +739,28 @@ impl Default for Preferences {
             sounds: true,
             music: true,
             game_music: true,
+            volume_interface: 100,
+            volume_music: 100,
+            volume_game_music: 100,
+            volume_notifications: 100,
+            notification_sounds: true,
+            larger_text: false,
+            high_contrast: false,
             discord_presence: false,
             discord_join_button: true,
             hide_while_playing: false,
             prepare_games: true,
             known_games: None,
+            library_sort: String::new(),
+            library_filter: String::new(),
+            new_games: Vec::new(),
             prepare_pending: BTreeSet::new(),
             ps_button: true,
             vibration: Vibration::Medium,
+            pad_deadzone: default_pad_deadzone(),
+            nav_pad: BTreeMap::new(),
+            nav_keys: BTreeMap::new(),
+            lightbar: None,
             show_hidden_trophies: false,
             fullscreen: fills_screen(),
             glass_window: true,
@@ -688,6 +792,9 @@ impl Default for Preferences {
             phone_ludusctrl: false,
             clips_seconds: 0,
             clips_hotkey: None,
+            broadcast_service: String::new(),
+            broadcast_server: String::new(),
+            broadcast_quality: 0,
             run_asked: BTreeSet::new(),
             extra: Map::new(),
         }
@@ -866,6 +973,26 @@ impl Preferences {
         *day = day.saturating_add(seconds);
         days.retain(|day, _| *day >= oldest);
         self.playtime_days.retain(|_, days| !days.is_empty());
+    }
+
+    /// Seconds a game was played on the last `days` UTC days up to and including today (`now` in
+    /// Unix seconds). Days older than [`PLAYTIME_DAYS`] are gone, so more than that counts no more.
+    pub fn playtime_recent(&self, id: &GameId, days: i64, now: i64) -> u64 {
+        let since = utc_day(now - (days.max(1) - 1) * 86_400);
+        self.playtime_days.get(id.as_str()).map_or(0, |per_day| {
+            per_day
+                .iter()
+                .filter(|(day, _)| **day >= since)
+                .fold(0u64, |sum, (_, seconds)| sum.saturating_add(*seconds))
+        })
+    }
+
+    /// Seconds played in all games on the last `days` UTC days (this week: 7).
+    pub fn playtime_recent_total(&self, days: i64, now: i64) -> u64 {
+        self.playtime_days
+            .keys()
+            .map(|key| self.playtime_recent(&GameId::from_key(key.as_str()), days, now))
+            .fold(0u64, u64::saturating_add)
     }
 
     /// The folder for F12 screenshots: the chosen one or `Pictures\AnyPS5`.
@@ -1178,7 +1305,10 @@ mod tests {
     fn language_from_locale() {
         assert_eq!(Language::from_locale("tr-TR"), Language::Turkish);
         assert_eq!(Language::from_locale("TR"), Language::Turkish);
-        assert_eq!(Language::from_locale("de-DE"), Language::English);
+        assert_eq!(Language::from_locale("de-DE"), Language::German);
+        assert_eq!(Language::from_locale("de"), Language::German);
+        assert_eq!(Language::from_locale("fr-FR"), Language::English);
+        assert_eq!(Language::German.console_language(), 4);
         assert_eq!(Language::Turkish.console_language(), 19);
         assert_eq!(Language::English.console_language(), 1);
     }
@@ -1252,6 +1382,23 @@ mod tests {
         );
         let old: Preferences = serde_json::from_str(r#"{"version":1}"#).unwrap();
         assert!(old.playtime_days.is_empty());
+    }
+
+    #[test]
+    fn recent_playtime_counts_the_last_days_only() {
+        let mut prefs = Preferences::default();
+        let id = GameId::from_key("a");
+        let other = GameId::from_key("b");
+        let now = 1_700_000_000;
+        prefs.add_playtime_day(&id, 100, now);
+        prefs.add_playtime_day(&id, 50, now - 6 * 86_400);
+        prefs.add_playtime_day(&id, 7, now - 7 * 86_400);
+        prefs.add_playtime_day(&other, 20, now - 86_400);
+        assert_eq!(prefs.playtime_recent(&id, 7, now), 150);
+        assert_eq!(prefs.playtime_recent(&id, 1, now), 100);
+        assert_eq!(prefs.playtime_recent(&id, 30, now), 157);
+        assert_eq!(prefs.playtime_recent_total(7, now), 170);
+        assert_eq!(prefs.playtime_recent(&GameId::from_key("none"), 7, now), 0);
     }
 
     #[test]
@@ -1431,6 +1578,8 @@ mod tests {
         assert_eq!(prefs.theme, Theme::Cosmic);
         assert_eq!(prefs.accent, None);
         assert_eq!(prefs.backdrop, Backdrop::Theme);
+        assert_eq!(prefs.volume_music, 100);
+        assert!(prefs.notification_sounds && !prefs.larger_text && !prefs.high_contrast);
         assert_eq!(prefs.language, Language::English);
         assert_eq!(prefs.cpu_conversion, CpuConversion::Auto);
     }

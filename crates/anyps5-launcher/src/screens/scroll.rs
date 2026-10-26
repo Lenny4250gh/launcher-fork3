@@ -9,6 +9,14 @@ use egui::{Context, Id};
 
 use crate::ui::anim::{AnimExt, Motion};
 
+/// How a list can be scrolled: the wheel, the bar, and a drag of the content with the mouse,
+/// which carries on with momentum when let go, like a phone. Click-only rows and tiles still
+/// click: egui cancels a click once the pointer has travelled.
+pub fn drag_scroll() -> egui::containers::scroll_area::ScrollSource {
+    use egui::containers::scroll_area::ScrollSource;
+    ScrollSource::default() | ScrollSource::DRAG
+}
+
 /// Scroll offset that centres an item, never past the ends.
 pub fn centred_offset(top: f32, height: f32, viewport: f32, content: f32) -> f32 {
     let max = (content - viewport).max(0.0);

@@ -230,7 +230,7 @@ pub fn rarity_text(percent: f32, language: Language) -> String {
         Rarity::Common => F::RarityCommon,
     };
     let mut number = format!("{percent:.1}");
-    if language == Language::Turkish {
+    if matches!(language, Language::Turkish | Language::German) {
         number = number.replace('.', ",");
     }
     F::RarityFact.format(
@@ -357,7 +357,8 @@ impl OnlinePanel {
     pub(super) fn feed_state(&self, data: &OnlineData<'_>) -> (Icon, F, Option<F>) {
         let online = data.online;
         if !online.feed.loaded && online.feed.error.is_none() {
-            if online.is_online() {
+            // Still connecting is not offline: the page waits instead of announcing a loss.
+            if online.is_online() || online.cloud != Some(anyps5_core::online::Cloud::Offline) {
                 (Icon::ARROWS_CLOCKWISE, F::Loading, None)
             } else {
                 (Icon::CLOUD, F::Offline, Some(F::OfflineNote))
@@ -545,6 +546,7 @@ fn list(
     let mut events = Vec::new();
     let mut geometry: Vec<(f32, f32)> = Vec::with_capacity(cards.len() + 1);
     let mut area = ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden);

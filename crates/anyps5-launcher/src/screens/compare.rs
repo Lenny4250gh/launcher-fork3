@@ -459,6 +459,7 @@ impl CompareScreen {
         let focus = open.then_some(self.index.min(ready.rows.len().saturating_sub(1)));
         let (follow, scroll_to) = Follow::begin(&ctx, id, focus);
         let mut area = egui::ScrollArea::vertical()
+            .scroll_source(crate::screens::scroll::drag_scroll())
             .id_salt(id)
             .auto_shrink([false, false])
             .scroll_bar_visibility(

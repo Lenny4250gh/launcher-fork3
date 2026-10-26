@@ -214,10 +214,132 @@ texts! {
 }
 
 impl LfgText {
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            LfgText::FindPlayers => "Mitspieler finden",
+            LfgText::FindPlayersDetail => "Spieler, die dieses Spiel besitzen und eine Gruppe suchen",
+            LfgText::PostListing => "Gesuch erstellen",
+            LfgText::PostListingDetail => "1 Stunde lang offen",
+            LfgText::YourListing => "Dein Gesuch",
+            LfgText::YourListingDetail => "%@ Anfragen · noch %@ Min.",
+            LfgText::OpenListings => "Offene Gesuche",
+            LfgText::FilterMode => "Modus",
+            LfgText::FilterLanguage => "Sprache",
+            LfgText::ModeAll => "Alle Modi",
+            LfgText::ModeOnline => "Online",
+            LfgText::ModeLan => "LAN",
+            LfgText::ModePlayTogether => "Gemeinsam spielen",
+            LfgText::LanguageAny => "Jede Sprache",
+            LfgText::NobodyTitle => "Gerade sucht niemand",
+            LfgText::NobodyBody => {
+                "Erstelle ein Gesuch, dann können andere Besitzer dieses Spiels anfragen."
+            }
+            LfgText::Loading => "Gesuche werden gesucht …",
+            LfgText::LoadFailed => "Die Gesuche konnten nicht geladen werden.",
+            LfgText::TryAgain => "Erneut versuchen",
+            LfgText::SignedOut => "Melde dich im AnyPlay-Netzwerk an, um Mitspieler zu finden.",
+            LfgText::SignIn => "Anmelden",
+            LfgText::Offline => "Das Netzwerk ist nicht erreichbar. Prüfe deine Verbindung.",
+            LfgText::PlacesFree => "%@ von %@ Plätzen frei",
+            LfgText::MinutesLeft => "noch %@ Min.",
+            LfgText::Mode => "Modus",
+            LfgText::Language => "Sprache",
+            LfgText::Places => "Plätze",
+            LfgText::ClosesIn => "Endet in",
+            LfgText::NoNote => "Keine Notiz",
+            LfgText::AskToJoin => "Beitritt anfragen",
+            LfgText::AskToJoinDetail => {
+                "Der Ersteller entscheidet. Du hörst von ihm, wenn er annimmt."
+            }
+            LfgText::RequestSent => "Anfrage gesendet",
+            LfgText::RequestSentNote => "Warte auf die Antwort des Erstellers.",
+            LfgText::Withdraw => "Anfrage zurückziehen",
+            LfgText::Accepted => "Angenommen",
+            LfgText::AcceptedNote => "Die Gruppeneinladung wartet unter Freunde auf dich.",
+            LfgText::OpenFriends => "Freunde öffnen",
+            LfgText::Full => "Voll",
+            LfgText::ReportListing => "Gesuch melden",
+            LfgText::ReportTitle => "Warum meldest du dieses Gesuch?",
+            LfgText::ReportSpam => "Spam",
+            LfgText::ReportHarassment => "Belästigung",
+            LfgText::ReportOther => "Etwas anderes",
+            LfgText::BlockPoster => "%@ blockieren",
+            LfgText::Requests => "Anfragen",
+            LfgText::NoRequests => "Noch hat niemand angefragt.",
+            LfgText::Accept => "Annehmen",
+            LfgText::Decline => "Ablehnen",
+            LfgText::CloseListing => "Gesuch schließen",
+            LfgText::PostTitle => "Gesuch erstellen",
+            LfgText::Players => "Gesuchte Spieler",
+            LfgText::PlayersMany => "%@ Spieler",
+            LfgText::PlayersOne => "1 Spieler",
+            LfgText::Note => "Notiz",
+            LfgText::NoteCount => "%@ von %@ Zeichen",
+            LfgText::PostNow => "1 Stunde lang veröffentlichen",
+            LfgText::PostLimit => {
+                "Schließe zuerst eines deiner Gesuche. Du kannst eines pro Spiel und drei insgesamt haben."
+            }
+            LfgText::PostRate => "Du hast viele Gesuche erstellt. Versuche es in ein paar Minuten erneut.",
+            LfgText::PostRestricted => "Dein Konto kann gerade keine Gesuche erstellen.",
+            LfgText::PostBadNote => "Eine Notiz hat höchstens 140 Zeichen und keine Links.",
+            LfgText::PostFailed => {
+                "Das Gesuch konnte nicht veröffentlicht werden. Versuche es erneut."
+            }
+            LfgText::ToastPosted => "Gesuch für 1 Stunde veröffentlicht",
+            LfgText::ToastClosed => "Gesuch geschlossen",
+            LfgText::ToastAsked => "Anfrage gesendet",
+            LfgText::ToastAccepted => "Angenommen. Sie erhalten eine Gruppeneinladung von dir.",
+            LfgText::ToastRequest => "%@ möchte deinem Gesuch beitreten",
+            LfgText::ToastAcceptedBy => {
+                "%@ hat deine Anfrage angenommen. Die Gruppeneinladung ist unter Freunde."
+            }
+            LfgText::SendTitle => "An einen Freund senden",
+            LfgText::SendSubtitle => "%@",
+            LfgText::NoFriends => {
+                "Du hast noch keine Freunde, an die du senden kannst. Füge zuerst einen Freund hinzu."
+            }
+            LfgText::SendSignedOut => {
+                "Melde dich im AnyPlay-Netzwerk an, um Aufnahmen zu senden."
+            }
+            LfgText::SendFriendsOnly => "Aufnahmen gehen nur an Freunde.",
+            LfgText::SendNote => {
+                "Screenshots bis 10 MB, Clips bis 100 MB und 60 Sekunden. Die Cloud speichert sie 30 Tage."
+            }
+            LfgText::Sending => "Wird an %@ gesendet …",
+            LfgText::Sent => "An %@ gesendet",
+            LfgText::TooLargeImage => "Screenshots dürfen höchstens 10 MB groß sein.",
+            LfgText::TooLargeClip => "Clips dürfen höchstens 100 MB groß sein.",
+            LfgText::TooLongClip => "Clips dürfen höchstens 60 Sekunden lang sein.",
+            LfgText::Unsupported => {
+                "Nur PNG- und JPEG-Screenshots und MP4-Clips können gesendet werden."
+            }
+            LfgText::EmptyFile => "Die Datei ist leer.",
+            LfgText::SendFailed => "Die Aufnahme konnte nicht gesendet werden. Versuche es erneut.",
+            LfgText::SendRestricted => "Dein Konto kann gerade keine Aufnahmen senden.",
+            LfgText::SendRate => {
+                "Du hast viele Aufnahmen gesendet. Versuche es in ein paar Minuten erneut."
+            }
+            LfgText::Screenshot => "Screenshot",
+            LfgText::Clip => "Clip",
+            LfgText::Unavailable => "Nicht mehr verfügbar",
+            LfgText::OpenMedia => "Öffnen",
+            LfgText::OpenMediaDetail => "Lädt die Datei herunter und öffnet sie",
+            LfgText::OpenFailed => "Die Datei konnte nicht geöffnet werden.",
+            LfgText::Downloading => "Wird heruntergeladen …",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

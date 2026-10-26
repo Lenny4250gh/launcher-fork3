@@ -112,7 +112,7 @@ pub fn pattern(cue: Cue) -> &'static [Pulse] {
         Cue::Notify => &NOTIFY,
         Cue::Message => &MESSAGE,
         Cue::Invite => &INVITE,
-        Cue::Move | Cue::Hover | Cue::Boot => &[],
+        Cue::Move | Cue::Hover | Cue::Boot | Cue::TalkOn | Cue::TalkOff => &[],
     }
 }
 
@@ -168,6 +168,8 @@ enum Message {
 pub enum Asked {
     Play(Cue),
     Stop,
+    /// The test of the Controllers page.
+    Test,
 }
 
 /// The vibration thread and its mailbox.
@@ -227,6 +229,17 @@ impl Haptics {
             return;
         }
         self.send(Message::Play(steps));
+    }
+
+    /// The vibration test of the Controllers page: the light motor, then the heavy one, whatever
+    /// the setting says. The caller makes sure no game has the pad.
+    pub fn test(&mut self) {
+        if self.silent {
+            self.asked.push(Asked::Test);
+            return;
+        }
+        const TEST: [Pulse; 2] = [pulse(0, 300, 0.6, 0.0), pulse(450, 300, 0.0, 0.6)];
+        self.send(Message::Play(plan(&TEST, Level::Medium)));
     }
 
     /// Stops at once (a game took the pad, the setting went off).

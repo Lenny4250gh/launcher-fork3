@@ -238,10 +238,83 @@ impl UpdateText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            UpdateText::Row => "Launcher-Update",
+            UpdateText::Checking => "Wird geprüft…",
+            UpdateText::UpToDate => "Aktuell",
+            UpdateText::Downloading => "%@ wird geladen",
+            UpdateText::Verifying => "Wird überprüft",
+            UpdateText::Ready => "%@ bereit",
+            UpdateText::WaitingForGame => "Wartet auf dein Spiel",
+            UpdateText::Available => "%@ verfügbar",
+            UpdateText::NotReachable => "Prüfung nicht möglich",
+            UpdateText::NotInstalled => "Update fehlgeschlagen",
+            UpdateText::NoteDownloading => "Launcher %@ wird im Hintergrund geladen.",
+            UpdateText::NoteReady => {
+                "Starte jetzt neu, oder das Update wird beim nächsten Schließen des Launchers installiert."
+            }
+            UpdateText::NoteHolding => {
+                "Launcher %@ startet neu, sobald dein Spiel endet. Dein Spiel läuft weiter."
+            }
+            UpdateText::NoteReadOnly => {
+                "Der Launcher kann sich in diesem schreibgeschützten Ordner nicht selbst aktualisieren. Lade ihn von GitHub herunter."
+            }
+            UpdateText::NoteManual => {
+                "Dieser Launcher kann sich nicht selbst aktualisieren. Lade die neue Version von GitHub herunter oder nutze das AppImage, das sich selbst aktualisiert."
+            }
+            UpdateText::NoteOffline => {
+                "GitHub war nicht erreichbar. Der Launcher versucht es später erneut."
+            }
+            UpdateText::NoteRefused => {
+                "Das Update konnte nicht überprüft werden und wurde nicht installiert. Lade den neuesten Launcher von GitHub herunter."
+            }
+            UpdateText::NoteOther => {
+                "Das Update konnte nicht installiert werden. Lade den neuesten Launcher von GitHub herunter."
+            }
+            UpdateText::CancelRestart => "Neustart abbrechen",
+            UpdateText::Later => "Später",
+            UpdateText::WhatsNewIn => "Neu in %@",
+            UpdateText::Download => "Von GitHub herunterladen",
+            UpdateText::NoticeReady => "Launcher %@ ist bereit",
+            UpdateText::NoticeHolding => "Neustart, sobald dein Spiel endet",
+            UpdateText::NoticeName => "Launcher %@ ist bereit zur Installation",
+            UpdateText::NoticeHoldingName => "Launcher %@ startet neu, sobald dein Spiel endet",
+            UpdateText::SettingsBadge => "%@, Update bereit",
+            UpdateText::RequiredTitle => "Update erforderlich",
+            UpdateText::RequiredReason => "Für Online-Spiele braucht es AnyPlay Launcher %@.",
+            UpdateText::RequiredReasonUnknown => {
+                "Mit dieser Version von AnyPlay Launcher kannst du nicht mehr online spielen."
+            }
+            UpdateText::RequiredOnline => {
+                "Der Online-Bereich braucht den neuesten Launcher. Deine Spiele laufen weiterhin offline."
+            }
+            UpdateText::UpdateNow => "Jetzt aktualisieren",
+            UpdateText::PlayOffline => "Offline spielen",
+            UpdateText::TryAgain => "Erneut versuchen",
+            UpdateText::RequiredOffline => {
+                "GitHub war nicht erreichbar. Prüfe deine Verbindung und versuche es erneut."
+            }
+            UpdateText::RequiredNoNewer => {
+                "Noch kein neuerer Launcher gefunden. Versuche es gleich noch einmal."
+            }
+            UpdateText::RequiredNoteManual => {
+                "Lade die neue Version von GitHub herunter und installiere sie."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

@@ -21,6 +21,10 @@ pub fn tile_label(percent: Option<u32>, paused: bool, language: Language) -> Str
         (Language::Turkish, false, Some(p)) => format!("Haz\u{131}rlan\u{131}yor\u{2026} %{p}"),
         (Language::Turkish, true, None) => "Duraklat\u{131}ld\u{131}".to_owned(),
         (Language::Turkish, true, Some(p)) => format!("Duraklat\u{131}ld\u{131} \u{b7} %{p}"),
+        (Language::German, false, None) => "Wird vorbereitet\u{2026}".to_owned(),
+        (Language::German, false, Some(p)) => format!("Wird vorbereitet\u{2026} {p} %"),
+        (Language::German, true, None) => "Pausiert".to_owned(),
+        (Language::German, true, Some(p)) => format!("Pausiert \u{b7} {p} %"),
     }
 }
 
@@ -31,6 +35,8 @@ pub fn state_label(paused: bool, language: Language) -> &'static str {
         (Language::English, true) => "Paused",
         (Language::Turkish, false) => "Haz\u{131}rlan\u{131}yor",
         (Language::Turkish, true) => "Duraklat\u{131}ld\u{131}",
+        (Language::German, false) => "Wird vorbereitet",
+        (Language::German, true) => "Pausiert",
     }
 }
 
@@ -49,6 +55,12 @@ pub fn hero_note(paused: bool, language: Language) -> &'static str {
         (Language::Turkish, true) => {
             "PC'nin bo\u{15f} olmas\u{131} bekleniyor. Kendili\u{11f}inden devam eder; Oyna'ya bas\u{131}nca hemen ba\u{15f}lar."
         }
+        (Language::German, false) => {
+            "Das Spiel wird im Hintergrund vorbereitet. Mit Spielen kommt es nach vorn."
+        }
+        (Language::German, true) => {
+            "Wartet, bis der PC frei ist. Es geht von allein weiter, oder sofort, wenn du auf Spielen drückst."
+        }
     }
 }
 
@@ -57,6 +69,7 @@ pub fn paused_note(language: Language) -> &'static str {
     match language {
         Language::English => "Paused. Goes on when the PC is free.",
         Language::Turkish => "Duraklatıldı. PC boş olunca devam eder.",
+        Language::German => "Pausiert. Geht weiter, sobald der PC frei ist.",
     }
 }
 
@@ -84,6 +97,15 @@ pub fn time_left(seconds: f32, language: Language) -> String {
                 )
             } else {
                 substitute("Yakla\u{15f}\u{131}k %d sa kald\u{131}", &[Arg::Int(hours)])
+            }
+        }
+        Language::German => {
+            if seconds < 45.0 {
+                "Weniger als eine Minute übrig".to_owned()
+            } else if minutes < 90 {
+                substitute("Noch etwa %d Min.", &[Arg::Int(minutes.max(1))])
+            } else {
+                substitute("Noch etwa %d Std.", &[Arg::Int(hours)])
             }
         }
     }
@@ -139,6 +161,27 @@ pub fn failure(kind: FailureKind, language: Language) -> String {
         (Language::Turkish, FailureKind::Other) => {
             "Yeniden dene. Yine durursa %@ > %@ nedenini gösterir; %@ bunu bize gönderir."
         }
+        (Language::German, FailureKind::ToolkitMissing) => {
+            "Es ist kein Toolkit installiert. Installiere eins unter %@ > %@ und schalte dann noch einmal frei."
+        }
+        (Language::German, FailureKind::DiskFull) => {
+            "Das Laufwerk für freigeschaltete Spiele ist voll. Schaffe Platz und versuch es dann noch einmal."
+        }
+        (Language::German, FailureKind::LocationMissing) => {
+            "Der Ordner für freigeschaltete Spiele ist nicht da. Schließ das Laufwerk an oder wähle unter %@ > %@ einen anderen Ordner."
+        }
+        (Language::German, FailureKind::FileInUse) => {
+            "Ein anderes Programm hält eine Datei des Spiels fest. Schließ es oder pausiere seinen Scan des Spieleordners und versuch es dann noch einmal."
+        }
+        (Language::German, FailureKind::BadDump) => {
+            "Dieser Dump ist nicht brauchbar. Erstelle den Dump des Spiels noch einmal auf deiner Konsole und ersetze den Ordner."
+        }
+        (Language::German, FailureKind::Converter) => {
+            "Der Konverter wurde angehalten. Versuch es noch einmal. Wenn er wieder anhält, zeigt dir %@ > %@ den Grund, und %@ schickt ihn an uns."
+        }
+        (Language::German, FailureKind::Other) => {
+            "Versuch es noch einmal. Wenn es wieder anhält, zeigt dir %@ > %@ den Grund, und %@ schickt ihn an uns."
+        }
     };
     let names: &[&str] = match kind {
         FailureKind::ToolkitMissing => &[settings, toolkit],
@@ -161,6 +204,9 @@ pub fn pinned_toolkit_missing(language: Language) -> String {
         Language::Turkish => {
             "Bu oyunun kullandığı araç seti yok. %@ > %@ bölümünden başka birini seç, sonra yeniden kilidi aç."
         }
+        Language::German => {
+            "Das Toolkit, bei dem dieses Spiel bleibt, ist weg. Wähle unter %@ > %@ ein anderes und schalte dann noch einmal frei."
+        }
     };
     substitute(template, &[Arg::Str(options), Arg::Str(row)])
 }
@@ -170,6 +216,7 @@ pub fn failure_headline(language: Language) -> &'static str {
     match language {
         Language::English => "Unlocking stopped.",
         Language::Turkish => "Kilit a\u{e7}ma durdu.",
+        Language::German => "Das Freischalten wurde angehalten.",
     }
 }
 
@@ -178,6 +225,7 @@ pub fn prepare_failed(language: Language) -> &'static str {
     match language {
         Language::English => "Could not prepare",
         Language::Turkish => "Haz\u{131}rlanamad\u{131}",
+        Language::German => "Vorbereitung fehlgeschlagen",
     }
 }
 
@@ -186,6 +234,7 @@ pub fn setting(language: Language) -> &'static str {
     match language {
         Language::English => "Prepare New Games Automatically",
         Language::Turkish => "Yeni oyunlar\u{131} otomatik haz\u{131}rla",
+        Language::German => "Neue Spiele automatisch vorbereiten",
     }
 }
 
@@ -196,6 +245,9 @@ pub fn setting_detail(language: Language) -> &'static str {
         }
         Language::Turkish => {
             "PC bo\u{15f}tayken yeni oyunlar\u{131}n kilidini arka planda a\u{e7}ar; oynamak istedi\u{11f}inde haz\u{131}r olurlar. Bir oyun ba\u{15f}lay\u{131}nca durur."
+        }
+        Language::German => {
+            "Schaltet neue Spiele im Hintergrund frei, solange der PC nichts zu tun hat, damit sie bereit sind, wenn du spielen willst. Hört auf, sobald ein Spiel startet."
         }
     }
 }
