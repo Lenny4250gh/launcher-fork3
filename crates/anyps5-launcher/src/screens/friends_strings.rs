@@ -132,10 +132,62 @@ impl FriendsText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            FriendsText::Activity => "Aktivität",
+            FriendsText::Settings => "Einstellungen",
+            FriendsText::OnlineSettings => "Online-Einstellungen",
+            FriendsText::PlayingNow => "Spielen gerade",
+            FriendsText::OnlineCaption => "Online",
+            FriendsText::OfflineCaption => "Offline",
+            FriendsText::CountMany => "%@ Freunde aktiv",
+            FriendsText::CountOne => "1 Freund aktiv",
+            FriendsText::CountNone => "Keine Freunde aktiv",
+            FriendsText::ActionJoin => "Beitreten",
+            FriendsText::ActionMessage => "Nachricht",
+            FriendsText::MoreAbout => "Optionen",
+            FriendsText::ConnectingNote => "Verbinde mit dem Netzwerk…",
+            FriendsText::OfflineNote => {
+                "Du bist offline. Freunde und Nachrichten aktualisieren sich, sobald die Verbindung wieder da ist."
+            }
+            FriendsText::TryAgain => "Erneut versuchen",
+            FriendsText::RequestOffline => {
+                "Möchte dein Freund sein. Antworte, wenn du online bist."
+            }
+            FriendsText::ComposerOffline => {
+                "Du bist offline. Schreiben geht wieder, sobald die Verbindung da ist."
+            }
+            FriendsText::NoFriendsTitle => "Noch keine Freunde",
+            FriendsText::NoFriendsNote => {
+                "Freunde erscheinen hier mit dem, was sie spielen. Füge jemanden über den gewählten Namen hinzu."
+            }
+            FriendsText::NoConversationsTitle => "Noch keine Unterhaltungen",
+            FriendsText::NoConversationsNote => {
+                "Nachrichten mit Freunden und Gruppen findest du hier. Öffne die Seite eines Freundes und wähle Nachricht senden."
+            }
+            FriendsText::OfflineTitle => "Du bist offline",
+            FriendsText::PartyOfflineNote => {
+                "Eine Party braucht eine Verbindung. Versuche es erneut, sobald sie wieder da ist."
+            }
+            FriendsText::NotInParty => "Du bist in keiner Party",
+            FriendsText::NotInPartyNote => {
+                "Eine Party hält dich über Spiele hinweg mit Chat und Sprache zusammen."
+            }
+            FriendsText::WaitingName => "%@, %@ neu",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

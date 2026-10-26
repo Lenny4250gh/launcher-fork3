@@ -153,6 +153,13 @@ pub enum ScreenPage {
     SavesEmpty,
     /// The question before one is put back.
     Restore,
+    /// The unlocked copies and the room they take: three of them, or none.
+    Storage,
+    StorageEmpty,
+    /// The question before an unlocked copy is removed.
+    RemoveCopy,
+    /// The search of the library page.
+    LibrarySearch,
     /// The question when the release a game stays on is gone.
     ToolkitMissing,
     /// The online area on one of its pages, over invented friends.
@@ -799,6 +806,10 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "saves" => ScreenPage::Saves,
         "saves-empty" => ScreenPage::SavesEmpty,
         "restore" => ScreenPage::Restore,
+        "storage" => ScreenPage::Storage,
+        "storage-empty" => ScreenPage::StorageEmpty,
+        "remove-copy" => ScreenPage::RemoveCopy,
+        "library-search" => ScreenPage::LibrarySearch,
         "toolkit-missing" => ScreenPage::ToolkitMissing,
         "friends-signin" => ScreenPage::Online(OnlineLook::Start),
         "friends-browser" => ScreenPage::Online(OnlineLook::Browser),
@@ -1968,6 +1979,9 @@ pub struct ScreenGallery {
     uninstall: UninstallPanel,
     saves: SavesPanel,
     restore: RestorePanel,
+    storage: crate::screens::library_storage::StoragePanel,
+    remove_copy: crate::screens::library_storage::RemovePanel,
+    library_search: crate::screens::library_search::SearchPanel,
     missing: crate::screens::toolkit_pin::MissingPanel,
     friends: crate::screens::friends::FriendsScreen,
     online: anyps5_core::online::Online,
@@ -2010,9 +2024,11 @@ impl ScreenGallery {
     ) -> Self {
         let mut prefs = Preferences::first_run();
         prefs.theme = crate::screens::convert::theme_to_core(theme);
-        // --tr shows the page in Turkish.
+        // --tr shows the page in Turkish, --de in German.
         if language == crate::ui::i18n::Language::Turkish {
             prefs.language = anyps5_core::settings::Language::Turkish;
+        } else if language == crate::ui::i18n::Language::German {
+            prefs.language = anyps5_core::settings::Language::German;
         }
         prefs.onboarded = true;
         prefs.profile_name = "Mira".into();
@@ -2065,7 +2081,7 @@ impl ScreenGallery {
                 notes: ReleaseNotes::parse(SAMPLE_NOTES),
             },
             launcher_notes: Published {
-                tag: "0.1.4".into(),
+                tag: "0.3.0".into(),
                 date: String::new(),
                 notes: ReleaseNotes::parse_launcher(LAUNCHER_SAMPLE_NOTES),
             },
@@ -2086,6 +2102,9 @@ impl ScreenGallery {
             uninstall: UninstallPanel::default(),
             saves: SavesPanel::default(),
             restore: RestorePanel::default(),
+            storage: Default::default(),
+            remove_copy: Default::default(),
+            library_search: Default::default(),
             missing: crate::screens::toolkit_pin::MissingPanel::default(),
             friends: crate::screens::friends::FriendsScreen::default(),
             profile: crate::screens::profile::ProfileScreen::default(),
@@ -2433,6 +2452,7 @@ impl ScreenGallery {
                         quiet: true,
                     }
                 },
+                compat: sample_compat(i, language),
             })
             .collect();
         let resolutions: Vec<String> = Vec::new();
@@ -2497,6 +2517,7 @@ impl ScreenGallery {
             clips: crate::screens::settings::ClipsEnv {
                 count: if self.prefs.clips_seconds > 0 { 3 } else { 0 },
                 capturing: matches!(self.page, ScreenPage::BehaviourClipsKey),
+                broadcast_key: false,
             },
             location: match self.page {
                 ScreenPage::UnlockedLocation(look) => look.env(),
@@ -2573,6 +2594,48 @@ impl ScreenGallery {
                 .show(shell, &ctx, &events, &stamp, language, accent);
         }
         {
+            use crate::screens::library_search::SearchData;
+            use crate::screens::library_storage::{StorageData, StorageEntry};
+            let entries: Vec<StorageEntry> = if self.page == ScreenPage::StorageEmpty {
+                Vec::new()
+            } else {
+                [
+                    ("Lanternfall", Some(42_300_000_000u64)),
+                    ("Skybound", Some(18_900_000_000)),
+                    ("Cinder Run", None),
+                ]
+                .into_iter()
+                .map(|(name, bytes)| StorageEntry {
+                    name: name.to_owned(),
+                    bytes,
+                    running: false,
+                })
+                .collect()
+            };
+            let data = StorageData {
+                entries: &entries,
+                free: Some(212_000_000_000),
+                language,
+                accent,
+            };
+            self.storage.show(shell, &ctx, &events, &data);
+            self.remove_copy.show(
+                shell,
+                &ctx,
+                &events,
+                ("Lanternfall", Some(42_300_000_000)),
+                language,
+                accent,
+            );
+            let search = SearchData {
+                query: "sky",
+                found: 1,
+                language,
+                accent,
+            };
+            self.library_search.show(shell, &ctx, &events, &search);
+        }
+        {
             let data = online_data(&self.online, self.together_name(), language, accent);
             if self.friends.wants_local() {
                 self.friends.set_local(crate::screens::gallery_feed::local(
@@ -2609,10 +2672,12 @@ impl ScreenGallery {
                 NotesView::Ready(&self.notes)
             };
             let data = WhatsNewData {
-                tag: if launcher { "0.1.4" } else { "0.1.3" },
+                tag: if launcher { "0.3.0" } else { "0.1.3" },
                 view,
                 language,
                 launcher,
+                showcase: launcher,
+                accent,
             };
             self.whats_new.show(shell, &ctx, &events, &data);
         }
@@ -2705,6 +2770,7 @@ impl ScreenGallery {
                 accent,
                 folder_set: false,
                 scanning: false,
+                bar: sample_bar(language),
             },
         );
         let diagnosis =
@@ -2750,6 +2816,19 @@ impl ScreenGallery {
             ScreenPage::Confirm => self.uninstall.open(),
             ScreenPage::Saves | ScreenPage::SavesEmpty => self.saves.open(),
             ScreenPage::Restore => self.restore.open(),
+            ScreenPage::Storage => self.storage.open_copy(0),
+            ScreenPage::StorageEmpty => {
+                let none: [crate::screens::library_storage::StorageEntry; 0] = [];
+                let data = crate::screens::library_storage::StorageData {
+                    entries: &none,
+                    free: None,
+                    language: shell.language,
+                    accent: shell.accent_color(),
+                };
+                self.storage.open(&data);
+            }
+            ScreenPage::RemoveCopy => self.remove_copy.open(),
+            ScreenPage::LibrarySearch => self.library_search.open(),
             ScreenPage::ToolkitMissing => self.missing.open(),
             ScreenPage::Online(look) => {
                 use crate::screens::online::{Ask, Page};
@@ -2986,8 +3065,7 @@ impl ScreenGallery {
                 });
             }
             ScreenPage::WhatsNewLauncher => {
-                self.whats_new
-                    .open_launcher(&self.launcher_notes.notes, shell.language);
+                self.whats_new.open_showcase();
             }
             ScreenPage::BehaviourLinks => {
                 self.settings.open_at(3, true);
@@ -3252,5 +3330,40 @@ impl LocationLook {
             }),
             left: (self == LocationLook::Left).then(|| ("D:\\Games\\PS5".into(), 3)),
         }
+    }
+}
+
+/// What players found, for a few of the sample games.
+fn sample_compat(index: usize, language: crate::ui::i18n::Language) -> Option<StateText> {
+    use crate::app::library_view::Compat;
+    let tags: &[Compat] = match index {
+        0 => &[Compat::RunsWell, Compat::Lan],
+        2 => &[Compat::RunsWithIssues],
+        3 => &[Compat::NoStart],
+        4 => &[Compat::Lan],
+        _ => &[],
+    };
+    crate::app::library_panels::compat_line(tags, language)
+}
+
+/// The bar of the library page as a player meets it first.
+fn sample_bar(language: crate::ui::i18n::Language) -> crate::screens::library::BarData {
+    use crate::screens::library_strings::LibraryText as T;
+    crate::screens::library::BarData {
+        sort: T::SortBy.format(
+            language,
+            &[crate::ui::i18n::Arg::Str(T::SortName.text(language))],
+        ),
+        filter: T::ShowFilter.format(
+            language,
+            &[crate::ui::i18n::Arg::Str(T::FilterAll.text(language))],
+        ),
+        query: String::new(),
+        search: T::Search.text(language).to_owned(),
+        storage: T::Storage.text(language).to_owned(),
+        narrowed: false,
+        nothing_title: T::NothingHere.text(language).to_owned(),
+        nothing_text: T::NothingHereText.text(language).to_owned(),
+        clear: T::ClearFilters.text(language).to_owned(),
     }
 }

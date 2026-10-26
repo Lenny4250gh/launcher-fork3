@@ -17,6 +17,7 @@ use crate::screens::rows::{Change, Row, source_label};
 use crate::ui::i18n::{Arg, Language};
 use crate::ui::icons::Icon;
 use crate::ui::input::InputEvent;
+use crate::ui::talk::PadButton;
 
 /// True for a key the player may hold to talk. Keys the launcher itself reads (arrows, Enter,
 /// Space, Esc, Backspace, Tab, O, F11) would act on the screen while held; modifiers are not
@@ -61,6 +62,16 @@ pub fn talk_key(online: &Online) -> Key {
         .filter(|key| is_talk_key(*key))
         .or_else(|| Key::from_name(anyps5_core::online::DEFAULT_KEY))
         .unwrap_or(Key::V)
+}
+
+/// The note under the mode while push to talk is chosen.
+pub(super) fn ptt_note(game_running: bool) -> V {
+    match (cfg!(windows), game_running) {
+        (true, false) => V::PttNote,
+        (true, true) => V::PttInGameNote,
+        (false, false) => V::PttNoteOther,
+        (false, true) => V::PttInGameNoteOther,
+    }
 }
 
 fn status_text(status: &VoiceStatus, language: Language) -> &'static str {
@@ -167,8 +178,7 @@ impl OnlinePanel {
         );
         let note = match voice.mode() {
             _ if voice.call_overrides_mode() => V::CallModeNote,
-            VoiceMode::PushToTalk if data.game_running => V::PttInGameNote,
-            VoiceMode::PushToTalk => V::PttNote,
+            VoiceMode::PushToTalk => ptt_note(data.game_running),
             VoiceMode::VoiceActivity => V::ActivityNote,
         };
         rows.push(Row::info("voiceNote", t(note), None));
@@ -239,6 +249,33 @@ impl OnlinePanel {
             }
             rows.push(keys);
         }
+        if voice.mode() == VoiceMode::PushToTalk {
+            let family = crate::ui::pad_info::family();
+            let mut options = vec![t(V::TalkButtonNone).to_owned()];
+            options.extend(PadButton::ALL.iter().map(|b| b.label(family).to_owned()));
+            let chosen = voice
+                .prefs()
+                .pad
+                .as_deref()
+                .and_then(PadButton::from_name)
+                .and_then(|b| PadButton::ALL.iter().position(|x| *x == b))
+                .map_or(0, |i| i + 1);
+            rows.push(
+                Row::choice("talkPad", t(V::TalkButton), options, chosen)
+                    .icon(Icon::GAME_CONTROLLER),
+            );
+        }
+        let mut noise = Row::toggle(
+            "voiceNoise",
+            t(V::NoiseReduction),
+            voice.prefs().noise_reduction,
+        )
+        .icon(Icon::MICROPHONE)
+        .detail(t(V::NoiseNote));
+        if voice.mode() != VoiceMode::PushToTalk {
+            noise = noise.group_start();
+        }
+        rows.push(noise);
         let default = t(V::SystemDefault);
         let selected = |name: Option<&str>| name.map_or_else(|| default.to_owned(), str::to_owned);
         rows.push(
@@ -375,6 +412,19 @@ impl OnlinePanel {
                 VoiceMode::VoiceActivity
             })),
             Change::Capture { row: "talkKey" } => self.capturing = true,
+            Change::Choice {
+                row: "talkPad",
+                index,
+            } => actions.push(OnlineAction::VoicePad(
+                index
+                    .checked_sub(1)
+                    .and_then(|i| PadButton::ALL.get(i))
+                    .map(|b| b.name().to_owned()),
+            )),
+            Change::Toggle {
+                row: "voiceNoise",
+                on,
+            } => actions.push(OnlineAction::VoiceNoise(*on)),
             Change::Stepper {
                 row: "peerVolume",
                 value,

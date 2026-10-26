@@ -98,6 +98,9 @@ impl Playtime {
     }
 }
 
+/// How many games of [`Preferences::new_games`] are kept.
+pub const NEW_GAMES_KEPT: usize = 12;
+
 /// How many days of [`Preferences::playtime_days`] are kept.
 pub const PLAYTIME_DAYS: i64 = 60;
 
@@ -362,13 +365,18 @@ pub enum Language {
     #[default]
     #[serde(rename = "en")]
     English,
+    #[serde(rename = "de")]
+    German,
 }
 
 impl Language {
-    /// Turkish for any locale tag starting with `tr`, English otherwise.
+    /// Turkish for any locale tag starting with `tr`, German for `de`, English otherwise.
     pub fn from_locale(tag: &str) -> Language {
-        if tag.to_ascii_lowercase().starts_with("tr") {
+        let tag = tag.to_ascii_lowercase();
+        if tag.starts_with("tr") {
             Language::Turkish
+        } else if tag.starts_with("de") {
+            Language::German
         } else {
             Language::English
         }
@@ -379,6 +387,7 @@ impl Language {
         match self {
             Language::Turkish => 19,
             Language::English => 1,
+            Language::German => 4,
         }
     }
 }
@@ -473,6 +482,9 @@ fn default_pad_deadzone() -> u8 {
 }
 
 /// The launcher's own settings (`%APPDATA%\AnyPS5\preferences.json`).
+/// The release whose "What's New" showcase is shown once after an update (and again from About).
+pub const WHATS_NEW_RELEASE: &str = "0.3.0";
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Preferences {
@@ -480,6 +492,10 @@ pub struct Preferences {
     pub version: u32,
     #[serde(default)]
     pub onboarded: bool,
+    /// The release whose showcase the player has seen. A file without it is from an older
+    /// launcher, so the showcase shows once; a first start has nothing to catch up on.
+    #[serde(default)]
+    pub whats_new_seen: String,
     #[serde(default, deserialize_with = "lenient")]
     pub language: Language,
     #[serde(default, deserialize_with = "lenient")]
@@ -520,6 +536,17 @@ pub struct Preferences {
     /// there at that moment is not prepared, only what comes later.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub known_games: Option<BTreeSet<String>>,
+    /// How the library page orders the games (`recent`, `name`, `size`, `status`); empty is
+    /// `name`, the order of the home screen. The launcher ignores what it does not know.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub library_sort: String,
+    /// Which games the library page shows (`all`, `ready`, `locked`, `together`); empty is `all`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub library_filter: String,
+    /// The games that appeared after the first scan, oldest first: the home screen shelf "New"
+    /// shows those not played yet. At most [`NEW_GAMES_KEPT`] stay.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub new_games: Vec<String>,
     /// Games that appeared and still wait for their preparation.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub prepare_pending: BTreeSet<String>,
@@ -647,6 +674,16 @@ pub struct Preferences {
     /// The hotkey that saves a clip, like `Alt+F12`; `None` is [`crate::clips::DEFAULT_HOTKEY`].
     #[serde(default)]
     pub clips_hotkey: Option<String>,
+    /// Broadcast: the service (`twitch`, `youtube` or `custom`; see [`crate::broadcast::Service`]).
+    /// The stream key is not a preference: it is kept by [`crate::broadcast::save_key`].
+    #[serde(default)]
+    pub broadcast_service: String,
+    /// Broadcast: the server address of a custom service.
+    #[serde(default)]
+    pub broadcast_server: String,
+    /// Broadcast: the index of the quality preset ([`crate::broadcast::QUALITIES`]).
+    #[serde(default)]
+    pub broadcast_quality: u32,
     /// The run-report questions already answered or dismissed, by [`run_question_key`]: each is
     /// asked once.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
@@ -661,6 +698,7 @@ impl Default for Preferences {
         Preferences {
             version: 1,
             onboarded: false,
+            whats_new_seen: WHATS_NEW_RELEASE.to_owned(),
             language: Language::English,
             theme: Theme::Cosmic,
             accent: None,
@@ -676,6 +714,9 @@ impl Default for Preferences {
             hide_while_playing: false,
             prepare_games: true,
             known_games: None,
+            library_sort: String::new(),
+            library_filter: String::new(),
+            new_games: Vec::new(),
             prepare_pending: BTreeSet::new(),
             ps_button: true,
             vibration: Vibration::Medium,
@@ -714,6 +755,9 @@ impl Default for Preferences {
             phone_ludusctrl: false,
             clips_seconds: 0,
             clips_hotkey: None,
+            broadcast_service: String::new(),
+            broadcast_server: String::new(),
+            broadcast_quality: 0,
             run_asked: BTreeSet::new(),
             extra: Map::new(),
         }
@@ -1204,7 +1248,10 @@ mod tests {
     fn language_from_locale() {
         assert_eq!(Language::from_locale("tr-TR"), Language::Turkish);
         assert_eq!(Language::from_locale("TR"), Language::Turkish);
-        assert_eq!(Language::from_locale("de-DE"), Language::English);
+        assert_eq!(Language::from_locale("de-DE"), Language::German);
+        assert_eq!(Language::from_locale("de"), Language::German);
+        assert_eq!(Language::from_locale("fr-FR"), Language::English);
+        assert_eq!(Language::German.console_language(), 4);
         assert_eq!(Language::Turkish.console_language(), 19);
         assert_eq!(Language::English.console_language(), 1);
     }

@@ -4,14 +4,16 @@
 //! or the pad's back) stops the start. While it is up the host swallows all other input.
 
 use egui::text::LayoutJob;
-use egui::{Align, Align2, Color32, Context, Layout, Rect, Ui, UiBuilder, pos2, vec2};
+use egui::{Align, Align2, Color32, Context, Layout, Rect, Sense, Ui, UiBuilder, pos2, vec2};
 
 use crate::screens::format::elapsed_text;
 use crate::screens::side::commands;
 use crate::ui::Shell;
 use crate::ui::anim::{self, AnimExt, lerp};
 use crate::ui::chrome::{TileImage, TileStyle, fullscreen_panel, paint_tile};
-use crate::ui::components::{ConsoleButton, ControlSize, IndeterminateLine, paint_shadow};
+use crate::ui::components::{
+    ConsoleButton, ControlSize, IndeterminateLine, paint_progress, paint_shadow,
+};
 use crate::ui::glass::GlassStyle;
 use crate::ui::i18n::{Key, Language};
 use crate::ui::icons::Icon;
@@ -224,9 +226,16 @@ fn draw(ui: &mut Ui, data: &StartData<'_>, since: f64) -> bool {
         pos2(left, y),
         vec2(column_w, size::PROGRESS_HEIGHT),
     )));
-    IndeterminateLine::new(data.accent)
-        .width(column_w)
-        .show(&mut bar);
+    if data.reduced_motion {
+        // Reduced motion: the timer says the launch is alive; the track stands still.
+        let (rect, _) =
+            bar.allocate_exact_size(vec2(column_w, size::PROGRESS_HEIGHT), Sense::hover());
+        paint_progress(&painter, rect, 0.0, data.accent);
+    } else {
+        IndeterminateLine::new(data.accent)
+            .width(column_w)
+            .show(&mut bar);
+    }
     y += size::PROGRESS_HEIGHT + BLOCK_GAP;
     painter.galley(pos2(cx, y), info, color::text_detail());
 

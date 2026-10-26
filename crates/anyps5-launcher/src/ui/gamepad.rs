@@ -20,6 +20,7 @@ use crate::ui::input::{Command, PadMessage};
 use crate::ui::nav_bindings::{self, Bindings, Role};
 use crate::ui::pad_hub::{self, Link, PadInfo};
 use crate::ui::pad_info::{self, Battery, Family};
+use crate::ui::talk;
 
 /// Stick deflection that makes a direction, at the default dead zone of 25 percent. The dead zone
 /// of the Controllers page moves it: the stick engages 30 points above the zone and lets go 13
@@ -477,8 +478,22 @@ fn session(ctx: &egui::Context, tx: &Sender<PadMessage>, home: &HomeButton, atte
             // the page: Home and Create work, nothing else moves the launcher.
             let mine = home.accepts_pad() && !nav_bindings::capturing();
             match event.event {
+                EventType::ButtonPressed(button, _) => talk::shared().gilrs_button(button, true),
+                EventType::ButtonReleased(button, _) => talk::shared().gilrs_button(button, false),
+                _ => {}
+            }
+            match event.event {
                 EventType::ButtonPressed(button, _) => {
-                    match press_effect(button, mine, &bindings) {
+                    let effect = press_effect(button, mine, &bindings);
+                    // The talk button belongs to talking: a launcher button it shares gives way.
+                    let effect = if matches!(effect, PressEffect::Command(_) | PressEffect::Tab(_))
+                        && talk::shared().button().is_some_and(|b| b.gilrs() == button)
+                    {
+                        PressEffect::Nothing
+                    } else {
+                        effect
+                    };
+                    match effect {
                         PressEffect::Home => {
                             home.press();
                         }
@@ -515,6 +530,7 @@ fn session(ctx: &egui::Context, tx: &Sender<PadMessage>, home: &HomeButton, atte
                 }
                 EventType::Disconnected => {
                     tracing::info!("gamepad removed");
+                    talk::shared().gilrs_gone();
                     dirs = Directions::default();
                     if active.id == Some(event.id) {
                         active = ActivePad::default();

@@ -135,6 +135,46 @@ jobs:
           path: launcher/shots/*.png
           if-no-files-found: error
 
+  # Every gallery scene, rendered once by a DEBUG build: egui's debug lock panics after 10 s on a
+  # deadlock where a release build only hangs (0.2.8 shipped one in the chat composer). A panic,
+  # a hang (60 s per scene) or a missing picture fails the job and names the scene.
+  scenes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: launcher
+      - id: network-pin
+        name: Read the pinned network revision
+        shell: bash
+        run: |
+          ref=$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/launcher/network.ref")
+          [[ $ref =~ ^[0-9a-f]{40}$ ]] || { echo "network.ref must hold one full commit SHA" >&2; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: anyplaynet/network
+          ref: ${{ steps.network-pin.outputs.ref }}
+          path: network
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends             pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev             xvfb mesa-vulkan-drivers libvulkan1 libx11-6 libxcursor1 libxi6 libxrandr2             libxkbcommon-x11-0 libgl1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: launcher
+          key: scenes-debug
+      - name: Debug build
+        run: cargo build -p anyps5-launcher
+      - name: Render every scene
+        run: tools/gallery-sweep.sh target/debug/anyplay-launcher 4 60
+
   macos:
     runs-on: macos-latest
     steps:

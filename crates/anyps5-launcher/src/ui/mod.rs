@@ -48,6 +48,7 @@ pub mod latency;
 pub mod lightbar;
 pub mod nav_bindings;
 pub mod nudge;
+pub mod os_emoji;
 pub mod pad_hub;
 pub mod pad_info;
 pub mod press;
@@ -56,6 +57,7 @@ pub mod reveal;
 pub mod shade;
 pub mod sound;
 pub mod state_page;
+pub mod talk;
 pub mod text;
 pub mod theme;
 

@@ -82,10 +82,34 @@ impl SettingsText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            SettingsText::Sound => "Ton",
+            SettingsText::Captures => "Aufnahmen",
+            SettingsText::Controller => "Controller",
+            SettingsText::ConnectedApps => "Verbundene Apps",
+            SettingsText::Fonts => "Schriften",
+            SettingsText::Diagnostics => "Diagnose",
+            SettingsText::ShareScreen => "Bildschirm teilen",
+            SettingsText::Updates => "Updates",
+            SettingsText::Unused => "Von keinem Spiel genutzt",
+            SettingsText::Installed => "Installiertes Toolkit",
+            SettingsText::NotCheckedYet => "Noch nicht geprüft",
+            SettingsText::ScreenshotHint => "F12 im Spiel speichert einen Screenshot.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 }

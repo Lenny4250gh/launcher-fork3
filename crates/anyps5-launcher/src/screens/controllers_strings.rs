@@ -399,10 +399,126 @@ impl Pads {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            Pads::Entry | Pads::Title => "Controller",
+            Pads::EntryDetail => {
+                "Tasten, Vibration und Lightbar testen, die Tasten des Launchers ändern, Probleme beheben"
+            }
+            Pads::Subtitle => {
+                "Alles zu den Controllern an diesem PC. Spiele behalten ihre eigene Steuerung."
+            }
+            Pads::CaptionConnected => "Verbunden",
+            Pads::CaptionTest => "Testen und Einstellen",
+            Pads::CaptionControls => "Steuerung des Launchers",
+            Pads::CaptionHelp => "Problemlösung",
+            Pads::NoPad => "Kein Controller gefunden",
+            Pads::NoPadDetail => "Schließe einen Controller an und drücke eine Taste.",
+            Pads::PadDetail => "%@ · %@ · %@",
+            Pads::InUse => "In Benutzung",
+            Pads::Usb => "USB",
+            Pads::Bluetooth => "Bluetooth",
+            Pads::LinkUnknown => "Verbindung unbekannt",
+            Pads::Battery => "Akku %@%",
+            Pads::BatteryCharging => "Lädt %@%",
+            Pads::BatteryNone => "Keine Akkuanzeige",
+            Pads::TestButtons => "Tasten testen",
+            Pads::TestButtonsDetail => "Drücke Tasten und bewege die Sticks; sie leuchten auf",
+            Pads::TestVibration => "Vibration testen",
+            Pads::TestVibrationDetail => "Ein kurzes Brummen, zuerst der leichte Motor",
+            Pads::NotWhileGame => "Nicht, solange ein Spiel läuft.",
+            Pads::NoRumble => "Kein verbundener Controller kann vibrieren.",
+            Pads::VibrationSent => "Vibriert",
+            Pads::DeadZone => "Stick-Totzone",
+            Pads::DeadZoneDetail => {
+                "Wie weit der linke Stick geneigt sein muss, bevor sich der Launcher bewegt. Spiele haben eine eigene."
+            }
+            Pads::LightBar => "Lightbar-Farbe",
+            Pads::LightBarDetail => {
+                "Nur DualSense. Ein Spiel übernimmt die Lightbar, solange es läuft."
+            }
+            Pads::LightBarSet => "Lightbar geändert",
+            Pads::LightBarFailed => "Die Lightbar des Controllers war nicht erreichbar.",
+            Pads::ColourBlue => "Blau",
+            Pads::ColourRed => "Rot",
+            Pads::ColourGreen => "Grün",
+            Pads::ColourPurple => "Violett",
+            Pads::ColourOrange => "Orange",
+            Pads::ColourWhite => "Weiß",
+            Pads::ColourOff => "Aus",
+            Pads::ConfirmWith => "Mit %@ bestätigen",
+            Pads::ConfirmWithDetail => {
+                "Tauscht Auswählen und Zurück auf dem Controller, wie manche es gewohnt sind"
+            }
+            Pads::ControlsNote => {
+                "Wähle eine Aufgabe und drücke dann die Taste. Eine bereits belegte Taste tauscht den Platz."
+            }
+            Pads::Select => "Auswählen",
+            Pads::Back => "Zurück",
+            Pads::Options => "Optionen",
+            Pads::Previous => "Vorheriger Bereich",
+            Pads::Next => "Nächster Bereich",
+            Pads::ReleaseToCapture => "Drücke eine Taste",
+            Pads::Reset => "Auf Standard zurücksetzen",
+            Pads::ResetDetail => "Setzt alle Tasten des Launchers zurück",
+            Pads::Swapped => "%@ war %@. %@ nutzt jetzt %@.",
+            Pads::SwappedNoReturn => "%@ wurde von %@ übernommen",
+            Pads::FixedButton => {
+                "Diese Taste hat immer dieselbe Aufgabe und lässt sich nicht ändern."
+            }
+            Pads::TestTitle => "Tasten testen",
+            Pads::TestLeave => "Zum Verlassen %@ gedrückt halten oder Esc drücken",
+            Pads::TestWaiting => "Drücke eine beliebige Taste",
+            Pads::TestNoPad => "Kein Controller gefunden. Schließe einen an und drücke eine Taste.",
+            Pads::StatusOk => "OK",
+            Pads::StatusCheck => "Prüfen",
+            Pads::HelpMissingTitle => "Controller nicht gefunden",
+            Pads::HelpMissing | Pads::HelpMissingNone => {
+                "Der Launcher sieht keinen Controller. Stecke ihn an oder koppele ihn und drücke eine Taste. Probiere ein anderes Kabel oder einen anderen Anschluss: Manche Kabel laden nur."
+            }
+            Pads::HelpMissingFound => {
+                "Gesehen. Sieht ein Spiel ihn nicht, starte das Spiel, nachdem der Controller verbunden ist."
+            }
+            Pads::HelpDoubleTitle => "Jeder Tastendruck zählt doppelt",
+            Pads::HelpDouble => {
+                "Steam Input oder DS4Windows fügt neben dem echten einen zweiten, virtuellen Controller hinzu. Der Launcher ignoriert das Echo, ein Spiel eventuell nicht. Beende das Programm oder schalte seine Controller-Emulation für Launcher und Spiel aus."
+            }
+            Pads::HelpSteamTitle => "Steam und PlayStation-Controller",
+            Pads::HelpSteam => {
+                "Mit eingeschalteter PlayStation-Konfigurationsunterstützung übernimmt Steam DualSense und DualShock und reicht einen virtuellen Xbox-Controller weiter. Schalte sie in Steam unter Einstellungen, Controller aus, oder stelle Steam Input für Launcher und Spiel auf Aus."
+            }
+            Pads::HelpHideTitle => "DS4Windows und HidHide",
+            Pads::HelpHide => {
+                "DS4Windows und HidHide verstecken den echten Controller absichtlich vor anderen Programmen. Sieht der Launcher oder ein Spiel keinen Controller, füge es in HidHide zu den erlaubten Anwendungen hinzu oder schalte in DS4Windows „Hide DS4 Controller“ aus."
+            }
+            Pads::HelpHomeTitle => "PS-Taste tut nichts",
+            Pads::HelpHome => {
+                "Prüfe unter Einstellungen, Verhalten, Home-Taste öffnet den Launcher. Sie funktioniert mit DualSense und DualShock 4 über USB oder Bluetooth. Ein anderes Programm, das den Controller exklusiv hält, kann sie blockieren."
+            }
+            Pads::HelpHomeLinux => {
+                "Die PS-Taste wird vom hidraw-Knoten des Controllers gelesen, den viele Desktops nur root erlauben. Speichere die udev-Regel aus docs/INSTALL.md als /etc/udev/rules.d/70-anyplay-pad.rules, führe sudo udevadm control --reload && sudo udevadm trigger aus und stecke den Controller neu an."
+            }
+            Pads::HelpLinuxTitle => "Linux-Berechtigungen",
+            Pads::HelpLinux => {
+                "Controller werden aus /dev/input und /dev/hidraw gelesen. Erscheint keiner, füge dich der Gruppe input hinzu (sudo usermod -aG input $USER) und melde dich neu an, oder installiere die udev-Regel aus docs/INSTALL.md."
+            }
+            Pads::HelpBatteryTitle => "Akku schwach",
+            Pads::HelpBattery => {
+                "Lade den Controller per USB-Kabel. Ein Controller am Kabel zeigt keinen Akkustand."
+            }
+            Pads::LowBattery => "Schwach, %@%",
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
@@ -424,6 +540,20 @@ mod tests {
                     "{text:?} {language:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn every_text_has_a_german_one_with_the_same_arguments() {
+        for text in Pads::ALL {
+            let german = text
+                .german()
+                .unwrap_or_else(|| panic!("{text:?} has no German text"));
+            assert_eq!(
+                text.english().matches("%@").count(),
+                german.matches("%@").count(),
+                "{text:?}"
+            );
         }
     }
 

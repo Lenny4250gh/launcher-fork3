@@ -112,7 +112,7 @@ pub fn pattern(cue: Cue) -> &'static [Pulse] {
         Cue::Notify => &NOTIFY,
         Cue::Message => &MESSAGE,
         Cue::Invite => &INVITE,
-        Cue::Move | Cue::Hover | Cue::Boot => &[],
+        Cue::Move | Cue::Hover | Cue::Boot | Cue::TalkOn | Cue::TalkOff => &[],
     }
 }
 

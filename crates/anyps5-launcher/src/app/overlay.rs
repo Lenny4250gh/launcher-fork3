@@ -45,6 +45,12 @@ pub enum Overlay {
     /// The release a game stays on is gone: download it again or follow the global toolkit
     /// (a panel of the game frame).
     ToolkitMissing,
+    /// Search of the library page (a panel of the game frame).
+    LibrarySearch,
+    /// The room the unlocked copies take, and their removal (a panel of the game frame).
+    Storage,
+    /// The question before an unlocked copy is removed (a panel of the game frame).
+    ConfirmRemoveCopy,
     /// The quick panel of the running game, opened by the Home button (a panel of the game frame).
     InGame,
     /// The question before the running game is closed (a panel of the game frame).
@@ -72,6 +78,9 @@ impl Overlay {
                 | Overlay::ToolkitMissing
                 | Overlay::InGame
                 | Overlay::ConfirmCloseGame
+                | Overlay::LibrarySearch
+                | Overlay::Storage
+                | Overlay::ConfirmRemoveCopy
         )
     }
 

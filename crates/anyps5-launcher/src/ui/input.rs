@@ -336,6 +336,9 @@ pub struct Input {
     /// True while a call is ringing: the card's buttons are reached with Tab through egui, so
     /// Tab is not taken for the focus ring.
     pub tab_for_egui: bool,
+    /// True while a Tab press is being routed as a direction, so the thread can tell it from an
+    /// arrow and walk the emoji glyph before its field in reading order.
+    pub via_tab: bool,
 }
 
 impl Input {
