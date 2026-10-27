@@ -44,6 +44,8 @@ pub enum Page {
     States,
     /// The type scale alone.
     Type,
+    /// Spinners and the indeterminate bar under "Animations: Reduced" (a still shape that pulses).
+    Motion,
     Panels,
     Artwork,
     Themes,
@@ -89,6 +91,7 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
                 "panels" => Page::Panels,
                 "states" => Page::States,
                 "type" => Page::Type,
+                "motion-reduced" => Page::Motion,
                 "artwork" => Page::Artwork,
                 "themes" => Page::Themes,
                 "bg0" | "cosmic" => Page::Background(Theme::Cosmic),
@@ -262,6 +265,7 @@ impl eframe::App for Gallery {
             Page::Themes => themes_page(&ctx, ui, &self.shell, self.options.time),
             Page::Components => components_page(ui, &self.shell),
             Page::States => states_page(ui, &self.shell),
+            Page::Motion => motion_reduced_page(ui),
             Page::Type => {
                 ui.add_space(40.0);
                 type_scale(ui);
@@ -571,6 +575,61 @@ fn type_scale(ui: &mut Ui) {
 
 /// Every state of the controls the components page leaves out: the destructive variant, rows and
 /// the switch (`--gallery=states`). Hover and press are forced, as no pointer is there.
+/// Every loading indicator with "Animations: Reduced" on: nothing turns or sweeps, the shape
+/// pulses in opacity (1.2 s, 0.45 to 1) and the label beside it stays.
+fn motion_reduced_page(ui: &mut Ui) {
+    let ctx = ui.ctx().clone();
+    if !ctx.reduced_motion() {
+        ctx.set_reduced_motion(true);
+    }
+    let rect = ui.max_rect().shrink2(vec2(64.0, 40.0));
+    let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    let ui = &mut ui;
+    ui.label(ty::SCREEN_TITLE.colored("Loading, Animations: Reduced", Color32::WHITE));
+    ui.add_space(14.0);
+
+    heading(
+        ui,
+        "Spinner arcs at 7, 12 and 14 dp, on the dark and the light ink",
+    );
+    let painter = ui.painter().clone();
+    let origin = ui.cursor().min;
+    for (i, (radius, width)) in [(7.0, 2.0), (12.0, 2.5), (14.0, 3.0)]
+        .into_iter()
+        .enumerate()
+    {
+        let centre = pos2(origin.x + 24.0 + i as f32 * 64.0, origin.y + 24.0);
+        components::paint_spinner_arc(
+            &painter,
+            centre,
+            radius,
+            ctx.clock(),
+            width,
+            color::text_detail(),
+        );
+        components::paint_spinner_arc(
+            &painter,
+            centre + vec2(240.0, 0.0),
+            radius,
+            ctx.clock(),
+            width,
+            color::text(),
+        );
+    }
+    ui.add_space(56.0);
+
+    heading(ui, "Indeterminate bar: the whole bar pulses, no sweep");
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 24.0;
+        IndeterminateLine::new(Accent::Blue.color())
+            .width(360.0)
+            .show(ui);
+        IndeterminateLine::new(Accent::Mint.color())
+            .width(200.0)
+            .show(ui);
+    });
+}
+
 fn states_page(ui: &mut Ui, shell: &Shell) {
     let language = shell.language;
     let accent = shell.accent_color();

@@ -354,6 +354,25 @@ pub fn worker_args(seconds: u32, window: Option<i64>, pids: &[u32], title: &str)
     args
 }
 
+/// The environment value that keeps the worker's hardware encoder off, or `None` when it should
+/// be left alone. Only on Linux, and only when the player's own environment does not already set
+/// `ANYPLAY_HWENC`, so testers can opt in with `ANYPLAY_HWENC=auto` (or any other value).
+///
+/// Why: the NVENC and VA-API probing in the share worker (network#99) has never run on a real
+/// GPU (board task T61), so the worker encodes in software for now. Remove this, and its two
+/// call sites, once T61 is green.
+pub(crate) fn hwenc_default(linux: bool, already_set: bool) -> Option<&'static str> {
+    (linux && !already_set).then_some("off")
+}
+
+/// Applies [`hwenc_default`] to a worker command (the share worker and the clips worker).
+pub(crate) fn apply_hwenc_default(command: &mut Command) {
+    let already = std::env::var_os("ANYPLAY_HWENC").is_some();
+    if let Some(value) = hwenc_default(cfg!(target_os = "linux"), already) {
+        command.env("ANYPLAY_HWENC", value);
+    }
+}
+
 /// Opens the page of System Settings where the player allows Screen Recording (macOS). The worker
 /// does it (`--open-screen-settings`), so the launcher carries no macOS code for it. Returns at
 /// once.
@@ -388,6 +407,7 @@ impl Recorder {
         wake: impl Fn() + Send + 'static,
     ) -> std::io::Result<Recorder> {
         let mut command = Command::new(worker);
+        apply_hwenc_default(&mut command);
         command
             .args(worker_args(seconds, window, pids, title))
             .stdin(Stdio::piped())
@@ -452,6 +472,15 @@ impl Drop for Recorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hardware_encode_is_off_by_default_on_linux_only() {
+        assert_eq!(hwenc_default(true, false), Some("off"));
+        // A tester's own value wins, and other systems are left alone.
+        assert_eq!(hwenc_default(true, true), None);
+        assert_eq!(hwenc_default(false, false), None);
+        assert_eq!(hwenc_default(false, true), None);
+    }
 
     #[test]
     fn the_default_hotkey_is_alt_f12_and_round_trips() {
