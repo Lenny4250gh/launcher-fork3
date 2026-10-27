@@ -1,8 +1,10 @@
-//! German is complete: every text enum that has an `english()` has a German arm for each variant.
+//! Every language is complete: every text enum that has an `english()` has an arm for each variant
+//! in `german()`, `spanish()`, `french()` and `portuguese()`.
 //!
-//! `german()` returns `Option` and ends in `_ => return None` so that a build never breaks on a
-//! text someone adds without German; this test is what catches it. It reads the sources, so a
-//! new `*_strings.rs` is covered without being listed. Adding a language works the same way.
+//! Those return `Option` and end in `_ => return None` so that a build never breaks on a text
+//! someone adds without a translation; this test is what catches it, so no text reaches a player
+//! in English by accident. It reads the sources, so a new `*_strings.rs` is covered without being
+//! listed. Adding a language works the same way: add its method name to `TRANSLATED`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -65,8 +67,11 @@ fn arms(body: &str) -> Vec<String> {
     found
 }
 
+/// The languages that translate through a method named after them next to `english()`.
+const TRANSLATED: [&str; 4] = ["german", "spanish", "french", "portuguese"];
+
 #[test]
-fn every_text_has_a_german_arm() {
+fn every_text_has_an_arm_in_every_language() {
     let mut files = Vec::new();
     sources(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("src/screens"),
@@ -76,26 +81,33 @@ fn every_text_has_a_german_arm() {
     let mut missing = Vec::new();
     for file in files {
         let source = fs::read_to_string(&file).expect("a source file");
-        let (Some(english), Some(german)) =
-            (function(&source, "english"), function(&source, "german"))
-        else {
+        let name = file.file_name().unwrap().to_string_lossy().into_owned();
+        let Some(english) = function(&source, "english") else {
             continue;
         };
-        let german = arms(german);
-        for arm in arms(english) {
-            checked += 1;
-            if !german.contains(&arm) {
-                missing.push(format!(
-                    "{}: {arm}",
-                    file.file_name().unwrap().to_string_lossy()
-                ));
+        let english = arms(english);
+        for language in TRANSLATED {
+            let Some(translated) = function(&source, language) else {
+                missing.push(format!("{name}: no fn {language}"));
+                continue;
+            };
+            let translated = arms(translated);
+            for arm in &english {
+                checked += 1;
+                if !translated.contains(arm) {
+                    missing.push(format!("{name}: {arm} ({language})"));
+                }
             }
         }
     }
-    assert!(checked > 500, "the scan found only {checked} texts");
+    assert!(checked > 1500, "the scan found only {checked} texts");
     assert!(
         missing.is_empty(),
-        "no German text for:\n{}",
-        missing.join("\n")
+        "no text for:
+{}",
+        missing.join(
+            "
+"
+        )
     );
 }

@@ -237,11 +237,14 @@ fn language_step(
     y += ty::OVERLINE.line_height() + space::L;
     let choice = cx.model.onboarding_choice();
     let on_step = cx.model.onboarding.step == 0;
+    // Three cards a row; six languages make two rows.
+    const PER_ROW: usize = 3;
     for (index, card_language) in Language::ALL.iter().enumerate() {
+        let (column, row) = (index % PER_ROW, index / PER_ROW);
         let rect = Rect::from_min_size(
             pos2(
-                origin.x + index as f32 * (size::LANGUAGE_CARD.0 + space::XL),
-                y,
+                origin.x + column as f32 * (size::LANGUAGE_CARD.0 + space::XL),
+                y + row as f32 * (size::LANGUAGE_CARD.1 + space::XL),
             ),
             vec2(size::LANGUAGE_CARD.0, size::LANGUAGE_CARD.1),
         );
@@ -252,9 +255,13 @@ fn language_step(
             presses.push(Press::Language(index));
         }
     }
+    let rows = Language::ALL.len().div_ceil(PER_ROW);
     continue_button(
         ui,
-        pos2(origin.x, y + size::LANGUAGE_CARD.1 + space::XXL),
+        pos2(
+            origin.x,
+            y + rows as f32 * size::LANGUAGE_CARD.1 + (rows - 1) as f32 * space::XL + space::XXL,
+        ),
         on_step,
         language,
         presses,

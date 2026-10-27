@@ -65,11 +65,74 @@ impl OnboardingText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            OnboardingText::OnlineTitle => "Play Together",
+            OnboardingText::OnlineSubtitle => {
+                "Inicia sesión para ver a tus amigos, unirte a sus parties y llamadas, y guardar tus trofeos en tu perfil. Al iniciar sesión se abre el navegador un momento."
+            }
+            OnboardingText::NotNow => "Ahora no",
+            OnboardingText::OnlineLater => {
+                "Puedes iniciar sesión cuando quieras desde la barra superior."
+            }
+            OnboardingText::StepOf => "Paso %@ de %@",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            OnboardingText::OnlineTitle => "Play Together",
+            OnboardingText::OnlineSubtitle => {
+                "Connecte-toi pour voir tes amis, rejoindre leurs parties et leurs appels, et garder tes trophées sur ton profil. La connexion ouvre brièvement ton navigateur."
+            }
+            OnboardingText::NotNow => "Pas maintenant",
+            OnboardingText::OnlineLater => {
+                "Tu peux te connecter à tout moment depuis la barre du haut."
+            }
+            OnboardingText::StepOf => "Étape %@ sur %@",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            OnboardingText::OnlineTitle => "Play Together",
+            OnboardingText::OnlineSubtitle => {
+                "Entre para ver seus amigos, participar das parties e chamadas deles e manter seus troféus no perfil. Ao entrar, seu navegador abre por um instante."
+            }
+            OnboardingText::NotNow => "Agora não",
+            OnboardingText::OnlineLater => {
+                "Você pode entrar a qualquer momento pela barra superior."
+            }
+            OnboardingText::StepOf => "Etapa %@ de %@",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },

@@ -191,6 +191,9 @@ pub fn ui_language(language: settings::Language) -> Language {
         settings::Language::Turkish => Language::Turkish,
         settings::Language::English => Language::English,
         settings::Language::German => Language::German,
+        settings::Language::Spanish => Language::Spanish,
+        settings::Language::French => Language::French,
+        settings::Language::Portuguese => Language::Portuguese,
     }
 }
 
@@ -199,6 +202,9 @@ pub fn core_language(language: Language) -> settings::Language {
         Language::Turkish => settings::Language::Turkish,
         Language::English => settings::Language::English,
         Language::German => settings::Language::German,
+        Language::Spanish => settings::Language::Spanish,
+        Language::French => settings::Language::French,
+        Language::Portuguese => settings::Language::Portuguese,
     }
 }
 

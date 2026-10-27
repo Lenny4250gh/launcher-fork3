@@ -63,7 +63,7 @@ The Mac toolkit currently comes from AnyPS5-ARM. Playing a game through AnyPlay'
 
 ## First start
 
-1. Choose a language (English, Turkish or German; the launcher picks German or Turkish by itself when your system uses it) and a look.
+1. Choose a language (English, Turkish, German, Spanish, French or Brazilian Portuguese; the launcher picks your system's language by itself when it is one of these) and a look.
 2. Pick your games folder, the one that holds your decrypted dumps. The launcher lists what it finds there.
 3. The launcher downloads the AnyPS5 toolkit and tells you when it is ready. Without internet, open Settings later and choose *Download the Toolkit*.
 4. Select a game, unlock it and press Play.

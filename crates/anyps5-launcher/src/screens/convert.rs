@@ -11,6 +11,9 @@ pub fn language(value: core::Language) -> Language {
         core::Language::Turkish => Language::Turkish,
         core::Language::English => Language::English,
         core::Language::German => Language::German,
+        core::Language::Spanish => Language::Spanish,
+        core::Language::French => Language::French,
+        core::Language::Portuguese => Language::Portuguese,
     }
 }
 
@@ -19,6 +22,9 @@ pub fn language_to_core(value: Language) -> core::Language {
         Language::Turkish => core::Language::Turkish,
         Language::English => core::Language::English,
         Language::German => core::Language::German,
+        Language::Spanish => core::Language::Spanish,
+        Language::French => core::Language::French,
+        Language::Portuguese => core::Language::Portuguese,
     }
 }
 

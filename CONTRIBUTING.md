@@ -57,14 +57,18 @@ cargo run --release -p anyps5-launcher -- --gallery=home --screenshot=home.png -
 ```
 
 - `--gallery=<scene>` picks the scene. The scenes are listed in the module comment of `crates/anyps5-launcher/src/app/preview.rs`. `components`, `panels` and `themes` show the building blocks.
-- `--screenshot=<file>` writes a PNG and exits. `--size=WxH` sets the window size, `--tr` renders in Turkish, `--de` in German and `--pad` shows gamepad buttons in the hint bars.
+- `--screenshot=<file>` writes a PNG and exits. `--size=WxH` sets the window size, `--tr` renders in Turkish, `--de` in German, `--es` in Spanish, `--fr` in French, `--pt` in Brazilian Portuguese and `--pad` shows gamepad buttons in the hint bars.
 - On Linux without a display, CI runs the release binary in a virtual X server with a software Vulkan driver: `xvfb-run -a target/release/anyplay-launcher --gallery=home --screenshot=home.png` (packages `xvfb mesa-vulkan-drivers libvulkan1`).
 
-For a visible change, attach the screenshots of every scene you changed, before and after, and in Turkish and German too when text changes. A new state gets its own scene.
+For a visible change, attach the screenshots of every scene you changed, before and after, and in the longest languages (German, Spanish, French, Portuguese) too when text changes. A new state gets its own scene.
 
 ## Texts
 
-Every text a player can read exists in English, Turkish and German. A new string goes into the strings file of its screen (`crates/anyps5-launcher/src/screens/*_strings.rs`, or `ui/i18n_table.rs` for the shared ones) with all three languages. If you do not speak one of them, write the English text and say so in the pull request; a maintainer will help with the translation.
+Every text a player can read exists in English, Turkish, German, Spanish, French and Brazilian Portuguese. A new string goes into the strings file of its screen (`crates/anyps5-launcher/src/screens/*_strings.rs`, or `ui/i18n_table.rs` and its `i18n_<language>.rs` files for the shared ones) with all six languages; the test `every_text_has_an_arm_in_every_language` fails when one is missing. If you do not speak one of them, write the English text and say so in the pull request; a maintainer will help with the translation.
+
+Use the glossary of the language ([docs/i18n/](docs/i18n/README.md)) so a thing keeps one name on every screen.
+
+**Translations welcome.** The Spanish, French and Portuguese texts were written by an AI model and have not been reviewed by a native speaker yet. If you speak one of them, a pull request that fixes a text (and the glossary entry, if a term changes) is very welcome. The launcher says so under Settings > Language and on the About page, and links here.
 
 ## Where things are specified
 

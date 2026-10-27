@@ -1,5 +1,6 @@
 //! Ported from utkuhalis/AnyPS5-ARM (Localization.swift, GPL-2.0-only) and changed since; see README "Credits".
-//! Localisation (docs/DESIGN.md section 8): English, Turkish and German, 213 keys generated from the
+//! Localisation (docs/DESIGN.md section 8): English, Turkish, German, Spanish, French and Brazilian
+//! Portuguese, 213 keys generated from the
 //! macOS launcher's `Localization.swift` by `tools/gen-i18n.mjs`, with the Windows replacements
 //! of section 9.3 already applied.
 //!
@@ -9,6 +10,9 @@
 
 include!("i18n_table.rs");
 include!("i18n_german.rs");
+include!("i18n_spanish.rs");
+include!("i18n_french.rs");
+include!("i18n_portuguese.rs");
 
 /// Interface languages.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -17,17 +21,31 @@ pub enum Language {
     #[default]
     English,
     German,
+    Spanish,
+    French,
+    /// Brazilian Portuguese (`pt-BR`).
+    Portuguese,
 }
 
 impl Language {
-    pub const ALL: [Language; 3] = [Language::Turkish, Language::English, Language::German];
+    pub const ALL: [Language; 6] = [
+        Language::Turkish,
+        Language::English,
+        Language::German,
+        Language::Spanish,
+        Language::French,
+        Language::Portuguese,
+    ];
 
-    /// Preference value (`"tr"` / `"en"`).
+    /// Preference value (`"tr"`, `"en"`, `"de"`, `"es"`, `"fr"`, `"pt"`).
     pub const fn code(self) -> &'static str {
         match self {
             Language::Turkish => "tr",
             Language::English => "en",
             Language::German => "de",
+            Language::Spanish => "es",
+            Language::French => "fr",
+            Language::Portuguese => "pt",
         }
     }
 
@@ -36,6 +54,9 @@ impl Language {
             "tr" => Some(Language::Turkish),
             "en" => Some(Language::English),
             "de" => Some(Language::German),
+            "es" => Some(Language::Spanish),
+            "fr" => Some(Language::French),
+            "pt" => Some(Language::Portuguese),
             _ => None,
         }
     }
@@ -46,6 +67,9 @@ impl Language {
             Language::Turkish => "Türkçe",
             Language::English => "English",
             Language::German => "Deutsch",
+            Language::Spanish => "Español",
+            Language::French => "Français",
+            Language::Portuguese => "Português (Brasil)",
         }
     }
 
@@ -55,19 +79,40 @@ impl Language {
             Language::Turkish => "TR",
             Language::English => "EN",
             Language::German => "DE",
+            Language::Spanish => "ES",
+            Language::French => "FR",
+            Language::Portuguese => "PT",
         }
     }
 
-    /// The console language a game starts in when its own setting follows the launcher.
+    /// The console language a game starts in when its own setting follows the launcher (Spain's
+    /// Spanish; [`Language::console_language_for`] picks Latin America's from the system locale).
     pub const fn console_language(self) -> u32 {
         match self {
             Language::Turkish => 19,
             Language::English => 1,
             Language::German => 4,
+            Language::Spanish => 3,
+            Language::French => 2,
+            Language::Portuguese => 17,
         }
     }
 
-    /// Turkish when the OS UI language starts with `tr`, German for `de`, else English.
+    /// [`Language::console_language`] with Latin American Spanish (20) for a Latin American system
+    /// locale. The one place that mirrors `anyps5_core::settings::Language::console_language_for`.
+    pub fn console_language_for(self, system_locale: &str) -> u32 {
+        let core = match self {
+            Language::Turkish => anyps5_core::settings::Language::Turkish,
+            Language::English => anyps5_core::settings::Language::English,
+            Language::German => anyps5_core::settings::Language::German,
+            Language::Spanish => anyps5_core::settings::Language::Spanish,
+            Language::French => anyps5_core::settings::Language::French,
+            Language::Portuguese => anyps5_core::settings::Language::Portuguese,
+        };
+        u32::try_from(core.console_language_for(system_locale)).unwrap_or(1)
+    }
+
+    /// The language of the OS UI (`tr`, `de`, `es`, `fr`, `pt`), else English.
     pub fn system() -> Language {
         match sys_locale::get_locale() {
             Some(locale) => Language::from_locale(&locale),
@@ -75,16 +120,22 @@ impl Language {
         }
     }
 
-    /// The language a locale tag (`de-AT`, `tr_TR`) asks for; English for any other.
+    /// The language a locale tag (`de-AT`, `tr_TR`, `pt-BR`) asks for; English for any other.
     pub fn from_locale(tag: &str) -> Language {
-        let tag = tag.to_ascii_lowercase();
-        if tag.starts_with("tr") {
-            Language::Turkish
-        } else if tag.starts_with("de") {
-            Language::German
-        } else {
-            Language::English
+        match anyps5_core::settings::Language::from_locale(tag) {
+            anyps5_core::settings::Language::Turkish => Language::Turkish,
+            anyps5_core::settings::Language::English => Language::English,
+            anyps5_core::settings::Language::German => Language::German,
+            anyps5_core::settings::Language::Spanish => Language::Spanish,
+            anyps5_core::settings::Language::French => Language::French,
+            anyps5_core::settings::Language::Portuguese => Language::Portuguese,
         }
+    }
+
+    /// True when the language writes the decimal separator as a comma (`8,39`), false for the
+    /// point (`8.39`). Every language but English.
+    pub const fn decimal_comma(self) -> bool {
+        !matches!(self, Language::English)
     }
 
     /// Looks a key up in this language.
@@ -104,6 +155,18 @@ impl Language {
                 Some(text) => text,
                 None => key.english(),
             },
+            Language::Spanish => match key.spanish() {
+                Some(text) => text,
+                None => key.english(),
+            },
+            Language::French => match key.french() {
+                Some(text) => text,
+                None => key.english(),
+            },
+            Language::Portuguese => match key.portuguese() {
+                Some(text) => text,
+                None => key.english(),
+            },
         }
     }
 
@@ -112,14 +175,22 @@ impl Language {
         substitute(self.text(key), args)
     }
 
-    /// Locale tag for dates (`en-US` / `tr-TR`).
+    /// Locale tag for dates (`en-US`, `tr-TR`, `de-DE`, `es-ES`, `fr-FR`, `pt-BR`).
     pub const fn locale(self) -> &'static str {
         match self {
             Language::Turkish => "tr-TR",
             Language::English => "en-US",
             Language::German => "de-DE",
+            Language::Spanish => "es-ES",
+            Language::French => "fr-FR",
+            Language::Portuguese => "pt-BR",
         }
     }
+}
+
+/// The OS UI locale tag (`pt-BR`), empty when it cannot be read.
+pub fn system_locale() -> String {
+    sys_locale::get_locale().unwrap_or_default()
 }
 
 /// Strings AnyPlay words its own way, in place of the generated table's: they speak of the
@@ -217,6 +288,30 @@ const fn elsewhere(language: Language, key: Key) -> Option<&'static str> {
             (Language::Turkish, Key::AboutText) => Some(
                 "AnyPlay Launcher oyunlarını AnyPS5, Rosetta ve MoltenVK ile macOS'ta çalıştırır.",
             ),
+            (Language::Spanish, Key::StartingText) => Some(
+                "El juego se está abriendo, espera un momento. El primer inicio puede tardar unos minutos mientras Rosetta traduce el juego y se compilan los shaders.",
+            ),
+            (Language::Spanish, Key::StepRelink) => Some("Convirtiendo para macOS"),
+            (Language::Spanish, Key::ShowInFinder) => Some("Mostrar en el Finder"),
+            (Language::Spanish, Key::AboutText) => {
+                Some("AnyPlay Launcher inicia tus juegos en macOS con AnyPS5, Rosetta y MoltenVK.")
+            }
+            (Language::French, Key::StartingText) => Some(
+                "Le jeu s’ouvre, patiente un instant. Le premier lancement peut prendre quelques minutes, le temps que Rosetta traduise le jeu et que les shaders soient compilés.",
+            ),
+            (Language::French, Key::StepRelink) => Some("Conversion pour macOS"),
+            (Language::French, Key::ShowInFinder) => Some("Afficher dans le Finder"),
+            (Language::French, Key::AboutText) => {
+                Some("AnyPlay Launcher lance tes jeux sous macOS avec AnyPS5, Rosetta et MoltenVK.")
+            }
+            (Language::Portuguese, Key::StartingText) => Some(
+                "O jogo está abrindo, aguarde. O primeiro início pode levar alguns minutos enquanto o Rosetta traduz o jogo e os shaders são compilados.",
+            ),
+            (Language::Portuguese, Key::StepRelink) => Some("Convertendo para o macOS"),
+            (Language::Portuguese, Key::ShowInFinder) => Some("Mostrar no Finder"),
+            (Language::Portuguese, Key::AboutText) => Some(
+                "O AnyPlay Launcher inicia seus jogos no macOS com o AnyPS5, Rosetta e MoltenVK.",
+            ),
             _ => None,
         };
     }
@@ -236,6 +331,30 @@ const fn elsewhere(language: Language, key: Key) -> Option<&'static str> {
         (Language::Turkish, Key::ShowInFinder) => "Dosya yöneticisinde göster",
         (Language::Turkish, Key::AboutText) => {
             "AnyPlay Launcher oyunlarını AnyPS5 ile Linux'ta çalıştırır."
+        }
+        (Language::Spanish, Key::StartingText) => {
+            "El juego se está abriendo, espera un momento. El primer inicio puede tardar unos minutos mientras el juego se prepara para Linux."
+        }
+        (Language::Spanish, Key::StepRelink) => "Convirtiendo para Linux",
+        (Language::Spanish, Key::ShowInFinder) => "Mostrar en el gestor de archivos",
+        (Language::Spanish, Key::AboutText) => {
+            "AnyPlay Launcher inicia tus juegos en Linux con AnyPS5."
+        }
+        (Language::French, Key::StartingText) => {
+            "Le jeu s’ouvre, patiente un instant. Le premier lancement peut prendre quelques minutes, le temps de préparer le jeu pour Linux."
+        }
+        (Language::French, Key::StepRelink) => "Conversion pour Linux",
+        (Language::French, Key::ShowInFinder) => "Afficher dans le gestionnaire de fichiers",
+        (Language::French, Key::AboutText) => {
+            "AnyPlay Launcher lance tes jeux sous Linux avec AnyPS5."
+        }
+        (Language::Portuguese, Key::StartingText) => {
+            "O jogo está abrindo, aguarde. O primeiro início pode levar alguns minutos enquanto o jogo é preparado para o Linux."
+        }
+        (Language::Portuguese, Key::StepRelink) => "Convertendo para o Linux",
+        (Language::Portuguese, Key::ShowInFinder) => "Mostrar no gerenciador de arquivos",
+        (Language::Portuguese, Key::AboutText) => {
+            "O AnyPlay Launcher inicia seus jogos no Linux com o AnyPS5."
         }
         _ => return None,
     })
@@ -318,15 +437,20 @@ pub fn byte_text(bytes: i64, language: Language) -> String {
     if bytes < 0 {
         return "…".to_owned();
     }
-    const UNITS: [&str; 5] = ["bytes", "KB", "MB", "GB", "TB"];
+    // French counts in octets (o, Ko, Mo, Go, To); the others keep the English letters.
+    let units: [&str; 5] = if language == Language::French {
+        ["octets", "Ko", "Mo", "Go", "To"]
+    } else {
+        ["bytes", "KB", "MB", "GB", "TB"]
+    };
     let mut value = bytes as f64;
     let mut unit = 0;
-    while value >= 1000.0 && unit < UNITS.len() - 1 {
+    while value >= 1000.0 && unit < units.len() - 1 {
         value /= 1000.0;
         unit += 1;
     }
     if unit == 0 {
-        return format!("{bytes} bytes");
+        return format!("{bytes} {}", units[0]);
     }
     let text = if value >= 100.0 {
         format!("{value:.0}")
@@ -335,12 +459,12 @@ pub fn byte_text(bytes: i64, language: Language) -> String {
     } else {
         format!("{value:.2}")
     };
-    let text = if matches!(language, Language::Turkish | Language::German) {
+    let text = if language.decimal_comma() {
         text.replace('.', ",")
     } else {
         text
     };
-    format!("{text} {}", UNITS[unit])
+    format!("{text} {}", units[unit])
 }
 
 #[cfg(test)]
@@ -486,31 +610,70 @@ mod tests {
     }
 
     #[test]
-    fn every_core_key_has_a_german_text() {
+    fn every_core_key_has_a_text_in_every_translated_language() {
         for key in Key::ALL {
-            let text = key
-                .german()
-                .unwrap_or_else(|| panic!("{} has no German text", key.name()));
-            assert!(!text.trim().is_empty(), "{}", key.name());
-            assert_eq!(
-                text.matches("%@").count() + text.matches("%d").count(),
-                key.english().matches("%@").count() + key.english().matches("%d").count(),
-                "{} changes its placeholders",
-                key.name()
-            );
+            let placeholders = |text: &str| text.matches("%@").count() + text.matches("%d").count();
+            for (language, text) in [
+                ("German", key.german()),
+                ("Spanish", key.spanish()),
+                ("French", key.french()),
+                ("Portuguese", key.portuguese()),
+            ] {
+                let text = text.unwrap_or_else(|| panic!("{} has no {language} text", key.name()));
+                assert!(!text.trim().is_empty(), "{} ({language})", key.name());
+                assert_eq!(
+                    placeholders(text),
+                    placeholders(key.english()),
+                    "{} ({language}) changes its placeholders",
+                    key.name()
+                );
+            }
         }
     }
 
     #[test]
-    fn german_is_picked_from_the_system_locale() {
+    fn the_system_locale_picks_the_language() {
         assert_eq!(Language::from_locale("de-AT"), Language::German);
         assert_eq!(Language::from_locale("DE_CH"), Language::German);
         assert_eq!(Language::from_locale("tr-TR"), Language::Turkish);
-        assert_eq!(Language::from_locale("fr-FR"), Language::English);
+        assert_eq!(Language::from_locale("es-MX"), Language::Spanish);
+        assert_eq!(Language::from_locale("fr_CA"), Language::French);
+        assert_eq!(Language::from_locale("pt-BR"), Language::Portuguese);
+        assert_eq!(Language::from_locale("pt-PT"), Language::Portuguese);
+        assert_eq!(Language::from_locale("it-IT"), Language::English);
         assert_eq!(
             Language::German.format(Key::GamesFound, &[3usize.into()]),
             "3 Spiele gefunden"
         );
+        assert_eq!(
+            Language::Spanish.format(Key::GamesFound, &[3usize.into()]),
+            "3 juegos encontrados"
+        );
+        assert_eq!(
+            Language::French.format(Key::GamesFound, &[3usize.into()]),
+            "3 jeux trouvés"
+        );
+        assert_eq!(
+            Language::Portuguese.format(Key::GamesFound, &[3usize.into()]),
+            "3 jogos encontrados"
+        );
+    }
+
+    #[test]
+    fn console_languages_match_the_platform_numbers() {
+        assert_eq!(Language::Spanish.console_language(), 3);
+        assert_eq!(Language::French.console_language(), 2);
+        assert_eq!(Language::Portuguese.console_language(), 17);
+        assert_eq!(Language::Spanish.console_language_for("es-MX"), 20);
+        assert_eq!(Language::Spanish.console_language_for("es-ES"), 3);
+        for language in Language::ALL {
+            let core = crate::screens::convert::language_to_core(language);
+            assert_eq!(
+                i64::from(language.console_language()),
+                i64::from(core.console_language()),
+                "{language:?}"
+            );
+        }
     }
 
     #[test]
@@ -519,6 +682,9 @@ mod tests {
             assert_eq!(Language::from_code(language.code()), Some(language));
         }
         assert_eq!(Language::from_code("de"), Some(Language::German));
+        assert_eq!(Language::from_code("es"), Some(Language::Spanish));
+        assert_eq!(Language::from_code("fr"), Some(Language::French));
+        assert_eq!(Language::from_code("pt"), Some(Language::Portuguese));
         assert_eq!(Language::from_code("xx"), None);
     }
 
@@ -526,6 +692,10 @@ mod tests {
     fn byte_text_uses_decimal_units() {
         assert_eq!(byte_text(8_390_000_000, Language::Turkish), "8,39 GB");
         assert_eq!(byte_text(8_390_000_000, Language::German), "8,39 GB");
+        assert_eq!(byte_text(8_390_000_000, Language::Spanish), "8,39 GB");
+        assert_eq!(byte_text(8_390_000_000, Language::Portuguese), "8,39 GB");
+        assert_eq!(byte_text(8_390_000_000, Language::French), "8,39 Go");
+        assert_eq!(byte_text(999, Language::French), "999 octets");
         assert_eq!(byte_text(8_390_000_000, Language::English), "8.39 GB");
         assert_eq!(byte_text(-1, Language::English), "…");
         assert_eq!(byte_text(999, Language::English), "999 bytes");

@@ -269,11 +269,221 @@ impl LibraryText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            LibraryText::RunsWell => "Funciona bien",
+            LibraryText::RunsWithIssues => "Funciona con problemas",
+            LibraryText::NoStart => "No se inicia",
+            LibraryText::Lan => "Jugar juntos",
+            LibraryText::LanShort => "Juntos",
+            LibraryText::SortBy => "Orden: %@",
+            LibraryText::SortRecent => "Jugados recientemente",
+            LibraryText::SortName => "Nombre",
+            LibraryText::SortSize => "Tamaño",
+            LibraryText::SortStatus => "Estado",
+            LibraryText::ShowFilter => "Mostrar: %@",
+            LibraryText::FilterAll => "Todos los juegos",
+            LibraryText::FilterReady => "Listos",
+            LibraryText::FilterNeedsUnlock => "Por desbloquear",
+            LibraryText::FilterTogether => "Jugar juntos",
+            LibraryText::Search => "Buscar",
+            LibraryText::SearchFor => "Búsqueda: %@",
+            LibraryText::Storage => "Almacenamiento",
+            LibraryText::SearchTitle => "Buscar en la biblioteca",
+            LibraryText::SearchFound => "Encontrados: %@",
+            LibraryText::SearchNone => "Ningún juego coincide",
+            LibraryText::SearchField => "Nombre",
+            LibraryText::SearchShow => "Mostrar juegos",
+            LibraryText::SearchClear => "Borrar búsqueda",
+            LibraryText::KeyShift => "Mayús",
+            LibraryText::KeyLetters => "abc",
+            LibraryText::KeySymbols => "123",
+            LibraryText::KeySpace => "Espacio",
+            LibraryText::KeyDelete => "Borrar",
+            LibraryText::NothingHere => "No hay juegos aquí",
+            LibraryText::NothingHereText => "Ningún juego coincide con la búsqueda o el filtro.",
+            LibraryText::ClearFilters => "Mostrar todos los juegos",
+            LibraryText::StorageTitle => "Almacenamiento",
+            LibraryText::StorageSummary => {
+                "Las copias desbloqueadas ocupan %@. Quedan %@ libres en esta unidad."
+            }
+            LibraryText::StorageSummaryNoDrive => "Las copias desbloqueadas ocupan %@.",
+            LibraryText::StorageEmpty => "Sin copias desbloqueadas",
+            LibraryText::StorageEmptyText => {
+                "Un juego ocupa espacio aquí cuando se desbloquea. Tus archivos del juego no cuentan."
+            }
+            LibraryText::StorageMeasuring => "Midiendo\u{2026}",
+            LibraryText::StorageCopy => "Copia desbloqueada: %@",
+            LibraryText::StorageTotal => "Todas las copias desbloqueadas",
+            LibraryText::RemoveCopy => "Quitar copia desbloqueada",
+            LibraryText::RemoveCopyTitle => "¿Quitar la copia desbloqueada de %@?",
+            LibraryText::RemoveCopyBody => {
+                "Esto libera %@. Tus archivos del juego se quedan donde están y las partidas guardadas se copian antes. Volver a desbloquear el juego tarda un rato."
+            }
+            LibraryText::RemoveCopyRunning => "Cierra primero el juego",
+            LibraryText::Cancel => "Cancelar",
+            LibraryText::ShelfFriends => "Amigos jugando ahora",
+            LibraryText::ShelfRecent => "Jugados recientemente",
+            LibraryText::ShelfNew => "Nuevo",
+            LibraryText::Join => "Unirse",
+            LibraryText::ShelfFriendPlays => "%@ juega a esto",
+            LibraryText::NewGame => "Juego nuevo: %@",
+            LibraryText::NewGames => "%@ juegos nuevos",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            LibraryText::RunsWell => "Fonctionne bien",
+            LibraryText::RunsWithIssues => "Fonctionne avec des problèmes",
+            LibraryText::NoStart => "Ne se lance pas",
+            LibraryText::Lan => "Jouer ensemble",
+            LibraryText::LanShort => "Ensemble",
+            LibraryText::SortBy => "Tri\u{a0}: %@",
+            LibraryText::SortRecent => "Joués récemment",
+            LibraryText::SortName => "Nom",
+            LibraryText::SortSize => "Taille",
+            LibraryText::SortStatus => "État",
+            LibraryText::ShowFilter => "Afficher\u{a0}: %@",
+            LibraryText::FilterAll => "Tous les jeux",
+            LibraryText::FilterReady => "Prêts",
+            LibraryText::FilterNeedsUnlock => "À déverrouiller",
+            LibraryText::FilterTogether => "Jouer ensemble",
+            LibraryText::Search => "Rechercher",
+            LibraryText::SearchFor => "Recherche\u{a0}: %@",
+            LibraryText::Storage => "Stockage",
+            LibraryText::SearchTitle => "Rechercher dans la bibliothèque",
+            LibraryText::SearchFound => "Trouvés\u{a0}: %@",
+            LibraryText::SearchNone => "Aucun jeu ne correspond",
+            LibraryText::SearchField => "Nom",
+            LibraryText::SearchShow => "Afficher les jeux",
+            LibraryText::SearchClear => "Effacer la recherche",
+            LibraryText::KeyShift => "Maj",
+            LibraryText::KeyLetters => "abc",
+            LibraryText::KeySymbols => "123",
+            LibraryText::KeySpace => "Espace",
+            LibraryText::KeyDelete => "Effacer",
+            LibraryText::NothingHere => "Aucun jeu ici",
+            LibraryText::NothingHereText => "Aucun jeu ne correspond à la recherche ou au filtre.",
+            LibraryText::ClearFilters => "Afficher tous les jeux",
+            LibraryText::StorageTitle => "Stockage",
+            LibraryText::StorageSummary => {
+                "Les copies déverrouillées occupent %@. %@ libres sur ce lecteur."
+            }
+            LibraryText::StorageSummaryNoDrive => "Les copies déverrouillées occupent %@.",
+            LibraryText::StorageEmpty => "Aucune copie déverrouillée",
+            LibraryText::StorageEmptyText => {
+                "Un jeu prend de la place ici une fois déverrouillé. Tes fichiers de jeu ne comptent pas."
+            }
+            LibraryText::StorageMeasuring => "Calcul en cours\u{2026}",
+            LibraryText::StorageCopy => "Copie déverrouillée\u{a0}: %@",
+            LibraryText::StorageTotal => "Toutes les copies déverrouillées",
+            LibraryText::RemoveCopy => "Supprimer la copie déverrouillée",
+            LibraryText::RemoveCopyTitle => "Supprimer la copie déverrouillée de %@\u{a0}?",
+            LibraryText::RemoveCopyBody => {
+                "Cela libère %@. Tes fichiers de jeu restent où ils sont, et les sauvegardes sont copiées avant. Déverrouiller à nouveau le jeu prend un moment."
+            }
+            LibraryText::RemoveCopyRunning => "Ferme d’abord le jeu",
+            LibraryText::Cancel => "Annuler",
+            LibraryText::ShelfFriends => "Amis en train de jouer",
+            LibraryText::ShelfRecent => "Joués récemment",
+            LibraryText::ShelfNew => "Nouveau",
+            LibraryText::Join => "Rejoindre",
+            LibraryText::ShelfFriendPlays => "%@ joue à ce jeu",
+            LibraryText::NewGame => "Nouveau jeu\u{a0}: %@",
+            LibraryText::NewGames => "%@ nouveaux jeux",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            LibraryText::RunsWell => "Funciona bem",
+            LibraryText::RunsWithIssues => "Funciona com problemas",
+            LibraryText::NoStart => "Não inicia",
+            LibraryText::Lan => "Jogar junto",
+            LibraryText::LanShort => "Junto",
+            LibraryText::SortBy => "Ordem: %@",
+            LibraryText::SortRecent => "Jogados recentemente",
+            LibraryText::SortName => "Nome",
+            LibraryText::SortSize => "Tamanho",
+            LibraryText::SortStatus => "Status",
+            LibraryText::ShowFilter => "Mostrar: %@",
+            LibraryText::FilterAll => "Todos os jogos",
+            LibraryText::FilterReady => "Prontos",
+            LibraryText::FilterNeedsUnlock => "Para desbloquear",
+            LibraryText::FilterTogether => "Jogar junto",
+            LibraryText::Search => "Pesquisar",
+            LibraryText::SearchFor => "Pesquisa: %@",
+            LibraryText::Storage => "Armazenamento",
+            LibraryText::SearchTitle => "Pesquisar na biblioteca",
+            LibraryText::SearchFound => "Encontrados: %@",
+            LibraryText::SearchNone => "Nenhum jogo corresponde",
+            LibraryText::SearchField => "Nome",
+            LibraryText::SearchShow => "Mostrar jogos",
+            LibraryText::SearchClear => "Limpar pesquisa",
+            LibraryText::KeyShift => "Shift",
+            LibraryText::KeyLetters => "abc",
+            LibraryText::KeySymbols => "123",
+            LibraryText::KeySpace => "Espaço",
+            LibraryText::KeyDelete => "Apagar",
+            LibraryText::NothingHere => "Nenhum jogo aqui",
+            LibraryText::NothingHereText => "Nenhum jogo corresponde à pesquisa ou ao filtro.",
+            LibraryText::ClearFilters => "Mostrar todos os jogos",
+            LibraryText::StorageTitle => "Armazenamento",
+            LibraryText::StorageSummary => {
+                "As cópias desbloqueadas ocupam %@. %@ livres nesta unidade."
+            }
+            LibraryText::StorageSummaryNoDrive => "As cópias desbloqueadas ocupam %@.",
+            LibraryText::StorageEmpty => "Nenhuma cópia desbloqueada",
+            LibraryText::StorageEmptyText => {
+                "Um jogo ocupa espaço aqui depois de desbloqueado. Seus arquivos do jogo não contam."
+            }
+            LibraryText::StorageMeasuring => "Medindo\u{2026}",
+            LibraryText::StorageCopy => "Cópia desbloqueada: %@",
+            LibraryText::StorageTotal => "Todas as cópias desbloqueadas",
+            LibraryText::RemoveCopy => "Remover cópia desbloqueada",
+            LibraryText::RemoveCopyTitle => "Remover a cópia desbloqueada de %@?",
+            LibraryText::RemoveCopyBody => {
+                "Isso libera %@. Seus arquivos do jogo ficam onde estão, e os jogos salvos passam por backup antes. Desbloquear o jogo de novo leva um tempo."
+            }
+            LibraryText::RemoveCopyRunning => "Feche o jogo primeiro",
+            LibraryText::Cancel => "Cancelar",
+            LibraryText::ShelfFriends => "Amigos jogando agora",
+            LibraryText::ShelfRecent => "Jogados recentemente",
+            LibraryText::ShelfNew => "Novo",
+            LibraryText::Join => "Participar",
+            LibraryText::ShelfFriendPlays => "%@ está jogando isto",
+            LibraryText::NewGame => "Novo jogo: %@",
+            LibraryText::NewGames => "%@ novos jogos",
+            _ => return None,
+        })
+    }
+
     pub fn text(self, language: Language) -> &'static str {
         match language {
             Language::English => self.english(),
             Language::Turkish => self.turkish(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },

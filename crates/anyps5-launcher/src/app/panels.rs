@@ -2590,6 +2590,7 @@ fn open_known_url(url: &str) {
         crate::screens::about_strings::DISCORD,
         crate::screens::about_strings::PRIVACY,
         crate::screens::about_strings::TERMS,
+        crate::screens::about_strings::TRANSLATIONS,
         crate::screens::about_strings::INSTALL_GUIDE,
         crate::screens::update_strings::RELEASES,
     ];

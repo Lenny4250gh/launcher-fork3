@@ -286,61 +286,22 @@ impl Accent {
 
     /// Localised name (not part of the string table in the original either).
     pub fn title(self, language: Language) -> &'static str {
-        let tr = language == Language::Turkish;
-        let de = language == Language::German;
-        match self {
-            Accent::Blue => {
-                if tr {
-                    "Mavi"
-                } else if de {
-                    "Blau"
-                } else {
-                    "Blue"
-                }
-            }
-            Accent::Mint => {
-                if tr {
-                    "Nane"
-                } else if de {
-                    "Minze"
-                } else {
-                    "Mint"
-                }
-            }
-            Accent::Coral => {
-                if tr {
-                    "Mercan"
-                } else if de {
-                    "Koralle"
-                } else {
-                    "Coral"
-                }
-            }
-            Accent::Violet => {
-                if tr {
-                    "Mor"
-                } else if de {
-                    "Violett"
-                } else {
-                    "Violet"
-                }
-            }
-            Accent::Gold => {
-                if tr {
-                    "Altın"
-                } else {
-                    "Gold"
-                }
-            }
-            Accent::White => {
-                if tr {
-                    "Beyaz"
-                } else if de {
-                    "Weiß"
-                } else {
-                    "White"
-                }
-            }
+        // English, Turkish, German, Spanish, French, Portuguese.
+        let [en, tr, de, es, fr, pt] = match self {
+            Accent::Blue => ["Blue", "Mavi", "Blau", "Azul", "Bleu", "Azul"],
+            Accent::Mint => ["Mint", "Nane", "Minze", "Menta", "Menthe", "Menta"],
+            Accent::Coral => ["Coral", "Mercan", "Koralle", "Coral", "Corail", "Coral"],
+            Accent::Violet => ["Violet", "Mor", "Violett", "Violeta", "Violet", "Violeta"],
+            Accent::Gold => ["Gold", "Altın", "Gold", "Dorado", "Or", "Dourado"],
+            Accent::White => ["White", "Beyaz", "Weiß", "Blanco", "Blanc", "Branco"],
+        };
+        match language {
+            Language::English => en,
+            Language::Turkish => tr,
+            Language::German => de,
+            Language::Spanish => es,
+            Language::French => fr,
+            Language::Portuguese => pt,
         }
     }
 }

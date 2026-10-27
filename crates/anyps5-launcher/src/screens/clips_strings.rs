@@ -139,11 +139,132 @@ impl ClipsText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            ClipsText::Title => "Clips",
+            ClipsText::Detail => "Guarda los últimos segundos de un juego en ejecución, sin sonido",
+            ClipsText::Off => "Desactivado",
+            ClipsText::Seconds15 => "15 segundos",
+            ClipsText::Seconds30 => "30 segundos",
+            ClipsText::Minute1 => "1 minuto",
+            ClipsText::Minutes2 => "2 minutos",
+            ClipsText::Key => "Tecla de clip",
+            ClipsText::KeyDetail => {
+                "Guarda como clip los segundos conservados. El botón Create también lo hace"
+            }
+            ClipsText::KeyPrompt => "Pulsa las teclas que quieras usar. Esc conserva las actuales.",
+            ClipsText::Show => "Mostrar clips",
+            ClipsText::CountNone => "Aún no hay clips",
+            ClipsText::CountOne => "1 clip",
+            ClipsText::CountMany => "%@ clips",
+            ClipsText::Saved => "Clip guardado",
+            ClipsText::SaveFailed => "No se pudo guardar el clip.",
+            ClipsText::NothingYet => "Aún no se ha grabado nada. Inténtalo de nuevo en un momento.",
+            ClipsText::IsOff => "Los clips están desactivados. Actívalos en Ajustes.",
+            ClipsText::NoEncoder => {
+                "Los clips necesitan una tarjeta gráfica con codificador de video."
+            }
+            ClipsText::NoWindow => "Los clips no encontraron la ventana del juego.",
+            ClipsText::Stopped => "Los clips se detuvieron. Reinicia el juego para grabar.",
+            ClipsText::NoWorker => "Los clips no forman parte de esta versión.",
+            ClipsText::KeyTaken => "Otro programa usa %@. Elige otra tecla de clip.",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            ClipsText::Title => "Clips",
+            ClipsText::Detail => "Garde les dernières secondes d’un jeu en cours, sans le son",
+            ClipsText::Off => "Désactivé",
+            ClipsText::Seconds15 => "15 secondes",
+            ClipsText::Seconds30 => "30 secondes",
+            ClipsText::Minute1 => "1 minute",
+            ClipsText::Minutes2 => "2 minutes",
+            ClipsText::Key => "Touche de clip",
+            ClipsText::KeyDetail => {
+                "Enregistre en clip les secondes gardées. Le bouton Create le fait aussi"
+            }
+            ClipsText::KeyPrompt => {
+                "Appuie sur les touches à utiliser. Échap conserve les actuelles."
+            }
+            ClipsText::Show => "Afficher les clips",
+            ClipsText::CountNone => "Aucun clip pour l’instant",
+            ClipsText::CountOne => "1 clip",
+            ClipsText::CountMany => "%@ clips",
+            ClipsText::Saved => "Clip enregistré",
+            ClipsText::SaveFailed => "Impossible d’enregistrer le clip.",
+            ClipsText::NothingYet => "Rien n’est encore enregistré. Réessaie dans un instant.",
+            ClipsText::IsOff => "Les clips sont désactivés. Active-les dans Paramètres.",
+            ClipsText::NoEncoder => {
+                "Les clips nécessitent une carte graphique avec encodeur vidéo."
+            }
+            ClipsText::NoWindow => "Les clips n’ont pas trouvé la fenêtre du jeu.",
+            ClipsText::Stopped => "Les clips se sont arrêtés. Relance le jeu pour enregistrer.",
+            ClipsText::NoWorker => "Les clips ne sont pas inclus dans cette version.",
+            ClipsText::KeyTaken => {
+                "Un autre programme utilise %@. Choisis une autre touche de clip."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            ClipsText::Title => "Clipes",
+            ClipsText::Detail => "Guarda os últimos segundos de um jogo em execução, sem som",
+            ClipsText::Off => "Desativado",
+            ClipsText::Seconds15 => "15 segundos",
+            ClipsText::Seconds30 => "30 segundos",
+            ClipsText::Minute1 => "1 minuto",
+            ClipsText::Minutes2 => "2 minutos",
+            ClipsText::Key => "Tecla de clipe",
+            ClipsText::KeyDetail => {
+                "Salva como clipe os segundos guardados. O botão Create também faz isso"
+            }
+            ClipsText::KeyPrompt => "Pressione as teclas que quer usar. Esc mantém as atuais.",
+            ClipsText::Show => "Mostrar clipes",
+            ClipsText::CountNone => "Nenhum clipe ainda",
+            ClipsText::CountOne => "1 clipe",
+            ClipsText::CountMany => "%@ clipes",
+            ClipsText::Saved => "Clipe salvo",
+            ClipsText::SaveFailed => "Não foi possível salvar o clipe.",
+            ClipsText::NothingYet => "Nada foi gravado ainda. Tente de novo daqui a pouco.",
+            ClipsText::IsOff => "Os clipes estão desativados. Ative-os em Configurações.",
+            ClipsText::NoEncoder => {
+                "Os clipes precisam de uma placa de vídeo com codificador de vídeo."
+            }
+            ClipsText::NoWindow => "Os clipes não encontraram a janela do jogo.",
+            ClipsText::Stopped => "Os clipes pararam. Reinicie o jogo para gravar.",
+            ClipsText::NoWorker => "Os clipes não fazem parte desta versão.",
+            ClipsText::KeyTaken => "Outro programa usa %@. Escolha outra tecla de clipe.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },

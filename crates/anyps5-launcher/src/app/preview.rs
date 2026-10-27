@@ -29,7 +29,7 @@ use anyps5_core::online::api::{
     Account, AccountId, Activity, Friend, Presence, RunSummary, Verdict, VerdictCounts,
 };
 use anyps5_core::paths::{AppPaths, GameId};
-use anyps5_core::settings::{Language as CoreLanguage, Preferences, Theme as CoreTheme};
+use anyps5_core::settings::{Preferences, Theme as CoreTheme};
 use anyps5_core::trophies::{Grade, Trophy, TrophySet};
 use egui::{ColorImage, Context, Ui};
 use image::{Rgba, RgbaImage};
@@ -281,8 +281,12 @@ pub struct Options {
     /// `--fullscreen`: fill the screen the window opens on, as the launcher does.
     pub fullscreen: bool,
     pub turkish: bool,
-    /// `--de`: German (`--tr` wins when both are given).
+    /// `--de`, `--es`, `--fr`, `--pt`: German, Spanish, French, Brazilian Portuguese (`--tr` wins
+    /// when several are given, then the first of these in that order).
     pub german: bool,
+    pub spanish: bool,
+    pub french: bool,
+    pub portuguese: bool,
     /// `--pad`: hint bars show gamepad buttons instead of keys.
     pub pad: bool,
     /// `--theme=aurora|sunset|cosmic`: the backdrop theme (the scenes `home-theme1` and `-2` set it too).
@@ -303,6 +307,26 @@ pub struct Options {
     /// icon0.png, pic0.png) that replace the generated library, in folder-name order. For the
     /// README's pictures; the art stays where it is.
     pub showcase: Option<PathBuf>,
+}
+
+impl Options {
+    /// The language the flags ask for: `--tr`, else `--de`, `--es`, `--fr`, `--pt`, else English.
+    pub fn language(&self) -> crate::ui::i18n::Language {
+        use crate::ui::i18n::Language;
+        if self.turkish {
+            Language::Turkish
+        } else if self.german {
+            Language::German
+        } else if self.spanish {
+            Language::Spanish
+        } else if self.french {
+            Language::French
+        } else if self.portuguese {
+            Language::Portuguese
+        } else {
+            Language::English
+        }
+    }
 }
 
 /// One step of a scripted run.
@@ -343,6 +367,9 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
         fullscreen: false,
         turkish: false,
         german: false,
+        spanish: false,
+        french: false,
+        portuguese: false,
         pad: false,
         theme: None,
         bright: false,
@@ -398,6 +425,12 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
             options.turkish = true;
         } else if arg == "--de" {
             options.german = true;
+        } else if arg == "--es" {
+            options.spanish = true;
+        } else if arg == "--fr" {
+            options.french = true;
+        } else if arg == "--pt" {
+            options.portuguese = true;
         }
     }
     seen.then_some(options)
@@ -1191,13 +1224,7 @@ impl PreviewApp {
             _ => Theme::Cosmic,
         });
         let prefs = Preferences {
-            language: if options.turkish {
-                CoreLanguage::Turkish
-            } else if options.german {
-                CoreLanguage::German
-            } else {
-                CoreLanguage::English
-            },
+            language: crate::screens::convert::language_to_core(options.language()),
             onboarded: demo,
             theme: crate::screens::convert::theme_to_core(theme),
             // `--solid`: the Mac window as it is without the glass (screenshots).
@@ -1212,13 +1239,7 @@ impl PreviewApp {
         if options.pad {
             crate::ui::input::set_device(&cc.egui_ctx, crate::ui::input::Device::Gamepad);
         }
-        shell.language = if options.turkish {
-            crate::ui::i18n::Language::Turkish
-        } else if options.german {
-            crate::ui::i18n::Language::German
-        } else {
-            crate::ui::i18n::Language::English
-        };
+        shell.language = options.language();
         if !demo {
             let clock = BackgroundClock::starting_at(f64::from(STILL_TIME_FULL));
             shell.backdrop = Backdrop::with_clock(theme, clock);
@@ -1488,6 +1509,16 @@ mod tests {
         assert_eq!(o.scene, Some(Scene::HomeTrophies));
         assert_eq!(o.size, (1100.0, 650.0));
         assert!(o.turkish);
+        assert_eq!(o.language(), crate::ui::i18n::Language::Turkish);
+        for (flag, language) in [
+            ("--de", crate::ui::i18n::Language::German),
+            ("--es", crate::ui::i18n::Language::Spanish),
+            ("--fr", crate::ui::i18n::Language::French),
+            ("--pt", crate::ui::i18n::Language::Portuguese),
+        ] {
+            let o = parse_args(["--gallery=home-trophies".to_owned(), flag.to_owned()]).unwrap();
+            assert_eq!(o.language(), language, "{flag}");
+        }
         // The foundation's own gallery pages are not ours.
         assert!(parse_args(["--gallery=panels".to_owned()]).is_none());
         assert!(parse_args(["--demo".to_owned()]).unwrap().scene.is_none());

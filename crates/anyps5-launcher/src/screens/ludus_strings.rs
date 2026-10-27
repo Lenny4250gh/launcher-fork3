@@ -130,11 +130,110 @@ impl LudusText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            LudusText::Title => "LudusCtrl",
+            LudusText::SwitchDetail => {
+                "Juega con un mando conectado a tu teléfono: escanea el código con la cámara del teléfono o usa la app LudusCtrl en Android. Un teléfono con la app debe vincularse primero."
+            }
+            LudusText::StartFailed => {
+                "No se pudo iniciar la conexión para la app LudusCtrl. Puede que otro programa, como el receptor de LudusCtrl, esté usando su puerto de red."
+            }
+            LudusText::AppStatus => "App",
+            LudusText::NoController => "Conectado a %@, sin mando",
+            LudusText::Paired => "Teléfonos LudusCtrl vinculados",
+            LudusText::PairedNone => {
+                "Todavía no hay ningún teléfono vinculado. Abre la app LudusCtrl en tu teléfono e inicia el enlace."
+            }
+            LudusText::AppNote => {
+                "LudusCtrl funciona en teléfonos y tablets Android. Vincula tu mando al teléfono por Bluetooth y abre la app."
+            }
+            LudusText::AppOpen => "Abrir la página de LudusCtrl",
+            LudusText::BarLabel => "LudusCtrl conectado: %@",
+            LudusText::Firewall => {
+                "La primera vez que se ejecuta LudusCtrl, Windows pregunta si AnyPlay Launcher puede usar la red. Permítelo en redes privadas; si no, ni la app ni la página podrán acceder a este PC."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            LudusText::Title => "LudusCtrl",
+            LudusText::SwitchDetail => {
+                "Joue avec une manette connectée à ton téléphone\u{a0}: scanne le code avec l’appareil photo du téléphone ou utilise l’appli LudusCtrl sur Android. Un téléphone avec l’appli doit d’abord être associé."
+            }
+            LudusText::StartFailed => {
+                "La connexion pour l’appli LudusCtrl n’a pas pu démarrer. Un autre programme, comme le récepteur LudusCtrl, utilise peut-être son port réseau."
+            }
+            LudusText::AppStatus => "Appli",
+            LudusText::NoController => "Connecté à %@, sans manette",
+            LudusText::Paired => "Téléphones LudusCtrl associés",
+            LudusText::PairedNone => {
+                "Aucun téléphone n’est encore associé. Ouvre l’appli LudusCtrl sur ton téléphone et lance la liaison."
+            }
+            LudusText::AppNote => {
+                "LudusCtrl fonctionne sur les téléphones et tablettes Android. Associe ta manette au téléphone en Bluetooth, puis ouvre l’appli."
+            }
+            LudusText::AppOpen => "Ouvrir la page de LudusCtrl",
+            LudusText::BarLabel => "LudusCtrl connecté\u{a0}: %@",
+            LudusText::Firewall => {
+                "Au premier lancement de LudusCtrl, Windows demande si AnyPlay Launcher peut utiliser le réseau. Autorise-le sur les réseaux privés, sinon ni l’appli ni la page ne pourront joindre ce PC."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            LudusText::Title => "LudusCtrl",
+            LudusText::SwitchDetail => {
+                "Jogue com um controle conectado ao seu celular: escaneie o código com a câmera do celular ou use o app LudusCtrl no Android. Um celular com o app precisa ser pareado antes."
+            }
+            LudusText::StartFailed => {
+                "Não foi possível iniciar a conexão do app LudusCtrl. Outro programa, como o receptor do LudusCtrl, pode estar usando a porta de rede dele."
+            }
+            LudusText::AppStatus => "App",
+            LudusText::NoController => "Conectado a %@, sem controle",
+            LudusText::Paired => "Celulares LudusCtrl pareados",
+            LudusText::PairedNone => {
+                "Nenhum celular pareado ainda. Abra o app LudusCtrl no seu celular e inicie a conexão."
+            }
+            LudusText::AppNote => {
+                "O LudusCtrl roda em celulares e tablets Android. Pareie seu controle com o celular por Bluetooth e abra o app."
+            }
+            LudusText::AppOpen => "Abrir a página do LudusCtrl",
+            LudusText::BarLabel => "LudusCtrl conectado: %@",
+            LudusText::Firewall => {
+                "Na primeira vez que o LudusCtrl roda, o Windows pergunta se o AnyPlay Launcher pode usar a rede. Permita em redes privadas; senão, nem o app nem a página alcançam este PC."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },
