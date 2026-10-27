@@ -310,6 +310,8 @@ pub struct Model {
     pub holding: HashSet<GameId>,
     /// What the question before the window closes is about, while it is open.
     pub quit_ask: Option<crate::screens::quit::QuitKind>,
+    /// The unlock the small Cancel button asks about, while its question is open.
+    pub cancel_ask: Option<GameId>,
     /// The window may close: the question was answered (or there was nothing to ask).
     pub quit_confirmed: bool,
     /// The window closes by this UI-clock time, or as soon as the unlocks have stopped.
@@ -457,6 +459,7 @@ impl Model {
             cancelling: HashSet::new(),
             holding: HashSet::new(),
             quit_ask: None,
+            cancel_ask: None,
             quit_confirmed: false,
             quit_by: None,
             queue: Vec::new(),
@@ -1272,6 +1275,16 @@ impl Model {
         self.uninstalling.insert(id.clone(), 0.0);
     }
 
+    /// A game the player started is being unlocked or waits for it. Games the launcher prepares
+    /// on its own while the PC is idle (`prep.background`) do not count: closing loses nothing
+    /// the player asked for.
+    fn has_manual_unlock(&self) -> bool {
+        self.progress
+            .keys()
+            .chain(self.queue.iter())
+            .any(|id| !self.prep.background.contains(id))
+    }
+
     /// The window is asked to close. With games being unlocked or removed the question comes
     /// first. True when the window must stay open for now.
     pub fn ask_before_quit(&mut self) -> bool {
@@ -1286,7 +1299,7 @@ impl Model {
             crate::screens::quit::QuitKind::Removing
         } else if !self.holding.is_empty() {
             crate::screens::quit::QuitKind::Paused
-        } else if !self.progress.is_empty() || !self.queue.is_empty() {
+        } else if self.has_manual_unlock() {
             crate::screens::quit::QuitKind::Unlocking
         } else {
             return false;
@@ -1302,6 +1315,7 @@ impl Model {
         let mut stopping: Vec<(GameId, u8)> = self
             .progress
             .iter()
+            .filter(|(id, _)| !self.prep.background.contains(*id))
             .map(|(id, &(step, fraction))| {
                 let percent = (self.overall(step, fraction) * 100.0)
                     .round()
@@ -1312,7 +1326,9 @@ impl Model {
         stopping.extend(
             self.queue
                 .iter()
-                .filter(|id| !self.progress.contains_key(*id))
+                .filter(|id| {
+                    !self.progress.contains_key(*id) && !self.prep.background.contains(*id)
+                })
                 .map(|id| (id.clone(), 0)),
         );
         if pause {
@@ -1335,7 +1351,7 @@ impl Model {
         let Some(by) = self.quit_by else {
             return false;
         };
-        if (self.progress.is_empty() && self.queue.is_empty()) || self.now >= by {
+        if !self.has_manual_unlock() || self.now >= by {
             self.quit_by = None;
             self.quit_confirmed = true;
             return true;
@@ -1371,6 +1387,26 @@ impl Model {
             self.effects
                 .push(Effect::Pipeline(PipelineCommand::Resume(id.clone())));
             self.sound(Cue::Select);
+        }
+    }
+
+    /// The small Cancel button: an unlock that has done work asks first, one that only waits in
+    /// the queue loses nothing and is dropped at once.
+    pub fn ask_cancel_unlock(&mut self, id: &GameId) {
+        if self.progress.contains_key(id) && !self.cancelling.contains(id) {
+            self.cancel_ask = Some(id.clone());
+            self.switch_overlay(Overlay::ConfirmCancelUnlock);
+        } else {
+            self.cancel_unlock(id);
+        }
+    }
+
+    /// The answer to that question: `cancel` drops the unlock, anything else keeps it going.
+    pub fn answer_cancel_unlock(&mut self, cancel: bool) {
+        let asked = self.cancel_ask.take();
+        self.dismiss_overlay();
+        if let Some(id) = asked.filter(|_| cancel) {
+            self.cancel_unlock(&id);
         }
     }
 
@@ -1679,7 +1715,7 @@ impl Model {
             HomeIntent::PrimaryAction => self.primary_action(),
             HomeIntent::CancelUnlock => {
                 if let Some(id) = self.selected_game().map(|g| g.id.clone()) {
-                    self.cancel_unlock(&id);
+                    self.ask_cancel_unlock(&id);
                 }
             }
             HomeIntent::AnswerRun(i) => self.answer_run(i),
@@ -1986,6 +2022,17 @@ mod tests {
     }
 
     #[test]
+    fn preparing_in_the_background_does_not_ask_before_closing() {
+        let g = game("a", None, ExecutableKind::Elf);
+        let id = g.id.clone();
+        let mut m = model_with(vec![g]);
+        m.progress.insert(id.clone(), (UnlockStep::Relink, 0.4));
+        m.prep.background.insert(id);
+        assert!(!m.ask_before_quit());
+        assert!(m.quit_ask.is_none());
+    }
+
+    #[test]
     fn the_small_cancel_button_drops_the_unlock_for_good() {
         let g = game("a", None, ExecutableKind::Elf);
         let id = g.id.clone();
@@ -1994,6 +2041,12 @@ mod tests {
         m.selected = 0;
         assert!(m.home_context().cancellable);
         m.apply_intent(crate::ui::focus::HomeIntent::CancelUnlock);
+        // Work was done: it asks first, and keeping it going changes nothing.
+        assert_eq!(m.overlay, Some(Overlay::ConfirmCancelUnlock));
+        m.answer_cancel_unlock(false);
+        assert!(matches!(m.state_of(&g), GameState::Installing { .. }));
+        m.apply_intent(crate::ui::focus::HomeIntent::CancelUnlock);
+        m.answer_cancel_unlock(true);
         assert!(!m.prefs.paused_unlocks.contains_key(id.as_str()));
         assert!(matches!(
             m.state_of(&g),

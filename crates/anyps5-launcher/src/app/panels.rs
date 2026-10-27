@@ -74,7 +74,7 @@ use crate::screens::home::tile_overlay;
 use crate::screens::ingame::{CloseGamePanel, InGameAction, InGameData, InGamePanel};
 use crate::screens::library::{LibraryAction, LibraryData, LibraryEntry, LibraryGrid, StateText};
 use crate::screens::log::{LogAction, LogData, LogView, ReviewData};
-use crate::screens::quit::{QuitAction, QuitPanel};
+use crate::screens::quit::{QuitAction, QuitKind, QuitPanel};
 use crate::screens::recommended::{RecommendedAction, RecommendedData, RecommendedPanel};
 use crate::screens::rows::RowId;
 use crate::screens::saves::{
@@ -156,6 +156,7 @@ pub struct PanelHost {
     in_game: InGamePanel,
     close_game: CloseGamePanel,
     quit: QuitPanel,
+    cancel_unlock: QuitPanel,
     /// The tags of the releases on this PC, read when the game sheet opens and after a change.
     pin_installed: Option<Vec<String>>,
     controls: ControlsPanel,
@@ -280,6 +281,7 @@ impl PanelHost {
             in_game: InGamePanel::default(),
             close_game: CloseGamePanel::default(),
             quit: QuitPanel::default(),
+            cancel_unlock: QuitPanel::default(),
             pin_installed: None,
             controls: ControlsPanel::default(),
             controllers: ControllersPanel::default(),
@@ -951,6 +953,39 @@ impl PanelHost {
     }
 
     /// "Close Game" / "Keep Playing". Closing stops the game; the launcher stays in front.
+    /// The question before one unlock is cancelled with the small Cancel button.
+    fn cancel_unlock_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
+        let events = self.take_events(wanted);
+        let kind = QuitKind::CancelUnlock;
+        if cx.model.cancel_ask.is_none() {
+            self.cancel_unlock.close();
+            if wanted {
+                cx.model.dismiss_overlay();
+            }
+            return;
+        }
+        if wanted && !self.cancel_unlock.is_active() {
+            self.cancel_unlock.open(kind);
+        } else if !wanted && self.cancel_unlock.is_active() {
+            if cx.model.overlay.is_some_and(Overlay::is_side_panel) {
+                self.cancel_unlock.dismiss();
+            } else {
+                self.cancel_unlock.close();
+            }
+        }
+        let (language, accent) = (cx.model.language(), cx.shell.accent_color());
+        for action in self
+            .cancel_unlock
+            .show(cx.shell, cx.ctx, &events, kind, language, accent)
+        {
+            let model = &mut *cx.model;
+            match action {
+                QuitAction::Cancel => model.answer_cancel_unlock(true),
+                QuitAction::Pause | QuitAction::Stay => model.answer_cancel_unlock(false),
+            }
+        }
+    }
+
     /// The question before the window closes while games are unlocked or removed.
     fn quit_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
         let events = self.take_events(wanted);
@@ -962,7 +997,7 @@ impl PanelHost {
             return;
         };
         if wanted && !self.quit.is_active() {
-            self.quit.open();
+            self.quit.open(kind);
         } else if !wanted && self.quit.is_active() {
             if cx.model.overlay.is_some_and(Overlay::is_side_panel) {
                 self.quit.dismiss();
@@ -977,6 +1012,7 @@ impl PanelHost {
         {
             let model = &mut *cx.model;
             match action {
+                QuitAction::Pause => model.quit_answer(true),
                 QuitAction::Cancel => model.quit_answer(false),
                 QuitAction::Stay => {
                     model.quit_ask = None;
@@ -2323,6 +2359,7 @@ impl OverlayHost for PanelHost {
             Overlay::InGame => self.in_game_ui(cx, wanted),
             Overlay::ConfirmCloseGame => self.close_game_ui(cx, wanted),
             Overlay::ConfirmQuit => self.quit_ui(cx, wanted),
+            Overlay::ConfirmCancelUnlock => self.cancel_unlock_ui(cx, wanted),
             Overlay::Saves => self.saves_ui(cx, wanted),
             Overlay::ConfirmRestore => self.restore_ui(cx, wanted),
             Overlay::Controls => self.controls_ui(cx, wanted),

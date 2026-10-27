@@ -129,6 +129,8 @@ pub enum Scene {
     HomeCancelling,
     /// The question before the window closes while a game is being unlocked.
     HomeQuit,
+    /// The question before one unlock is cancelled with the small Cancel button.
+    HomeCancelAsk,
     /// ... while a game is paused by hand.
     HomeQuitPaused,
     /// ... while a copy is being removed.
@@ -250,6 +252,7 @@ impl Scene {
             "home-paused" => Scene::HomePaused,
             "home-cancelling" => Scene::HomeCancelling,
             "home-quit" => Scene::HomeQuit,
+            "home-cancel-ask" => Scene::HomeCancelAsk,
             "home-quit-paused" => Scene::HomeQuitPaused,
             "home-quit-removing" => Scene::HomeQuitRemoving,
             "home-preparing" => Scene::HomePreparing,
@@ -899,6 +902,13 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
             m.selected = at(2);
             m.uninstalling.insert(ids[at(2)].clone(), 0.4);
             m.focus = HomeFocus::Actions(0);
+        }
+        Scene::HomeCancelAsk => {
+            m.selected = at(2);
+            let id = ids[at(2)].clone();
+            m.progress.insert(id.clone(), (UnlockStep::Copy, 0.4));
+            m.cancel_ask = Some(id);
+            m.switch_overlay(crate::app::overlay::Overlay::ConfirmCancelUnlock);
         }
         Scene::HomePaused | Scene::HomeCancelling => {
             m.selected = at(2);
