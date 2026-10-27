@@ -432,6 +432,8 @@ pub enum OnlineLook {
     PlayedWithOffEmpty,
     /// The list has not answered yet.
     PlayedWithLoading,
+    /// The same while the cloud is out: no answer is coming, so the page says offline.
+    PlayedWithOffline,
     /// The first fetch failed.
     PlayedWithFailed,
     /// The question before the list is cleared.
@@ -990,6 +992,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-played-with-empty" => ScreenPage::Online(OnlineLook::PlayedWithEmpty),
         "friends-played-with-off-empty" => ScreenPage::Online(OnlineLook::PlayedWithOffEmpty),
         "friends-played-with-loading" => ScreenPage::Online(OnlineLook::PlayedWithLoading),
+        "friends-played-with-offline" => ScreenPage::Online(OnlineLook::PlayedWithOffline),
         "friends-played-with-failed" => ScreenPage::Online(OnlineLook::PlayedWithFailed),
         "friends-played-with-clear" => ScreenPage::Online(OnlineLook::PlayedWithClear),
         "friends-played-with-signed-out" => ScreenPage::Online(OnlineLook::PlayedWithSignedOut),
@@ -1376,6 +1379,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         OnlineLook::FriendsOffline
         | OnlineLook::FriendOffline
         | OnlineLook::ConversationOffline
+        | OnlineLook::PlayedWithOffline
         | OnlineLook::PartyOffline => state.cloud = Some(Cloud::Offline),
         OnlineLook::FriendsConnecting => state.cloud = None,
         OnlineLook::PartyNone => {
@@ -1831,7 +1835,9 @@ fn sample_played_with(state: &mut anyps5_core::online::Online, look: OnlineLook)
         OnlineLook::PlayedWithOff | OnlineLook::PlayedWithOffEmpty
     );
     state.played_with.list = match look {
-        OnlineLook::PlayedWithLoading | OnlineLook::PlayedWithFailed => None,
+        OnlineLook::PlayedWithLoading
+        | OnlineLook::PlayedWithOffline
+        | OnlineLook::PlayedWithFailed => None,
         OnlineLook::PlayedWithEmpty | OnlineLook::PlayedWithOffEmpty => Some(PlayedWithList {
             remember,
             people: Vec::new(),
@@ -3451,6 +3457,7 @@ impl ScreenGallery {
                     | OnlineLook::PlayedWithEmpty
                     | OnlineLook::PlayedWithOffEmpty
                     | OnlineLook::PlayedWithLoading
+                    | OnlineLook::PlayedWithOffline
                     | OnlineLook::PlayedWithFailed
                     | OnlineLook::PlayedWithSignedOut => {
                         self.friends.show_page(Page::PlayedWith, &data);

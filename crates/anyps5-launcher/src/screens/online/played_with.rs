@@ -82,6 +82,11 @@ impl OnlinePanel {
         parts.join(" · ")
     }
 
+    /// The cloud is known to be out (still connecting is not offline).
+    fn played_offline(online: &anyps5_core::online::Online) -> bool {
+        !online.is_online() && online.cloud == Some(anyps5_core::online::Cloud::Offline)
+    }
+
     /// The state the page shows in place of the list: loading, failed, or nothing yet. `None`
     /// while there are people to list.
     pub(super) fn played_state(
@@ -98,6 +103,9 @@ impl OnlinePanel {
                 PW::FailedTitle.text(language),
                 Some(PW::FailedNote.text(language)),
             ))
+        } else if state.list.is_none() && Self::played_offline(online) {
+            // The cloud is out, so no answer is coming: say so instead of loading for ever.
+            Some((Icon::CLOUD, F::Offline.text(language), None))
         } else if state.list.is_none() {
             Some((
                 Icon::ARROWS_CLOCKWISE,
@@ -134,7 +142,7 @@ impl OnlinePanel {
         }
         if state.list.is_none() {
             // Not loaded: a failure can be tried again, and nothing else is on offer.
-            if state.failed {
+            if state.failed || Self::played_offline(online) {
                 rows.push(
                     Row::command("playedRetry", F::TryAgain.text(language))
                         .icon(Icon::ARROWS_CLOCKWISE),
@@ -200,7 +208,7 @@ impl OnlinePanel {
                 icon,
                 title,
                 note,
-                loading: false,
+                loading: icon == Icon::ARROWS_CLOCKWISE,
                 action: None,
             };
             let height = state_page::height(ui.painter(), &page) + 2.0 * space::XL;
