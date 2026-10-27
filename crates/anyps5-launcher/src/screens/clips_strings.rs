@@ -178,6 +178,9 @@ impl ClipsText {
                 "Los clips necesitan una tarjeta gráfica con codificador de video."
             }
             ClipsText::NoWindow => "Los clips no encontraron la ventana del juego.",
+            ClipsText::NoPermission => {
+                "Los clips necesitan Grabación de pantalla. Activa AnyPlay en Ajustes del Sistema y vuelve a abrir AnyPlay."
+            }
             ClipsText::Stopped => "Los clips se detuvieron. Reinicia el juego para grabar.",
             ClipsText::NoWorker => "Los clips no forman parte de esta versión.",
             ClipsText::KeyTaken => "Otro programa usa %@. Elige otra tecla de clip.",
@@ -215,6 +218,9 @@ impl ClipsText {
                 "Les clips nécessitent une carte graphique avec encodeur vidéo."
             }
             ClipsText::NoWindow => "Les clips n’ont pas trouvé la fenêtre du jeu.",
+            ClipsText::NoPermission => {
+                "Les clips nécessitent l’Enregistrement de l’écran. Active AnyPlay dans Réglages Système, puis rouvre AnyPlay."
+            }
             ClipsText::Stopped => "Les clips se sont arrêtés. Relance le jeu pour enregistrer.",
             ClipsText::NoWorker => "Les clips ne sont pas inclus dans cette version.",
             ClipsText::KeyTaken => {
@@ -252,6 +258,9 @@ impl ClipsText {
                 "Os clipes precisam de uma placa de vídeo com codificador de vídeo."
             }
             ClipsText::NoWindow => "Os clipes não encontraram a janela do jogo.",
+            ClipsText::NoPermission => {
+                "Os clipes precisam de Gravação de Tela. Ative o AnyPlay em Ajustes do Sistema e abra o AnyPlay de novo."
+            }
             ClipsText::Stopped => "Os clipes pararam. Reinicie o jogo para gravar.",
             ClipsText::NoWorker => "Os clipes não fazem parte desta versão.",
             ClipsText::KeyTaken => "Outro programa usa %@. Escolha outra tecla de clipe.",
