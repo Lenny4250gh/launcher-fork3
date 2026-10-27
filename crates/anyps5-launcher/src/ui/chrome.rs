@@ -329,7 +329,7 @@ pub fn info_card(ui: &mut Ui, fact: &Fact<'_>, language: Language) -> Response {
             Align2::LEFT_TOP,
             ty::INFO_VALUE,
             &shown,
-            fact.value_color.unwrap_or(Color32::WHITE),
+            fact.value_color.unwrap_or(crate::ui::theme::color::text()),
         );
     }
     response
@@ -1074,7 +1074,7 @@ impl<'a> PanelRow<'a> {
             size::FOCUS_RING,
         );
 
-        let fg = Color32::WHITE;
+        let fg = crate::ui::theme::color::text();
         let dim = |factor: f32| fade(fg, factor);
         if self.wide && matches!(self.control, RowControl::Text { .. }) {
             // A field that fills the row would pass for one more row: its outline says it takes text.

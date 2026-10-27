@@ -97,6 +97,9 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
                 "bg0" | "cosmic" => Page::Background(Theme::Cosmic),
                 "bg1" | "aurora" => Page::Background(Theme::Aurora),
                 "bg2" | "sunset" => Page::Background(Theme::Sunset),
+                "bg4" | "ember" => Page::Background(Theme::Ember),
+                "bg5" | "tide" => Page::Background(Theme::Tide),
+                "bg6" | "daylight" => Page::Background(Theme::Daylight),
                 other => {
                     crate::screens::gallery::parse(other).map_or(Page::Components, Page::Screen)
                 }
@@ -920,16 +923,19 @@ fn panels_page(ui: &mut Ui, shell: &Shell, art: &TextureHandle) {
 }
 
 fn themes_page(ctx: &Context, ui: &mut Ui, shell: &Shell, time: Option<f32>) {
-    // The onboarding's theme step: three cards, middle one focused, as in launcher-themes.jpg.
+    // The onboarding's theme step: six cards in two rows of three, the first focused.
     let painter = ui.painter().clone();
     let screen = ctx.content_rect();
     let (w, h) = (size::THEME_CARD_PREVIEW.0, size::THEME_CARD_PREVIEW.1);
     let gap = 26.0;
     let total = 3.0 * w + 2.0 * gap;
-    let mut x = screen.center().x - total * 0.5;
-    let y = screen.center().y - h * 0.5;
+    let left = screen.center().x - total * 0.5;
+    let row_height = h + 72.0;
+    let top = screen.center().y - row_height - 12.0;
     let time = time.unwrap_or(STILL_TIME_CARD);
     for (i, theme) in Theme::ALL.iter().enumerate() {
+        let x = left + (i % 3) as f32 * (w + gap);
+        let y = top + (i / 3) as f32 * row_height;
         let focused = i == 0;
         let t = ctx.choice_t(Id::unique(("theme-card", i)), focused);
         let scale = theme::scale_for(1600.0, 900.0);
@@ -973,6 +979,5 @@ fn themes_page(ctx: &Context, ui: &mut Ui, shell: &Shell, time: Option<f32>) {
             6.0,
             theme.default_accent().color(),
         );
-        x += w + gap;
     }
 }

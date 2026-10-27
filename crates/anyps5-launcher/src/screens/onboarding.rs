@@ -23,8 +23,8 @@ use crate::ui::anim::{AnimExt, Motion, lerp};
 use crate::ui::background::{Background, SLOT_CARDS, STILL_TIME_CARD};
 use crate::ui::chrome::{self, onboarding_dots};
 use crate::ui::components::{
-    ConsoleButton, HintSet, PadGlyph, Switch, hint_bar_set_size, interact, paint_focus_stroke,
-    paint_hairline, paint_surface,
+    ConsoleButton, HintSet, PadGlyph, Switch, corner, hint_bar_set_size, interact,
+    paint_focus_stroke, paint_hairline, paint_surface,
 };
 use crate::ui::glass::{GlassStyle, paint_glass};
 use crate::ui::i18n::{Arg, Key, Language};
@@ -48,11 +48,17 @@ const DOTS_TOP: f32 = 48.0;
 /// middle. Every page starts at the same height, so the title never moves between pages.
 const CENTRE_BIAS: f32 = 0.42;
 /// The tallest a page gets, title to last control, in dp (Look, in German).
-const TALLEST: f32 = 500.0;
+const TALLEST: f32 = 540.0;
 /// Neighbouring cards and chips of one group: the control gap.
 const CARD_GAP: f32 = space::M;
+/// The look cards in a row: six looks make two rows of three.
+pub const THEMES_PER_ROW: usize = 3;
 /// The theme cards, and the columns every row of the Look page shares.
-const THEME_CARD: (f32, f32) = (312.0, 176.0);
+const THEME_CARD: (f32, f32) = (312.0, 120.0);
+/// The name chip on a look card: its height, and the dark it lies on (white ink on it reads on
+/// the lightest look too).
+const NAME_CHIP_HEIGHT: f32 = 32.0;
+const NAME_CHIP_FILL: f32 = 0.55;
 /// What the controller page, the games page and the lists are wide: two theme columns and a gap.
 const LIST_WIDTH: f32 = 2.0 * THEME_CARD.0 + CARD_GAP;
 /// The consent sentence wraps wider than the list above it, so it does not end on a lone word.
@@ -248,7 +254,7 @@ fn note_pad(cx: &mut ScreenCx<'_>) {
 /// Black at the top, a little more at the bottom.
 fn paint_scrim(painter: &Painter, rect: Rect) {
     let mut mesh = Mesh::default();
-    let (from, to) = (black(SCRIM.0), black(SCRIM.1));
+    let (from, to) = (theme::scrim(SCRIM.0), theme::scrim(SCRIM.1));
     for (pos, colour) in [
         (rect.left_top(), from),
         (rect.right_top(), from),
@@ -761,14 +767,18 @@ fn look_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<P
     let current = cx.model.theme();
     let opacity = painter.opacity();
     let (width, preview_height) = THEME_CARD;
-    let name_style = ty::THEME_CARD_NAME_FOCUSED;
-    let column_height = preview_height + space::M + name_style.line_height();
-    let left = row_start(page, Theme::ALL.len(), width, CARD_GAP);
+    let column_height = preview_height;
+    let per_row = THEMES_PER_ROW;
+    let left = row_start(page, per_row, width, CARD_GAP);
+    let rows = Theme::ALL.len().div_ceil(per_row);
+    let top = y;
     for (index, theme) in Theme::ALL.iter().enumerate() {
+        let (column_index, row_index) = (index % per_row, index / per_row);
+        let y = top + row_index as f32 * (column_height + CARD_GAP);
         let focused = page.active && focus == Target::Theme(index);
         let chosen = current == *theme;
         let t = ctx.choice_t(("onboarding-theme", index), chosen);
-        let resting_left = left + index as f32 * (width + CARD_GAP);
+        let resting_left = left + column_index as f32 * (width + CARD_GAP);
         let column = Rect::from_min_size(pos2(resting_left, y), vec2(width, column_height));
         let preview = Rect::from_min_size(column.min, vec2(width, preview_height));
         let card_radius = radius::THEME_CARD;
@@ -789,25 +799,43 @@ fn look_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<P
             ctx.request_repaint();
         }
 
-        let name_y = y + preview_height + space::M + name_style.line_height() * 0.5;
+        // The name sits on the card in a dark chip, so it reads on the bright looks too.
         let style = if chosen {
             ty::THEME_CARD_NAME_FOCUSED
         } else {
             ty::THEME_CARD_NAME
         };
-        let ink = fade(color::text(), lerp(UNCHOSEN, 1.0, t));
+        let shown = lerp(UNCHOSEN, 1.0, t) * opacity;
+        let title = theme.title(language);
+        let name_width = text::width(&painter, style, title);
+        let chip = Rect::from_min_size(
+            pos2(
+                preview.min.x + space::M,
+                preview.max.y - space::M - NAME_CHIP_HEIGHT,
+            ),
+            vec2(
+                space::M + name_width + space::M + 2.0 * ACCENT_DOT + space::M,
+                NAME_CHIP_HEIGHT,
+            ),
+        );
+        painter.rect_filled(
+            chip,
+            corner(NAME_CHIP_HEIGHT * 0.5),
+            fade(black(NAME_CHIP_FILL), shown),
+        );
+        let name_y = chip.center().y;
         let name = text::paint(
             &painter,
-            pos2(resting_left, name_y),
+            pos2(chip.min.x + space::M, name_y),
             Align2::LEFT_CENTER,
             style,
-            theme.title(language),
-            ink,
+            title,
+            fade(egui::Color32::WHITE, shown),
         );
         painter.circle_filled(
             pos2(name.max.x + space::M + ACCENT_DOT, name_y),
             ACCENT_DOT,
-            fade(theme.default_accent().color(), lerp(UNCHOSEN, 1.0, t)),
+            fade(theme.default_accent().color(), shown),
         );
         // The check sits on the card, like the language cards', over a dark disc so it reads on
         // the bright themes too.
@@ -823,7 +851,7 @@ fn look_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<P
                 Align2::CENTER_CENTER,
                 icon.glyph(),
                 icon.font(CHECK_GLYPH, true),
-                fade(color::text(), t),
+                fade(egui::Color32::WHITE, t),
             );
         }
 
@@ -844,7 +872,7 @@ fn look_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<P
             }
         }
     }
-    y += column_height + space::XXL;
+    y = top + rows as f32 * column_height + (rows - 1) as f32 * CARD_GAP + space::XXL;
 
     // Three switches under the cards, in the same columns.
     y = caption(&painter, page, y, OT::Accessibility.text(language));

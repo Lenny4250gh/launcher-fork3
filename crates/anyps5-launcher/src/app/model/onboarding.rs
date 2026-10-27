@@ -11,6 +11,7 @@
 //! between rows, Tab walks the grid in reading order. Select does what the target says.
 
 use super::*;
+use crate::screens::onboarding::THEMES_PER_ROW;
 use crate::screens::rows::Change;
 use crate::ui::pad_info::Family;
 
@@ -163,7 +164,10 @@ impl Model {
                 .chain([primary])
                 .collect(),
             Step::Look => vec![
-                (0..Theme::ALL.len()).map(Target::Theme).collect(),
+                (0..THEMES_PER_ROW).map(Target::Theme).collect(),
+                (THEMES_PER_ROW..Theme::ALL.len())
+                    .map(Target::Theme)
+                    .collect(),
                 vec![
                     Target::LargerText,
                     Target::HighContrast,
@@ -205,7 +209,9 @@ impl Model {
                     .position(|l| *l == self.language())
                     .unwrap_or(0),
                 // The choices come first here, so a pad can try them at once.
-                Step::Look | Step::Controller => 0,
+                // The look cards start on the row of the look that is on now.
+                Step::Look => self.current_theme_position() / THEMES_PER_ROW,
+                Step::Controller => 0,
                 // The step's button is what a player came for.
                 _ => last,
             })
@@ -219,15 +225,20 @@ impl Model {
     /// Where the focus starts in a row of choices: on the one that is on now.
     fn starting_col(&self, row: usize) -> usize {
         match (self.onboarding.step, row) {
-            (Step::Look, 0) => Theme::ALL
-                .iter()
-                .position(|t| *t == self.theme())
-                .unwrap_or(0),
+            (Step::Look, 0 | 1) => self.current_theme_position() % THEMES_PER_ROW,
             (Step::Controller, 0) => {
                 usize::from(crate::screens::controllers::confirm_is_circle(&self.prefs))
             }
             _ => 0,
         }
+    }
+
+    /// Where the look that is on now sits among the cards (Game Colors is not one of them).
+    fn current_theme_position(&self) -> usize {
+        Theme::ALL
+            .iter()
+            .position(|t| *t == self.theme())
+            .unwrap_or(0)
     }
 
     /// What the focus sits on.
@@ -305,7 +316,7 @@ impl Model {
                 self.edit_prefs(|p| p.language = language);
             }
             Target::Theme(i) => {
-                let theme = core_theme(Theme::from_index(i as u32));
+                let theme = core_theme(Theme::ALL[i.min(Theme::ALL.len() - 1)]);
                 self.edit_prefs(|p| p.theme = theme);
             }
             _ => {}
@@ -579,6 +590,23 @@ mod tests {
     }
 
     #[test]
+    fn the_six_looks_make_two_rows_and_each_card_shows_its_own_look() {
+        let mut m = model(false);
+        m.handle(Command::Select);
+        assert_eq!(m.onboarding.step, Step::Look);
+        let layout = m.onboarding_layout();
+        assert_eq!(layout[0].len(), THEMES_PER_ROW);
+        assert_eq!(layout[1].len(), Theme::ALL.len() - THEMES_PER_ROW);
+        for (index, look) in Theme::ALL.iter().enumerate() {
+            m.tap_onboarding(Target::Theme(index));
+            assert_eq!(m.theme(), *look, "card {index}");
+        }
+        // The focus starts on the row of the look that is on now.
+        m.onboarding.row = None;
+        assert_eq!(m.onboarding_focus().0, 1, "Daylight is in the second row");
+    }
+
+    #[test]
     fn a_tap_on_a_card_selects_and_the_button_goes_on() {
         let mut m = model(false);
         m.tap_onboarding(Target::Language(0));
@@ -593,7 +621,10 @@ mod tests {
         let mut m = model(false);
         m.handle(Command::Select);
         assert_eq!(m.onboarding.step, Step::Look);
-        // Down from the first theme lands on the first switch.
+        // Down from the first theme lands on the second row of looks, and once more on the first
+        // switch.
+        m.handle(Command::Down);
+        assert_eq!(m.onboarding_target(), Target::Theme(THEMES_PER_ROW));
         m.handle(Command::Down);
         assert_eq!(m.onboarding_target(), Target::LargerText);
         m.handle(Command::Select);
@@ -802,7 +833,7 @@ mod tests {
         m.handle(Command::Select);
         assert_eq!(m.onboarding.step, Step::Look);
         let mut seen = vec![m.onboarding_target()];
-        for _ in 0..7 {
+        for _ in 0..Theme::ALL.len() + 3 {
             m.onboarding_tab(false);
             seen.push(m.onboarding_target());
         }
@@ -811,7 +842,7 @@ mod tests {
             Some(&Target::Primary),
             "the walk ends on Continue"
         );
-        assert_eq!(seen[3], Target::LargerText);
+        assert_eq!(seen[Theme::ALL.len()], Target::LargerText);
         m.onboarding_tab(true);
         assert_eq!(m.onboarding_target(), Target::ReducedMotion);
     }

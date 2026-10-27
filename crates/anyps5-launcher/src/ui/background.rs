@@ -147,6 +147,14 @@ impl Backdrop {
         self.theme
     }
 
+    /// Sets the clock to `seconds` (stills at a chosen moment, the frames of a presentation).
+    pub fn set_seconds(&mut self, seconds: f64) {
+        self.clock = BackgroundClock {
+            clock: seconds,
+            speed: 0.0,
+        };
+    }
+
     /// The tones Game Colors paints with, now.
     pub fn game_palette(&self) -> Palette {
         self.game_palette
@@ -171,6 +179,11 @@ impl Backdrop {
     /// Springs, the theme cross-fade and panel motion ask for their own frames and stay at the
     /// display rate; input draws at once.
     pub fn update(&mut self, ctx: &Context) {
+        // Ink turns over with the cross-fade of the backdrop (a see-through window shows the
+        // theme as a dim still over the system blur: dark there, so white ink).
+        let light = self.theme.is_light() && !self.window_glass;
+        let t = ctx.animate_to("backdrop/light", f32::from(light), Motion::Fade);
+        crate::ui::theme::set_light(t);
         let dt = f64::from(ctx.input(|i| i.unstable_dt));
         let paused = self.paused || ctx.reduced_motion() || self.window_glass;
         self.clock.advance(dt, paused);
