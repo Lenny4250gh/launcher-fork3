@@ -31,6 +31,10 @@ const fn template(language: Language) -> &'static str {
     match language {
         Language::English => "Games need glibc %@ or newer; this system has %@.",
         Language::Turkish => "Oyunlar glibc %@ veya daha yenisini ister; bu sistemde %@ var.",
+        Language::German => "Spiele brauchen glibc %@ oder neuer; dieses System hat %@.",
+        Language::Spanish => "Los juegos necesitan glibc %@ o superior; este sistema tiene %@.",
+        Language::French => "Les jeux ont besoin de glibc %@ ou plus récent ; ce système a %@.",
+        Language::Portuguese => "Os jogos precisam do glibc %@ ou mais novo; este sistema tem %@.",
     }
 }
 
@@ -39,8 +43,24 @@ fn next_step(needed: Version, language: Language) -> String {
     match (releases_with(needed), language) {
         (Some(names), Language::English) => format!("Update to {names} or newer."),
         (Some(names), Language::Turkish) => format!("Güncelle: {names} veya daha yenisi."),
+        (Some(names), Language::German) => format!("Aktualisiere auf {names} oder neuer."),
+        (Some(names), Language::Spanish) => format!("Actualiza a {names} o superior."),
+        (Some(names), Language::French) => format!("Passe à {names} ou plus récent."),
+        (Some(names), Language::Portuguese) => format!("Atualize para {names} ou mais novo."),
         (None, Language::English) => "Update to a newer release of your distribution.".to_owned(),
         (None, Language::Turkish) => "Dağıtımını daha yeni bir sürüme güncelle.".to_owned(),
+        (None, Language::German) => {
+            "Aktualisiere auf eine neuere Version deiner Distribution.".to_owned()
+        }
+        (None, Language::Spanish) => {
+            "Actualiza a una versión más reciente de tu distribución.".to_owned()
+        }
+        (None, Language::French) => {
+            "Passe à une version plus récente de ta distribution.".to_owned()
+        }
+        (None, Language::Portuguese) => {
+            "Atualize para uma versão mais recente da sua distribuição.".to_owned()
+        }
     }
 }
 
@@ -62,6 +82,10 @@ pub const fn guide_title(language: Language) -> &'static str {
     match language {
         Language::English => "Read the Install Guide",
         Language::Turkish => "Kurulum Kılavuzunu Oku",
+        Language::German => "Installationsanleitung lesen",
+        Language::Spanish => "Leer la guía de instalación",
+        Language::French => "Lire le guide d’installation",
+        Language::Portuguese => "Ler o guia de instalação",
     }
 }
 
@@ -87,6 +111,20 @@ mod tests {
             shortfall_text(&s, Language::Turkish),
             "Oyunlar glibc 2.38 veya daha yenisini ister; bu sistemde 2.35 var. Güncelle: Fedora 39, Ubuntu 24.04 veya daha yenisi."
         );
+    }
+
+    #[test]
+    fn the_sentence_exists_in_every_language() {
+        let s = short((2, 38), (2, 35));
+        for language in Language::ALL {
+            let text = shortfall_text(&s, language);
+            assert!(
+                text.contains("2.38") && text.contains("2.35"),
+                "{language:?}"
+            );
+            assert!(text.contains("Fedora 39, Ubuntu 24.04"), "{language:?}");
+            assert!(!guide_title(language).is_empty(), "{language:?}");
+        }
     }
 
     #[test]

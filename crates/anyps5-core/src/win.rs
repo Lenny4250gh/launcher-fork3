@@ -24,8 +24,8 @@ use windows::Win32::System::Threading::{
     THREAD_MODE_BACKGROUND_BEGIN,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, SendInput,
-    VIRTUAL_KEY,
+    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    KEYEVENTF_SCANCODE, SendInput, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AllowSetForegroundWindow, BringWindowToTop, EnumWindows, GW_OWNER, GWL_EXSTYLE,
@@ -268,6 +268,12 @@ pub fn find_window(pids: &[u32]) -> Option<isize> {
     search.found
 }
 
+/// Whether a window handle still names a window.
+pub fn window_exists(handle: isize) -> bool {
+    // SAFETY: plain call; a stale handle only returns false.
+    unsafe { IsWindow(Some(hwnd(handle))).as_bool() }
+}
+
 fn hwnd(handle: isize) -> HWND {
     HWND(handle as *mut c_void)
 }
@@ -326,6 +332,13 @@ pub fn activate_window(handle: isize) -> bool {
         }
         GetForegroundWindow() == target
     }
+}
+
+/// Whether the key with this virtual-key code is down right now, whichever window is in front.
+/// Asks about one key only; nothing is hooked and nothing else is read.
+pub fn key_down(code: u32) -> bool {
+    // SAFETY: a plain call; the high bit of the result is "down".
+    unsafe { GetAsyncKeyState(code as i32) < 0 }
 }
 
 /// The window that has the foreground (0: none) and the process that owns it.
@@ -449,6 +462,11 @@ mod tests {
 
     #[test]
     fn window_rules_size_and_visibility() {
+        // Needs an interactive desktop session, which a headless CI machine (Blacksmith's Windows VM)
+        // lacks; GitHub's Windows runner and players' PCs have one.
+        if std::env::var_os("ANYPLAY_HEADLESS_CI").is_some() {
+            return;
+        }
         let _serial = WINDOWS.lock().unwrap_or_else(|e| e.into_inner());
         // SAFETY: plain query.
         let pid = unsafe { GetCurrentProcessId() };

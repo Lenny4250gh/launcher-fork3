@@ -25,9 +25,12 @@
 //! | DualShock 4, Bluetooth | 0x11 to 0x19 | 78 or more | 9 (first byte after the id has 0x80 set; CRC-32) |
 //! | either, Bluetooth before it is switched to the full report | 0x01 | 10 | 7 |
 //!
-//! The report id is the first byte of what `hidapi` returns on Windows and Linux, for these pads.
+//! The report id is the first byte of what `hidapi` returns on Windows, Linux and macOS, for these pads.
 
-#![cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
+#![cfg_attr(
+    not(any(windows, target_os = "linux", target_os = "macos")),
+    allow(dead_code)
+)]
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -55,7 +58,7 @@ fn model_of(vendor: u16, product: u16) -> Option<Model> {
 }
 
 /// CRC-32 (zlib) of the bytes, continuing from `seed`.
-fn crc32(seed: u32, bytes: &[u8]) -> u32 {
+pub(crate) fn crc32(seed: u32, bytes: &[u8]) -> u32 {
     let mut crc = !seed;
     for &byte in bytes {
         crc ^= u32::from(byte);
@@ -249,6 +252,8 @@ impl<B: Backend> Watcher<B> {
 /// Appended to the log line of a pad that did not open.
 const HINT: &str = if cfg!(target_os = "linux") {
     " (Linux needs read access to its /dev/hidraw node; see docs/INSTALL.md)"
+} else if cfg!(target_os = "macos") {
+    " (on macOS the launcher may need Input Monitoring in System Settings > Privacy & Security)"
 } else {
     ""
 };
@@ -257,7 +262,7 @@ const HINT: &str = if cfg!(target_os = "linux") {
 // hidapi
 // ---------------------------------------------------------------------------------------------
 
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 mod hid {
     use super::{Backend, Found, Reader, Scan, model_of};
 
@@ -289,6 +294,10 @@ mod hid {
                 }
                 none => none.insert(hidapi::HidApi::new().map_err(|e| e.to_string())?),
             };
+            // macOS opens a device exclusively by default, which takes the pad away from the game.
+            // This reader only watches: it must share the pad, always.
+            #[cfg(target_os = "macos")]
+            api.set_open_exclusive(false);
             let mut scan = Scan::default();
             for info in api.device_list() {
                 let Some(model) = model_of(info.vendor_id(), info.product_id()) else {
@@ -318,9 +327,8 @@ mod hid {
 }
 
 /// Starts the reader thread. It idles (one look at the state every 250 ms) until a game runs.
-/// Other platforms have no reader: macOS reads the pad through IOKit HID, which delivers the
-/// PS button to the background.
-#[cfg(any(windows, target_os = "linux"))]
+/// Other platforms have no reader.
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 pub fn spawn(home: Arc<HomeButton>) {
     let spawned = std::thread::Builder::new()
         .name("ps-button".into())
@@ -344,7 +352,7 @@ pub fn spawn(home: Arc<HomeButton>) {
     }
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub fn spawn(_home: Arc<HomeButton>) {}
 
 #[cfg(test)]

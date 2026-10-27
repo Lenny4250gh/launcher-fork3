@@ -850,6 +850,7 @@ mod tests {
             deleted: false,
             reactions: Vec::new(),
             rev: 0,
+            media: None,
         }
     }
 

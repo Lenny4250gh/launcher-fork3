@@ -1,6 +1,6 @@
 # AnyPlay Launcher
 
-A launcher for Windows and Linux that finds a player's own PS5 game dumps, unlocks them for AnyPS5 and starts them. This file is the glossary; the specification of the logic is in [docs/PORT.md](docs/PORT.md).
+A launcher for Windows, Linux and macOS that finds a player's own PS5 game dumps, unlocks them for AnyPS5, starts them and connects the player with friends. This file is the glossary; the specification of the logic is in [docs/PORT.md](docs/PORT.md).
 
 ## Language
 
@@ -25,6 +25,18 @@ _Avoid_: Image, rip, backup
 **Games folder**:
 The one folder the player points the launcher at. Games are looked for inside it, a few levels deep.
 _Avoid_: Library folder, root
+
+**Mac style**:
+On macOS only, the launcher is dressed for the Mac: a see-through window with the system blur behind it, the Mac's window chrome and menu. It is the same launcher with the same screens (docs/DESIGN.md 19).
+_Avoid_: Mac version (the Mac has no different launcher), skin, theme (a theme is a background)
+
+**Theme**:
+The animated backdrop behind the launcher, chosen in Settings, Appearance: Cosmic, Aurora, Sunset, Ember, Tide, Daylight (the one light theme) or Game Colors, which takes its colours from the selected game's artwork. Release notes call them looks.
+_Avoid_: Skin
+
+**Glass Window**:
+The setting that turns the see-through window of Mac style on and off. The window is solid in full screen, while a game runs, and when the system asks for less transparency, whatever the setting says.
+_Avoid_: Transparency, blur, vibrancy (in visible text)
 
 **Home button**:
 The PS or Guide button of a controller, and the PS button of the phone controller. While a game runs it brings the launcher in front of the game, with the game's quick panel, and back (docs/DESIGN.md 6.6).
@@ -289,6 +301,9 @@ One entry of the Friends screen's rail with a first page of its own. Every page 
 **Quick actions**:
 The buttons at the end of a friend's row (Join, Message, Invite to Party, View Profile, Options). They rest hidden and come up with the focus or the pointer; select presses the chosen one and a click on the row's body opens Options, the friend's own page.
 
+**Played With Recently**:
+The page of the Friends section that lists the people the player shared a party or a game session with for at least 2 minutes in the last 30 days (at most 50). The cloud keeps the list and only the player sees it; the launcher shows it, reached by a row under Add a Friend on the Friends page. Each person is a row with Add Friend (until they are a friend or a request is out), View Profile and Block at its end, like quick actions; the page ends with the switch that stops recording new people and Clear the List. Defined in the network's glossary as _Played with recently_.
+
 **Play Together**:
 Starting a game that finds others on a local network so that friends can join it. The player presses Play Together on the game's page or in the party; a friend presses Join on an invitation, a friend's page or the prompt card. Only games in the LAN title table have the button. Defined in the network's glossary; the launcher only adds what it shows.
 _Avoid_: Multiplayer (alone), hosting a server, LAN party
@@ -315,7 +330,7 @@ The soft colour in the top-left of the profile screen, taken from the avatar's p
 _Avoid_: Banner (alone: that is the trophy banner over a game), cover
 
 **Feed page**:
-The Feed of the network as the launcher shows it: a card for each thing the player or a friend did, newest first, each with the four reactions Nice, GG, Wow and Same. A trophy is named only when the player has the game and can read its trophy file.
+The Feed of the network as the launcher shows it: a card for each thing the player or a friend did, newest first. A trophy is named only when the player has the game and can read its trophy file.
 _Avoid_: Timeline, wall, activity page
 
 **Unread mark**:
@@ -356,6 +371,14 @@ _Avoid_: Trusted device, registered phone
 **Virtual controller**:
 The controller the operating system sees while a paired phone plays: ViGEmBus on Windows, uinput on Linux. Games read it like a plugged-in pad. It exists only while a game starts or runs.
 _Avoid_: Fake pad, emulated controller
+
+**LudusCtrl phone**:
+A phone or tablet running the LudusCtrl app, which passes on a controller paired with it over Bluetooth. Turned on with the LudusCtrl option of Phone as Controller; it is paired once by comparing a six-digit code and carries only the pad, never the library.
+_Avoid_: Bridge, relay (the code's words for other things)
+
+**Browser client**:
+A phone without the LudusCtrl app (one whose browser supports the Gamepad API; on iPhone, iOS 15.2 or newer) that opens a page from this PC by scanning the QR code on the settings page; its browser passes on the controller connected to the phone. It runs whenever the LudusCtrl option is on, needs no pairing (the link's token is the consent) and shares the one virtual controller with the app: only one of them holds it.
+_Avoid_: Web app, web client
 
 **ViGEmBus**:
 The Windows driver that makes a virtual controller possible. The launcher explains it and links its official download; it never installs it.

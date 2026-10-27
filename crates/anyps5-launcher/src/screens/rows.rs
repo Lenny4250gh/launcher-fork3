@@ -10,14 +10,14 @@ use egui::{Color32, Margin, ScrollArea, Ui};
 
 use crate::screens::scroll::Follow;
 use crate::ui::Shell;
-use crate::ui::chrome::{KeyCapSpec, PanelRow, RowAvatar, RowControl};
+use crate::ui::chrome::{KeyCapSpec, PanelRow, RowAvatar, RowControl, Slide, Track};
 use crate::ui::components::{Force, PadGlyph};
 use crate::ui::focus::{PanelEffect, PanelNav, RowKind};
 use crate::ui::i18n::{Key, Language};
 use crate::ui::icons::Icon;
 use crate::ui::input::Command;
 use crate::ui::sound::Cue;
-use crate::ui::theme::size;
+use crate::ui::theme::{size, space};
 
 use anyps5_core::controls::Controls;
 
@@ -40,6 +40,25 @@ pub enum Control {
         /// The value as shown (`75%`, `1.0×`).
         text: String,
     },
+    /// A stepper drawn as a rail with a thumb (docs/DESIGN.md 5.9): the same keys and pad
+    /// steps and the same [`Change::Stepper`], and the pointer can drag it.
+    Slider {
+        value: i32,
+        min: i32,
+        max: i32,
+        /// What an arrow key, the pad or a held direction moves by. The pointer snaps to half of it,
+        /// Page Up and Page Down move two of them.
+        step: i32,
+        /// The value as shown (`70%`, `210°`).
+        text: String,
+        track: Track,
+        /// The screen plays the tick itself, after it has applied the value (a volume slider's
+        /// tick sounds at the volume it sets).
+        own_tick: bool,
+    },
+    /// One of a list of exclusive choices (the languages): the chosen one carries a check at the
+    /// trailing edge. Select runs the row ([`Change::Run`]); the page writes the choice.
+    Pick(bool),
     /// Opens a picker or a panel: a trailing chevron.
     Action,
     /// Runs at once: no chevron.
@@ -59,6 +78,12 @@ pub enum Control {
         labels: Vec<String>,
         selected: usize,
     },
+    /// A QR code of this text on a white card, the detail beside it; the title is its name for
+    /// screen readers. A picture: not focusable.
+    Qr(String),
+    /// An address to read off or type in, in the mono face: it takes the room the title leaves
+    /// and is cut in the middle. Not focusable.
+    Link(String),
 }
 
 /// One row of a panel.
@@ -72,10 +97,23 @@ pub struct Row {
     pub control: Control,
     /// Danger: the row removes, ends or blocks something.
     pub destructive: bool,
+    /// The answer "no" of a question (Cancel, Keep Playing): a card never makes it the primary button.
+    pub refusal: bool,
     /// Caution: an info row that says something may not work. Never danger.
     pub warning: bool,
+    /// A result that appears where the player looks: a screen reader announces it once, when it
+    /// changes (the toast it replaces did).
+    pub live: bool,
+    /// A text block the page is about: body size and ink.
+    pub body: bool,
+    /// A note that says what the player has to do: detail ink, not the quiet note ink.
+    pub step: bool,
     /// Starts a new group: the list leaves a double gap above it.
     pub group_start: bool,
+    /// Starts a section (an option with rows of its own): a group with `space::XL` more above
+    /// it, so it reads apart from the group before (SYSTEM.md 5: at least twice the gap in a
+    /// group).
+    pub section_start: bool,
     /// A note that belongs to the row above: no gap between them.
     pub attached: bool,
     /// A text row whose field takes the room the title leaves, written from the left.
@@ -84,6 +122,8 @@ pub struct Row {
     pub avatar: Option<RowAvatar>,
     /// The buttons of a buttons row come up with the focus or the pointer.
     pub reveal: bool,
+    /// A row below that belongs to this one: with the focus here, the list keeps both in view.
+    pub keeps_in_view: Option<RowId>,
 }
 
 impl Row {
@@ -96,12 +136,18 @@ impl Row {
             detail: None,
             control,
             destructive: false,
+            refusal: false,
             warning: false,
+            live: false,
+            body: false,
+            step: false,
             group_start: false,
+            section_start: false,
             attached: false,
             wide: false,
             avatar: None,
             reveal: false,
+            keeps_in_view: None,
         }
     }
 
@@ -117,6 +163,12 @@ impl Row {
         self
     }
 
+    /// With the focus on this row, the list scrolls so the row `id` is in view too.
+    pub fn keeps_in_view(mut self, id: RowId) -> Row {
+        self.keeps_in_view = Some(id);
+        self
+    }
+
     pub fn choice(
         id: RowId,
         title: impl Into<String>,
@@ -127,8 +179,21 @@ impl Row {
     }
 
     /// Starts a new group (a double gap above the row).
+    /// A note the player has to act on: drawn in the detail ink.
+    pub fn step(mut self) -> Row {
+        self.step = true;
+        self
+    }
+
     pub fn group_start(mut self) -> Row {
         self.group_start = true;
+        self
+    }
+
+    /// Starts a section: a group with more room above it.
+    pub fn section_start(mut self) -> Row {
+        self.group_start = true;
+        self.section_start = true;
         self
     }
 
@@ -169,6 +234,51 @@ impl Row {
         )
     }
 
+    /// A stepper drawn as a slider (see [`Control::Slider`]).
+    pub fn slider(
+        id: RowId,
+        title: impl Into<String>,
+        value: i32,
+        range: (i32, i32),
+        step: i32,
+        text: impl Into<String>,
+    ) -> Row {
+        Row::new(
+            id,
+            title,
+            Control::Slider {
+                value,
+                min: range.0,
+                max: range.1,
+                step,
+                text: text.into(),
+                track: Track::Plain,
+                own_tick: false,
+            },
+        )
+    }
+
+    /// How a slider's rail is drawn (hue, brightness).
+    pub fn track(mut self, to: Track) -> Row {
+        if let Control::Slider { track, .. } = &mut self.control {
+            *track = to;
+        }
+        self
+    }
+
+    /// The screen plays this slider's tick itself.
+    pub fn own_tick(mut self) -> Row {
+        if let Control::Slider { own_tick, .. } = &mut self.control {
+            *own_tick = true;
+        }
+        self
+    }
+
+    /// One choice of a list: `chosen` puts the check at the trailing edge.
+    pub fn pick(id: RowId, title: impl Into<String>, chosen: bool) -> Row {
+        Row::new(id, title, Control::Pick(chosen))
+    }
+
     pub fn action(id: RowId, title: impl Into<String>) -> Row {
         Row::new(id, title, Control::Action)
     }
@@ -188,6 +298,16 @@ impl Row {
 
     pub fn info(id: RowId, title: impl Into<String>, value: Option<String>) -> Row {
         Row::new(id, title, Control::Info(value))
+    }
+
+    /// A QR code of `data`; `name` is what a screen reader says for it.
+    pub fn qr(id: RowId, name: impl Into<String>, data: impl Into<String>) -> Row {
+        Row::new(id, name, Control::Qr(data.into()))
+    }
+
+    /// An address shown in full where it fits, cut in the middle where it does not.
+    pub fn link(id: RowId, title: impl Into<String>, address: impl Into<String>) -> Row {
+        Row::new(id, title, Control::Link(address.into()))
     }
 
     pub fn caption(id: RowId, title: impl Into<String>) -> Row {
@@ -222,6 +342,24 @@ impl Row {
         self
     }
 
+    /// The answer "no" of a question.
+    pub fn refusal(mut self) -> Row {
+        self.refusal = true;
+        self
+    }
+
+    /// A text block that is what the page is about: a message in full.
+    pub fn body(id: RowId, text: impl Into<String>) -> Row {
+        let mut row = Row::new(id, text, Control::Info(None));
+        row.body = true;
+        row
+    }
+
+    pub fn live(mut self) -> Row {
+        self.live = true;
+        self
+    }
+
     pub fn warning(mut self) -> Row {
         self.warning = true;
         self
@@ -231,9 +369,11 @@ impl Row {
         match self.control {
             Control::Choice { .. } | Control::Buttons { .. } => RowKind::Choice,
             Control::Toggle(_) => RowKind::Toggle,
-            Control::Stepper { .. } => RowKind::Stepper,
-            Control::Action | Control::Command => RowKind::Action,
-            Control::Info(_) | Control::Caption => RowKind::Info,
+            Control::Stepper { .. } | Control::Slider { .. } => RowKind::Stepper,
+            Control::Action | Control::Command | Control::Pick(_) => RowKind::Action,
+            Control::Info(_) | Control::Caption | Control::Qr(_) | Control::Link(_) => {
+                RowKind::Info
+            }
             Control::Text(_) => RowKind::Text,
             Control::Keys { .. } => RowKind::Keys,
         }
@@ -346,6 +486,13 @@ pub fn resolve(rows: &[Row], effect: PanelEffect) -> Option<Change> {
                     max,
                     step,
                     ..
+                }
+                | Control::Slider {
+                    value,
+                    min,
+                    max,
+                    step,
+                    ..
                 } => {
                     let next = (value + i32::from(direction) * step).clamp(*min, *max);
                     (next != *value).then_some(Change::Stepper {
@@ -376,6 +523,13 @@ pub fn resolve(rows: &[Row], effect: PanelEffect) -> Option<Change> {
                     max,
                     step,
                     ..
+                }
+                | Control::Slider {
+                    value,
+                    min,
+                    max,
+                    step,
+                    ..
                 } => Some(Change::Stepper {
                     row: r.id,
                     value: if value + step > *max {
@@ -384,7 +538,9 @@ pub fn resolve(rows: &[Row], effect: PanelEffect) -> Option<Change> {
                         value + step
                     },
                 }),
-                Control::Action | Control::Command => Some(Change::Run { row: r.id }),
+                Control::Action | Control::Command | Control::Pick(_) => {
+                    Some(Change::Run { row: r.id })
+                }
                 Control::Keys { .. } => Some(Change::Capture { row: r.id }),
                 Control::Text(_) => Some(Change::Edit { row: r.id }),
                 _ => None,
@@ -400,6 +556,37 @@ pub struct Driven {
     pub changes: Vec<Change>,
     /// A command asked to close the panel (or to go back, for controls and advanced).
     pub close: bool,
+}
+
+/// Where a slider ends up after the pointer or Page Up and Page Down moved it: the pointer snaps
+/// to half a step, a page is two steps. `None` when it stays where it is, or the row is no slider.
+pub fn slide_target(control: &Control, slide: Slide) -> Option<i32> {
+    let Control::Slider {
+        value,
+        min,
+        max,
+        step,
+        ..
+    } = control
+    else {
+        return None;
+    };
+    let target = match slide {
+        Slide::To(at) => {
+            let fine = (*step / 2).max(1);
+            let raw = *min as f32 + at.clamp(0.0, 1.0) * (*max - *min) as f32;
+            *min + ((raw - *min as f32) / fine as f32).round() as i32 * fine
+        }
+        Slide::Page(direction) => value + i32::from(direction) * 2 * step,
+    }
+    .clamp(*min, *max);
+    (target != *value).then_some(target)
+}
+
+/// Whether the screen plays the tick of this row's changes itself (a volume slider).
+fn ticks_itself(rows: &[Row], id: RowId) -> bool {
+    rows.iter()
+        .any(|r| r.id == id && matches!(r.control, Control::Slider { own_tick: true, .. }))
 }
 
 /// Runs `commands` through the navigation model: moves focus, plays the cues and collects the
@@ -421,6 +608,7 @@ pub fn drive(shell: &mut Shell, nav: &mut PanelNav, rows: &[Row], commands: &[Co
         };
         match (&change, step.sound) {
             (Some(change @ Change::Toggle { .. }), _) => shell.play(change.cue()),
+            (Some(Change::Stepper { row, .. }), _) if ticks_itself(rows, row) => {}
             (_, Some(cue)) => shell.play(cue),
             _ => {}
         }
@@ -438,7 +626,7 @@ pub fn drive(shell: &mut Shell, nav: &mut PanelNav, rows: &[Row], commands: &[Co
 }
 
 /// What the mouse did in the list.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ListEvent {
     /// A row was clicked or its control used: it takes the focus.
     Focus(usize),
@@ -457,6 +645,11 @@ pub enum ListEvent {
     Press {
         row: usize,
         index: usize,
+    },
+    /// A slider was dragged or paged.
+    Slide {
+        row: usize,
+        slide: Slide,
     },
 }
 
@@ -495,7 +688,10 @@ pub fn source_label(source: &str, language: Language) -> String {
         ("KEY", "Right") => "→".to_owned(),
         ("KEY", "Left Shift" | "Right Shift") => "Shift".to_owned(),
         ("KEY", "Left Ctrl" | "Right Ctrl") => "Ctrl".to_owned(),
-        // Windows: Alt and the Windows key, not Option and Cmd (docs/DESIGN.md 6.5).
+        // The Mac says Option and Cmd (docs/DESIGN.md 6.5, 19.4); Windows and Linux say Alt and
+        // the Windows key.
+        ("KEY", "Left Alt" | "Right Alt") if crate::macstyle::AVAILABLE => "Option".to_owned(),
+        ("KEY", "Left GUI" | "Right GUI") if crate::macstyle::AVAILABLE => "Cmd".to_owned(),
         ("KEY", "Left Alt" | "Right Alt") => "Alt".to_owned(),
         ("KEY", "Left GUI" | "Right GUI") => "Win".to_owned(),
         (_, name) => name.to_owned(),
@@ -544,7 +740,12 @@ pub fn list_with_header(
 ) -> Vec<ListEvent> {
     let ctx = ui.ctx().clone();
     let id = ui.make_persistent_id(id_salt);
-    let (follow, scroll_to) = Follow::begin(&ctx, id, options.focus);
+    let with = options
+        .focus
+        .and_then(|focus| rows.get(focus))
+        .and_then(|row| row.keeps_in_view)
+        .and_then(|with| rows.iter().position(|row| row.id == with));
+    let (follow, scroll_to) = Follow::begin_with(&ctx, id, options.focus, with);
 
     let mut events = Vec::new();
     let mut geometry: Vec<(f32, f32)> = Vec::with_capacity(rows.len());
@@ -552,6 +753,7 @@ pub fn list_with_header(
     // move the caret out of the field below.
     let mut seen: std::collections::HashMap<RowId, usize> = std::collections::HashMap::new();
     let mut area = ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden);
@@ -586,7 +788,11 @@ pub fn list_with_header(
                     };
                     let row = &mut rows[index];
                     if row.group_start && index > 0 {
-                        ui.add_space(size::ROW_GAP);
+                        ui.add_space(if row.section_start {
+                            size::ROW_GAP + space::XL
+                        } else {
+                            size::ROW_GAP
+                        });
                     }
                     let focused = options.focus == Some(index);
                     let force = options.force.and_then(|(i, f)| (i == index).then_some(f));
@@ -658,12 +864,18 @@ fn show_row(
         detail,
         control,
         destructive,
+        refusal: _,
         warning,
+        live,
+        body,
+        step,
         group_start: _,
+        section_start: _,
         attached,
         wide,
         avatar,
         reveal,
+        keeps_in_view: _,
     } = row;
     let caps;
     let none_label = language.text(Key::NoKey);
@@ -692,10 +904,27 @@ fn show_row(
             can_decrement: *value > *min,
             can_increment: *value < *max,
         },
+        Control::Slider {
+            value,
+            min,
+            max,
+            text,
+            track,
+            ..
+        } => RowControl::Slider {
+            value: text.as_str(),
+            fraction: if max > min {
+                (*value - *min) as f32 / (*max - *min) as f32
+            } else {
+                0.0
+            },
+            track: *track,
+        },
         Control::Buttons { labels, selected } => RowControl::Buttons {
             labels,
             selected: *selected,
         },
+        Control::Pick(chosen) => RowControl::Pick { chosen: *chosen },
         Control::Action => RowControl::Action,
         Control::Command => RowControl::Command,
         Control::Caption => RowControl::Caption,
@@ -703,6 +932,8 @@ fn show_row(
             value: value.as_deref(),
         },
         Control::Text(value) => RowControl::Text { value },
+        Control::Qr(data) => RowControl::Qr { data },
+        Control::Link(value) => RowControl::Link { value },
         Control::Keys { sources, capturing } => {
             caps = key_caps(sources, language);
             RowControl::Keys {
@@ -714,12 +945,21 @@ fn show_row(
         }
     };
     let is_text = matches!(rc, RowControl::Text { .. });
-    let focusable = !matches!(rc, RowControl::Info { .. } | RowControl::Caption);
+    let focusable = !matches!(
+        rc,
+        RowControl::Info { .. }
+            | RowControl::Caption
+            | RowControl::Qr { .. }
+            | RowControl::Link { .. }
+    );
     let mut panel_row = PanelRow::new(title, rc)
         .language(language)
         .focused(focused)
         .destructive(*destructive)
         .warning(*warning)
+        .live(*live)
+        .body(*body)
+        .step(*step)
         .attached(*attached)
         .wide(*wide)
         .avatar(*avatar)
@@ -740,7 +980,16 @@ fn show_row(
         Control::Buttons { labels, .. } => Some(labels.len()),
         _ => None,
     };
-    if let Some(pressed) = out.pressed {
+    let is_slider = matches!(&*control, Control::Slider { .. });
+    if let Some(slide) = out.slide {
+        events.push(ListEvent::Focus(index));
+        events.push(ListEvent::Slide { row: index, slide });
+    } else if is_slider {
+        // The body of a slider row only takes the focus: a click must not step it.
+        if out.response.clicked() {
+            events.push(ListEvent::Focus(index));
+        }
+    } else if let Some(pressed) = out.pressed {
         events.push(ListEvent::Focus(index));
         events.push(ListEvent::Press {
             row: index,
@@ -806,7 +1055,20 @@ pub fn apply_mouse(
             }
             ListEvent::Effect { effect, .. } => {
                 if let Some(change) = resolve(rows, effect) {
-                    shell.play(change.cue());
+                    if !ticks_itself(rows, change.row()) {
+                        shell.play(change.cue());
+                    }
+                    changes.push(change);
+                }
+            }
+            ListEvent::Slide { row, slide } => {
+                if let Some(r) = rows.get(row)
+                    && let Some(value) = slide_target(&r.control, slide)
+                {
+                    let change = Change::Stepper { row: r.id, value };
+                    if !ticks_itself(rows, r.id) {
+                        shell.play(change.cue());
+                    }
                     changes.push(change);
                 }
             }
@@ -902,6 +1164,44 @@ mod tests {
     }
 
     #[test]
+    fn a_slider_steps_like_a_stepper_and_the_pointer_snaps_to_half_a_step() {
+        let mut rows = rows();
+        rows[3] = Row::slider("step", "Step", 50, (0, 100), 10, "50%");
+        // The model: left and right move by a step, clamped; select wraps.
+        assert_eq!(
+            resolve(&rows, adjust(3, 1)),
+            Some(Change::Stepper {
+                row: "step",
+                value: 60
+            })
+        );
+        assert_eq!(rows[3].kind(), RowKind::Stepper);
+        let slider = &rows[3].control;
+        assert_eq!(slide_target(slider, Slide::To(0.0)), Some(0));
+        assert_eq!(slide_target(slider, Slide::To(1.0)), Some(100));
+        assert_eq!(slide_target(slider, Slide::To(0.72)), Some(70));
+        assert_eq!(slide_target(slider, Slide::To(0.76)), Some(75));
+        assert_eq!(slide_target(slider, Slide::To(0.5)), None, "already there");
+        assert_eq!(slide_target(slider, Slide::Page(1)), Some(70));
+        assert_eq!(slide_target(slider, Slide::Page(-1)), Some(30));
+        let mut end = rows[3].clone();
+        end.control = Control::Slider {
+            value: 100,
+            min: 0,
+            max: 100,
+            step: 10,
+            text: String::new(),
+            track: Track::Plain,
+            own_tick: false,
+        };
+        assert_eq!(slide_target(&end.control, Slide::Page(1)), None);
+        assert_eq!(slide_target(&rows[0].control, Slide::To(0.5)), None);
+        // A range that does not start at zero snaps from its minimum.
+        let hue = Row::slider("hue", "Hue", 0, (10, 100), 10, "").control;
+        assert_eq!(slide_target(&hue, Slide::To(0.5)), Some(55));
+    }
+
+    #[test]
     fn select_cycles_wraps_and_runs() {
         let rows = rows();
         let activate = |row| PanelEffect::Activate { row };
@@ -967,6 +1267,22 @@ mod tests {
     }
 
     #[test]
+    fn a_qr_code_and_a_link_are_read_not_used() {
+        let rows = vec![
+            Row::qr("qr", "QR code", "https://192.168.1.23:45991/#t=x"),
+            Row::link("link", "Link", "https://192.168.1.23:45991/#t=x"),
+        ];
+        assert_eq!(kinds(&rows), [RowKind::Info, RowKind::Info]);
+        for row in 0..2 {
+            assert_eq!(resolve(&rows, PanelEffect::Activate { row }), None);
+            assert_eq!(
+                resolve(&rows, PanelEffect::Adjust { row, direction: 1 }),
+                None
+            );
+        }
+    }
+
+    #[test]
     fn cues_follow_section_7() {
         assert_eq!(Change::Run { row: "x" }.cue(), Cue::Select);
         assert_eq!(Change::Capture { row: "x" }.cue(), Cue::Select);
@@ -990,8 +1306,15 @@ mod tests {
     fn source_labels_read_like_keys_on_a_pc() {
         let en = Language::English;
         assert_eq!(source_label("KEY:Left Shift", en), "Shift");
-        assert_eq!(source_label("KEY:Right Alt", en), "Alt");
-        assert_eq!(source_label("KEY:Left GUI", en), "Win");
+        let mac = crate::macstyle::AVAILABLE;
+        assert_eq!(
+            source_label("KEY:Right Alt", en),
+            if mac { "Option" } else { "Alt" }
+        );
+        assert_eq!(
+            source_label("KEY:Left GUI", en),
+            if mac { "Cmd" } else { "Win" }
+        );
         assert_eq!(source_label("KEY:Up", en), "↑");
         assert_eq!(source_label("KEY:Escape", en), "Esc");
         assert_eq!(source_label("KEY:K", en), "K");

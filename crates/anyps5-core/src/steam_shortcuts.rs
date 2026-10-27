@@ -12,7 +12,7 @@
 //! - the app ID Steam derives for a shortcut (CRC-32 of the quoted exe and the name, high bit set),
 //!   which also names the artwork files,
 //! - where Steam lives: the registry on Windows; `~/.steam/steam`, `~/.local/share/Steam` and the
-//!   Flatpak folder on Linux,
+//!   Flatpak folder on Linux; `~/Library/Application Support/Steam` on macOS,
 //! - "never twice": an entry that already starts this program with these arguments (or carries the
 //!   same name and arguments) is updated in place instead of added again.
 //!
@@ -138,6 +138,8 @@ pub fn places(home: Option<&Path>, registry: Option<PathBuf>) -> Vec<Place> {
             home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"),
             true,
         ));
+        // macOS
+        candidates.push((home.join("Library/Application Support/Steam"), false));
     }
     let mut seen = BTreeSet::new();
     for (path, flatpak) in candidates {
@@ -160,9 +162,18 @@ pub fn is_running(place: &Place, home: Option<&Path>) -> bool {
     registry::steam_running() || pid_file_alive(place, home) || process_named_steam()
 }
 
-/// A process called `steam` (Linux). The pid file of Flatpak Steam holds a number from inside its
-/// sandbox, so the processes are looked at as well.
+/// A process called `steam` (Linux) or `steam_osx` (macOS). The pid file of Flatpak Steam holds a
+/// number from inside its sandbox, so the processes are looked at as well.
 fn process_named_steam() -> bool {
+    if cfg!(target_os = "macos") {
+        // `pgrep -x` matches the whole process name; exit 0 means at least one match.
+        return std::process::Command::new("/usr/bin/pgrep")
+            .args(["-x", "steam_osx"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success());
+    }
     if !cfg!(target_os = "linux") {
         return false;
     }

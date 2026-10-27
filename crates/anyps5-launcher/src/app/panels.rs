@@ -14,9 +14,9 @@
 //! | `Log` | `log::LogView` | "Open log" row of the game settings |
 //!
 //! The panels animate themselves; the host only keeps them in step with `Model::overlay`: a panel
-//! opens when its overlay becomes the open one and closes (slides out) when another one takes over.
-//! The four side panels share one frame, so changing between them swaps the content without a
-//! slide. Commands the model routes here are queued and handed to the panel in `ui`; panels that
+//! opens when its overlay becomes the open one and closes (leaves) when another one takes over.
+//! The panels of a game share one frame, so changing between them swaps the content without an
+//! exit. Commands the model routes here are queued and handed to the panel in `ui`; panels that
 //! edit settings get a copy, and the host stores it back and marks the preferences for saving when
 //! the panel reports `changed`. Work with I/O (reports, uninstall, toolkit) runs on worker threads
 //! and answers through channels polled in [`OverlayHost::frame`].
@@ -24,6 +24,9 @@
 mod captures;
 mod compare;
 mod friends;
+mod hub;
+pub(crate) mod lfg;
+mod notifications;
 mod profile;
 
 use std::collections::HashMap;
@@ -33,10 +36,12 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use anyps5_core::community::{self, CommunityLayout};
 use anyps5_core::compat;
 use anyps5_core::diagnosis::{self, Diagnosis};
+use anyps5_core::events::CancelToken;
 use anyps5_core::gamefiles::GameInput;
 use anyps5_core::issue;
 use anyps5_core::library::Game;
 use anyps5_core::linkreg::{self, Handler as LinkHandler};
+use anyps5_core::notifications::{Act, Kind as NoteKind};
 use anyps5_core::paths::{AppPaths, GameId};
 use anyps5_core::recommended::{self, Catalog, Kind, Plan};
 use anyps5_core::report::{self, ReportInput, SystemInfo};
@@ -48,6 +53,8 @@ use anyps5_core::unlock;
 use egui::{Context, Ui, ViewportCommand};
 
 use crate::app::clock;
+use crate::app::library_panels::{LibraryExtras, bar_data, compat_line};
+use crate::app::library_view::{Filter, compat_of};
 use crate::app::links;
 use crate::app::model::UpdateRequest;
 use crate::app::model::{Effect, GameState, Model};
@@ -57,6 +64,7 @@ use crate::app::steam;
 use crate::app::toolkit::{EngineFailure, NotesState, ToolkitEvent, ToolkitService};
 use crate::screens::advanced::{AdvancedAction, AdvancedData, AdvancedPanel};
 use crate::screens::banner::{BannerHost, BannerTrophy};
+use crate::screens::controllers::{ControllersAction, ControllersData, ControllersPanel};
 use crate::screens::controls::{ControlsAction, ControlsData, ControlsPanel};
 use crate::screens::game_settings::{
     GameSettingsAction, GameSettingsData, GameSettingsPanel, RecommendedRow, UninstallAction,
@@ -71,7 +79,9 @@ use crate::screens::rows::RowId;
 use crate::screens::saves::{
     self as saves_screen, RestoreAction, RestorePanel, SavesAction, SavesData, SavesPanel,
 };
-use crate::screens::settings::{Category, SettingsAction, SettingsEnv, SettingsPanel};
+use crate::screens::settings::{
+    AutostartEnv, AutostartState, Category, SettingsAction, SettingsEnv, SettingsPanel,
+};
 use crate::screens::share_strings::Share;
 use crate::screens::steam_strings::SteamText;
 use crate::screens::strings::Extra;
@@ -96,6 +106,11 @@ enum Work {
     Uninstalled {
         game: GameId,
         result: Result<(), String>,
+    },
+    /// How much of a game's copy is gone, 0..=1.
+    UninstallProgress {
+        game: GameId,
+        fraction: f32,
     },
     /// What a game's files say about its controls.
     GameInput {
@@ -144,9 +159,15 @@ pub struct PanelHost {
     /// The tags of the releases on this PC, read when the game sheet opens and after a change.
     pin_installed: Option<Vec<String>>,
     controls: ControlsPanel,
+    controllers: ControllersPanel,
+    /// DualSense pads seen last frame, and the saved light bar colour is due on the next idle one.
+    lightbar_seen: usize,
+    lightbar_due: bool,
     advanced: AdvancedPanel,
     trophies: TrophyListPanel,
     library: LibraryGrid,
+    /// Search, storage and the removal of an unlocked copy, around the library page.
+    library_extras: LibraryExtras,
     /// The Captures area (`Overlay::Captures`) and the files and pictures it shows.
     captures: crate::screens::captures::CapturesScreen,
     capture_service: crate::app::captures::CaptureService,
@@ -154,10 +175,21 @@ pub struct PanelHost {
     recommended: RecommendedPanel,
     saves: SavesPanel,
     friends: crate::screens::friends::FriendsScreen,
+    /// The Notification Center (`Overlay::Notifications`).
+    notifications: crate::screens::notifications::NotificationsScreen,
     /// The profile screen (`Overlay::Profile`).
     profile: crate::screens::profile::ProfileScreen,
     /// The trophy comparison (`Overlay::Compare`).
     compare: crate::screens::compare::CompareScreen,
+    /// Find Players (`Overlay::FindPlayers`) and the friend picker of Captures
+    /// (`Overlay::SendCapture`).
+    lfg: crate::screens::lfg::LfgPanel,
+    send: crate::screens::send::SendPanel,
+    /// The Game Hub (`Overlay::GameHub`) and its own reading of the captures folder.
+    hub: crate::screens::hub::HubScreen,
+    hub_service: crate::app::captures::CaptureService,
+    /// The trophies of all games (`Overlay::TrophyOverview`).
+    overview: crate::screens::overview::OverviewScreen,
     /// The page the Friends screen opens on when the profile screen sent the player there: the
     /// page, and a feed item to put the focus on.
     online_start: Option<(crate::screens::online::Page, Option<u64>)>,
@@ -177,6 +209,10 @@ pub struct PanelHost {
     whats_new_tag: String,
     /// The settings category to open on when coming back from the notes.
     settings_return: Option<usize>,
+    /// The notes panel shows the showcase of the big release, not a list of changes.
+    whats_new_showcase: bool,
+    /// The showcase opened by itself after an update: closing it leaves for the home screen.
+    welcome_standalone: bool,
     /// How many clips the folder held when it was last counted, and when.
     clips_counted: Option<(std::time::Instant, usize)>,
     /// What the catalogue recommends: the shipped one at first, a newer one once fetched.
@@ -214,8 +250,12 @@ pub struct PanelHost {
     launcher_published: Option<anyps5_core::releases::Published>,
     /// The first-start download of the toolkit was tried (once per session; the settings retry).
     toolkit_auto_tried: bool,
+    /// The staged launcher version that has its entry in the Notification Center.
+    update_noted: Option<String>,
     /// Who answers `anyps5://` links, read when the settings open and after a change.
     links: LinkHandler,
+    /// Whether the launcher opens at sign-in, read the same way.
+    autostart: AutostartEnv,
     /// The demo and the tests keep the registration in memory and never touch the registry.
     simulated: bool,
 }
@@ -243,17 +283,27 @@ impl PanelHost {
             close_game: CloseGamePanel::default(),
             pin_installed: None,
             controls: ControlsPanel::default(),
+            controllers: ControllersPanel::default(),
+            lightbar_seen: 0,
+            lightbar_due: false,
             advanced: AdvancedPanel::default(),
             trophies: TrophyListPanel::default(),
             library: LibraryGrid::default(),
+            library_extras: LibraryExtras::new(ctx),
             captures: crate::screens::captures::CapturesScreen::default(),
             capture_service: crate::app::captures::CaptureService::new(ctx),
             log: LogView::default(),
             recommended: RecommendedPanel::default(),
             saves: SavesPanel::default(),
             friends: crate::screens::friends::FriendsScreen::default(),
+            notifications: crate::screens::notifications::NotificationsScreen::default(),
             profile: crate::screens::profile::ProfileScreen::default(),
             compare: crate::screens::compare::CompareScreen::default(),
+            lfg: crate::screens::lfg::LfgPanel::default(),
+            send: crate::screens::send::SendPanel::default(),
+            hub: crate::screens::hub::HubScreen::default(),
+            hub_service: crate::app::captures::CaptureService::new(ctx),
+            overview: crate::screens::overview::OverviewScreen::default(),
             online_start: None,
             restore: RestorePanel::default(),
             save_view: None,
@@ -265,6 +315,8 @@ impl PanelHost {
             required: crate::screens::required::RequiredScreen::default(),
             whats_new_tag: String::new(),
             settings_return: None,
+            whats_new_showcase: false,
+            welcome_standalone: false,
             clips_counted: None,
             catalog: Catalog::embedded(),
             catalog_asked: simulated,
@@ -288,7 +340,12 @@ impl PanelHost {
             launcher: SelfUpdateService::new(ctx, simulated),
             launcher_published: None,
             toolkit_auto_tried: simulated,
+            update_noted: None,
             links: LinkHandler::Absent,
+            autostart: AutostartEnv {
+                state: AutostartState::Off,
+                os: anyps5_core::platform::Os::current(),
+            },
             simulated,
         }
     }
@@ -324,6 +381,7 @@ impl PanelHost {
     fn settings_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
         if wanted && !self.settings.is_open() {
             self.refresh_links();
+            self.refresh_autostart();
             if let Some(page) = cx.model.settings_page.take() {
                 self.settings
                     .open_at(Category::from_link(page) as usize, false);
@@ -376,8 +434,10 @@ impl PanelHost {
             launcher_notes: self.launcher.notes().is_some(),
             default_screenshots: &default_screenshots,
             links: self.links.clone(),
+            autostart: self.autostart,
             cjk_fonts: anyps5_core::fonts::cjk_state(&cx.model.paths, &crate::fonts::BUNDLE),
             phone: &cx.model.phone,
+            ludus: &cx.model.ludus,
             openh264: (cfg!(target_os = "linux") && super::online::share_screen_enabled(cx.model))
                 .then(|| crate::screens::settings::Openh264Env {
                     state: anyps5_core::openh264::state(
@@ -389,8 +449,10 @@ impl PanelHost {
             clips: crate::screens::settings::ClipsEnv {
                 count: clips_count,
                 capturing: self.settings.clips_capturing(),
+                broadcast_key: cx.model.broadcast_key_set,
             },
             location: cx.model.location_env(),
+            windows_rows: cfg!(windows),
         };
         // Theme, accent, language, motion and sounds reach the shell inside the panel
         // (`apply_preferences`), so the backdrop cross-fades while the choice is made.
@@ -439,6 +501,7 @@ impl PanelHost {
                 let _ = std::fs::create_dir_all(&folder);
                 open_folder(&folder);
             }
+            SettingsAction::BroadcastKey(key) => super::broadcast::set_key(model, key.as_deref()),
             SettingsAction::CheckForUpdates => self.check_toolkit(model),
             SettingsAction::InstallToolkit if model.prefs.toolkit_engine => {
                 self.install_engine(model);
@@ -524,6 +587,8 @@ impl PanelHost {
             }
             SettingsAction::OpenWhatsNew(tag) => {
                 self.launcher_published = None;
+                self.whats_new_showcase = false;
+                self.welcome_standalone = false;
                 self.toolkit.load_notes(
                     &model.paths,
                     &model.prefs.toolkit_repository,
@@ -533,11 +598,26 @@ impl PanelHost {
                 self.settings_return = Category::ALL.iter().position(|c| *c == Category::Toolkit);
                 model.switch_overlay(Overlay::WhatsNew);
             }
+            SettingsAction::OpenControllers => {
+                self.settings_return = Category::ALL
+                    .iter()
+                    .position(|c| *c == Category::Controllers);
+                model.switch_overlay(Overlay::Controllers);
+            }
             SettingsAction::RestartNow => self.restart_launcher(model, cx.ctx),
             SettingsAction::CancelRestart => self.launcher.cancel_hold(),
             SettingsAction::CheckLauncherUpdate => self.launcher.check_now(),
             SettingsAction::OpenLauncherNotes => self.open_launcher_notes(model),
+            SettingsAction::ShowWelcome => {
+                self.show_welcome(
+                    model,
+                    Category::ALL.iter().position(|c| *c == Category::About),
+                    false,
+                );
+            }
             SettingsAction::SetLinks(on) => self.set_links(model, on),
+            SettingsAction::SetAutostart(on) => self.set_autostart(model, on),
+            SettingsAction::SetFullscreen(on) => super::enter_fullscreen(cx.ctx, on),
             SettingsAction::AddToSteam => self.add_to_steam(model, steam::Request::Launcher),
             SettingsAction::AddGamesToSteam => {
                 let games = model.games.clone();
@@ -548,6 +628,16 @@ impl PanelHost {
                 open_known_url(crate::screens::phone::driver_page());
             }
             SettingsAction::Phone(action) => model.phone.commands.push(action),
+            SettingsAction::Ludus(crate::screens::ludus::LudusAction::OpenProjectPage) => {
+                open_known_url(crate::screens::ludus_strings::PROJECT_PAGE);
+            }
+            SettingsAction::Ludus(crate::screens::ludus::LudusAction::CopyLink(link)) => {
+                cx.ctx.copy_text(link);
+                let text = crate::screens::ludus_web_strings::BrowserText::ToastCopied
+                    .text(model.language());
+                model.toast(text, crate::ui::icons::Icon::CHECK_CIRCLE);
+            }
+            SettingsAction::Ludus(action) => model.ludus.commands.push(action),
             SettingsAction::Quit => cx.ctx.send_viewport_cmd(ViewportCommand::Close),
         }
     }
@@ -578,6 +668,47 @@ impl PanelHost {
             let _ = tx.send(Work::Steam { games, result });
             ctx.request_repaint();
         });
+    }
+
+    /// Reads the sign-in entry of this system.
+    fn refresh_autostart(&mut self) {
+        if self.simulated {
+            return;
+        }
+        let state =
+            match anyps5_core::autostart::Entry::current(&anyps5_core::platform::process_vars) {
+                None => AutostartState::Unavailable,
+                Some(entry) if entry.state() == anyps5_core::autostart::State::Off => {
+                    AutostartState::Off
+                }
+                Some(entry) if entry.is_appimage_file() => AutostartState::OnAppImage,
+                Some(_) => AutostartState::On,
+            };
+        self.autostart.state = state;
+    }
+
+    /// "Start with Windows": writes or removes the entry of the player's own session.
+    fn set_autostart(&mut self, model: &mut Model, on: bool) {
+        if self.simulated {
+            self.autostart.state = if on {
+                AutostartState::On
+            } else {
+                AutostartState::Off
+            };
+            return;
+        }
+        let result =
+            match anyps5_core::autostart::Entry::current(&anyps5_core::platform::process_vars) {
+                Some(entry) if on => entry.enable(),
+                Some(entry) => entry.disable(),
+                None => Err(std::io::ErrorKind::Unsupported.into()),
+            };
+        if let Err(error) = result {
+            tracing::warn!("cannot change the autostart entry: {error}");
+            let text = crate::screens::console_strings::ConsoleText::Failed.text(model.language());
+            model.toast(text, crate::ui::icons::Icon::WARNING);
+        }
+        self.refresh_autostart();
     }
 
     /// Reads who answers the links from the registry.
@@ -711,6 +842,7 @@ impl PanelHost {
                 .then(|| self.save_view.as_ref().map(|v| v.backups.len()))
                 .flatten(),
             recommended,
+            find_players: true,
             unlock_note,
             pin: &pin,
             language,
@@ -751,6 +883,7 @@ impl PanelHost {
             GameSettingsAction::OpenControls => model.switch_overlay(Overlay::Controls),
             GameSettingsAction::OpenAdvanced => model.switch_overlay(Overlay::Advanced),
             GameSettingsAction::OpenRecommended => model.switch_overlay(Overlay::Recommended),
+            GameSettingsAction::OpenFindPlayers => model.open_find_players(Overlay::GameSettings),
             GameSettingsAction::AskUninstall => model.switch_overlay(Overlay::ConfirmUninstall),
             GameSettingsAction::OpenSaves => {
                 self.saves_stale = true;
@@ -813,6 +946,7 @@ impl PanelHost {
                     {
                         let backups = model.paths.game_backups_dir(&game.title_id);
                         self.start_uninstall(&game, root, backups, model.language());
+                        model.begin_uninstall(&game.id);
                     }
                 }
             }
@@ -848,6 +982,7 @@ impl PanelHost {
             language: cx.model.language(),
             accent: cx.shell.accent_color(),
             online: cx.model.online.is_signed_in(),
+            broadcast: cfg!(windows).then_some(cx.model.broadcast),
         };
         for action in self.in_game.show(cx.shell, cx.ctx, &events, &data) {
             let model = &mut *cx.model;
@@ -855,6 +990,8 @@ impl PanelHost {
                 InGameAction::Resume | InGameAction::Dismiss => model.return_to_game(),
                 InGameAction::Trophies => model.open(Overlay::Trophies),
                 InGameAction::Captures => model.open(Overlay::Captures),
+                InGameAction::Notifications => model.open(Overlay::Notifications),
+                InGameAction::Broadcast => model.effects.push(Effect::ToggleBroadcast),
                 InGameAction::GameSettings => model.open(Overlay::GameSettings),
                 InGameAction::Friends => model.open(Overlay::Friends),
                 InGameAction::AskClose => model.switch_overlay(Overlay::ConfirmCloseGame),
@@ -1195,7 +1332,6 @@ impl PanelHost {
         for action in out.actions {
             match action {
                 ControlsAction::Back => self.back_to_game_settings(cx.model, "controls"),
-                ControlsAction::Close => cx.model.dismiss_overlay(),
                 ControlsAction::Toast(ToastRequest { icon, text }) => cx.model.toast(text, icon),
             }
         }
@@ -1238,7 +1374,6 @@ impl PanelHost {
         for action in out.actions {
             match action {
                 AdvancedAction::Back => self.back_to_game_settings(cx.model, "advanced"),
-                AdvancedAction::Close => cx.model.dismiss_overlay(),
                 AdvancedAction::Toast(ToastRequest { icon, text }) => cx.model.toast(text, icon),
             }
         }
@@ -1374,6 +1509,70 @@ impl PanelHost {
         }
     }
 
+    /// The light bar colour the player chose, put on a DualSense when it is connected (and at
+    /// start), but never while a game runs or starts: the game owns the pad then.
+    fn apply_saved_lightbar(&mut self, model: &Model) {
+        let seen = crate::ui::pad_hub::snapshot()
+            .pads
+            .iter()
+            .filter(|p| p.dualsense)
+            .count();
+        if seen != self.lightbar_seen {
+            self.lightbar_due = seen > 0;
+            self.lightbar_seen = seen;
+        }
+        if !self.lightbar_due || model.running.is_some() || model.starting.is_some() {
+            return;
+        }
+        self.lightbar_due = false;
+        if let Some(rgb) = model
+            .prefs
+            .lightbar
+            .as_deref()
+            .and_then(crate::ui::lightbar::parse)
+        {
+            let spawned = std::thread::Builder::new()
+                .name("lightbar".into())
+                .spawn(move || {
+                    if let Err(err) = crate::ui::lightbar::set(rgb) {
+                        tracing::warn!("saved light bar colour not set: {err}");
+                    }
+                });
+            if let Err(err) = spawned {
+                tracing::warn!("light bar thread not started: {err}");
+            }
+        }
+    }
+
+    /// Settings, Controllers.
+    fn controllers_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
+        let events = self.take_events(wanted);
+        if wanted && !self.controllers.is_active() {
+            self.controllers.open();
+        } else if !wanted && self.controllers.is_active() {
+            self.controllers.close(cx.shell);
+        }
+        let language = cx.model.language();
+        let accent = cx.shell.accent_color();
+        let game_running = cx.model.running.is_some() || cx.model.starting.is_some();
+        let mut data = ControllersData {
+            prefs: &mut cx.model.prefs,
+            language,
+            accent,
+            game_running,
+        };
+        let out = self.controllers.show(cx.shell, cx.ctx, &events, &mut data);
+        if out.changed {
+            cx.model.mark_prefs_dirty();
+        }
+        for action in out.actions {
+            match action {
+                ControllersAction::Back => cx.model.switch_overlay(Overlay::Settings),
+                ControllersAction::Toast(ToastRequest { icon, text }) => cx.model.toast(text, icon),
+            }
+        }
+    }
+
     fn whats_new_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
         let events = self.take_events(wanted);
         let language = cx.model.language();
@@ -1385,7 +1584,8 @@ impl PanelHost {
         } else if !wanted && self.whats_new.is_active() {
             self.whats_new.close();
         }
-        let launcher = self.launcher_published.is_some();
+        let showcase = self.whats_new_showcase;
+        let launcher = self.launcher_published.is_some() || showcase;
         let view = match (&self.launcher_published, &self.toolkit.notes) {
             (Some(published), _) => NotesView::Ready(published),
             (None, NotesState::Ready(published)) => NotesView::Ready(published),
@@ -1393,6 +1593,7 @@ impl PanelHost {
             (None, NotesState::Idle | NotesState::Loading) => NotesView::Loading,
         };
         let tag = match &self.launcher_published {
+            _ if showcase => crate::screens::welcome::RELEASE,
             Some(published) => published.tag.as_str(),
             None => self.whats_new_tag.as_str(),
         };
@@ -1401,10 +1602,16 @@ impl PanelHost {
             view,
             language,
             launcher,
+            showcase,
+            accent: cx.shell.accent_color(),
         };
         let actions = self.whats_new.show(cx.shell, cx.ctx, &events, &data);
         for action in actions {
             match action {
+                WhatsNewAction::Close if showcase && self.welcome_standalone => {
+                    self.welcome_standalone = false;
+                    cx.model.close_overlay();
+                }
                 WhatsNewAction::Close => cx.model.switch_overlay(Overlay::Settings),
                 WhatsNewAction::OpenUrl(url) => open_url(&url),
             }
@@ -1500,19 +1707,40 @@ impl PanelHost {
     }
 
     fn library_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
+        let order = cx.model.library_order();
         if wanted && !self.library.is_active() {
-            self.library.open(cx.model.selected);
+            let at = order
+                .iter()
+                .position(|&i| i == cx.model.selected)
+                .unwrap_or(0);
+            self.library.open(at);
+            // What players found, for every game on the page (once per sign-in each).
+            let asks: Vec<(String, String)> = cx
+                .model
+                .games
+                .iter()
+                .map(|g| (g.title_id.clone(), g.version.clone()))
+                .collect();
+            for (title_id, version) in asks {
+                cx.model.online.request_runs(&title_id, &version, false);
+            }
+            if cx.model.library_sort() == crate::app::library_view::Sort::Size {
+                cx.model.measure_all();
+            }
         } else if !wanted && self.library.is_active() {
-            self.library.close();
+            if cx.model.overlay.is_some_and(Overlay::is_side_panel) {
+                self.library.dismiss();
+            } else {
+                self.library.close();
+            }
         }
         let events = self.take_events(wanted);
         let language = cx.model.language();
         let accent = cx.shell.accent_color();
-        let entries: Vec<LibraryEntry> = cx
-            .model
-            .games
+        let entries: Vec<LibraryEntry> = order
             .iter()
-            .map(|game| {
+            .map(|&i| {
+                let game = &cx.model.games[i];
                 let state = cx.model.state_of(game);
                 let label = state_label(&state, language);
                 let icon = game.icon.as_ref().and_then(|path| {
@@ -1529,7 +1757,9 @@ impl PanelHost {
                         icon: label.icon,
                         text: label.text,
                         tint: label.tint,
+                        quiet: crate::screens::is_plain_ready(&state),
                     },
+                    compat: compat_line(&compat_of(cx.model, game), language),
                 }
             })
             .collect();
@@ -1537,19 +1767,50 @@ impl PanelHost {
             entries: &entries,
             language,
             accent,
+            folder_set: cx.model.prefs.games_folder.is_some(),
+            scanning: cx.model.scanning,
+            bar: bar_data(cx.model),
         };
         for action in self.library.show(cx.shell, cx.ctx, &events, &data) {
             let model = &mut *cx.model;
             match action {
                 LibraryAction::Pick(index) => {
-                    if index < model.games.len() {
+                    if let Some(&index) = order.get(index) {
                         model.selected = index;
                         model.focus = HomeFocus::Tiles;
                         model.measure_selected();
                     }
                     model.dismiss_overlay();
                 }
+                LibraryAction::Hub(index) => {
+                    if let Some(&index) = order.get(index) {
+                        model.selected = index;
+                        model.focus = HomeFocus::Tiles;
+                        model.measure_selected();
+                        model.open_hub();
+                    } else {
+                        model.dismiss_overlay();
+                    }
+                }
                 LibraryAction::Close => model.dismiss_overlay(),
+                LibraryAction::NextSort => {
+                    let next = model.library_sort().next();
+                    model.set_library_sort(next);
+                }
+                LibraryAction::NextFilter => {
+                    let next = model.library_filter().next();
+                    model.set_library_filter(next);
+                }
+                LibraryAction::OpenSearch => model.switch_overlay(Overlay::LibrarySearch),
+                LibraryAction::OpenStorage => model.switch_overlay(Overlay::Storage),
+                LibraryAction::ClearFilters => {
+                    model.set_library_filter(Filter::All);
+                    model.library_query.clear();
+                }
+                LibraryAction::ChooseFolder => {
+                    model.dismiss_overlay();
+                    model.request_folder_dialog();
+                }
             }
         }
     }
@@ -1602,6 +1863,15 @@ impl PanelHost {
                 LogAction::SaveReport => {
                     if let Some(game) = &game {
                         self.make_report(cx.model, game);
+                    }
+                }
+                LogAction::OpenOnlineLog => {
+                    let path = cx.model.paths.network_log();
+                    if let Some(dir) = path.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    if let Err(error) = report::reveal_in_explorer(&path) {
+                        tracing::warn!("cannot show the online log: {error}");
                     }
                 }
             }
@@ -1659,6 +1929,7 @@ impl PanelHost {
                 settings,
                 crash: Diagnosis::crash_name(&session, None),
                 session,
+                controllers: connected_controllers(),
                 now: clock::rfc3339_utc(clock::unix_seconds()),
             };
             (paths, input)
@@ -1689,7 +1960,8 @@ impl PanelHost {
     }
 
     /// Deletes the unlocked copy on a worker thread (a game can be tens of gigabytes). Its saves go
-    /// with it, so they are backed up first, and when that fails nothing is removed.
+    /// with it, so they are backed up first, and when that fails nothing is removed. The worker
+    /// reports how far it is; once it started it is not stopped (a half removed copy is useless).
     fn start_uninstall(
         &mut self,
         game: &Game,
@@ -1711,7 +1983,21 @@ impl PanelHost {
                     return;
                 }
             }
-            let result = unlock::remove_unlocked(&title_id, &id, &root).map_err(|e| e.to_string());
+            let result = unlock::remove_unlocked_progress(
+                &title_id,
+                &id,
+                &root,
+                &CancelToken::new(),
+                |fraction| {
+                    let _ = tx.send(Work::UninstallProgress {
+                        game: id.clone(),
+                        fraction,
+                    });
+                    ctx.request_repaint();
+                },
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string());
             let _ = tx.send(Work::Uninstalled { game: id, result });
             ctx.request_repaint();
         });
@@ -1731,7 +2017,7 @@ impl PanelHost {
                 }
                 Work::Report(Err(error)) => {
                     tracing::warn!("cannot write the report: {error}");
-                    model.toast(language.text(Key::ReportFailed), Icon::WARNING);
+                    model.toast_failure(language.text(Key::ReportFailed));
                 }
                 Work::GameInput { game, input } => {
                     self.game_inputs.insert(game, Some(input));
@@ -1764,7 +2050,7 @@ impl PanelHost {
                         }
                         Err(error) => {
                             let text = saves_failure(&error, false, language);
-                            model.toast(text, Icon::WARNING);
+                            model.toast_failure(text);
                         }
                     }
                 }
@@ -1781,24 +2067,32 @@ impl PanelHost {
                         }
                         Err(error) => {
                             let text = saves_failure(&error, true, language);
-                            model.toast(text, Icon::WARNING);
+                            model.toast_failure(text);
                         }
                     }
                 }
-                Work::Uninstalled { game, result } => match result {
-                    Ok(()) => {
-                        if let Some(g) = model.games.iter_mut().find(|g| g.id == game) {
-                            g.unlocked_with = None;
+                Work::UninstallProgress { game, fraction } => {
+                    if let Some(done) = model.uninstalling.get_mut(&game) {
+                        *done = fraction;
+                    }
+                }
+                Work::Uninstalled { game, result } => {
+                    model.uninstalling.remove(&game);
+                    match result {
+                        Ok(()) => {
+                            if let Some(g) = model.games.iter_mut().find(|g| g.id == game) {
+                                g.unlocked_with = None;
+                            }
+                            model.failures.remove(&game);
+                            model.trophies.remove(&game);
+                            model.toast(language.text(Key::UninstallDone), Icon::TRASH);
                         }
-                        model.failures.remove(&game);
-                        model.trophies.remove(&game);
-                        model.toast(language.text(Key::UninstallDone), Icon::TRASH);
+                        Err(error) => {
+                            tracing::warn!("cannot uninstall: {error}");
+                            model.toast_failure(error);
+                        }
                     }
-                    Err(error) => {
-                        tracing::warn!("cannot uninstall: {error}");
-                        model.toast(error, Icon::WARNING);
-                    }
-                },
+                }
             }
         }
     }
@@ -1818,6 +2112,7 @@ impl PanelHost {
                             Extra::ToolkitAvailable
                                 .format(language, &[Arg::Str(&format!("v{tag}"))])
                         };
+                        model.note_once(NoteKind::Update, text.clone(), Act::OpenToolkit);
                         model.toast(text, Icon::DOWNLOAD_SIMPLE);
                     }
                 }
@@ -1831,7 +2126,7 @@ impl PanelHost {
                 }
                 ToolkitEvent::PinInstalled(Err(error)) => {
                     tracing::warn!("toolkit install for a game: {error}");
-                    model.toast(Extra::ToolkitFailed.text(language), Icon::WARNING);
+                    model.toast_failure(Extra::ToolkitFailed.text(language));
                 }
                 ToolkitEvent::Removed(Ok(tag)) => {
                     self.pin_installed = None;
@@ -1840,7 +2135,7 @@ impl PanelHost {
                 }
                 ToolkitEvent::Removed(Err(error)) => {
                     tracing::warn!("toolkit removal: {error}");
-                    model.toast(Pin::RemoveFailed.text(language), Icon::WARNING);
+                    model.toast_failure(Pin::RemoveFailed.text(language));
                 }
                 ToolkitEvent::Installed(Ok(version)) => {
                     self.pin_installed = None;
@@ -1879,7 +2174,7 @@ impl PanelHost {
                 }
                 ToolkitEvent::Installed(Err(error)) => {
                     tracing::warn!("toolkit install: {error}");
-                    model.toast(Extra::ToolkitFailed.text(language), Icon::WARNING);
+                    model.toast_failure(Extra::ToolkitFailed.text(language));
                 }
                 ToolkitEvent::Adopted(Err(error)) => {
                     tracing::warn!("toolkit folder: {error}");
@@ -1898,6 +2193,16 @@ impl PanelHost {
         if model.update != self.launcher.state {
             model.update.clone_from(&self.launcher.state);
         }
+        // A launcher update that is staged is worth an entry in the Notification Center.
+        let staged = self.launcher.staged_version().map(str::to_owned);
+        if staged != self.update_noted
+            && let Some(version) = staged.as_deref()
+        {
+            let text = crate::screens::update_strings::UpdateText::NoticeReady
+                .format(model.language(), &[Arg::Str(version)]);
+            model.note_once(NoteKind::Update, text, Act::OpenUpdate);
+        }
+        self.update_noted = staged;
         // The cloud turned this launcher away: the update is required, whatever the manifest said.
         if std::mem::take(&mut model.cloud_too_old) && !self.launcher.required() {
             self.launcher.require_from_cloud();
@@ -1931,12 +2236,25 @@ impl PanelHost {
         }
     }
 
+    /// The showcase of the big release in the "What's New" panel. From About it returns to About;
+    /// shown on its own after an update (`settings_return` is `None`) it closes to the home screen.
+    fn show_welcome(&mut self, model: &mut Model, return_to: Option<usize>, standalone: bool) {
+        self.launcher_published = None;
+        self.whats_new_showcase = true;
+        self.welcome_standalone = standalone;
+        self.settings_return = return_to;
+        self.whats_new.open_showcase();
+        model.switch_overlay(Overlay::WhatsNew);
+    }
+
     /// The notes of the staged update in the "What's New" panel.
     fn open_launcher_notes(&mut self, model: &mut Model) {
         let (Some(version), Some(notes)) = (self.launcher.staged_version(), self.launcher.notes())
         else {
             return;
         };
+        self.whats_new_showcase = false;
+        self.welcome_standalone = false;
         self.launcher_published = Some(anyps5_core::releases::Published {
             tag: version.to_owned(),
             date: String::new(),
@@ -1951,7 +2269,41 @@ impl PanelHost {
         let earned = std::mem::take(&mut cx.model.trophy_banners);
         let mut refresh: Vec<GameId> = Vec::new();
         for (game, trophy) in earned {
-            self.banners.push(BannerTrophy::from_core(&trophy));
+            let game_name = cx
+                .model
+                .game(&game)
+                .map(|g| g.name.clone())
+                .unwrap_or_default();
+            cx.model.note(
+                NoteKind::Trophy,
+                format!("{game_name}: {}", trophy.name),
+                Act::OpenTrophies(game.as_str().to_owned()),
+            );
+            let mut banner = BannerTrophy::from_core(&trophy);
+            // The share of players is known when the network has told the feed of this trophy.
+            let title_id = cx
+                .model
+                .games
+                .iter()
+                .find(|g| g.id == game)
+                .map(|g| g.title_id.clone());
+            banner.rarity = title_id.and_then(|title| {
+                cx.model
+                    .online
+                    .feed
+                    .items
+                    .iter()
+                    .find_map(|item| match &item.event {
+                        anyps5_core::online::api::FeedEvent::Trophy {
+                            title_id,
+                            number,
+                            rarity,
+                            ..
+                        } if *title_id == title && u32::from(*number) == trophy.number => *rarity,
+                        _ => None,
+                    })
+            });
+            self.banners.push(banner);
             if !refresh.contains(&game) {
                 refresh.push(game);
             }
@@ -1991,14 +2343,32 @@ impl OverlayHost for PanelHost {
             Overlay::Advanced => self.advanced_ui(cx, wanted),
             Overlay::Trophies => self.trophies_ui(cx, wanted),
             Overlay::Library => self.library_ui(cx, wanted),
+            Overlay::LibrarySearch => {
+                let events = self.take_events(wanted);
+                self.library_extras.search_ui(cx, wanted, &events);
+            }
+            Overlay::Storage => {
+                let events = self.take_events(wanted);
+                self.library_extras.storage_ui(cx, wanted, &events);
+            }
+            Overlay::ConfirmRemoveCopy => {
+                let events = self.take_events(wanted);
+                self.library_extras.remove_ui(cx, wanted, &events);
+            }
             Overlay::Captures => self.captures_ui(cx, wanted),
             Overlay::Log => self.log_ui(cx, wanted),
             Overlay::Recommended => self.recommended_ui(cx, wanted),
             Overlay::WhatsNew => self.whats_new_ui(cx, wanted),
             Overlay::Required => self.required_ui(cx, wanted),
+            Overlay::Controllers => self.controllers_ui(cx, wanted),
             Overlay::Friends => self.friends_ui(cx, wanted),
+            Overlay::Notifications => self.notifications_ui(cx, wanted),
             Overlay::Profile => self.profile_ui(cx, wanted),
             Overlay::Compare => self.compare_ui(cx, wanted),
+            Overlay::FindPlayers => self.find_players_ui(cx, wanted),
+            Overlay::SendCapture => self.send_capture_ui(cx, wanted),
+            Overlay::GameHub => self.hub_ui(cx, wanted),
+            Overlay::TrophyOverview => self.overview_ui(cx, wanted),
         }
     }
 
@@ -2024,18 +2394,45 @@ impl OverlayHost for PanelHost {
     }
 
     fn frame(&mut self, cx: &mut OverlayCx<'_>) {
+        self.apply_saved_lightbar(cx.model);
         // Keys that arrived while no overlay was open belong to nobody.
         if cx.model.overlay.is_none() {
             self.events.clear();
         }
         self.poll_work(cx.model);
+        self.continue_media_send(cx.model);
+        // "Send Report" on the toast of a game that ended in trouble: the log view opens on the
+        // report, which shows the player what would be sent.
+        if let Some(id) = cx.model.report_request.take()
+            && let Some(index) = cx.model.games.iter().position(|g| g.id == id)
+        {
+            cx.model.selected = index;
+            let game = cx.model.games[index].clone();
+            self.prepare_log(cx.model, &game);
+            self.prepare_upstream(cx.model, &game);
+            cx.model.switch_overlay(Overlay::Log);
+        }
+        self.library_extras.poll(cx.model);
         self.poll_toolkit(cx.model);
         let paths = cx.model.paths.clone();
         self.launcher.tick(&paths, cx.model.prefs.check_for_updates);
         self.poll_launcher(cx);
+        self.copy_invite_link(cx);
         // A retired version meets "Update required" once, as soon as nothing else is going on.
         if cx.model.required_screen_due() {
             cx.model.show_required();
+        }
+        // The showcase of a big release meets the player once, when nothing else is going on.
+        if cx.model.onboarded()
+            && cx.model.overlay.is_none()
+            && cx.model.running.is_none()
+            && cx.model.starting.is_none()
+            && cx.model.prefs.whats_new_seen != anyps5_core::settings::WHATS_NEW_RELEASE
+        {
+            cx.model.edit_prefs(|p| {
+                p.whats_new_seen = anyps5_core::settings::WHATS_NEW_RELEASE.to_owned()
+            });
+            self.show_welcome(cx.model, None, true);
         }
         // No toolkit on this PC: fetch it now, already during the onboarding, so the first unlock
         // needs no visit to the settings. The result shows as a toast (see `poll_toolkit`).
@@ -2111,6 +2508,19 @@ fn store_game_settings(model: &mut Model, id: &GameId, settings: GameSettings) {
 
 /// Opens the issue form of a report in the browser. A report too long for the link is copied
 /// first, to be pasted into the form; when the browser does not open, the link is copied instead.
+/// The names of the controllers connected now, for the report. Reads the system on the caller's
+/// thread: call it from the report worker.
+fn connected_controllers() -> Vec<String> {
+    match gilrs::Gilrs::new() {
+        Ok(gilrs) => gilrs
+            .gamepads()
+            .filter(|(_, pad)| pad.is_connected())
+            .map(|(_, pad)| pad.name().to_owned())
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
 fn open_upstream(ctx: &Context, model: &mut Model, prepared: &issue::Prepared) {
     let language = model.language();
     if let Some(text) = &prepared.clipboard {
@@ -2128,7 +2538,7 @@ fn open_upstream(ctx: &Context, model: &mut Model, prepared: &issue::Prepared) {
         Err(error) => {
             tracing::warn!("cannot open the browser: {error}");
             ctx.copy_text(prepared.url.clone());
-            model.toast(Share::ReportOpenFailed.text(language), Icon::WARNING);
+            model.toast_failure(Share::ReportOpenFailed.text(language));
         }
     }
 }
@@ -2228,10 +2638,12 @@ fn open_known_url(url: &str) {
     let known = [
         crate::screens::phone::VIGEM_DOWNLOAD,
         crate::screens::phone::UINPUT_GUIDE,
+        crate::screens::ludus_strings::PROJECT_PAGE,
         crate::screens::about_strings::WEBSITE,
         crate::screens::about_strings::DISCORD,
         crate::screens::about_strings::PRIVACY,
         crate::screens::about_strings::TERMS,
+        crate::screens::about_strings::TRANSLATIONS,
         crate::screens::about_strings::INSTALL_GUIDE,
         crate::screens::update_strings::RELEASES,
     ];
@@ -2376,6 +2788,9 @@ mod tests {
             Overlay::Settings,
             Overlay::Library,
             Overlay::Captures,
+            Overlay::Notifications,
+            Overlay::GameHub,
+            Overlay::TrophyOverview,
             Overlay::GameSettings,
             Overlay::Controls,
             Overlay::Advanced,
@@ -2424,6 +2839,8 @@ mod tests {
             (HomeIntent::OpenSettings, Overlay::Settings),
             (HomeIntent::OpenLibrary, Overlay::Library),
             (HomeIntent::OpenCaptures, Overlay::Captures),
+            (HomeIntent::OpenNotifications, Overlay::Notifications),
+            (HomeIntent::OpenHub, Overlay::GameHub),
             (HomeIntent::OpenOnline, Overlay::Friends),
             (HomeIntent::OpenFriends, Overlay::Friends),
             (HomeIntent::OpenGameSettings, Overlay::GameSettings),
@@ -2442,7 +2859,8 @@ mod tests {
         let mut rig = Rig::new("theme");
         rig.app.model.open(Overlay::Settings);
         rig.frames(2);
-        // Appearance, into its rows (theme row first), one step right.
+        // Appearance (the second page, after General), into its rows (theme row first), one step right.
+        rig.press(Command::Down);
         rig.press(Command::Select);
         rig.press(Command::Right);
         assert_eq!(rig.app.model.prefs.theme, CoreTheme::Aurora);
@@ -2498,11 +2916,16 @@ mod tests {
         let mut rig = Rig::new("library");
         rig.app.model.open(Overlay::Library);
         rig.frames(3);
-        let before = rig.app.model.selected;
+        // The grid walks the games in the order of its page.
+        let order = rig.app.model.library_order();
+        let at = order
+            .iter()
+            .position(|&i| i == rig.app.model.selected)
+            .unwrap();
         rig.press(Command::Right);
         rig.press(Command::Select);
         assert_eq!(rig.app.model.overlay, None);
-        assert_eq!(rig.app.model.selected, before + 1);
+        assert_eq!(rig.app.model.selected, order[at + 1]);
     }
 
     #[test]

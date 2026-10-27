@@ -16,6 +16,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # The release build, the licence check and the package are made on main and on integration pull
+  # requests (the ones that land a batch), not on every feature pull request: the release workflow
+  # builds all of it again at the tag, and a pull request needs fmt, clippy, the tests and the scenes.
+  FULL_CI: ${{ github.ref == 'refs/heads/main' || startsWith(github.head_ref, 'integration/') }}
 
 # The online crates come from anyplaynet/network, checked out beside the launcher at the commit in
 # network.ref (one full SHA, the file the release reads too). A pull request that needs newer
@@ -25,7 +29,50 @@ defaults:
     working-directory: launcher
 
 jobs:
+  # Does this run need macOS? Always on main and on integration pull requests; on any other pull
+  # request only when it touches code or files that are macOS specific (the files with
+  # cfg(target_os = "macos"), the macOS packaging, the dependencies and the workflows). GitHub's
+  # macOS queue was the slowest wait of a pull request (median 5 to 8 minutes, up to 58).
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      macos: ${{ steps.filter.outputs.macos }}
+    steps:
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ] || [[ $HEAD_REF == integration/* ]]; then
+            echo "macos=true" >> "$GITHUB_OUTPUT"
+            echo "main, a push or an integration pull request: macOS runs"
+            exit 0
+          fi
+          # Files that exist for macOS or whose macOS build can break: keep this list in step with
+          # `grep -rlE target_os crates` (the files with a macOS branch, also the not(windows, linux) ones).
+          pattern='^(Cargo\.(toml|lock)|rust-toolchain.*|network\.ref|tools/macos/|\.github/workflows/(ci|macos-style)\.yml|crates/[^/]+/(Cargo\.toml|build\.rs)|crates/anyps5-core/src/(fsx|idle|launch|lib|location|macos|platform|process|selfupdate|settings|steam_shortcuts|toolkit|unlock)(\.rs|/)|crates/anyps5-core/src/remote/vpad/|crates/anyps5-core/tests/(pipeline\.rs|support/)|crates/anyps5-launcher/src/(macstyle|app/(mod|preview|steam)|screens/(settings|unlock)|ui/(gallery|i18n|mod|os_emoji|ps_button))\.rs|.*mac.*)'
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
+          if grep -qE "$pattern" <<<"$files"; then
+            echo "macos=true" >> "$GITHUB_OUTPUT"
+            echo "this pull request touches macOS files:"
+            grep -E "$pattern" <<<"$files"
+          else
+            echo "macos=false" >> "$GITHUB_OUTPUT"
+            echo "no macOS files in this pull request: the macOS job is skipped (it runs on main and on integration pull requests)"
+          fi
+
   build:
+    # GitHub's Windows runner: several core tests need an interactive desktop session, which
+    # a headless CI machine lacks.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,6 +101,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: launcher
+          # Only main writes the cache; pull requests restore it (a PR run used to save its own
+          # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -61,8 +111,10 @@ jobs:
       - name: Test
         run: cargo test --workspace
       - name: Release build
+        if: env.FULL_CI == 'true'
         run: cargo build --release --target x86_64-pc-windows-msvc
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - if: env.FULL_CI == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: anyplay-launcher-windows-x64
           path: launcher/target/x86_64-pc-windows-msvc/release/anyplay-launcher.exe
@@ -93,8 +145,7 @@ jobs:
       # Wayland input. rfd uses the XDG portal over D-Bus and needs no GTK.
       - name: System packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          tools/apt-install.sh \
             pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -104,6 +155,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: launcher
+          # Only main writes the cache; pull requests restore it (a PR run used to save its own
+          # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -111,31 +165,157 @@ jobs:
       - name: Test
         run: cargo test --workspace --no-fail-fast
       - name: Release build
+        if: env.FULL_CI == 'true'
         run: cargo build --release
       # A crate whose licence cannot be read would stop the next release; find it here first.
       - name: Third-party licences
+        if: env.FULL_CI == 'true'
         run: tools/notices.sh "$RUNNER_TEMP/THIRD-PARTY-LICENSES.txt"
       # Renders the real UI on a software Vulkan device (lavapipe) in a virtual X server.
       - name: Smoke packages
+        if: env.FULL_CI == 'true'
         run: |
-          sudo apt-get install -y --no-install-recommends \
+          tools/apt-install.sh \
             xvfb mesa-vulkan-drivers libvulkan1 libx11-6 libxcursor1 libxi6 libxrandr2 \
             libxkbcommon-x11-0 libgl1
       - name: Smoke screenshots
+        if: env.FULL_CI == 'true'
         run: |
           mkdir -p shots
-          for scene in home controls friends; do
+          for scene in home controls friends home-uninstalling; do
             xvfb-run -a -s "-screen 0 1920x1080x24" \
               target/release/anyplay-launcher --gallery=$scene --screenshot=shots/$scene.png
           done
           ls -l shots
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - if: env.FULL_CI == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: anyplay-launcher-linux-screenshots
           path: launcher/shots/*.png
           if-no-files-found: error
 
+  # Every gallery scene, rendered once by a DEBUG build: egui's debug lock panics after 10 s on a
+  # deadlock where a release build only hangs (0.2.8 shipped one in the chat composer). A panic,
+  # a hang (60 s per scene) or a missing picture fails the job and names the scene.
+  #
+  # Three steps so the 300 scenes do not take half an hour on one runner: `scenes-build` makes the
+  # debug binary once, `scenes-shard` renders one eighth of the scenes per runner (8 runners side by
+  # side, tools/gallery-sweep.sh with a shard), and `scenes` is the one check the rest of the
+  # repository knows: it is green when every shard is.
+  scenes-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: launcher
+      - id: network-pin
+        name: Read the pinned network revision
+        shell: bash
+        run: |
+          ref=$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/launcher/network.ref")
+          [[ $ref =~ ^[0-9a-f]{40}$ ]] || { echo "network.ref must hold one full commit SHA" >&2; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: anyplaynet/network
+          ref: ${{ steps.network-pin.outputs.ref }}
+          path: network
+      # Only what the build needs: the shards install the runtime side.
+      - name: System packages
+        timeout-minutes: 10
+        run: |
+          tools/apt-install.sh             pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: launcher
+          # Only main writes the cache; pull requests restore it (a PR run used to save its own
+          # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit). One shared key for
+          # this kind of job: the debug build never shares a cache with the release builds above.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          shared-key: scenes-debug
+      # Line tables instead of full debug info: a panic still names its file and line, the binary
+      # is a fraction of the size to link, cache and hand to the shards.
+      - name: Debug build
+        env:
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
+        run: cargo build -p anyps5-launcher
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scenes-debug-binary
+          path: launcher/target/debug/anyplay-launcher
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 1
+
+  scenes-shard:
+    needs: scenes-build
+    name: scenes-shard ${{ matrix.shard }}/8
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      # The script and the scene names (read from the source); no build, no network checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: launcher
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: scenes-debug-binary
+          path: launcher/target/debug
+      # Runtime libraries of the binary (the same names as the -dev packages of the build, without
+      # the headers), a virtual X server and a software Vulkan device (lavapipe).
+      - name: System packages
+        timeout-minutes: 10
+        run: |
+          tools/apt-install.sh             libasound2t64 libudev1 libxkbcommon0 libwayland-client0 libwayland-cursor0 libwayland-egl1             xvfb mesa-vulkan-drivers libvulkan1 libx11-6 libxcursor1 libxi6 libxrandr2             libxkbcommon-x11-0 libgl1
+      - name: The binary finds its libraries
+        run: |
+          chmod +x target/debug/anyplay-launcher
+          if ldd target/debug/anyplay-launcher | grep 'not found'; then exit 1; fi
+      - name: Render this shard's scenes
+        env:
+          SWEEP_OUT: ${{ github.workspace }}/scene-shots
+        run: tools/gallery-sweep.sh target/debug/anyplay-launcher 4 60 ${{ matrix.shard }}/8
+      # The pictures, so a review reads the real renders instead of rendering on a desktop.
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scene-pngs-${{ matrix.shard }}
+          path: scene-shots/*.png
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # The check name the rest of the repository counts. Green only when the build and every shard are.
+  scenes:
+    if: always()
+    needs: [scenes-build, scenes-shard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Every shard rendered all of its scenes
+        env:
+          BUILD: ${{ needs.scenes-build.result }}
+          SHARDS: ${{ needs.scenes-shard.result }}
+        run: |
+          echo "build: $BUILD, shards: $SHARDS"
+          [ "$BUILD" = success ] && [ "$SHARDS" = success ]
+
   macos:
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -162,6 +342,9 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: launcher
+          # Only main writes the cache; pull requests restore it (a PR run used to save its own
+          # 1-1.5 GB entry and pushed main's caches out of the 10 GB limit).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -176,24 +359,30 @@ jobs:
       - name: Test the embedded net service
         run: cargo test --locked -p anyps5-launcher the_embedded_service_answers_over_the_real_process_pipe
       - name: Release build
+        if: env.FULL_CI == 'true'
         run: cargo build --release --locked
       - name: Build the native licence tool
+        if: env.FULL_CI == 'true'
         run: |
           cargo install cargo-about --version 0.9.2 --locked --features cli
           echo "CARGO_ABOUT=$(command -v cargo-about)" >> "$GITHUB_ENV"
       - name: Third-party licences
+        if: env.FULL_CI == 'true'
         run: tools/notices.sh "$RUNNER_TEMP/THIRD-PARTY-LICENSES.txt"
       - name: Package
+        if: env.FULL_CI == 'true'
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           tools/macos/package.sh "$version" target/release/anyplay-launcher "$RUNNER_TEMP/THIRD-PARTY-LICENSES.txt" dist
       - name: Metal smoke screenshots
+        if: env.FULL_CI == 'true'
         run: |
           mkdir -p shots
           for scene in home controls friends; do
             target/release/anyplay-launcher --gallery="$scene" --screenshot="shots/$scene.png"
           done
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - if: env.FULL_CI == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: anyplay-launcher-macos
           path: |

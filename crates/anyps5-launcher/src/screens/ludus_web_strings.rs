@@ -1,0 +1,480 @@
+//! Texts of LudusCtrl's browser client on the Phone as Controller page (docs/DESIGN.md 18,
+//! "LudusCtrl browser client"). English and Turkish like the rest; the status title is
+//! [`PhoneText::Status`](crate::screens::phone_strings::PhoneText::Status).
+
+use crate::ui::i18n::{Arg, Language, substitute};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BrowserText {
+    /// The title of the browser client's status row, under the app's.
+    Status,
+    /// The bridge could not start; the reason is in the log.
+    StartFailed,
+    /// Status values: no browser yet, and a browser that holds the pad (`%@` = its address; with
+    /// `ConnectedDevice` first what it runs on, then the address).
+    Waiting,
+    ConnectedTo,
+    ConnectedDevice,
+    /// The QR code: its accessible name and the line beside it.
+    QrLabel,
+    QrHint,
+    /// The link, and the row that copies it.
+    Link,
+    Copy,
+    CopyDetail,
+    /// The links of this PC's other addresses: the caption and the note under it.
+    Other,
+    OtherNote,
+    /// The phone's warning about a certificate this PC signs itself.
+    CertNote,
+    /// The certificate was made again: one more warning.
+    Reissued,
+    /// The port was busy: `%d` the wanted port, `%d` the one the link uses.
+    PortBusy,
+    /// A new token.
+    NewLink,
+    NewLinkDetail,
+    /// Under New Link: the link is a key, so a shared screen calls for a new one.
+    ShareNote,
+    /// This PC has no address a phone could open.
+    NoAddress,
+    /// Toasts.
+    ToastConnected,
+    ToastCopied,
+    /// Top bar: the pill's name and its accessible name (`%@` = the browser's address).
+    BarName,
+    BarLabel,
+}
+
+impl BrowserText {
+    pub const ALL: [BrowserText; 23] = [
+        BrowserText::Status,
+        BrowserText::StartFailed,
+        BrowserText::Waiting,
+        BrowserText::ConnectedTo,
+        BrowserText::ConnectedDevice,
+        BrowserText::QrLabel,
+        BrowserText::QrHint,
+        BrowserText::Link,
+        BrowserText::Copy,
+        BrowserText::CopyDetail,
+        BrowserText::Other,
+        BrowserText::OtherNote,
+        BrowserText::CertNote,
+        BrowserText::Reissued,
+        BrowserText::PortBusy,
+        BrowserText::NewLink,
+        BrowserText::NewLinkDetail,
+        BrowserText::ShareNote,
+        BrowserText::NoAddress,
+        BrowserText::ToastConnected,
+        BrowserText::ToastCopied,
+        BrowserText::BarName,
+        BrowserText::BarLabel,
+    ];
+
+    pub const fn english(self) -> &'static str {
+        match self {
+            BrowserText::Status => "Browser",
+            BrowserText::StartFailed => {
+                "The browser client could not start. The log has the reason."
+            }
+            BrowserText::Waiting => "Waiting for a browser",
+            BrowserText::ConnectedTo => "Connected to a browser on %@",
+            BrowserText::ConnectedDevice => "Connected to a browser on %@ (%@)",
+            BrowserText::QrLabel => "QR code of the browser link",
+            BrowserText::QrHint => {
+                "Scan the code with the phone's camera to open the page, then press a button on the controller."
+            }
+            BrowserText::Link => "Link",
+            BrowserText::Copy => "Copy Link",
+            BrowserText::CopyDetail => "Open it on a phone on the same network.",
+            BrowserText::Other => "Other Addresses",
+            BrowserText::OtherNote => {
+                "If the phone is on another network of this PC, open the link of that network."
+            }
+            BrowserText::CertNote => {
+                "The phone warns once that the connection is not private, because this PC signs its own certificate. On iPhone choose Show Details, then visit this website; in Chrome on Android choose Advanced, then Proceed."
+            }
+            BrowserText::Reissued => "This PC's address changed, so the phone will warn once more.",
+            BrowserText::PortBusy => {
+                "Port %d is in use, maybe by the LudusCtrl receiver. The link uses port %d instead."
+            }
+            BrowserText::NewLink => "New Link",
+            BrowserText::NewLinkDetail => {
+                "Makes a new link and disconnects the browser. The old QR code stops working."
+            }
+            BrowserText::ShareNote => {
+                "The link opens the page for anyone who has it. Choose New Link after you share this screen."
+            }
+            BrowserText::NoAddress => {
+                "This PC is not on a network a phone can reach. Connect it to your home network, then choose New Link."
+            }
+            BrowserText::ToastConnected => "A browser is connected as the controller",
+            BrowserText::ToastCopied => "Link copied",
+            BrowserText::BarName => "Browser",
+            BrowserText::BarLabel => "Browser connected: %@",
+        }
+    }
+
+    pub const fn turkish(self) -> &'static str {
+        match self {
+            BrowserText::Status => "Tarayıcı",
+            BrowserText::StartFailed => "Tarayıcı istemcisi başlatılamadı. Nedeni günlükte yazılı.",
+            BrowserText::Waiting => "Bir tarayıcı bekleniyor",
+            BrowserText::ConnectedTo => "%@ adresindeki tarayıcı bağlı",
+            BrowserText::ConnectedDevice => "%@ üzerindeki tarayıcı bağlı (%@)",
+            BrowserText::QrLabel => "Tarayıcı bağlantısının QR kodu",
+            BrowserText::QrHint => {
+                "Sayfayı açmak için kodu telefonun kamerasıyla tara, sonra kumandada bir tuşa bas."
+            }
+            BrowserText::Link => "Bağlantı",
+            BrowserText::Copy => "Bağlantıyı Kopyala",
+            BrowserText::CopyDetail => "Aynı ağdaki bir telefonda aç.",
+            BrowserText::Other => "Diğer Adresler",
+            BrowserText::OtherNote => {
+                "Telefon bu bilgisayarın başka bir ağındaysa o ağın bağlantısını aç."
+            }
+            BrowserText::CertNote => {
+                "Bu bilgisayar sertifikasını kendisi imzaladığı için telefon bir kez bağlantının gizli olmadığı uyarısını gösterir. iPhone'da ayrıntıları açıp siteyi yine de ziyaret et; Android'deki Chrome'da gelişmiş seçenekleri açıp siteye devam et."
+            }
+            BrowserText::Reissued => {
+                "Bu bilgisayarın adresi değişti, bu yüzden telefon bir kez daha uyaracak."
+            }
+            BrowserText::PortBusy => {
+                "%d numaralı bağlantı noktası kullanımda, LudusCtrl alıcısı kullanıyor olabilir. Bağlantı onun yerine %d numaralı noktayı kullanıyor."
+            }
+            BrowserText::NewLink => "Yeni Bağlantı",
+            BrowserText::NewLinkDetail => {
+                "Yeni bir bağlantı oluşturur ve tarayıcının bağlantısını keser. Eski QR kodu artık çalışmaz."
+            }
+            BrowserText::ShareNote => {
+                "Bağlantıya sahip olan herkes sayfayı açabilir. Bu ekranı paylaştıktan sonra Yeni Bağlantı'yı seç."
+            }
+            BrowserText::NoAddress => {
+                "Bu bilgisayar bir telefonun ulaşabileceği bir ağda değil. Ev ağına bağla, sonra Yeni Bağlantı'yı seç."
+            }
+            BrowserText::ToastConnected => "Bir tarayıcı kumanda olarak bağlandı",
+            BrowserText::ToastCopied => "Bağlantı kopyalandı",
+            BrowserText::BarName => "Tarayıcı",
+            BrowserText::BarLabel => "Tarayıcı bağlı: %@",
+        }
+    }
+
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            BrowserText::Status => "Browser",
+            BrowserText::StartFailed => {
+                "Der Browser-Client konnte nicht starten. Den Grund findest du im Protokoll."
+            }
+            BrowserText::Waiting => "Warte auf einen Browser",
+            BrowserText::ConnectedTo => "Mit einem Browser auf %@ verbunden",
+            BrowserText::ConnectedDevice => "Mit einem Browser auf %@ verbunden (%@)",
+            BrowserText::QrLabel => "QR-Code des Browser-Links",
+            BrowserText::QrHint => {
+                "Scanne den Code mit der Kamera des Handys, um die Seite zu öffnen, und drücke dann eine Taste am Controller."
+            }
+            BrowserText::Link => "Link",
+            BrowserText::Copy => "Link kopieren",
+            BrowserText::CopyDetail => "Öffne ihn auf einem Handy im selben Netzwerk.",
+            BrowserText::Other => "Weitere Adressen",
+            BrowserText::OtherNote => {
+                "Ist das Handy in einem anderen Netzwerk dieses PCs, öffne den Link dieses Netzwerks."
+            }
+            BrowserText::CertNote => {
+                "Das Handy warnt einmal, dass die Verbindung nicht privat ist, weil dieser PC sein Zertifikat selbst signiert. Wähle auf dem iPhone Details einblenden und dann Webseite besuchen; wähle in Chrome auf Android Erweitert und dann Weiter."
+            }
+            BrowserText::Reissued => {
+                "Die Adresse dieses PCs hat sich geändert, deshalb warnt das Handy noch einmal."
+            }
+            BrowserText::PortBusy => {
+                "Port %d ist belegt, vielleicht durch den LudusCtrl-Empfänger. Der Link nutzt stattdessen Port %d."
+            }
+            BrowserText::NewLink => "Neuer Link",
+            BrowserText::NewLinkDetail => {
+                "Erstellt einen neuen Link und trennt den Browser. Der alte QR-Code funktioniert nicht mehr."
+            }
+            BrowserText::ShareNote => {
+                "Mit dem Link kann jeder die Seite öffnen. Wähle Neuer Link, nachdem du diesen Bildschirm geteilt hast."
+            }
+            BrowserText::NoAddress => {
+                "Dieser PC ist in keinem Netzwerk, das ein Handy erreichen kann. Verbinde ihn mit deinem Heimnetzwerk und wähle dann Neuer Link."
+            }
+            BrowserText::ToastConnected => "Ein Browser ist als Controller verbunden",
+            BrowserText::ToastCopied => "Link kopiert",
+            BrowserText::BarName => "Browser",
+            BrowserText::BarLabel => "Browser verbunden: %@",
+            _ => return None,
+        })
+    }
+
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            BrowserText::Status => "Navegador",
+            BrowserText::StartFailed => {
+                "El cliente del navegador no pudo iniciarse. El registro explica el motivo."
+            }
+            BrowserText::Waiting => "Esperando un navegador",
+            BrowserText::ConnectedTo => "Conectado a un navegador en %@",
+            BrowserText::ConnectedDevice => "Conectado a un navegador en %@ (%@)",
+            BrowserText::QrLabel => "Código QR del enlace del navegador",
+            BrowserText::QrHint => {
+                "Escanea el código con la cámara del teléfono para abrir la página y pulsa un botón del mando."
+            }
+            BrowserText::Link => "Enlace",
+            BrowserText::Copy => "Copiar enlace",
+            BrowserText::CopyDetail => "Ábrelo en un teléfono de la misma red.",
+            BrowserText::Other => "Otras direcciones",
+            BrowserText::OtherNote => {
+                "Si el teléfono está en otra red de este PC, abre el enlace de esa red."
+            }
+            BrowserText::CertNote => {
+                "El teléfono avisa una vez de que la conexión no es privada, porque este PC firma su propio certificado. En iPhone elige Mostrar detalles y después Visitar este sitio web; en Chrome para Android elige Avanzado y después Continuar."
+            }
+            BrowserText::Reissued => {
+                "La dirección de este PC cambió, así que el teléfono avisará una vez más."
+            }
+            BrowserText::PortBusy => {
+                "El puerto %d está en uso, quizá por el receptor de LudusCtrl. El enlace usa el puerto %d."
+            }
+            BrowserText::NewLink => "Nuevo enlace",
+            BrowserText::NewLinkDetail => {
+                "Crea un enlace nuevo y desconecta el navegador. El código QR anterior deja de funcionar."
+            }
+            BrowserText::ShareNote => {
+                "Cualquiera que tenga el enlace puede abrir la página. Elige Nuevo enlace después de compartir esta pantalla."
+            }
+            BrowserText::NoAddress => {
+                "Este PC no está en una red a la que un teléfono pueda llegar. Conéctalo a tu red doméstica y elige Nuevo enlace."
+            }
+            BrowserText::ToastConnected => "Un navegador está conectado como mando",
+            BrowserText::ToastCopied => "Enlace copiado",
+            BrowserText::BarName => "Navegador",
+            BrowserText::BarLabel => "Navegador conectado: %@",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            BrowserText::Status => "Navigateur",
+            BrowserText::StartFailed => {
+                "Le client navigateur n’a pas pu démarrer. Le journal en donne la raison."
+            }
+            BrowserText::Waiting => "En attente d’un navigateur",
+            BrowserText::ConnectedTo => "Connecté à un navigateur sur %@",
+            BrowserText::ConnectedDevice => "Connecté à un navigateur sur %@ (%@)",
+            BrowserText::QrLabel => "Code QR du lien du navigateur",
+            BrowserText::QrHint => {
+                "Scanne le code avec l’appareil photo du téléphone pour ouvrir la page, puis appuie sur un bouton de la manette."
+            }
+            BrowserText::Link => "Lien",
+            BrowserText::Copy => "Copier le lien",
+            BrowserText::CopyDetail => "Ouvre-le sur un téléphone du même réseau.",
+            BrowserText::Other => "Autres adresses",
+            BrowserText::OtherNote => {
+                "Si le téléphone est sur un autre réseau de ce PC, ouvre le lien de ce réseau."
+            }
+            BrowserText::CertNote => {
+                "Le téléphone prévient une fois que la connexion n’est pas privée, car ce PC signe lui-même son certificat. Sur iPhone, choisis Afficher les détails, puis Visiter ce site web\u{a0}; dans Chrome sur Android, choisis Paramètres avancés, puis Continuer."
+            }
+            BrowserText::Reissued => {
+                "L’adresse de ce PC a changé, donc le téléphone préviendra une fois de plus."
+            }
+            BrowserText::PortBusy => {
+                "Le port %d est utilisé, peut-être par le récepteur LudusCtrl. Le lien utilise le port %d à la place."
+            }
+            BrowserText::NewLink => "Nouveau lien",
+            BrowserText::NewLinkDetail => {
+                "Crée un nouveau lien et déconnecte le navigateur. L’ancien code QR ne fonctionne plus."
+            }
+            BrowserText::ShareNote => {
+                "Toute personne ayant le lien peut ouvrir la page. Choisis Nouveau lien après avoir partagé cet écran."
+            }
+            BrowserText::NoAddress => {
+                "Ce PC n’est pas sur un réseau accessible à un téléphone. Connecte-le à ton réseau domestique, puis choisis Nouveau lien."
+            }
+            BrowserText::ToastConnected => "Un navigateur est connecté comme manette",
+            BrowserText::ToastCopied => "Lien copié",
+            BrowserText::BarName => "Navigateur",
+            BrowserText::BarLabel => "Navigateur connecté\u{a0}: %@",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            BrowserText::Status => "Navegador",
+            BrowserText::StartFailed => {
+                "O cliente do navegador não pôde iniciar. O registro tem o motivo."
+            }
+            BrowserText::Waiting => "Aguardando um navegador",
+            BrowserText::ConnectedTo => "Conectado a um navegador em %@",
+            BrowserText::ConnectedDevice => "Conectado a um navegador em %@ (%@)",
+            BrowserText::QrLabel => "Código QR do link do navegador",
+            BrowserText::QrHint => {
+                "Escaneie o código com a câmera do celular para abrir a página e depois aperte um botão do controle."
+            }
+            BrowserText::Link => "Link",
+            BrowserText::Copy => "Copiar link",
+            BrowserText::CopyDetail => "Abra em um celular na mesma rede.",
+            BrowserText::Other => "Outros endereços",
+            BrowserText::OtherNote => {
+                "Se o celular estiver em outra rede deste PC, abra o link dessa rede."
+            }
+            BrowserText::CertNote => {
+                "O celular avisa uma vez que a conexão não é particular, porque este PC assina o próprio certificado. No iPhone, escolha Mostrar Detalhes e depois Visitar este site; no Chrome para Android, escolha Avançado e depois Prosseguir."
+            }
+            BrowserText::Reissued => {
+                "O endereço deste PC mudou, então o celular avisará mais uma vez."
+            }
+            BrowserText::PortBusy => {
+                "A porta %d está em uso, talvez pelo receptor do LudusCtrl. O link usa a porta %d."
+            }
+            BrowserText::NewLink => "Novo link",
+            BrowserText::NewLinkDetail => {
+                "Cria um novo link e desconecta o navegador. O código QR antigo deixa de funcionar."
+            }
+            BrowserText::ShareNote => {
+                "Qualquer pessoa com o link pode abrir a página. Escolha Novo link depois de compartilhar esta tela."
+            }
+            BrowserText::NoAddress => {
+                "Este PC não está em uma rede que um celular alcance. Conecte-o à sua rede doméstica e escolha Novo link."
+            }
+            BrowserText::ToastConnected => "Um navegador está conectado como controle",
+            BrowserText::ToastCopied => "Link copiado",
+            BrowserText::BarName => "Navegador",
+            BrowserText::BarLabel => "Navegador conectado: %@",
+            _ => return None,
+        })
+    }
+
+    pub const fn text(self, language: Language) -> &'static str {
+        match language {
+            Language::Turkish => self.turkish(),
+            Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
+                Some(text) => text,
+                None => self.english(),
+            },
+        }
+    }
+
+    pub fn format(self, language: Language, args: &[Arg<'_>]) -> String {
+        substitute(self.text(language), args)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_text_is_there_in_both_languages() {
+        for text in BrowserText::ALL {
+            for language in Language::ALL {
+                assert!(
+                    !text.text(language).trim().is_empty(),
+                    "{text:?} {language:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_placeholders_match_in_both_languages() {
+        for text in BrowserText::ALL {
+            let count = |s: &str, p: &str| s.matches(p).count();
+            for p in ["%@", "%d"] {
+                assert_eq!(
+                    count(text.english(), p),
+                    count(text.turkish(), p),
+                    "{text:?} {p}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_ports_reach_the_busy_note_in_order() {
+        for language in Language::ALL {
+            let text = BrowserText::PortBusy.format(language, &[Arg::Int(45991), Arg::Int(51234)]);
+            let (a, b) = (text.find("45991").unwrap(), text.find("51234").unwrap());
+            assert!(a < b, "{text}");
+            assert!(!text.contains("%d"), "{text}");
+        }
+    }
+
+    #[test]
+    fn the_words_name_no_console_brand() {
+        for text in BrowserText::ALL {
+            for language in Language::ALL {
+                let words = text.text(language).to_lowercase();
+                for brand in [
+                    "playstation",
+                    "dualsense",
+                    "dualshock",
+                    "xbox",
+                    "ps5",
+                    "sony",
+                ] {
+                    assert!(!words.contains(brand), "{text:?} {language:?}: {brand}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn titles_are_title_case_and_sentences_are_not() {
+        // DESIGN.md 3.10: row titles, buttons and captions in Title Case.
+        for text in [
+            BrowserText::Status,
+            BrowserText::Link,
+            BrowserText::Copy,
+            BrowserText::Other,
+            BrowserText::NewLink,
+        ] {
+            // Title Case is the English and Turkish rule; the other languages use sentence case.
+            for language in [Language::English, Language::Turkish] {
+                for word in text.text(language).split(' ') {
+                    let first = word.chars().next().unwrap();
+                    assert!(first.is_uppercase(), "{text:?} {language:?}: {word}");
+                }
+            }
+        }
+        // Statuses and toasts read as sentences: only the first word is capital.
+        for text in [
+            BrowserText::Waiting,
+            BrowserText::ToastConnected,
+            BrowserText::ToastCopied,
+        ] {
+            for language in Language::ALL.into_iter().filter(|l| *l != Language::German) {
+                let rest: Vec<&str> = text.text(language).split(' ').skip(1).collect();
+                assert!(
+                    rest.iter().all(|w| !w.starts_with(char::is_uppercase)),
+                    "{text:?} {language:?}"
+                );
+            }
+        }
+    }
+}

@@ -180,13 +180,11 @@ impl Services {
     pub fn load_trophies(&self, game: &Game, root: Option<&Path>, prefs: &Preferences) {
         let (tx, notify) = (self.tx.clone(), self.notify.clone());
         let game = game.clone();
-        let number = prefs
-            .game_settings(&game.id)
-            .language
-            .unwrap_or(match prefs.language {
-                anyps5_core::settings::Language::Turkish => 19,
-                anyps5_core::settings::Language::English => 1,
-            });
+        let number = prefs.game_settings(&game.id).language.unwrap_or_else(|| {
+            prefs
+                .language
+                .console_language_for(&crate::ui::i18n::system_locale())
+        });
         let languages: Vec<String> = ConsoleLanguage::tag(number)
             .map(|tag| vec![tag.to_owned()])
             .unwrap_or_default();
@@ -256,13 +254,11 @@ impl Services {
         self.stop_trophy_watch();
         let Some(root) = root else { return };
         let copy = paths::unlocked_copy_dir(root, &game.title_id, &game.id);
-        let number = prefs
-            .game_settings(&game.id)
-            .language
-            .unwrap_or(match prefs.language {
-                anyps5_core::settings::Language::Turkish => 19,
-                anyps5_core::settings::Language::English => 1,
-            });
+        let number = prefs.game_settings(&game.id).language.unwrap_or_else(|| {
+            prefs
+                .language
+                .console_language_for(&crate::ui::i18n::system_locale())
+        });
         let languages: Vec<String> = ConsoleLanguage::tag(number)
             .map(|tag| vec![tag.to_owned()])
             .unwrap_or_default();

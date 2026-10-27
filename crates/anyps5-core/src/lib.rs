@@ -1,5 +1,7 @@
 //! UI-free logic of the AnyPlay Launcher. The launcher binary depends on this crate; it never depends on the UI.
 
+pub mod autostart;
+pub mod broadcast;
 pub mod captures;
 pub mod clips;
 pub mod community;
@@ -22,9 +24,11 @@ pub mod library;
 pub mod linkreg;
 pub mod links;
 pub mod location;
+pub mod logflood;
 #[cfg(target_os = "macos")]
 pub mod macos;
 pub mod notes;
+pub mod notifications;
 pub mod online;
 pub mod openh264;
 pub mod patches;

@@ -130,6 +130,8 @@ pub enum LogAction {
     SaveReport,
     /// "Open on GitHub" of the review: copy what is to be pasted and open the form.
     OpenReport,
+    /// "Open Online Log": show `network.log` in the file manager.
+    OpenOnlineLog,
 }
 
 /// The log, borrowed for one frame.
@@ -224,8 +226,10 @@ impl LogView {
                     actions.push(LogAction::Close);
                 }
                 Some(
-                    action
-                    @ (LogAction::MakeReport | LogAction::SaveReport | LogAction::OpenReport),
+                    action @ (LogAction::MakeReport
+                    | LogAction::SaveReport
+                    | LogAction::OpenReport
+                    | LogAction::OpenOnlineLog),
                 ) => {
                     shell.play(Cue::Select);
                     actions.push(action);
@@ -255,7 +259,7 @@ fn draw(ui: &mut Ui, data: &LogData<'_>, clicked: &mut Option<LogAction>) {
     let header_h = 54.0;
     let header = Rect::from_min_size(pos2(area.min.x, y), vec2(area.width(), header_h));
     {
-        let max = (area.width() - 640.0).max(200.0);
+        let max = (area.width() - 860.0).max(200.0);
         let shown = text::middle_truncate(&painter, ty::LOG_TITLE, &title, max);
         text::paint(
             &painter,
@@ -263,7 +267,7 @@ fn draw(ui: &mut Ui, data: &LogData<'_>, clicked: &mut Option<LogAction>) {
             Align2::LEFT_CENTER,
             ty::LOG_TITLE,
             &shown,
-            Color32::WHITE,
+            crate::ui::theme::color::text(),
         );
     }
     let mut buttons = ui.new_child(
@@ -312,6 +316,14 @@ fn draw(ui: &mut Ui, data: &LogData<'_>, clicked: &mut Option<LogAction>) {
             .clicked()
     {
         *clicked = Some(LogAction::MakeReport);
+    }
+    if data.review.is_none()
+        && ConsoleButton::new(Extra::OpenOnlineLog.text(language))
+            .icon(Icon::FILE_TEXT)
+            .show(&mut buttons)
+            .clicked()
+    {
+        *clicked = Some(LogAction::OpenOnlineLog);
     }
     y += header_h + 18.0;
 
@@ -505,7 +517,12 @@ mod tests {
                 let s = diagnosis_summary(&d, language);
                 let at = s.find(&long).expect("the argument is in the sentence");
                 assert!(
-                    s[..at].contains("Options > Log") || s[..at].contains("Seçenekler > Günlük"),
+                    s[..at].contains("Options > Log")
+                        || s[..at].contains("Seçenekler > Günlük")
+                        || s[..at].contains("Optionen > Protokoll")
+                        || s[..at].contains("Opciones > Registro")
+                        || s[..at].contains("Options > Journal")
+                        || s[..at].contains("Opções > Registro"),
                     "{d:?} {language:?}: the step must come first: {s}"
                 );
             }
@@ -537,6 +554,28 @@ mod tests {
             "kapat",
             "kullanıcını",
             "rapor",
+            "erneut",
+            "Aktualisiere",
+            "Erneutes",
+            "Schließe",
+            "Füge deinen",
+            "Bericht",
+            "de nuevo",
+            "Actualiza",
+            "Cierra",
+            "Añade",
+            "informe",
+            "à nouveau",
+            "Mets à jour",
+            "relance",
+            "Ferme",
+            "Ajoute",
+            "rapport",
+            "de novo",
+            "Atualize",
+            "Feche",
+            "Adicione",
+            "relatório",
         ];
         for language in Language::ALL {
             for d in &all {

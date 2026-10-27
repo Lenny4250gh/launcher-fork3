@@ -12,7 +12,7 @@
 
 use anyps5_core::online::api::AccountId;
 use anyps5_core::online::control::ScreenPhase;
-use anyps5_core::online::{ScreenCommand, VoiceProvider};
+use anyps5_core::online::{ScreenCommand, SharePlayCommand, VoiceProvider};
 use egui::containers::scroll_area::ScrollBarVisibility;
 use egui::{Align, Align2, Layout, Margin, Rect, ScrollArea, Sense, Ui, UiBuilder, pos2, vec2};
 
@@ -20,6 +20,8 @@ use super::local::Local;
 use super::social::free_places;
 use super::{OnlineAction, OnlineData, OnlinePanel, Page};
 use crate::screens::clamped;
+use crate::screens::friends_strings::FriendsText as FX;
+use crate::screens::notification_strings::NotifyText;
 use crate::screens::online_call_strings::CallText as CT;
 use crate::screens::online_screen_strings::ScreenText as X;
 use crate::screens::online_social_strings::SocialText as S;
@@ -37,7 +39,7 @@ use crate::ui::icons::Icon;
 use crate::ui::input::{self, Command};
 use crate::ui::sound::Cue;
 use crate::ui::text;
-use crate::ui::theme::{TextStyle, Weight, black, color, fade, radius, size, ty, white};
+use crate::ui::theme::{TextStyle, color, fade, radius, scrim, size, space, ty};
 
 /// Members per row of the grid when the page has the room for it.
 const COLUMNS: usize = 5;
@@ -49,14 +51,22 @@ const TILE_HEIGHT: f32 = 214.0;
 const AVATAR_TOP: f32 = 36.0;
 const TILE_GAP: f32 = size::CONTROL_GAP;
 const AVATAR: f32 = 88.0;
+/// The fade over the bottom edge of a page that goes on below: its height and its darkest alpha.
+const FADE_HEIGHT: f32 = 48.0;
+const FADE_ALPHA: f32 = 0.59;
+/// The dark disc and the glyph of a mark (muted, deafened) on an avatar.
+const MARK_DISC: f32 = 14.0;
+const MARK_GLYPH: f32 = 14.0;
 const CARD_HEIGHT: f32 = 76.0;
 /// The air between two groups of the page: at least twice the gap inside one.
-const GROUP_GAP: f32 = 28.0;
+const GROUP_GAP: f32 = space::XL;
+/// The room the page without a party takes for its state.
+const EMPTY_HEIGHT: f32 = 300.0;
 
 const NAME: TextStyle = ty::ROW_TITLE;
 const STATE: TextStyle = ty::DETAIL_LARGE;
 const GAME: TextStyle = ty::DETAIL;
-const CHIP: TextStyle = TextStyle::new(12.0, Weight::SemiBold);
+const CHIP: TextStyle = ty::MICRO;
 
 /// Something on the page the focus can stand on and the player can press.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,6 +84,8 @@ pub(super) enum Stop {
     VoiceSettings,
     OpenDiscord,
     Invite,
+    /// Copy a link that invites to the session or party.
+    InviteLink,
     Chat,
     Share,
     Leave,
@@ -219,6 +231,8 @@ pub(super) enum CardAction {
     StopWatching,
     /// Look at the invitation.
     Invitation(String),
+    /// Share play: invite this member, answer an invitation, set or ask for a mode, end it.
+    Share(SharePlayCommand),
 }
 
 /// One thing the party can do together now, or a line about it.
@@ -251,8 +265,10 @@ pub(super) struct Room {
     pub cards: Vec<Card>,
     pub voice: Vec<Button>,
     pub actions: Vec<Button>,
-    /// The words of the empty page.
+    /// The words of the empty page: title, note and the label of its one button.
+    pub empty_title: String,
     pub empty_note: String,
+    pub empty_action: String,
     pub primary: Option<Stop>,
 }
 
@@ -351,7 +367,19 @@ impl Room {
             icon: Icon::USER_PLUS,
             destructive: false,
         });
-        let cards = cards(data, leads && !alone);
+        let mut cards = cards(data, leads && !alone && online.is_online());
+        // A party of one is open and waiting: the page says so, and Invite Friends is its action.
+        if alone {
+            cards.insert(
+                0,
+                Card {
+                    icon: Icon::USERS,
+                    title: R::AloneTitle.text(language).to_owned(),
+                    detail: R::AloneNote.text(language).to_owned(),
+                    action: None,
+                },
+            );
+        }
 
         // The player's voice.
         let mut voice_buttons = Vec::new();
@@ -408,10 +436,20 @@ impl Room {
             });
         }
         voice_buttons.push(settings);
+        // Voice goes through the cloud: offline there is nothing to press.
+        if !online.is_online() {
+            voice_buttons.clear();
+        }
 
         // The party's actions.
         let mut actions = Vec::new();
         actions.extend(invite);
+        actions.push(Button {
+            stop: Stop::InviteLink,
+            label: NotifyText::CopyInviteLink.text(language).to_owned(),
+            icon: Icon::LINK,
+            destructive: false,
+        });
         actions.push(Button {
             stop: Stop::Chat,
             label: S::PartyChat.text(language).to_owned(),
@@ -459,7 +497,9 @@ impl Room {
             cards,
             voice: voice_buttons,
             actions,
+            empty_title: String::new(),
             empty_note: String::new(),
+            empty_action: String::new(),
             primary,
         }
     }
@@ -483,22 +523,33 @@ impl Room {
                 )),
             })
             .collect();
-        let mut voice = Vec::new();
-        if online.is_online() {
-            voice.push(Button {
-                stop: Stop::VoiceSettings,
-                label: V::VoiceSettings.text(language).to_owned(),
-                icon: Icon::GEAR_SIX,
-                destructive: false,
-            });
-        }
+        // Offline a party cannot start: the page says so and offers Try Again, its one button.
+        let empty = if online.is_online() {
+            (
+                FX::NotInParty.text(language),
+                FX::NotInPartyNote.text(language),
+                S::StartParty.text(language),
+            )
+        } else if online.cloud != Some(anyps5_core::online::Cloud::Offline) {
+            (
+                T::StatusConnecting.text(language),
+                FX::ConnectingNote.text(language),
+                FX::TryAgain.text(language),
+            )
+        } else {
+            (
+                FX::OfflineTitle.text(language),
+                FX::PartyOfflineNote.text(language),
+                FX::TryAgain.text(language),
+            )
+        };
+        // No voice controls here: voice belongs to a party, and its settings sit in the room.
         Room {
             in_party: false,
             cards,
-            voice,
-            empty_note: crate::screens::friends_strings::FriendsText::NotInPartyNote
-                .text(language)
-                .to_owned(),
+            empty_title: empty.0.to_owned(),
+            empty_note: empty.1.to_owned(),
+            empty_action: empty.2.to_owned(),
             primary: Some(Stop::Start),
             ..Room::default()
         }
@@ -607,6 +658,7 @@ fn cards(data: &OnlineData<'_>, may_take: bool) -> Vec<Card> {
             action,
         });
     }
+    cards.extend(super::share_play::cards(data));
     if let Some(watching) = screen.watching() {
         let name = super::screen::name_of(online, watching.account, language);
         let phase = match watching.phase {
@@ -721,6 +773,7 @@ impl OnlinePanel {
                 }
             }
             Stop::Seat | Stop::Invite => self.run("inviteFriends", data, actions),
+            Stop::Start if !online.is_online() => actions.push(OnlineAction::Reconnect),
             Stop::Start => self.run("startParty", data, actions),
             Stop::Card(n) => {
                 let Some((_, action)) = room.cards.get(n).and_then(|c| c.action.clone()) else {
@@ -739,6 +792,7 @@ impl OnlinePanel {
                         actions.push(OnlineAction::Screen(ScreenCommand::Leave));
                     }
                     CardAction::Invitation(id) => self.go(Page::PartyInvitation(id), data),
+                    CardAction::Share(command) => actions.push(OnlineAction::SharePlay(command)),
                 }
             }
             Stop::Invitation(n) => {
@@ -751,6 +805,7 @@ impl OnlinePanel {
             Stop::VoiceOn => actions.push(OnlineAction::Voice(true)),
             Stop::VoiceSettings => self.run("voiceSettings", data, actions),
             Stop::OpenDiscord => self.run("openDiscord", data, actions),
+            Stop::InviteLink => actions.push(OnlineAction::InviteLink),
             Stop::Chat => self.run("partyChat", data, actions),
             Stop::Share => actions.push(OnlineAction::Screen(ScreenCommand::Start)),
             Stop::Leave => self.run("leaveParty", data, actions),
@@ -821,6 +876,7 @@ fn draw(
     };
     let mut geometry: Vec<(f32, f32)> = Vec::with_capacity(plan.rows.len());
     let mut area = ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden);
@@ -869,7 +925,7 @@ fn draw(
                 } else {
                     let top = ui.cursor().min.y;
                     let here = focus.is_some_and(|f| f.row == row);
-                    if empty_state(ui, room, here, language) {
+                    if empty_state(ui, room, here) {
                         view.pressed = Some(RoomFocus { row, col: 0 });
                     }
                     note(ui, top, &mut geometry);
@@ -896,9 +952,6 @@ fn draw(
 
                 if !room.voice.is_empty() {
                     let top = ui.cursor().min.y;
-                    if room.in_party {
-                        caption(ui, V::Voice.text(language));
-                    }
                     let pressed = button_row(
                         ui,
                         &room.voice,
@@ -935,31 +988,32 @@ fn draw(
         output.inner_rect.height(),
         output.state.clamped_offset().y,
     );
+    // More below: the bottom edge fades, so the page does not end in a cut button.
+    let hidden =
+        output.content_size.y - output.inner_rect.height() - output.state.clamped_offset().y;
+    if hidden > 2.0 {
+        paint_more_below(ui.painter(), output.inner_rect);
+    }
     view
 }
 
-/// A small caption over a group of buttons.
-fn caption(ui: &mut Ui, label: &str) {
-    let painter = ui.painter().clone();
-    let galley = text::layout(
-        &painter,
-        ty::SECTION_CAPTION,
-        label,
-        color::text_overline(),
-        f32::INFINITY,
-    );
-    let (rect, response) =
-        ui.allocate_exact_size(vec2(ui.available_width(), galley.size().y), Sense::hover());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Heading, true, label));
-    painter.galley(
-        rect.min + vec2(size::ROW_PADDING_X, 0.0),
-        galley,
-        color::text_overline(),
-    );
-    ui.add_space(size::CONTROL_GAP);
+/// A soft dark band (a paper veil on the light look) along the bottom edge of the scrolling page: there is more under it.
+fn paint_more_below(painter: &egui::Painter, area: Rect) {
+    let band = Rect::from_min_max(pos2(area.min.x, area.max.y - FADE_HEIGHT), area.max);
+    let clear = scrim(0.0);
+    let dark = scrim(FADE_ALPHA);
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(band.left_top(), clear);
+    mesh.colored_vertex(band.right_top(), clear);
+    mesh.colored_vertex(band.right_bottom(), dark);
+    mesh.colored_vertex(band.left_bottom(), dark);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(egui::Shape::mesh(mesh));
 }
 
-/// A row of buttons, 12 dp apart, wrapping at the width of the page. Returns the one pressed.
+/// A row of buttons, 12 dp apart, wrapping at the width of the page. The ones that end something
+/// (Leave Party) stand alone at the far end, apart from the everyday ones. Returns the one pressed.
 fn button_row(
     ui: &mut Ui,
     buttons: &[Button],
@@ -967,21 +1021,43 @@ fn button_row(
     focus: Option<RoomFocus>,
 ) -> Option<usize> {
     let mut pressed = None;
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = vec2(size::CONTROL_GAP, size::CONTROL_GAP);
-        for (col, button) in buttons.iter().enumerate() {
-            let response = ConsoleButton::new(&button.label)
-                .icon(button.icon)
-                .size(ControlSize::Medium)
-                .prominent(primary == Some(button.stop))
-                .destructive(button.destructive)
-                .focused(focus.is_some_and(|f| f.col == col))
-                .show(ui);
-            if response.clicked() {
-                pressed = Some(col);
-            }
+    let mut one = |ui: &mut Ui, col: usize, button: &Button| {
+        let response = ConsoleButton::new(&button.label)
+            .icon(button.icon)
+            .size(ControlSize::Medium)
+            .prominent(primary == Some(button.stop))
+            .destructive(button.destructive)
+            .focused(focus.is_some_and(|f| f.col == col))
+            .show(ui);
+        if response.clicked() {
+            pressed = Some(col);
         }
-    });
+    };
+    if buttons.iter().any(|b| b.destructive) {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing = vec2(size::CONTROL_GAP, size::CONTROL_GAP);
+            for (col, button) in buttons.iter().enumerate().filter(|(_, b)| !b.destructive) {
+                one(ui, col, button);
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                for (col, button) in buttons
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .filter(|(_, b)| b.destructive)
+                {
+                    one(ui, col, button);
+                }
+            });
+        });
+    } else {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = vec2(size::CONTROL_GAP, size::CONTROL_GAP);
+            for (col, button) in buttons.iter().enumerate() {
+                one(ui, col, button);
+            }
+        });
+    }
     pressed
 }
 
@@ -1062,28 +1138,32 @@ fn tile(
     );
     if let Some(mark) = tile.mark {
         let at = centre + vec2(AVATAR * 0.35, AVATAR * 0.35);
-        painter.circle_filled(at, 15.0, black(0.72));
-        painter.circle_stroke(at, 15.0, egui::Stroke::new(1.0, white(0.22)));
+        painter.circle_filled(at, MARK_DISC, scrim(0.72));
+        painter.circle_stroke(
+            at,
+            MARK_DISC,
+            egui::Stroke::new(1.0, color::hairline_control()),
+        );
         painter.text(
             at,
             Align2::CENTER_CENTER,
             mark.icon().glyph(),
-            mark.icon().font(16.0, false),
-            egui::Color32::WHITE,
+            mark.icon().font(MARK_GLYPH, false),
+            color::text(),
         );
     }
     if tile.leader {
         let label = S::Leader.text(data.language);
-        let galley = text::layout(&painter, CHIP, label, egui::Color32::WHITE, f32::INFINITY);
+        let galley = text::layout(&painter, CHIP, label, color::text(), f32::INFINITY);
         let chip = Rect::from_min_size(
-            rect.min + vec2(12.0, 12.0),
+            rect.min + vec2(space::M, space::M),
             vec2(galley.size().x + 16.0, 20.0),
         );
-        paint_capsule(&painter, chip, white(0.14));
+        paint_capsule(&painter, chip, color::surface_hover());
         painter.galley(
             pos2(chip.min.x + 8.0, chip.center().y - galley.size().y * 0.5),
             galley,
-            egui::Color32::WHITE,
+            color::text(),
         );
     }
 
@@ -1098,14 +1178,15 @@ fn tile(
         1,
     );
     let name_height = name.size().y;
+    let mut cut = name.elided;
     painter.galley(
         pos2(rect.center().x - name.size().x * 0.5, y),
         name,
-        egui::Color32::WHITE,
+        color::text(),
     );
     y += name_height + 2.0;
     let state_ink = if tile.speaking {
-        egui::Color32::WHITE
+        color::text()
     } else {
         color::text_row_detail()
     };
@@ -1118,6 +1199,7 @@ fn tile(
         1,
     );
     let state_height = state.size().y;
+    cut |= state.elided;
     painter.galley(
         pos2(rect.center().x - state.size().x * 0.5, y),
         state,
@@ -1126,10 +1208,29 @@ fn tile(
     y += state_height + 2.0;
     if let Some(game) = &tile.game {
         let line = clamped(&painter, GAME, game, egui::Color32::PLACEHOLDER, inner, 1);
+        cut |= line.elided;
         painter.galley(
             pos2(rect.center().x - line.size().x * 0.5, y),
             line,
             color::text_row_detail(),
+        );
+    }
+    // A name, a state or a game cut to the tile's width is read in full while the pointer or the
+    // focus is on it.
+    if cut {
+        let mut said = format!("{}\n{}", tile.handle, tile.state);
+        if let Some(game) = &tile.game {
+            said.push('\n');
+            said.push_str(game);
+        }
+        crate::ui::reveal::full_text(
+            &ctx,
+            response.id,
+            rect,
+            &said,
+            crate::ui::input::hovered(&ctx, &response)
+                || (focused && crate::ui::input::focus_visible(&ctx)),
+            true,
         );
     }
     response.clicked()
@@ -1147,15 +1248,19 @@ fn seat_tile(ui: &mut Ui, width: f32, focused: bool, language: Language) -> bool
         return response.clicked();
     }
     surface(ui, rect, &response, focused, egui::Color32::TRANSPARENT);
-    components::paint_hairline(&painter, rect, radius::CARD, white(0.14));
+    components::paint_hairline(&painter, rect, radius::CARD, color::hairline_control());
     let centre = pos2(rect.center().x, rect.min.y + AVATAR_TOP + AVATAR * 0.5);
-    painter.circle_stroke(centre, AVATAR * 0.5, egui::Stroke::new(1.5, white(0.30)));
+    painter.circle_stroke(
+        centre,
+        AVATAR * 0.5,
+        egui::Stroke::new(1.5, color::hairline_control()),
+    );
     painter.text(
         centre,
         Align2::CENTER_CENTER,
         Icon::PLUS.glyph(),
-        Icon::PLUS.font(28.0, false),
-        white(0.80),
+        Icon::PLUS.font(24.0, false),
+        color::text_detail(),
     );
     let name = clamped(
         &painter,
@@ -1176,58 +1281,22 @@ fn seat_tile(ui: &mut Ui, width: f32, focused: bool, language: Language) -> bool
     response.clicked()
 }
 
-/// The page without a party: a quiet picture, one sentence and the one action.
-fn empty_state(ui: &mut Ui, room: &Room, focused: bool, language: Language) -> bool {
-    let painter = ui.painter().clone();
-    let width = ui.available_width();
-    ui.add_space(24.0);
-    let disc = 96.0;
-    let (rect, response) = ui.allocate_exact_size(vec2(width, disc), Sense::hover());
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::Role::Label, true, S::StartPartyDetail.text(language))
-    });
-    let centre = rect.center();
-    painter.circle_filled(centre, disc * 0.5, color::surface_row());
-    painter.circle_stroke(centre, disc * 0.5, egui::Stroke::new(1.0, white(0.14)));
-    painter.text(
-        centre,
-        Align2::CENTER_CENTER,
-        Icon::USERS.glyph(),
-        Icon::USERS.font(36.0, false),
-        white(0.75),
-    );
-    ui.add_space(20.0);
-    let wrap = (width - 48.0).min(360.0);
-    let mut job = egui::text::LayoutJob::simple(
-        room.empty_note.clone(),
-        ty::NOTE.font(),
-        egui::Color32::PLACEHOLDER,
-        wrap,
-    );
-    job.halign = Align::Center;
-    job.sections[0].format.line_height = Some(1.4 * ty::NOTE.size);
-    let galley = painter.layout_job(job);
-    let (note, _) = ui.allocate_exact_size(vec2(width, galley.size().y), Sense::hover());
-    painter.galley(
-        pos2(note.center().x, note.min.y),
-        galley,
-        color::text_detail(),
-    );
-    ui.add_space(24.0);
-    ui.allocate_ui_with_layout(
-        vec2(width, size::CONTROL_L),
-        Layout::top_down(Align::Center),
-        |ui| {
-            ConsoleButton::new(S::StartParty.text(language))
-                .icon(Icon::USER_PLUS)
-                .size(ControlSize::Large)
-                .prominent(true)
-                .focused(focused)
-                .show(ui)
-                .clicked()
+/// The page without a party: the shared state page (what this is, how to fill it, one button).
+fn empty_state(ui: &mut Ui, room: &Room, focused: bool) -> bool {
+    let (rect, _) =
+        ui.allocate_exact_size(vec2(ui.available_width(), EMPTY_HEIGHT), Sense::hover());
+    crate::ui::state_page::show(
+        ui,
+        rect,
+        &crate::ui::state_page::StatePage {
+            icon: Icon::USERS,
+            title: &room.empty_title,
+            note: Some(&room.empty_note),
+            loading: false,
+            action: Some(&room.empty_action),
         },
+        focused,
     )
-    .inner
 }
 
 /// A card: what the party can do together, with its one button on the right. Returns whether the
@@ -1250,13 +1319,13 @@ fn show_card(ui: &mut Ui, card: &Card, focused: bool, primary: bool, width: f32)
         pos2(rect.min.x + 20.0 + 20.0, rect.center().y),
         vec2(40.0, 40.0),
     );
-    painter.circle_filled(disc.center(), 20.0, white(0.10));
+    painter.circle_filled(disc.center(), 20.0, color::surface());
     painter.text(
         disc.center(),
         Align2::CENTER_CENTER,
         card.icon.glyph(),
         card.icon.font(20.0, false),
-        egui::Color32::WHITE,
+        color::text(),
     );
     let mut pressed = false;
     let mut button_left = rect.max.x - 16.0;
@@ -1298,7 +1367,7 @@ fn show_card(ui: &mut Ui, card: &Card, focused: bool, primary: bool, width: f32)
     let block = title.size().y + 2.0 + detail.size().y;
     let top = rect.center().y - block * 0.5;
     let title_height = title.size().y;
-    painter.galley(pos2(x, top), title, egui::Color32::WHITE);
+    painter.galley(pos2(x, top), title, color::text());
     painter.galley(
         pos2(x, top + title_height + 2.0),
         detail,

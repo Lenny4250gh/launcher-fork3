@@ -15,16 +15,16 @@ use egui::{
     Ui, UiBuilder, pos2, vec2,
 };
 
-use crate::screens::clamped;
 use crate::screens::convert;
 use crate::screens::format;
 use crate::screens::scroll::Follow;
 use crate::screens::side::commands;
 use crate::screens::strings::Extra;
+use crate::screens::{BACK_ROW, back_button, clamped, footer_hints};
 use crate::ui::Shell;
 use crate::ui::anim::{AnimExt, Motion};
 use crate::ui::chrome::fullscreen_panel;
-use crate::ui::components::{self, corner, paint_progress};
+use crate::ui::components::{self, HintSet, corner, paint_progress};
 use crate::ui::glass::GlassStyle;
 use crate::ui::i18n::{Key, Language};
 use crate::ui::icons::Icon;
@@ -266,15 +266,21 @@ impl TrophyListPanel {
         let open = self.open;
         let mut clicked = None;
         let mut shown = None;
+        let mut back = false;
         let drawn = fullscreen_panel(
             ctx,
             "trophy-list",
             open,
             GlassStyle::fullscreen_panel(),
-            |ui, _| self.draw(ui, data, &mut clicked, &mut shown),
+            |ui, _| self.draw(ui, data, &mut clicked, &mut shown, &mut back),
         );
         if drawn.is_none() {
             self.closing = false;
+        }
+        if back && open {
+            shell.play(Cue::Close);
+            self.close();
+            actions.push(TrophyAction::Close);
         }
         if let Some(i) = clicked.filter(|i| open && *i != self.index) {
             self.index = i;
@@ -294,11 +300,25 @@ impl TrophyListPanel {
         data: &TrophyData<'_>,
         clicked: &mut Option<usize>,
         shown: &mut Option<usize>,
+        back: &mut bool,
     ) {
         let area = ui
             .max_rect()
             .shrink2(vec2(theme::pad::TROPHIES.0, theme::pad::TROPHIES.1));
-        let header = Rect::from_min_size(area.min, vec2(area.width(), size::TROPHY_HEADER_ICON));
+        // The Back button at the top, the hints at the bottom right, as on every full-screen area.
+        if back_button(ui, area, data.language) {
+            *back = true;
+        }
+        footer_hints(
+            ui,
+            ui.max_rect(),
+            data.language,
+            HintSet::BASIC.without_back(),
+        );
+        let header = Rect::from_min_size(
+            pos2(area.min.x, area.min.y + BACK_ROW),
+            vec2(area.width(), size::TROPHY_HEADER_ICON),
+        );
         self.draw_header(ui, header, data);
         // The scroll margin puts the rows on the header's edges.
         let list = Rect::from_min_max(
@@ -343,17 +363,20 @@ impl TrophyListPanel {
         } else {
             set.title.as_str()
         };
-        let hint_w = 520.0;
         let title_galley = clamped(
             &painter,
             title_style,
             title,
             Color32::PLACEHOLDER,
-            (header.max.x - x - hint_w).max(200.0),
+            (header.max.x - x).max(200.0),
             1,
         );
         let title_y = top + overline.line_height() + 12.0;
-        painter.galley(pos2(x, title_y), title_galley, Color32::WHITE);
+        painter.galley(
+            pos2(x, title_y),
+            title_galley,
+            crate::ui::theme::color::text(),
+        );
 
         let row_y = title_y + title_style.line_height() + 12.0;
         let percent = set.percent();
@@ -365,13 +388,13 @@ impl TrophyListPanel {
             pos2(cx, row_y),
             ty::PERCENT,
             &percent_text,
-            Color32::WHITE,
+            crate::ui::theme::color::text(),
         );
         cx += w + 16.0;
         let bar = Rect::from_center_size(pos2(cx + 130.0, row_y + row_h * 0.5), vec2(260.0, 4.0));
         paint_progress(&painter, bar, percent as f32 / 100.0, data.accent);
         cx = bar.max.x + 16.0;
-        let count_style = theme::TextStyle::new(15.0, theme::Weight::SemiBold);
+        let count_style = ty::FACT;
         for grade in anyps5_core::trophies::Grade::ALL {
             let (unlocked, total) = set.count(grade);
             if total == 0 {
@@ -394,13 +417,10 @@ impl TrophyListPanel {
                 pos2(cx, mid - count_style.line_height() * 0.5),
                 count_style,
                 &label,
-                fade(Color32::WHITE, 0.85),
+                fade(crate::ui::theme::color::text(), 0.85),
             );
             cx += w + 16.0;
         }
-
-        // The hint bar, right aligned and centred on the header.
-        crate::screens::right_aligned_hints(ui, header, language);
     }
 
     fn draw_rows(
@@ -410,10 +430,24 @@ impl TrophyListPanel {
         clicked: &mut Option<usize>,
         shown: &mut Option<usize>,
     ) {
+        if data.set.trophies.is_empty() {
+            // The shared state page, like every other empty page.
+            let room = ui.max_rect();
+            let page = crate::ui::state_page::StatePage {
+                icon: Icon::TROPHY,
+                title: Extra::TrophiesNone.text(data.language),
+                note: None,
+                loading: false,
+                action: None,
+            };
+            crate::ui::state_page::show(ui, room, &page, false);
+            return;
+        }
         let ctx = ui.ctx().clone();
         let id = ui.make_persistent_id("trophy-rows");
         let (follow, scroll_to) = Follow::begin(&ctx, id, Some(self.index));
         let mut area = egui::ScrollArea::vertical()
+            .scroll_source(crate::screens::scroll::drag_scroll())
             .id_salt(id)
             .auto_shrink([false, false])
             .scroll_bar_visibility(
@@ -496,7 +530,7 @@ impl TrophyListPanel {
             1.0
         };
         let show_label = Extra::TrophyShow.text(language);
-        let show_style = theme::TextStyle::new(15.0, theme::Weight::SemiBold);
+        let show_style = ty::FACT;
         let show_w = if secret {
             text::width(ui.painter(), show_style, show_label) + 2.0 * SHOW_PAD
         } else {
@@ -507,7 +541,7 @@ impl TrophyListPanel {
         let grade: Grade = convert::grade(trophy.grade);
 
         // Right column first: it decides how much room the text has.
-        let grade_style = theme::TextStyle::new(14.0, theme::Weight::SemiBold);
+        let grade_style = ty::SECTION_CAPTION;
         let grade_text = grade.title(language);
         let date_text = match trophy.unlocked {
             Some(micros) => format::local_date_text(micros, language),
@@ -581,7 +615,7 @@ impl TrophyListPanel {
             0.0,
             size::FOCUS_RING,
         );
-        let ink = |alpha: f32| fade(Color32::WHITE, alpha);
+        let ink = |alpha: f32| crate::ui::theme::color::ink_at(alpha);
 
         // Icon or the secret's lock tile.
         let icon_rect = Rect::from_center_size(
@@ -658,7 +692,7 @@ impl TrophyListPanel {
             text::paint_tabular(
                 &painter,
                 pos2(bar.max.x + 10.0, y),
-                theme::TextStyle::new(12.0, theme::Weight::Medium),
+                ty::MICRO,
                 &format!("{value}/{target}"),
                 ink(0.6),
             );
@@ -666,11 +700,10 @@ impl TrophyListPanel {
 
         // Grade and date, right aligned.
         let right = rect.max.x - 18.0;
-        let grade_color = grade.color();
         let grade_color = if earned {
-            grade_color
+            grade.color()
         } else {
-            fade(grade_color, 0.55)
+            grade.dimmed()
         };
         let rows_h = grade_style.line_height() + 6.0 + date_style.line_height();
         let gy = rect.center().y - rows_h * 0.5;
@@ -722,7 +755,7 @@ impl TrophyListPanel {
                 Align2::CENTER_CENTER,
                 show_style,
                 show_label,
-                fade(Color32::WHITE, t),
+                fade(crate::ui::theme::color::text(), t),
             );
             // Only a focused row can be asked to show; a fading pill is not a target yet.
             pill = focused.then_some(area);

@@ -7,14 +7,16 @@ use anyps5_core::online::api::{
 };
 use anyps5_core::online::{Online, Purpose, others, plain};
 
-use super::{OnlineAction, OnlineData, OnlinePanel, Page, presence_text};
+use super::{Ask, OnlineAction, OnlineData, OnlinePanel, Page, presence_text_for};
 use crate::screens::format;
 use crate::screens::friends_strings::FriendsText as FX;
+use crate::screens::lfg_strings::LfgText;
 use crate::screens::online_feed_strings::FeedText as FD;
 use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
 use crate::screens::online_voice_strings::VoiceText as V;
 use crate::screens::rows::Row;
+use crate::screens::send::media_label;
 use crate::screens::together_strings::TogetherText as TT;
 use crate::ui::i18n::{Arg, Key, Language};
 use crate::ui::icons::Icon;
@@ -81,6 +83,10 @@ pub(super) fn party_candidates(online: &Online) -> Vec<&Friend> {
 
 /// How many more members the party takes; seven for a party that does not exist yet.
 pub(super) fn free_places(online: &Online) -> usize {
+    // Offline nobody can be invited: the invitation goes through the cloud.
+    if !online.is_online() {
+        return 0;
+    }
     let (max, members) = online
         .social
         .party
@@ -230,6 +236,7 @@ impl OnlinePanel {
                 }
                 if leads
                     && !alone
+                    && online.is_online()
                     && let Some(session) = online.session.as_ref().filter(|s| {
                         s.visibility != Visibility::Closed
                             && s.members.iter().any(|m| m.account.id == me)
@@ -241,13 +248,16 @@ impl OnlinePanel {
                             .detail(session.title.clone()),
                     );
                 }
-                rows.push(Row::caption("voiceCaption", V::Voice.text(language)).group_start());
-                self.voice_rows(data, rows, false);
-                rows.push(
-                    Row::action("voiceSettings", V::VoiceSettings.text(language))
-                        .icon(Icon::GEAR_SIX),
-                );
+                if online.is_online() {
+                    rows.push(Row::caption("voiceCaption", V::Voice.text(language)).group_start());
+                    self.voice_rows(data, rows, false);
+                    rows.push(
+                        Row::action("voiceSettings", V::VoiceSettings.text(language))
+                            .icon(Icon::GEAR_SIX),
+                    );
+                }
                 super::screen::rows(data, rows);
+                super::share_play::rows(data, rows);
                 rows.push(Row::caption("membersCaption", t(S::PartyMembers)).group_start());
                 let voice = &online.voice;
                 let voice_on = voice.enabled();
@@ -274,7 +284,7 @@ impl OnlinePanel {
                         detail.push(t(S::Leader).to_owned());
                     }
                     if let Some(friend) = friend {
-                        detail.push(presence_text(friend, language));
+                        detail.push(presence_text_for(friend, language, data.online.is_online()));
                     }
                     let icon = if muted {
                         Icon::SPEAKER_SLASH
@@ -337,10 +347,13 @@ impl OnlinePanel {
                         Row::command("removeMember", t(S::RemoveFromParty))
                             .icon(Icon::USER_MINUS)
                             .detail(S::RemoveDetail.format(language, &[Arg::Str(&handle)]))
-                            .destructive(),
+                            .destructive()
+                            .group_start(),
                     );
                 }
-                let presence = online.friend(*id).map(|f| presence_text(f, language));
+                let presence = online
+                    .friend(*id)
+                    .map(|f| presence_text_for(f, language, data.online.is_online()));
                 (handle, presence)
             }
             Page::PartyPicker => {
@@ -353,7 +366,12 @@ impl OnlinePanel {
                             friend.account.handle.clone(),
                             self.picked.contains(&friend.account.id),
                         )
-                        .detail(presence_text(friend, language)),
+                        .avatar(self.avatar_of(data, &friend.account, Some(&friend.presence)))
+                        .detail(presence_text_for(
+                            friend,
+                            language,
+                            data.online.is_online(),
+                        )),
                     );
                 }
                 if candidates.is_empty() {
@@ -463,13 +481,8 @@ impl OnlinePanel {
                         Row::command("openFriends", t(S::OpenFriends)).icon(Icon::USER_CIRCLE),
                     );
                 }
-                let unread = social.unread_total();
-                let subtitle = if unread > 0 {
-                    S::MessagesUnread.format(language, &[Arg::Int(unread as i64)])
-                } else {
-                    t(S::MessagesQuiet).to_owned()
-                };
-                (t(S::Messages).to_owned(), Some(subtitle))
+                // The rail says how many are unread; the page needs only its name.
+                (t(S::Messages).to_owned(), None)
             }
             Page::ChatOptions(id) => {
                 let conversation = social.get(id)?;
@@ -560,7 +573,7 @@ impl OnlinePanel {
             Page::QuickReplies(id) => {
                 let conversation = social.get(id)?;
                 for text in QUICK {
-                    rows.push(Row::command("quick", t(text)).icon(Icon::PAPER_PLANE_RIGHT));
+                    rows.push(Row::command("quick", t(text)));
                 }
                 (
                     t(S::QuickReplies).to_owned(),
@@ -589,11 +602,25 @@ impl OnlinePanel {
                     ));
                 }
                 if message.deleted {
-                    rows.push(Row::info("body", t(S::Removed), None));
+                    rows.push(Row::body("body", t(S::Removed)));
+                } else if let Some(info) = &message.media {
+                    rows.push(Row::body("body", media_label(info, language)));
                 } else {
-                    rows.push(Row::info("body", plain(&message.text), None));
+                    rows.push(Row::body("body", plain(&message.text)));
                 }
                 if !message.deleted {
+                    if let Some(info) = &message.media {
+                        rows.push(
+                            Row::command("openMedia", LfgText::OpenMedia.text(language))
+                                .icon(if info.kind == anyps5_core::online::api::MediaKind::Clip {
+                                    Icon::PLAY
+                                } else {
+                                    Icon::IMAGE
+                                })
+                                .detail(LfgText::OpenMediaDetail.text(language))
+                                .group_start(),
+                        );
+                    }
                     if !conversation.request {
                         rows.push(
                             Row::action("reply", t(S::Reply))
@@ -617,11 +644,13 @@ impl OnlinePanel {
                                 .destructive(),
                         );
                     }
-                    rows.push(
-                        Row::command("copyText", t(S::CopyText))
-                            .icon(Icon::FILE_TEXT)
-                            .group_start(),
-                    );
+                    if message.media.is_none() {
+                        rows.push(
+                            Row::command("copyText", t(S::CopyText))
+                                .icon(Icon::FILE_TEXT)
+                                .group_start(),
+                        );
+                    }
                     if !mine {
                         rows.push(
                             Row::action("reportMessage", T::Report.text(language)).icon(Icon::FLAG),
@@ -749,7 +778,7 @@ impl OnlinePanel {
             ConversationKind::Direct => others(conversation, Self::me(data))
                 .first()
                 .and_then(|a| data.online.friend(a.id))
-                .map(|f| presence_text(f, language)),
+                .map(|f| presence_text_for(f, language, data.online.is_online())),
             ConversationKind::Group => Some(
                 S::GroupPeople.format(language, &[Arg::Int(conversation.members.len() as i64)]),
             ),
@@ -881,7 +910,8 @@ impl OnlinePanel {
         let social = &online.social;
         let me = Self::me(data);
         match (row, self.page.clone()) {
-            ("startParty", _) => self.go(Page::PartyPicker, data),
+            // One press opens the room; friends are invited from inside it.
+            ("startParty", _) => actions.push(OnlineAction::PartyCreate),
             ("inviteFriends", _) => self.go(Page::PartyPicker, data),
             ("partyChat", _) => {
                 if let Some(chat) = social.party_chat() {
@@ -917,16 +947,13 @@ impl OnlinePanel {
                 actions.push(OnlineAction::PartyLeader(id));
                 self.go(Page::Party, data);
             }
-            ("removeMember", Page::PartyMember(id)) => {
-                actions.push(OnlineAction::PartyKick(id));
-                self.go(Page::Party, data);
-            }
+            ("removeMember", Page::PartyMember(id)) => self.ask(Ask::RemoveMember(id), data),
             ("takeParty", _) => {
                 if let Some(session) = &online.session {
                     actions.push(OnlineAction::PartyMove(session.id.clone()));
                 }
             }
-            ("leaveParty", _) => actions.push(OnlineAction::PartyLeave),
+            ("leaveParty", _) => self.ask(Ask::LeaveParty, data),
             ("playTogether", _) => actions.push(OnlineAction::PlayTogether),
             ("sendPartyInvites", Page::PartyPicker) if !self.picked.is_empty() => {
                 actions.push(OnlineAction::PartyInvite(
@@ -952,7 +979,7 @@ impl OnlinePanel {
                 }
             }
             ("leaveConversation", Page::ChatOptions(id)) => {
-                actions.push(OnlineAction::LeaveConversation(id));
+                self.ask(Ask::LeaveConversation(id), data);
             }
             ("reply", Page::Message(id, seq)) => {
                 actions.push(OnlineAction::StartReply {
@@ -969,11 +996,13 @@ impl OnlinePanel {
                 self.go(Page::Conversation(id), data);
             }
             ("unsend", Page::Message(id, seq)) => {
-                actions.push(OnlineAction::Unsend {
-                    conversation: id.clone(),
-                    seq,
-                });
-                self.go(Page::Conversation(id), data);
+                self.ask(
+                    Ask::Unsend {
+                        conversation: id,
+                        seq,
+                    },
+                    data,
+                );
             }
             ("keyboardDone", Page::Keyboard(id)) => self.go(Page::Conversation(id), data),
             ("quickReplies", Page::Keyboard(id)) => self.go(Page::QuickReplies(id), data),
@@ -1020,14 +1049,12 @@ impl OnlinePanel {
                     self.go(Page::Report(other), data);
                 }
             }
-            ("blockChat", Page::ChatOptions(id)) => {
-                if let Some(other) = social
-                    .get(&id)
-                    .and_then(|c| others(c, me).first().map(|a| a.id))
-                {
-                    actions.push(OnlineAction::Block(other));
-                    self.go(Page::Messages, data);
-                }
+            ("blockChat", Page::ChatOptions(id)) => self.ask(Ask::BlockChat(id), data),
+            ("openMedia", Page::Message(id, seq)) => {
+                actions.push(OnlineAction::OpenMedia {
+                    conversation: id,
+                    seq,
+                });
             }
             ("copyText", Page::Message(id, seq)) => {
                 if let Some(message) = social.messages(&id).iter().find(|m| m.seq == seq) {
@@ -1177,6 +1204,7 @@ mod tests {
                     deleted: false,
                     reactions: Vec::new(),
                     rev: 0,
+                    media: None,
                 })
                 .collect(),
             last: to,
@@ -1241,11 +1269,9 @@ mod tests {
         );
         let mut panel = OnlinePanel::default();
         panel.go(Page::Messages, &data(&online));
-        assert_eq!(
-            panel.rows(&data(&online)).1.as_deref(),
-            Some("4 unread"),
-            "the same number as the button and the rail: every message not read"
-        );
+        // The rail and the button count every message not read; the page keeps its name only.
+        assert_eq!(online.social.unread_total(), 4);
+        assert_eq!(panel.rows(&data(&online)).1, None);
     }
 
     #[test]
@@ -1456,8 +1482,13 @@ mod tests {
         panel.run("makeLeader", &data(&online), &mut actions);
         assert_eq!(actions, [OnlineAction::PartyLeader(AccountId(2))]);
         panel.go(Page::PartyMember(AccountId(2)), &data(&online));
+        // Removing asks first: nothing happens until the question is confirmed.
         panel.run("removeMember", &data(&online), &mut actions);
+        assert_eq!(actions.len(), 1);
+        assert!(panel.asks());
+        panel.run("confirmYes", &data(&online), &mut actions);
         assert_eq!(actions[1], OnlineAction::PartyKick(AccountId(2)));
+        assert_eq!(panel.page, Page::Party);
     }
 
     #[test]
@@ -1512,7 +1543,7 @@ mod tests {
         let mut panel = OnlinePanel::default();
         panel.go(Page::Messages, &data(&online));
         let (_, subtitle, rows) = panel.rows(&data(&online));
-        assert_eq!(subtitle.as_deref(), Some("Talk to your friends"));
+        assert_eq!(subtitle, None);
         assert_eq!(ids(&rows), ["none", "openFriends"]);
     }
 
@@ -1569,9 +1600,9 @@ mod tests {
                 "inviteToParty",
                 "call",
                 "viewProfile",
+                "report",
                 "remove",
-                "block",
-                "report"
+                "block"
             ]
         );
         let mut actions = Vec::new();
@@ -1926,7 +1957,7 @@ mod tests {
         let note = rows.iter().find(|r| r.id == "voiceNote").unwrap();
         assert_eq!(
             note.title,
-            "Push to talk works while the launcher is in front."
+            super::super::voice::ptt_note(false).text(Language::English)
         );
         // A running game has the keyboard: the note says what to do instead.
         let playing = OnlineData {
@@ -1936,7 +1967,10 @@ mod tests {
         };
         let rows = panel.rows(&playing).2;
         let note = rows.iter().find(|r| r.id == "voiceNote").unwrap();
-        assert!(note.title.contains("Switch to Voice Activity"));
+        assert_eq!(
+            note.title,
+            super::super::voice::ptt_note(true).text(Language::English)
+        );
         // Voice activity has its own note and no talk key on the voice page.
         online.set_voice_mode(VoiceMode::VoiceActivity);
         let rows = panel.rows(&data(&online)).2;
@@ -2188,6 +2222,8 @@ mod tests {
                 "voiceMode",
                 "voiceNote",
                 "talkKey",
+                "talkPad",
+                "voiceNoise",
                 "voiceInput",
                 "voiceOutput",
                 "refreshDevices",
@@ -2404,6 +2440,101 @@ mod tests {
     }
 
     #[test]
+    fn every_irreversible_action_waits_for_its_answer() {
+        let mut online = online();
+        list(
+            &mut online,
+            vec![
+                conversation("a", ConversationKind::Direct, &[(2, "Lumen")], 4, 4),
+                conversation(
+                    "g",
+                    ConversationKind::Group,
+                    &[(2, "Lumen"), (3, "Juno")],
+                    1,
+                    1,
+                ),
+            ],
+            vec![conversation(
+                "r",
+                ConversationKind::Direct,
+                &[(4, "Nyx")],
+                1,
+                0,
+            )],
+        );
+        online
+            .social
+            .apply_party(Some(party(1, &[(1, "Mira"), (2, "Lumen")])));
+        let cases: [(Page, &str, Vec<OnlineAction>, Page); 3] = [
+            (
+                Page::ChatOptions("a".into()),
+                "blockChat",
+                vec![OnlineAction::Block(AccountId(2))],
+                Page::Messages,
+            ),
+            (
+                Page::ChatOptions("g".into()),
+                "leaveConversation",
+                vec![OnlineAction::LeaveConversation("g".into())],
+                Page::Messages,
+            ),
+            (
+                Page::Party,
+                "leaveParty",
+                vec![OnlineAction::PartyLeave],
+                Page::Party,
+            ),
+        ];
+        for (page, row, expected, after) in cases {
+            let mut panel = OnlinePanel::default();
+            panel.go(page.clone(), &data(&online));
+            let at = crate::screens::rows::position(&panel.rows(&data(&online)).2, row).unwrap();
+            panel.side.nav.row = at;
+            let mut actions = Vec::new();
+            panel.run(row, &data(&online), &mut actions);
+            assert!(actions.is_empty(), "{row} ran before the answer");
+            assert!(panel.asks(), "{row} did not ask");
+            // Cancel leads back to the page and the row the question came from.
+            panel.run("confirmCancel", &data(&online), &mut actions);
+            assert_eq!(panel.page, page, "{row}");
+            assert_eq!(panel.side.nav.row, at, "{row}: the focus is where it was");
+            assert!(actions.is_empty());
+            panel.run(row, &data(&online), &mut actions);
+            panel.run("confirmYes", &data(&online), &mut actions);
+            assert_eq!(actions, expected, "{row}");
+            assert_eq!(panel.page, after, "{row}");
+        }
+        // The answer bar of a message request blocks the sender and drops the request.
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::MessageRequest("r".into()), &data(&online));
+        panel.ask(super::Ask::BlockRequest("r".into()), &data(&online));
+        let mut actions = Vec::new();
+        panel.run("confirmYes", &data(&online), &mut actions);
+        assert_eq!(
+            actions,
+            [
+                OnlineAction::Block(AccountId(4)),
+                OnlineAction::LeaveConversation("r".into())
+            ]
+        );
+    }
+
+    #[test]
+    fn a_question_about_something_that_is_gone_leads_back() {
+        let mut online = online();
+        online
+            .social
+            .apply_party(Some(party(1, &[(1, "Mira"), (2, "Lumen")])));
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::Party, &data(&online));
+        panel.run("leaveParty", &data(&online), &mut Vec::new());
+        assert!(panel.asks());
+        assert_eq!(panel.confirm_follow(&data(&online)), None);
+        online.social.apply_party(None);
+        assert_eq!(panel.confirm_follow(&data(&online)), Some(Page::Party));
+    }
+
+    #[test]
     fn a_message_is_answered_edited_unsent_and_reported() {
         let mut online = online();
         let mut panel = thread(&mut online);
@@ -2423,6 +2554,9 @@ mod tests {
         panel.go(Page::Message("a".into(), 4), &data(&online));
         let mut actions = Vec::new();
         panel.run("unsend", &data(&online), &mut actions);
+        assert!(actions.is_empty(), "unsend asks first");
+        assert!(panel.asks());
+        panel.run("confirmYes", &data(&online), &mut actions);
         assert_eq!(
             actions,
             [OnlineAction::Unsend {
@@ -2430,6 +2564,7 @@ mod tests {
                 seq: 4
             }]
         );
+        assert_eq!(panel.page, Page::Conversation("a".into()));
         panel.go(Page::Message("a".into(), 4), &data(&online));
         panel.run("edit", &data(&online), &mut actions);
         assert!(actions.contains(&OnlineAction::StartEdit {

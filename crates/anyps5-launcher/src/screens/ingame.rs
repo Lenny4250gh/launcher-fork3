@@ -5,9 +5,12 @@
 use egui::Color32;
 use egui::Context;
 
+use crate::screens::broadcast_strings::BroadcastText;
 use crate::screens::captures_strings::CapturesText;
+use crate::screens::dialog;
+use crate::screens::notification_strings::NotifyText;
 use crate::screens::rows::{self, Change, Row};
-use crate::screens::side::{self, SideState, SideView};
+use crate::screens::side::{self, Frame, Leave, SideState, SideView};
 use crate::ui::Shell;
 use crate::ui::i18n::{Arg, Key, Language, substitute};
 use crate::ui::icons::Icon;
@@ -27,6 +30,8 @@ pub enum InGameText {
     /// The question's sentence: `%@` = the game.
     CloseAsk,
     KeepPlaying,
+    /// The card's title: the question.
+    CloseTitle,
 }
 
 impl InGameText {
@@ -34,13 +39,16 @@ impl InGameText {
         match self {
             InGameText::Setting => "Home Button Opens the Launcher",
             InGameText::SettingDetail => {
-                "While a game runs, the Home button on your controller or phone brings the launcher in front of it. Press it again to go back to the game."
+                "While a game runs, the Home button brings the launcher in front. Press it again to return."
             }
             InGameText::Running => "The game keeps running behind the launcher.",
             InGameText::BackToGame => "Back to Game",
             InGameText::Friends => "Friends and Party",
             InGameText::CloseGame => "Close Game",
-            InGameText::CloseAsk => "Close %@? Anything the game has not saved is lost.",
+            InGameText::CloseAsk => {
+                "%@ closes right away. Anything the game has not saved is lost."
+            }
+            InGameText::CloseTitle => "Close the game?",
             InGameText::KeepPlaying => "Keep Playing",
         }
     }
@@ -49,14 +57,85 @@ impl InGameText {
         match self {
             InGameText::Setting => "Ana Düğme Başlatıcıyı Açar",
             InGameText::SettingDetail => {
-                "Bir oyun açıkken denetleyicideki ya da telefondaki Ana Sayfa düğmesi başlatıcıyı oyunun önüne getirir. Oyuna dönmek için tekrar bas."
+                "Oyun açıkken Ana Sayfa düğmesi başlatıcıyı öne getirir. Dönmek için tekrar bas."
             }
             InGameText::Running => "Oyun, başlatıcının arkasında çalışmaya devam ediyor.",
             InGameText::BackToGame => "Oyuna Dön",
             InGameText::Friends => "Arkadaşlar ve Parti",
             InGameText::CloseGame => "Oyunu Kapat",
-            InGameText::CloseAsk => "%@ kapatılsın mı? Oyunun kaydetmediği ilerleme kaybolur.",
+            InGameText::CloseAsk => "%@ hemen kapanır. Oyunun kaydetmediği ilerleme kaybolur.",
+            InGameText::CloseTitle => "Oyun kapatılsın mı?",
             InGameText::KeepPlaying => "Oynamaya Devam Et",
+        }
+    }
+
+    pub const fn german(self) -> &'static str {
+        match self {
+            InGameText::Setting => "Home-Taste öffnet den Launcher",
+            InGameText::SettingDetail => {
+                "Während ein Spiel läuft, holt die Home-Taste den Launcher nach vorn. Drück sie noch einmal, um zurückzukehren."
+            }
+            InGameText::Running => "Das Spiel läuft hinter dem Launcher weiter.",
+            InGameText::BackToGame => "Zurück zum Spiel",
+            InGameText::Friends => "Freunde und Gruppe",
+            InGameText::CloseGame => "Spiel beenden",
+            InGameText::CloseAsk => {
+                "%@ wird sofort beendet. Alles, was das Spiel nicht gespeichert hat, geht verloren."
+            }
+            InGameText::CloseTitle => "Spiel beenden?",
+            InGameText::KeepPlaying => "Weiterspielen",
+        }
+    }
+
+    pub const fn spanish(self) -> &'static str {
+        match self {
+            InGameText::Setting => "El botón Home abre el launcher",
+            InGameText::SettingDetail => {
+                "Mientras se ejecuta un juego, el botón Home trae el launcher al frente. Púlsalo de nuevo para volver."
+            }
+            InGameText::Running => "El juego sigue en ejecución detrás del launcher.",
+            InGameText::BackToGame => "Volver al juego",
+            InGameText::Friends => "Amigos y party",
+            InGameText::CloseGame => "Cerrar juego",
+            InGameText::CloseAsk => {
+                "%@ se cierra de inmediato. Se pierde todo lo que el juego no haya guardado."
+            }
+            InGameText::CloseTitle => "¿Cerrar el juego?",
+            InGameText::KeepPlaying => "Seguir jugando",
+        }
+    }
+
+    pub const fn french(self) -> &'static str {
+        match self {
+            InGameText::Setting => "Le bouton Home ouvre le launcher",
+            InGameText::SettingDetail => {
+                "Pendant qu’un jeu tourne, le bouton Home met le launcher au premier plan. Appuie de nouveau pour revenir."
+            }
+            InGameText::Running => "Le jeu continue de tourner derrière le launcher.",
+            InGameText::BackToGame => "Retour au jeu",
+            InGameText::Friends => "Amis et party",
+            InGameText::CloseGame => "Fermer le jeu",
+            InGameText::CloseAsk => {
+                "%@ se ferme immédiatement. Tout ce que le jeu n’a pas sauvegardé est perdu."
+            }
+            InGameText::CloseTitle => "Fermer le jeu\u{a0}?",
+            InGameText::KeepPlaying => "Continuer à jouer",
+        }
+    }
+
+    pub const fn portuguese(self) -> &'static str {
+        match self {
+            InGameText::Setting => "O botão Home abre o launcher",
+            InGameText::SettingDetail => {
+                "Enquanto um jogo está em execução, o botão Home traz o launcher para a frente. Pressione de novo para voltar."
+            }
+            InGameText::Running => "O jogo continua em execução atrás do launcher.",
+            InGameText::BackToGame => "Voltar ao jogo",
+            InGameText::Friends => "Amigos e party",
+            InGameText::CloseGame => "Fechar jogo",
+            InGameText::CloseAsk => "%@ fecha na hora. Tudo o que o jogo não salvou será perdido.",
+            InGameText::CloseTitle => "Fechar o jogo?",
+            InGameText::KeepPlaying => "Continuar jogando",
         }
     }
 
@@ -64,6 +143,10 @@ impl InGameText {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => self.german(),
+            Language::Spanish => self.spanish(),
+            Language::French => self.french(),
+            Language::Portuguese => self.portuguese(),
         }
     }
 
@@ -71,7 +154,7 @@ impl InGameText {
         substitute(self.text(language), args)
     }
 
-    pub const ALL: [InGameText; 8] = [
+    pub const ALL: [InGameText; 9] = [
         InGameText::Setting,
         InGameText::SettingDetail,
         InGameText::Running,
@@ -80,6 +163,7 @@ impl InGameText {
         InGameText::CloseGame,
         InGameText::CloseAsk,
         InGameText::KeepPlaying,
+        InGameText::CloseTitle,
     ];
 }
 
@@ -90,6 +174,10 @@ pub enum InGameAction {
     Resume,
     Trophies,
     Captures,
+    /// The Notification Center.
+    Notifications,
+    /// Start or stop the live broadcast.
+    Broadcast,
     GameSettings,
     Friends,
     /// Ask whether to close the game.
@@ -109,6 +197,8 @@ pub struct InGameData<'a> {
     pub accent: Color32,
     /// The player is signed in: the friends row shows.
     pub online: bool,
+    /// Where the live broadcast stands; `None` where this system cannot broadcast.
+    pub broadcast: Option<anyps5_core::broadcast::Phase>,
 }
 
 fn rows_of(data: &InGameData<'_>) -> Vec<Row> {
@@ -119,6 +209,20 @@ fn rows_of(data: &InGameData<'_>) -> Vec<Row> {
         Row::command("captures", CapturesText::Title.text(language)).icon(Icon::IMAGES),
         Row::command("settings", language.text(Key::GameSettings)).icon(Icon::SLIDERS_HORIZONTAL),
     ];
+    if let Some(phase) = data.broadcast {
+        use anyps5_core::broadcast::Phase;
+        let (title, detail) = match phase {
+            Phase::Off => (BroadcastText::Start, None),
+            Phase::Connecting => (BroadcastText::Stop, Some(BroadcastText::Connecting)),
+            Phase::Live => (BroadcastText::Stop, Some(BroadcastText::Live)),
+        };
+        let mut row = Row::command("broadcast", title.text(language)).icon(Icon::WIFI_HIGH);
+        if let Some(detail) = detail {
+            row = row.detail(detail.text(language));
+        }
+        rows.push(row);
+    }
+    rows.push(Row::command("notifications", NotifyText::Title.text(language)).icon(Icon::BELL));
     if data.online {
         rows.push(Row::command("friends", InGameText::Friends.text(language)).icon(Icon::USERS));
     }
@@ -159,7 +263,7 @@ impl InGamePanel {
         self.side.is_active()
     }
 
-    fn handle(&mut self, change: &Change, actions: &mut Vec<InGameAction>) {
+    fn handle(side: &mut SideState, change: &Change, actions: &mut Vec<InGameAction>) {
         let Change::Run { row } = change else {
             return;
         };
@@ -167,6 +271,8 @@ impl InGamePanel {
             "resume" => InGameAction::Resume,
             "trophies" => InGameAction::Trophies,
             "captures" => InGameAction::Captures,
+            "notifications" => InGameAction::Notifications,
+            "broadcast" => InGameAction::Broadcast,
             "settings" => InGameAction::GameSettings,
             "friends" => InGameAction::Friends,
             _ => InGameAction::AskClose,
@@ -174,7 +280,7 @@ impl InGamePanel {
         // The pages and the question take the frame over without a slide; only the way back to
         // the game slides out.
         if action == InGameAction::Resume {
-            self.side.close();
+            side.close();
         }
         actions.push(action);
     }
@@ -187,47 +293,25 @@ impl InGamePanel {
         data: &InGameData<'_>,
     ) -> Vec<InGameAction> {
         let mut actions = Vec::new();
-        if !self.side.is_active() {
-            return actions;
-        }
-        if self.side.is_open() {
-            let rows = rows_of(data);
-            let driven = rows::drive(shell, &mut self.side.nav, &rows, &side::commands(events));
-            for change in &driven.changes {
-                self.handle(change, &mut actions);
-            }
-            if driven.close {
-                self.side.close();
-                actions.push(InGameAction::Dismiss);
-            }
-        }
-        let mut rows = rows_of(data);
-        let running = InGameText::Running.text(data.language);
-        let view = SideView {
+        let frame = Frame {
             title: data.title,
-            subtitle: Some(running),
-            question: false,
+            subtitle: Some(InGameText::Running.text(data.language)),
             list_id: "in-game-rows",
-            nav: &self.side.nav,
             accent: data.accent,
             language: data.language,
-            force: None,
         };
-        match side::draw(ctx, self.side.is_open(), &view, &mut rows) {
-            Some(drawn) if self.side.is_open() => {
-                let (changes, _) =
-                    rows::apply_mouse(shell, &mut self.side.nav, &rows, drawn.events);
-                for change in &changes {
-                    self.handle(change, &mut actions);
-                }
-                if drawn.scrim_clicked {
-                    self.side.close();
-                    actions.push(InGameAction::Dismiss);
-                }
-            }
-            Some(_) => {}
-            None => self.side.finished(),
-        }
+        self.side.show_rows(
+            shell,
+            ctx,
+            events,
+            &mut { data },
+            &frame,
+            Leave::Slide,
+            |data| rows_of(data),
+            |side, _, _, change, actions| Self::handle(side, change, actions),
+            InGameAction::Dismiss,
+            &mut actions,
+        );
         actions
     }
 }
@@ -285,12 +369,14 @@ impl CloseGamePanel {
                 Row::command("close", InGameText::CloseGame.text(language))
                     .icon(Icon::POWER)
                     .destructive(),
-                Row::command("keep", InGameText::KeepPlaying.text(language)).icon(Icon::PLAY),
+                Row::command("keep", InGameText::KeepPlaying.text(language))
+                    .icon(Icon::PLAY)
+                    .refusal(),
             ]
         };
         if self.side.is_open() {
             let rows = build();
-            let driven = rows::drive(shell, &mut self.side.nav, &rows, &side::commands(events));
+            let driven = dialog::drive(shell, &mut self.side.nav, &rows, &side::commands(events));
             for change in &driven.changes {
                 self.handle(change, &mut actions);
             }
@@ -302,7 +388,7 @@ impl CloseGamePanel {
         let mut rows = build();
         let ask = InGameText::CloseAsk.format(language, &[Arg::Str(title)]);
         let view = SideView {
-            title: InGameText::CloseGame.text(language),
+            title: InGameText::CloseTitle.text(language),
             subtitle: Some(&ask),
             question: true,
             list_id: "close-game-rows",
@@ -318,7 +404,7 @@ impl CloseGamePanel {
                 for change in &changes {
                     self.handle(change, &mut actions);
                 }
-                if drawn.scrim_clicked {
+                if drawn.back_clicked {
                     self.side.close();
                     actions.push(InGameAction::Keep);
                 }
@@ -359,7 +445,7 @@ mod tests {
     #[test]
     fn the_question_names_the_game() {
         let ask = InGameText::CloseAsk.format(Language::English, &[Arg::Str("Astro")]);
-        assert!(ask.starts_with("Close Astro?"), "{ask}");
+        assert!(ask.starts_with("Astro closes right away."), "{ask}");
     }
 
     #[test]
@@ -369,9 +455,29 @@ mod tests {
             language: Language::English,
             accent: Color32::WHITE,
             online: false,
+            broadcast: None,
         };
-        assert_eq!(rows_of(&data).len(), 5);
-        data.online = true;
         assert_eq!(rows_of(&data).len(), 6);
+        data.online = true;
+        assert_eq!(rows_of(&data).len(), 7);
+    }
+
+    #[test]
+    fn the_broadcast_row_follows_the_phase() {
+        use anyps5_core::broadcast::Phase;
+        let mut data = InGameData {
+            title: "Astro",
+            language: Language::English,
+            accent: Color32::WHITE,
+            online: false,
+            broadcast: Some(Phase::Off),
+        };
+        let rows = rows_of(&data);
+        assert_eq!(rows.len(), 7);
+        assert_eq!(rows[4].title, "Start Broadcast");
+        data.broadcast = Some(Phase::Live);
+        let rows = rows_of(&data);
+        assert_eq!(rows[4].title, "Stop Broadcast");
+        assert_eq!(rows[4].detail.as_deref(), Some("Live"));
     }
 }

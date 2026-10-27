@@ -13,6 +13,7 @@ use std::time::Instant;
 
 use anyps5_core::events::CoreEvent;
 use anyps5_core::library::{ExecutableKind, Game};
+use anyps5_core::notifications::{Act, Kind, Notifications};
 use anyps5_core::online::Online;
 use anyps5_core::paths::{AppPaths, GameId};
 use anyps5_core::settings::{self, Preferences};
@@ -52,6 +53,10 @@ pub enum GameState {
         step: UnlockStep,
         fraction: f32,
     },
+    /// The unlocked copy is being removed; `fraction` is how much of it is gone, 0..=1.
+    Uninstalling {
+        fraction: f32,
+    },
     /// The launcher unlocks the game on its own while the PC is idle. `progress` is `None` until
     /// the work starts.
     Preparing {
@@ -77,10 +82,21 @@ pub enum SizeState {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Toast {
     pub id: u64,
+    /// A game whose icon the toast shows in place of its glyph.
+    pub art: Option<std::path::PathBuf>,
     pub text: String,
     pub icon: Icon,
-    /// UI-clock time at which it starts to leave.
+    /// UI-clock time at which it starts to leave; infinite while it stays until dismissed.
     pub until: f64,
+    /// A game ended in trouble: the toast offers "Send Report" for it (Options, or the button).
+    pub report: Option<GameId>,
+}
+
+impl Toast {
+    /// A failure stays until the player dismisses it; a routine toast fades by itself.
+    pub fn stays(&self) -> bool {
+        self.until.is_infinite()
+    }
 }
 
 /// The launcher update notice on the home screen.
@@ -100,13 +116,8 @@ pub enum UpdateRequest {
     CancelRestart,
 }
 
-/// Where the first-run setup stands.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Onboarding {
-    /// 0 language, 1 theme, 2 games folder, 3 online (only when a cloud is set).
-    pub step: usize,
-    choices: [Option<usize>; 4],
-}
+mod onboarding;
+pub use onboarding::{Onboarding, PadSeen, Step, Target};
 
 /// Something that has to happen outside the model.
 #[derive(Clone, Debug, PartialEq)]
@@ -134,6 +145,8 @@ pub enum Effect {
     ReloadToolkit,
     /// A game ended well: back up its saves if the last backup is old (see `anyps5_core::saves`).
     BackUpSaves(GameId),
+    /// Open an address in the system browser (the Terms and the Privacy Policy of the first start).
+    OpenPage(&'static str),
     /// Start the net service, or say hello again with a new cloud (`app::online`).
     StartOnline,
     /// Stop the net service.
@@ -142,6 +155,8 @@ pub enum Effect {
     RelayOnlyChanged,
     /// Save the last seconds of the running game as a clip (`app::clips`).
     SaveClip,
+    /// Start or stop the live broadcast of the running game (`app::broadcast`).
+    ToggleBroadcast,
     /// The player came online: read what they earned in every unlocked game for the network.
     SyncTrophies,
     /// Look at the unlocked games location (is the drive there, how much is free).
@@ -172,6 +187,10 @@ pub fn ui_language(language: settings::Language) -> Language {
     match language {
         settings::Language::Turkish => Language::Turkish,
         settings::Language::English => Language::English,
+        settings::Language::German => Language::German,
+        settings::Language::Spanish => Language::Spanish,
+        settings::Language::French => Language::French,
+        settings::Language::Portuguese => Language::Portuguese,
     }
 }
 
@@ -179,6 +198,10 @@ pub fn core_language(language: Language) -> settings::Language {
     match language {
         Language::Turkish => settings::Language::Turkish,
         Language::English => settings::Language::English,
+        Language::German => settings::Language::German,
+        Language::Spanish => settings::Language::Spanish,
+        Language::French => settings::Language::French,
+        Language::Portuguese => settings::Language::Portuguese,
     }
 }
 
@@ -187,6 +210,10 @@ pub fn ui_theme(theme: settings::Theme) -> Theme {
         settings::Theme::Cosmic => Theme::Cosmic,
         settings::Theme::Aurora => Theme::Aurora,
         settings::Theme::Sunset => Theme::Sunset,
+        settings::Theme::GameColors => Theme::GameColors,
+        settings::Theme::Ember => Theme::Ember,
+        settings::Theme::Tide => Theme::Tide,
+        settings::Theme::Daylight => Theme::Daylight,
     }
 }
 
@@ -195,6 +222,10 @@ pub fn core_theme(theme: Theme) -> settings::Theme {
         Theme::Cosmic => settings::Theme::Cosmic,
         Theme::Aurora => settings::Theme::Aurora,
         Theme::Sunset => settings::Theme::Sunset,
+        Theme::GameColors => settings::Theme::GameColors,
+        Theme::Ember => settings::Theme::Ember,
+        Theme::Tide => settings::Theme::Tide,
+        Theme::Daylight => settings::Theme::Daylight,
     }
 }
 
@@ -243,6 +274,8 @@ pub struct Model {
     pub panel: PanelNav,
     /// The focused tile of the library grid.
     pub library_index: usize,
+    /// What the player typed to search the library page; empty shows every game.
+    pub library_query: String,
     /// The focused row of the trophy list.
     pub trophy_index: usize,
     pub onboarding: Onboarding,
@@ -256,6 +289,8 @@ pub struct Model {
 
     /// Unlock progress of the game that is being unlocked.
     pub progress: HashMap<GameId, (UnlockStep, f32)>,
+    /// Games whose unlocked copy is being removed, and how much of it is gone (0..=1).
+    pub uninstalling: HashMap<GameId, f32>,
     /// Games waiting for their unlock.
     pub queue: Vec<GameId>,
     /// Preparing in the background, and the time left of every unlock (`app/prepare.rs`).
@@ -264,6 +299,10 @@ pub struct Model {
     /// The game from the press of Play until its first window shows.
     pub starting: Option<GameId>,
     pub running: Option<GameId>,
+    /// Where the live broadcast of the running game stands.
+    pub broadcast: anyps5_core::broadcast::Phase,
+    /// A stream key is kept (the key itself is never held here).
+    pub broadcast_key_set: bool,
     /// The Home button brought the launcher in front of the running game: Back returns to the
     /// game (`Model::show_in_game`).
     pub summoned: bool,
@@ -272,6 +311,13 @@ pub struct Model {
     /// Why each game stopped the last time it was started, when it stopped on an error.
     pub diagnoses: HashMap<GameId, String>,
     pub toast: Option<Toast>,
+    /// The history of what the launcher told the player on its own (`Overlay::Notifications`).
+    pub notes: Notifications,
+    /// The invite link the player asked for (`app::discord`).
+    pub invite_link: crate::app::discord::InviteLink,
+    /// A handle a link asked to befriend: the Friends screen opens on the request with it typed
+    /// in, and the player sends it.
+    pub friend_request: Option<String>,
     /// Where the launcher's own update stands, copied in every frame by the panel host.
     pub update: crate::screens::settings::LauncherUpdate,
     /// The version whose notice the player sent away with "Later" (until the next start).
@@ -281,6 +327,10 @@ pub struct Model {
     /// The notice fits in the top bar as drawn last frame. The focus order reads it, so the pad
     /// never lands on a notice that is not there.
     pub notice_fits: bool,
+    /// How many games the shelves on the home screen show now; the screen sets it each frame.
+    pub shelf_count: usize,
+    /// The most games a shelf shows at this window width, set by the home screen.
+    pub shelf_cap: usize,
     /// This launcher must update before it goes online: the signed manifest or the cloud said so
     /// (copied in every frame by the panel host). Offline play is never affected.
     pub update_required: bool,
@@ -309,6 +359,8 @@ pub struct Model {
     pub phone_trophies: Vec<Trophy>,
     /// What the phone server is doing (`app::phone`).
     pub phone: crate::app::phone::PhoneState,
+    /// What the LudusCtrl receiver is doing (`app::ludus`).
+    pub ludus: crate::app::ludus::LudusState,
     /// What the share worker said of Cisco's OpenH264 in its last answer (Linux): its `state` and
     /// `detail`.
     pub share_codec: Option<(String, Option<String>)>,
@@ -323,6 +375,12 @@ pub struct Model {
     pub profile: Option<crate::app::profile::Target>,
     /// The comparison the trophy compare screen is on (`app::compare`).
     pub compare: Option<crate::app::compare::Target>,
+    /// Find Players and Send to a Friend (`app::lfg`).
+    pub lfg: crate::app::lfg::State,
+    /// Where Back leads from the Game Hub, when it was not opened from Home (`app::hub`).
+    pub hub_back: Option<Overlay>,
+    /// Where Back leads from the trophy overview (`app::hub`).
+    pub overview_back: Option<Overlay>,
     /// The profile screen opens again from the comparison: its focus stays where it was.
     pub profile_returning: bool,
     /// The Friends screen opens on the page it was left on, not on its first one: the player
@@ -343,11 +401,14 @@ pub struct Model {
     cards_asked: f64,
     started_without_window: bool,
     toast_counter: u64,
+    /// A crash report the player asked for on the toast; the panels take it ([`Model::send_crash_report`]).
+    pub report_request: Option<GameId>,
 }
 
 impl Model {
     /// `persist` is off for the previews and tests, which must not touch the user's settings.
     pub fn new(prefs: Preferences, paths: AppPaths, persist: bool) -> Self {
+        let notes = Notifications::open(paths.notifications_file(), persist);
         Self {
             prefs,
             paths,
@@ -362,26 +423,35 @@ impl Model {
             overlay: None,
             panel: PanelNav::single(0),
             library_index: 0,
+            library_query: String::new(),
             trophy_index: 0,
             onboarding: Onboarding::default(),
             sign_in_after_onboarding: None,
             library_loaded: false,
             settings_page: None,
             progress: HashMap::new(),
+            uninstalling: HashMap::new(),
             queue: Vec::new(),
             prep: Default::default(),
             failures: HashMap::new(),
             starting: None,
             running: None,
+            broadcast: Default::default(),
+            broadcast_key_set: false,
             summoned: false,
             sizes: HashMap::new(),
             trophies: HashMap::new(),
             diagnoses: HashMap::new(),
             toast: None,
+            notes,
+            invite_link: Default::default(),
+            friend_request: None,
             update: Default::default(),
             update_dismissed: None,
             update_request: None,
             notice_fits: true,
+            shelf_count: 0,
+            shelf_cap: crate::app::library_view::SHELF_MAX,
             update_required: false,
             required_seen: false,
             required_online: false,
@@ -394,12 +464,16 @@ impl Model {
             trophy_banners: Vec::new(),
             phone_trophies: Vec::new(),
             phone: Default::default(),
+            ludus: Default::default(),
             share_codec: None,
             effects: Vec::new(),
             online: Online::default(),
             together: Default::default(),
             profile: None,
             compare: None,
+            lfg: crate::app::lfg::State::default(),
+            hub_back: None,
+            overview_back: None,
             profile_returning: false,
             online_resume: false,
             friends_back: None,
@@ -411,6 +485,7 @@ impl Model {
             cards_asked: f64::NEG_INFINITY,
             started_without_window: false,
             toast_counter: 0,
+            report_request: None,
         }
     }
 
@@ -465,6 +540,7 @@ impl Model {
     /// Call first thing in every frame.
     pub fn tick(&mut self, now: f64) {
         self.now = now;
+        self.notes.save_if_dirty();
         self.checkpoint(Instant::now());
         self.prepare_tick();
         self.resume_move_tick();
@@ -520,6 +596,9 @@ impl Model {
 
     /// Shows a toast; a warning plays the error cue, every other one the soft chime.
     pub fn toast(&mut self, text: impl Into<String>, icon: Icon) {
+        if self.failure_toast_up() {
+            return;
+        }
         // Only a failure sounds by itself: the other toasts answer an action that has its own cue,
         // or choose one with `toast_with` (an unasked-for event: a request, a missed call).
         if matches!(
@@ -532,20 +611,116 @@ impl Model {
         }
     }
 
+    /// Writes an entry into the notification history (no toast): the center keeps what the
+    /// launcher said, and the bell counts what was not read yet.
+    pub fn note(&mut self, kind: Kind, text: impl Into<String>, act: Act) {
+        self.notes.push(
+            kind,
+            text.into(),
+            act,
+            u64::try_from(clock::unix_seconds()).unwrap_or(0),
+        );
+    }
+
+    /// [`note`](Self::note) unless the history already holds this sentence (an update that waits
+    /// is found again at every start).
+    pub fn note_once(&mut self, kind: Kind, text: impl Into<String>, act: Act) {
+        let text = text.into();
+        if self.notes.newest_first().any(|e| e.text == text) {
+            return;
+        }
+        self.note(kind, text, act);
+    }
+
+    /// An event nobody asked for: a toast with its cue and an entry in the history. The entry is
+    /// kept even when a failure toast keeps this one from showing.
+    pub fn announce(
+        &mut self,
+        kind: Kind,
+        act: Act,
+        text: impl Into<String>,
+        icon: Icon,
+        cue: Cue,
+    ) {
+        let text = text.into();
+        self.note(kind, text.clone(), act);
+        self.toast_with(text, icon, cue);
+    }
+
     /// A toast with its own cue: a message, an invitation.
     pub fn toast_with(&mut self, text: impl Into<String>, icon: Icon, cue: Cue) {
+        if self.failure_toast_up() {
+            return;
+        }
         self.sound(cue);
         self.toast_silent(text, icon);
+    }
+
+    /// A failure toast is on screen: a routine toast does not replace it (it would take away the
+    /// message the player has to read); only another failure does.
+    fn failure_toast_up(&self) -> bool {
+        self.toast_visible() && self.toast.as_ref().is_some_and(Toast::stays)
+    }
+
+    /// A failure the player has to read: the error cue, and the toast stays until it is dismissed.
+    /// A plain notice ("nothing to back up") is `toast` and fades.
+    pub fn toast_failure(&mut self, text: impl Into<String>) {
+        self.sound(Cue::Error);
+        self.toast_silent(text, Icon::WARNING);
+        if let Some(toast) = self.toast.as_mut() {
+            toast.until = f64::INFINITY;
+        }
+    }
+
+    /// A failure toast of a game that ended in trouble, with "Send Report" for that game.
+    pub fn toast_crash(&mut self, text: impl Into<String>, game: GameId) {
+        self.toast_failure(text);
+        if let Some(toast) = self.toast.as_mut() {
+            toast.report = Some(game);
+        }
+    }
+
+    /// The player asked for the report of the game on the toast (Options, or its button). The
+    /// toast goes; the panels pick the request up in their next frame.
+    pub fn send_crash_report(&mut self) {
+        let game = self.toast.as_ref().and_then(|t| t.report.clone());
+        if let Some(game) = game {
+            self.dismiss_toast();
+            self.report_request = Some(game);
+        }
     }
 
     fn toast_silent(&mut self, text: impl Into<String>, icon: Icon) {
         self.toast_counter += 1;
         self.toast = Some(Toast {
             id: self.toast_counter,
+            art: None,
             text: text.into(),
             icon,
             until: self.now + TOAST_SECONDS,
+            report: None,
         });
+    }
+
+    /// The player put the toast away (its Close button, or Back while a failure is up): the Back cue.
+    pub fn dismiss_toast(&mut self) {
+        if !self.toast_visible() {
+            return;
+        }
+        let now = self.now;
+        if let Some(toast) = self.toast.as_mut() {
+            toast.until = toast.until.min(now);
+            self.sound(Cue::Back);
+        }
+    }
+
+    /// A new start or unlock begins: a failure left from the last try goes without a sound, so Back
+    /// reaches the splash and not the stale toast.
+    fn end_staying_toast(&mut self) {
+        let now = self.now;
+        if let Some(toast) = self.toast.as_mut().filter(|t| t.stays()) {
+            toast.until = now;
+        }
     }
 
     /// The toast is on screen (it is kept after that so it can animate out).
@@ -571,6 +746,9 @@ impl Model {
         }
         if self.running.as_ref() == Some(id) {
             return GameState::Running;
+        }
+        if let Some(&fraction) = self.uninstalling.get(id) {
+            return GameState::Uninstalling { fraction };
         }
         if let Some(preparing) = self.preparing_state(id) {
             return preparing;
@@ -646,6 +824,10 @@ impl Model {
             together: crate::app::together::hostable(self).is_some(),
             asking: self.run_question().is_some(),
             notice: self.update_notice().map_or(0, |n| n.buttons),
+            card: crate::app::together::card(self).map_or(0, |card| {
+                crate::screens::together::card_actions(&card).len() as u8
+            }),
+            shelf: self.shelf_count,
         }
     }
 
@@ -676,9 +858,7 @@ impl Model {
         self.games_folder_changed();
         self.forget_known_games();
         self.selected = 0;
-        if !self.onboarded() && self.onboarding.step == 2 {
-            self.onboarding.set_choice(2, 1);
-        }
+        self.onboarding_folder_chosen();
         self.rescan();
     }
 
@@ -769,10 +949,11 @@ impl Model {
                 self.games = games;
                 self.scanning = false;
                 self.library_loaded = true;
-                self.note_new_games();
+                let fresh = self.note_new_games();
                 self.selected = current
                     .and_then(|id| self.games.iter().position(|g| g.id == id))
                     .unwrap_or_else(|| self.selected.min(self.games.len().saturating_sub(1)));
+                self.announce_new_games(&fresh);
                 self.library_index = self.library_index.min(self.games.len().saturating_sub(1));
                 self.measure_selected();
             }
@@ -847,7 +1028,7 @@ impl Model {
                             self.text(Key::UnlockFailed)
                         };
                         let text = format!("{headline}: {name}");
-                        self.toast(text, Icon::WARNING);
+                        self.toast_failure(text);
                     }
                 }
                 self.rescan_after_unlock();
@@ -888,7 +1069,7 @@ impl Model {
                     self.starting = None;
                 }
                 let text = format!("{}: {message}", self.text(Key::StartFailed));
-                self.toast(text, Icon::WARNING);
+                self.toast_failure(text);
             }
             PipelineEvent::Exited { game, diagnosis } => {
                 if self.running.as_ref() != Some(&game) && self.starting.as_ref() != Some(&game) {
@@ -912,12 +1093,12 @@ impl Model {
                 match diagnosis {
                     Some(summary) => {
                         let name = self.game(&game).map(|g| g.name.clone()).unwrap_or_default();
-                        self.toast(format!("{name}: {summary}"), Icon::WARNING);
+                        self.toast_crash(format!("{name}: {summary}"), game.clone());
                         self.diagnoses.insert(game, summary);
                     }
                     None if without_window => {
                         let text = self.text(Key::StartFailed);
-                        self.toast(text, Icon::WARNING);
+                        self.toast_failure(text);
                     }
                     None => {}
                 }
@@ -942,7 +1123,8 @@ impl Model {
             GameState::Running => self
                 .effects
                 .push(Effect::Pipeline(PipelineCommand::Activate(game.id))),
-            GameState::Starting => {}
+            // Nothing to press: the button is greyed out while the copy is removed.
+            GameState::Starting | GameState::Uninstalling { .. } => {}
             GameState::Unreadable => {
                 let text = self.text(Key::UnreadableDump);
                 self.toast(text, Icon::X_CIRCLE);
@@ -973,6 +1155,7 @@ impl Model {
         if self.prefs.games_folder.is_none() {
             return;
         }
+        self.end_staying_toast();
         if self.is_preparing(id) {
             self.promote(id);
             return;
@@ -992,6 +1175,11 @@ impl Model {
         self.queue.push(id.clone());
         self.sound(Cue::Select);
         self.effects.push(Effect::Pipeline(command));
+    }
+
+    /// The removal of a game's copy started: the home screen shows it like an unlock.
+    pub fn begin_uninstall(&mut self, id: &GameId) {
+        self.uninstalling.insert(id.clone(), 0.0);
     }
 
     pub fn cancel_unlock(&mut self, id: &GameId) {
@@ -1036,6 +1224,12 @@ impl Model {
         if !self.toolkit_ready(id) {
             return;
         }
+        if self.record_needs_new_copy(id) {
+            // The copy was made without `--trace-imports`: relink it, the engine cannot record its
+            // network calls otherwise. It shows its progress; Play starts it afterwards.
+            self.unlock_again(id);
+            return;
+        }
         self.diagnoses.remove(id);
         self.started_without_window = false;
         let stamp = clock::rfc3339_utc(clock::unix_seconds());
@@ -1043,9 +1237,22 @@ impl Model {
             p.last_played.insert(id.as_str().to_owned(), stamp);
         });
         self.sound(Cue::Select);
+        self.end_staying_toast();
         self.starting = Some(id.clone());
         self.effects
             .push(Effect::Pipeline(PipelineCommand::Play(id.clone())));
+    }
+
+    /// The player records network calls, and the game's copy was relinked without `--trace-imports`.
+    fn record_needs_new_copy(&self, id: &GameId) -> bool {
+        if !self.prefs.record_network {
+            return false;
+        }
+        let (Some(root), Some(game)) = (self.store_root(), self.game(id)) else {
+            return false;
+        };
+        let copy = anyps5_core::paths::unlocked_copy_dir(&root, &game.title_id, &game.id);
+        anyps5_core::unlock::read_record(&copy).is_some_and(|record| !record.trace_imports)
     }
 
     /// Esc on the splash: the game is stopped before it ever shows.
@@ -1128,6 +1335,10 @@ impl Model {
         } else {
             overlay
         };
+        if overlay == Overlay::Settings {
+            // The codec's row may say its download failed: opening Settings tries it again.
+            crate::app::online::fetch_codec(self, true);
+        }
         self.panel = match overlay {
             Overlay::Settings => PanelNav::settings(overlay.categories()),
             // The controls panel opens on its first key, below the hint; advanced below its header.
@@ -1184,6 +1395,22 @@ impl Model {
 
     /// One command from keyboard or gamepad.
     pub fn handle(&mut self, command: Command) -> Routed {
+        // A failure toast stays until dismissed: Back puts it away before it navigates.
+        if command == Command::Back
+            && self.toast_visible()
+            && self.toast.as_ref().is_some_and(Toast::stays)
+        {
+            self.dismiss_toast();
+            return Routed::Done;
+        }
+        // The same toast offers the report of the game that ended in trouble: Options sends it.
+        if command == Command::Options
+            && self.toast_visible()
+            && self.toast.as_ref().is_some_and(|t| t.report.is_some())
+        {
+            self.send_crash_report();
+            return Routed::Done;
+        }
         if !self.onboarded() {
             self.onboarding_command(command);
             return Routed::Done;
@@ -1215,6 +1442,23 @@ impl Model {
         // The notice may have gone (sent away, installed) while the focus was on it.
         if matches!(self.focus, HomeFocus::Update(_)) && self.update_notice().is_none() {
             self.focus = HomeFocus::Tiles;
+        }
+        // The shelves may have gone (the window got low, the friend left) while the focus was
+        // on one, or have fewer games now.
+        if let HomeFocus::Shelf(i) = self.focus {
+            self.focus = match self.shelf_count {
+                0 => HomeFocus::Tiles,
+                n => HomeFocus::Shelf(i.min(n - 1)),
+            };
+        }
+        // The same for the Play Together card, which goes when it is answered or put away, or
+        // comes back with fewer buttons.
+        if let HomeFocus::Card(i) = self.focus {
+            let buttons = self.home_context().card;
+            self.focus = match buttons {
+                0 => HomeFocus::Tiles,
+                n => HomeFocus::Card(i.min(n - 1)),
+            };
         }
         let step = self.focus.navigate(command, self.home_context());
         self.focus = step.focus;
@@ -1254,20 +1498,26 @@ impl Model {
             HomeIntent::PrimaryAction => self.primary_action(),
             HomeIntent::AnswerRun(i) => self.answer_run(i),
             HomeIntent::UpdateAction(i) => self.update_action(i),
+            HomeIntent::CardAction(i) => self.card_action(i),
+            HomeIntent::ShelfItem(i) => self.shelf_action(i),
             HomeIntent::PlayTogether => {
                 if let Some(id) = crate::app::together::hostable(self).map(|g| g.id.clone()) {
                     crate::app::together::host_game(self, &id);
                 }
             }
             HomeIntent::OpenTrophies => self.open(Overlay::Trophies),
+            HomeIntent::OpenHub => self.open_hub(),
             HomeIntent::OpenGameSettings => self.open(Overlay::GameSettings),
             HomeIntent::OpenLibrary => self.open(Overlay::Library),
             HomeIntent::OpenCaptures => self.open(Overlay::Captures),
+            HomeIntent::OpenNotifications => self.open(Overlay::Notifications),
             HomeIntent::OpenSettings => self.open(Overlay::Settings),
             // The online panel opens on the friends list once signed in, else on sign-in.
             HomeIntent::OpenFriends => self.open(Overlay::Friends),
             // The profile button: the own profile once signed in, the sign-in page before.
             HomeIntent::OpenOnline => self.open_profile_button(),
+            // The empty home shows no button while it scans, so nothing may open then either.
+            HomeIntent::ChooseFolder if self.scanning => {}
             HomeIntent::ChooseFolder => self.request_folder_dialog(),
         }
     }
@@ -1303,6 +1553,22 @@ impl Model {
         }
     }
 
+    /// A button of the Play Together card: the same answers the pointer gives it.
+    fn card_action(&mut self, index: usize) {
+        let Some(card) = crate::app::together::card(self) else {
+            return;
+        };
+        let Some(action) = crate::screens::together::card_actions(&card)
+            .into_iter()
+            .nth(index)
+        else {
+            return;
+        };
+        self.sound(Cue::Select);
+        crate::app::together::apply(self, action);
+        self.focus = HomeFocus::Tiles;
+    }
+
     /// A button of the notice: "Restart Now" and "Later", or while the restart waits, "Cancel".
     fn update_action(&mut self, index: usize) {
         let Some(notice) = self.update_notice() else {
@@ -1333,6 +1599,8 @@ impl Model {
             HomeFocus::Tiles => HomeIntent::PrimaryAction,
             HomeFocus::Ask(i) => HomeIntent::AnswerRun(i),
             HomeFocus::Update(i) => HomeIntent::UpdateAction(usize::from(i)),
+            HomeFocus::Card(i) => HomeIntent::CardAction(usize::from(i)),
+            HomeFocus::Shelf(i) => HomeIntent::ShelfItem(i),
         };
         self.apply_intent(intent);
     }
@@ -1357,182 +1625,12 @@ impl Model {
         self.measure_selected();
     }
 
-    // --- onboarding --------------------------------------------------------------------------
-
-    /// The focused choice of the current step.
-    pub fn onboarding_choice(&self) -> usize {
-        let step = self.onboarding.step;
-        self.onboarding.choices[step.min(3)].unwrap_or_else(|| match step {
-            0 => Language::ALL
-                .iter()
-                .position(|l| *l == self.language())
-                .unwrap_or(0),
-            1 => self.theme().index() as usize,
-            2 => usize::from(self.prefs.games_folder.is_some()),
-            // Sign In first.
-            _ => 0,
-        })
-    }
-
-    /// How many steps the first start has: the online step only when there is a cloud to sign
-    /// in to (release builds name AnyPlay's; a build without one stays offline until set up).
-    pub fn onboarding_steps(&self) -> usize {
-        if anyps5_core::online::cloud(self.prefs.online_cloud.as_deref()).is_some() {
-            4
-        } else {
-            3
-        }
-    }
-
-    fn onboarding_count(&self) -> usize {
-        match self.onboarding.step {
-            0 => Language::ALL.len(),
-            1 => Theme::ALL.len(),
-            2 => {
-                if self.prefs.games_folder.is_some() {
-                    2
-                } else {
-                    1
-                }
-            }
-            // Sign In, Create Account, Not Now.
-            _ => 3,
-        }
-    }
-
-    pub fn set_onboarding_choice(&mut self, choice: usize) {
-        let step = self.onboarding.step;
-        self.onboarding.set_choice(step, choice);
-    }
-
-    pub fn onboarding_command(&mut self, command: Command) {
-        let choice = self.onboarding_choice();
-        match command {
-            Command::Left if choice > 0 => {
-                self.set_onboarding_choice(choice - 1);
-                self.preview_choice();
-                self.sound(Cue::Move);
-            }
-            Command::Right if choice + 1 < self.onboarding_count() => {
-                self.set_onboarding_choice(choice + 1);
-                self.preview_choice();
-                self.sound(Cue::Move);
-            }
-            Command::Select => self.onboarding_confirm(),
-            Command::Back => self.onboarding_back(),
-            _ => {}
-        }
-    }
-
-    /// The language and theme steps show their choice at once.
-    fn preview_choice(&mut self) {
-        let choice = self.onboarding_choice();
-        match self.onboarding.step {
-            0 => {
-                let language = core_language(Language::ALL[choice.min(1)]);
-                self.edit_prefs(|p| p.language = language);
-            }
-            1 => {
-                let theme = core_theme(Theme::from_index(choice as u32));
-                self.edit_prefs(|p| p.theme = theme);
-            }
-            _ => {}
-        }
-    }
-
-    pub fn onboarding_confirm(&mut self) {
-        let choice = self.onboarding_choice();
-        match self.onboarding.step {
-            0 | 1 => {
-                self.preview_choice();
-                self.onboarding_advance();
-            }
-            2 => {
-                if choice == 1 && self.prefs.games_folder.is_some() {
-                    self.onboarding_start();
-                } else {
-                    self.request_folder_dialog();
-                }
-            }
-            _ => match choice {
-                0 => self.onboarding_online(Some(false)),
-                1 => self.onboarding_online(Some(true)),
-                _ => self.onboarding_online(None),
-            },
-        }
-    }
-
-    /// Start on the folder step: on to signing in, or done when there is no cloud.
-    pub fn onboarding_start(&mut self) {
-        if self.onboarding_steps() > 3 {
-            self.onboarding_advance();
-        } else {
-            self.onboarding_finish();
-        }
-    }
-
-    /// The online step's choice: sign in or create an account (`Some(create)`), or not now.
-    /// Either way the first start ends; a sign-in opens the online area, where the browser
-    /// sign-in starts once the net service is up.
-    pub fn onboarding_online(&mut self, sign_in: Option<bool>) {
-        self.onboarding_finish();
-        if let Some(create) = sign_in {
-            self.sign_in_after_onboarding = Some(create);
-            self.open(Overlay::Friends);
-        }
-    }
-
-    /// A tap on one of the online step's buttons.
-    pub fn tap_online(&mut self, index: usize) {
-        self.set_onboarding_choice(index);
-        self.onboarding_confirm();
-    }
-
-    fn onboarding_advance(&mut self) {
-        self.sound(Cue::Select);
-        self.onboarding.step = (self.onboarding.step + 1).min(self.onboarding_steps() - 1);
-    }
-
-    pub fn onboarding_back(&mut self) {
-        if self.onboarding.step == 0 {
-            return;
-        }
-        self.sound(Cue::Back);
-        self.onboarding.step -= 1;
-    }
-
-    pub fn onboarding_finish(&mut self) {
-        self.sound(Cue::Unlocked);
-        self.edit_prefs(|p| p.onboarded = true);
-        self.focus = HomeFocus::Tiles;
-        if self.games.is_empty() {
-            self.rescan();
-        }
-    }
-
-    /// A tap on a language card selects and confirms it.
-    pub fn tap_language(&mut self, index: usize) {
-        self.set_onboarding_choice(index);
-        self.onboarding_confirm();
-    }
-
-    /// A tap on a theme card selects it (no advance).
-    pub fn tap_theme(&mut self, index: usize) {
-        self.set_onboarding_choice(index);
-        self.preview_choice();
-        self.sound(Cue::Move);
-    }
+    // --- onboarding: see `model/onboarding.rs` ---
 
     /// Text of the "N games found" line.
     pub fn games_found_text(&self) -> String {
         self.language()
             .format(Key::GamesFound, &[Arg::Int(self.games.len() as i64)])
-    }
-}
-
-impl Onboarding {
-    fn set_choice(&mut self, step: usize, choice: usize) {
-        self.choices[step.min(3)] = Some(choice);
     }
 }
 
@@ -1608,6 +1706,24 @@ mod tests {
         assert_eq!(m.state_of(&g), GameState::Running);
         m.starting = Some(id);
         assert_eq!(m.state_of(&g), GameState::Starting);
+    }
+
+    #[test]
+    fn a_game_being_removed_shows_its_progress_and_ignores_the_primary_button() {
+        let g = game("a", Some("v1"), ExecutableKind::Elf);
+        let id = g.id.clone();
+        let mut m = model_with(vec![g.clone()]);
+        m.begin_uninstall(&id);
+        assert_eq!(m.state_of(&g), GameState::Uninstalling { fraction: 0.0 });
+        m.uninstalling.insert(id.clone(), 0.4);
+        assert_eq!(m.state_of(&g), GameState::Uninstalling { fraction: 0.4 });
+        // Nothing starts and nothing is queued while the copy is removed.
+        m.selected = 0;
+        m.primary_action();
+        assert_eq!(m.state_of(&g), GameState::Uninstalling { fraction: 0.4 });
+        assert!(m.queue.is_empty() && m.starting.is_none());
+        m.uninstalling.remove(&id);
+        assert_eq!(m.state_of(&g), GameState::Installed { outdated: false });
     }
 
     #[test]
@@ -2083,120 +2199,6 @@ mod tests {
     }
 
     #[test]
-    fn onboarding_walks_three_steps_and_finishes() {
-        // An empty cloud address is no cloud, even in a build that names AnyPlay's.
-        let prefs = Preferences {
-            language: settings::Language::English,
-            online_cloud: Some(String::new()),
-            ..Preferences::default()
-        };
-        let mut m = Model::new(
-            prefs,
-            AppPaths::under(std::path::Path::new("C:/none")),
-            false,
-        );
-        assert!(!m.onboarded());
-        // Step 0: moving right previews Turkish at once (Turkish is the first card, English the second).
-        assert_eq!(m.onboarding_choice(), 1);
-        m.handle(Command::Left);
-        assert_eq!(m.language(), Language::Turkish);
-        m.handle(Command::Select);
-        assert_eq!(m.onboarding.step, 1);
-        // Step 1: right previews Aurora, select advances.
-        m.handle(Command::Right);
-        assert_eq!(m.theme(), Theme::Aurora);
-        m.handle(Command::Select);
-        assert_eq!(m.onboarding.step, 2);
-        // Step 2: select opens the dialog; picking a folder moves focus to Start.
-        m.effects.clear();
-        m.handle(Command::Select);
-        assert!(m.effects.contains(&Effect::PickGamesFolder));
-        m.choose_folder(Some(PathBuf::from("C:/games")));
-        assert_eq!(m.onboarding_choice(), 1);
-        assert!(m.effects.contains(&Effect::Rescan));
-        m.handle(Command::Select);
-        assert!(m.onboarded());
-        // Back from step 2 returns.
-        let mut m2 = Model::new(
-            Preferences::default(),
-            AppPaths::under(std::path::Path::new("C:/none")),
-            false,
-        );
-        m2.handle(Command::Select);
-        m2.handle(Command::Back);
-        assert_eq!(m2.onboarding.step, 0);
-    }
-
-    /// A model on the online step: language and theme confirmed, a folder chosen, Start pressed.
-    fn on_online_step() -> Model {
-        let prefs = Preferences {
-            language: settings::Language::English,
-            online_cloud: Some("https://cloud.example.org".to_owned()),
-            ..Preferences::default()
-        };
-        let mut m = Model::new(
-            prefs,
-            AppPaths::under(std::path::Path::new("C:/none")),
-            false,
-        );
-        assert_eq!(m.onboarding_steps(), 4);
-        m.handle(Command::Select);
-        m.handle(Command::Select);
-        m.choose_folder(Some(PathBuf::from("C:/games")));
-        m.handle(Command::Select);
-        assert_eq!(m.onboarding.step, 3, "Start leads to the online step");
-        assert!(!m.onboarded());
-        m
-    }
-
-    #[test]
-    fn onboarding_ends_with_signing_in_when_there_is_a_cloud() {
-        let mut m = on_online_step();
-        // Sign In is focused first; select ends the first start and opens the online area.
-        assert_eq!(m.onboarding_choice(), 0);
-        m.handle(Command::Select);
-        assert!(m.onboarded());
-        assert_eq!(m.sign_in_after_onboarding, Some(false));
-        assert_eq!(m.overlay, Some(Overlay::Friends));
-
-        // Create Account asks for a new account.
-        let mut m = on_online_step();
-        m.handle(Command::Right);
-        m.handle(Command::Select);
-        assert_eq!(m.sign_in_after_onboarding, Some(true));
-
-        // Not Now ends it with nothing pending and nothing open.
-        let mut m = on_online_step();
-        m.handle(Command::Right);
-        m.handle(Command::Right);
-        m.handle(Command::Right);
-        assert_eq!(m.onboarding_choice(), 2, "the row ends at Not Now");
-        m.handle(Command::Select);
-        assert!(m.onboarded());
-        assert_eq!(m.sign_in_after_onboarding, None);
-        assert_eq!(m.overlay, None);
-
-        // Back from the online step returns to the folder.
-        let mut m = on_online_step();
-        m.handle(Command::Back);
-        assert_eq!(m.onboarding.step, 2);
-    }
-
-    #[test]
-    fn the_sign_in_waits_for_the_net_service() {
-        use anyps5_core::online::Status;
-        let mut m = on_online_step();
-        m.handle(Command::Select);
-        // Not running yet: the wish stays.
-        crate::app::online::poll_onboarding_sign_in(&mut m);
-        assert_eq!(m.sign_in_after_onboarding, Some(false));
-        // A missing service drops it.
-        m.online.status = Status::Missing;
-        crate::app::online::poll_onboarding_sign_in(&mut m);
-        assert_eq!(m.sign_in_after_onboarding, None);
-    }
-
-    #[test]
     fn preferences_are_only_dirty_after_a_real_change() {
         let mut m = Model::new(
             Preferences::default(),
@@ -2219,6 +2221,68 @@ mod tests {
         m.tick(13.3);
         assert!(!m.toast_visible());
         assert!(m.toast.is_some());
+    }
+
+    #[test]
+    fn a_new_start_clears_a_stale_failure_so_back_reaches_the_splash() {
+        let g = game("a", Some("v1"), ExecutableKind::Elf);
+        let id = g.id.clone();
+        let mut m = model_with(vec![g]);
+        m.toast_failure("Could not start");
+        m.play(&id);
+        assert!(!m.toast_visible());
+        assert!(m.starting.is_some());
+        m.handle(Command::Back);
+        assert!(m.starting.is_none(), "the first Back cancels the start");
+    }
+
+    #[test]
+    fn a_routine_toast_does_not_replace_a_failure() {
+        let mut m = model_with(vec![]);
+        m.toast_failure("Could not start");
+        m.toast("Saved", Icon::CHECK);
+        assert_eq!(m.toast.as_ref().unwrap().text, "Could not start");
+        m.toast_failure("Could not save");
+        assert_eq!(m.toast.as_ref().unwrap().text, "Could not save");
+        m.dismiss_toast();
+        m.toast("Saved", Icon::CHECK);
+        assert_eq!(m.toast.as_ref().unwrap().text, "Saved");
+    }
+
+    #[test]
+    fn an_unlock_clears_a_stale_failure() {
+        let g = game("a", None, ExecutableKind::Elf);
+        let id = g.id.clone();
+        let mut m = model_with(vec![g]);
+        m.toast_failure("Could not unlock");
+        m.unlock(&id);
+        assert!(!m.toast_visible());
+    }
+
+    #[test]
+    fn dismissing_a_toast_that_is_leaving_does_nothing() {
+        let mut m = model_with(vec![]);
+        m.toast_failure("Could not start");
+        m.dismiss_toast();
+        m.effects.clear();
+        m.dismiss_toast();
+        assert!(m.effects.is_empty(), "no second cue during the exit");
+    }
+
+    #[test]
+    fn a_failure_toast_stays_until_dismissed_and_back_dismisses_it_first() {
+        let mut m = model_with(vec![]);
+        m.toast_failure("Could not start");
+        m.tick(m.now + 60.0);
+        assert!(m.toast_visible(), "a failure does not fade by itself");
+        m.handle(Command::Back);
+        assert!(!m.toast_visible());
+        // A routine toast is not Back's: it fades on its own.
+        m.toast("Saved", Icon::CHECK);
+        assert!(!m.toast.as_ref().unwrap().stays());
+        // A plain notice that only borrows the warning glyph fades too.
+        m.toast("Nothing to back up", Icon::WARNING);
+        assert!(!m.toast.as_ref().unwrap().stays());
     }
 
     /// A model with one game that runs and shows its window.

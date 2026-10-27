@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>net.anyplay.Launcher</id>
+  <name>AnyPlay Launcher</name>
+  <summary>Play PS5 games with AnyPS5</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-only</project_license>
+  <developer id="net.anyplay">
+    <name>AnyPlay</name>
+  </developer>
+  <description>
+    <p>The AnyPlay Launcher is the home for AnyPS5 on your computer. It installs and updates AnyPS5, keeps your games in one place, starts them, and connects you to the AnyPlay network.</p>
+  </description>
+  <launchable type="desktop-id">net.anyplay.Launcher.desktop</launchable>
+  <provides>
+    <binary>anyplay-launcher</binary>
+  </provides>
+  <categories>
+    <category>Game</category>
+  </categories>
+  <url type="homepage">https://anyplaynet.com</url>
+  <url type="bugtracker">https://github.com/anyplaynet/launcher/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <!-- tools/linux/flatpak.sh replaces the two placeholders. -->
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

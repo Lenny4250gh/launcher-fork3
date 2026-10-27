@@ -143,10 +143,194 @@ impl ScreenText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            ScreenText::Screen => "Bildschirm",
+            ScreenText::ShareScreen => "Bildschirm teilen",
+            ScreenText::ShareDetail => "Zeige dein Spiel der Party",
+            ScreenText::SharedNobody => "Dein Bildschirm wird geteilt",
+            ScreenText::SharedOne => "Dein Bildschirm wird mit 1 Person geteilt",
+            ScreenText::SharedMany => "Dein Bildschirm wird mit %@ Personen geteilt",
+            ScreenText::HostStarting => "Startet…",
+            ScreenText::HostLive => "Live",
+            ScreenText::HostStalled => "Das Bild ist stehen geblieben",
+            ScreenText::StopSharing => "Teilen beenden",
+            ScreenText::ViewerNotWatching => "Schaut nicht zu",
+            ScreenText::ViewerLosing => "Ein Teil des Bilds geht verloren",
+            ScreenText::Watch => "%@ ansehen",
+            ScreenText::SharingTitle => "%@ wird geteilt",
+            ScreenText::IsSharing => "%@ teilt %@",
+            ScreenText::CannotShow => "Diese Version kann es noch nicht anzeigen.",
+            ScreenText::Watching => "Du siehst %@",
+            ScreenText::PhaseConnecting => "Verbinden…",
+            ScreenText::PhaseLive => "Live",
+            ScreenText::PhaseStalled => "Warten auf das Bild",
+            ScreenText::StopWatching => "Zuschauen beenden",
+            ScreenText::WatchNote => "Das Bild öffnet sich in einem eigenen Fenster.",
+            ScreenText::DirectMs => "Direkt, %@ ms",
+            ScreenText::RelayMs => "Über ein Relay, %@ ms",
+            ScreenText::HomeWatching => "Du siehst %@",
+            ScreenText::ToastOffered => "%@ teilt %@",
+            ScreenText::ToastWatchEnded => "%@ hat das Teilen beendet.",
+            ScreenText::ToastShareEnded => "Dein Bildschirm wird nicht mehr geteilt.",
+            ScreenText::ErrorNoGame => "Starte zuerst ein Spiel, dann teile seinen Bildschirm.",
+            ScreenText::ErrorNotInParty => "Tritt einer Party bei, um deinen Bildschirm zu teilen.",
+            ScreenText::ErrorBusy => "Du teilst oder siehst bereits einen Bildschirm.",
+            ScreenText::ErrorNoEncoder => "Dieser PC kann seinen Bildschirm nicht teilen.",
+            ScreenText::ErrorNotFound => "Dieser Bildschirm wird nicht mehr geteilt.",
+            ScreenText::SomeoneUnknown => "Jemand",
+            _ => return None,
+        })
+    }
+
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            ScreenText::Screen => "Pantalla",
+            ScreenText::ShareScreen => "Compartir pantalla",
+            ScreenText::ShareDetail => "Muestra tu juego a la party",
+            ScreenText::SharedNobody => "Tu pantalla está compartida",
+            ScreenText::SharedOne => "Tu pantalla está compartida con 1 persona",
+            ScreenText::SharedMany => "Tu pantalla está compartida con %@ personas",
+            ScreenText::HostStarting => "Iniciando…",
+            ScreenText::HostLive => "En directo",
+            ScreenText::HostStalled => "La imagen se ha detenido",
+            ScreenText::StopSharing => "Dejar de compartir",
+            ScreenText::ViewerNotWatching => "No está viendo",
+            ScreenText::ViewerLosing => "Se pierde parte de la imagen",
+            ScreenText::Watch => "Ver %@",
+            ScreenText::SharingTitle => "Compartiendo %@",
+            ScreenText::IsSharing => "%@ comparte %@",
+            ScreenText::CannotShow => "Esta versión aún no puede mostrarlo.",
+            ScreenText::Watching => "Viendo %@",
+            ScreenText::PhaseConnecting => "Conectando…",
+            ScreenText::PhaseLive => "En directo",
+            ScreenText::PhaseStalled => "Esperando la imagen",
+            ScreenText::StopWatching => "Dejar de ver",
+            ScreenText::WatchNote => "La imagen se abre en su propia ventana.",
+            ScreenText::DirectMs => "Directo, %@ ms",
+            ScreenText::RelayMs => "Mediante un relé, %@ ms",
+            ScreenText::HomeWatching => "Viendo %@",
+            ScreenText::ToastOffered => "%@ comparte %@",
+            ScreenText::ToastWatchEnded => "%@ dejó de compartir.",
+            ScreenText::ToastShareEnded => "Tu pantalla ya no se comparte.",
+            ScreenText::ErrorNoGame => "Inicia primero un juego y luego comparte su pantalla.",
+            ScreenText::ErrorNotInParty => "Únete a una party para compartir tu pantalla.",
+            ScreenText::ErrorBusy => "Ya estás compartiendo o viendo una pantalla.",
+            ScreenText::ErrorNoEncoder => "Este PC no puede compartir su pantalla.",
+            ScreenText::ErrorNotFound => "Esa pantalla ya no se comparte.",
+            ScreenText::SomeoneUnknown => "Alguien",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            ScreenText::Screen => "Écran",
+            ScreenText::ShareScreen => "Partager l’écran",
+            ScreenText::ShareDetail => "Montre ton jeu à la party",
+            ScreenText::SharedNobody => "Ton écran est partagé",
+            ScreenText::SharedOne => "Ton écran est partagé avec 1 personne",
+            ScreenText::SharedMany => "Ton écran est partagé avec %@ personnes",
+            ScreenText::HostStarting => "Démarrage…",
+            ScreenText::HostLive => "En direct",
+            ScreenText::HostStalled => "L’image s’est arrêtée",
+            ScreenText::StopSharing => "Arrêter le partage",
+            ScreenText::ViewerNotWatching => "Ne regarde pas",
+            ScreenText::ViewerLosing => "Une partie de l’image est perdue",
+            ScreenText::Watch => "Regarder %@",
+            ScreenText::SharingTitle => "Partage de %@",
+            ScreenText::IsSharing => "%@ partage %@",
+            ScreenText::CannotShow => "Cette version ne peut pas encore l’afficher.",
+            ScreenText::Watching => "Tu regardes %@",
+            ScreenText::PhaseConnecting => "Connexion…",
+            ScreenText::PhaseLive => "En direct",
+            ScreenText::PhaseStalled => "En attente de l’image",
+            ScreenText::StopWatching => "Arrêter de regarder",
+            ScreenText::WatchNote => "L’image s’ouvre dans sa propre fenêtre.",
+            ScreenText::DirectMs => "Direct, %@\u{a0}ms",
+            ScreenText::RelayMs => "Via un relais, %@\u{a0}ms",
+            ScreenText::HomeWatching => "Tu regardes %@",
+            ScreenText::ToastOffered => "%@ partage %@",
+            ScreenText::ToastWatchEnded => "%@ a arrêté le partage.",
+            ScreenText::ToastShareEnded => "Ton écran n’est plus partagé.",
+            ScreenText::ErrorNoGame => "Lance d’abord un jeu, puis partage son écran.",
+            ScreenText::ErrorNotInParty => "Rejoins une party pour partager ton écran.",
+            ScreenText::ErrorBusy => "Tu partages ou regardes déjà un écran.",
+            ScreenText::ErrorNoEncoder => "Ce PC ne peut pas partager son écran.",
+            ScreenText::ErrorNotFound => "Cet écran n’est plus partagé.",
+            ScreenText::SomeoneUnknown => "Quelqu’un",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            ScreenText::Screen => "Tela",
+            ScreenText::ShareScreen => "Compartilhar tela",
+            ScreenText::ShareDetail => "Mostre seu jogo para a party",
+            ScreenText::SharedNobody => "Sua tela está compartilhada",
+            ScreenText::SharedOne => "Sua tela está compartilhada com 1 pessoa",
+            ScreenText::SharedMany => "Sua tela está compartilhada com %@ pessoas",
+            ScreenText::HostStarting => "Iniciando…",
+            ScreenText::HostLive => "Ao vivo",
+            ScreenText::HostStalled => "A imagem parou",
+            ScreenText::StopSharing => "Parar de compartilhar",
+            ScreenText::ViewerNotWatching => "Não está assistindo",
+            ScreenText::ViewerLosing => "Parte da imagem está se perdendo",
+            ScreenText::Watch => "Assistir a %@",
+            ScreenText::SharingTitle => "Compartilhando %@",
+            ScreenText::IsSharing => "%@ está compartilhando %@",
+            ScreenText::CannotShow => "Esta versão ainda não consegue exibir isso.",
+            ScreenText::Watching => "Assistindo a %@",
+            ScreenText::PhaseConnecting => "Conectando…",
+            ScreenText::PhaseLive => "Ao vivo",
+            ScreenText::PhaseStalled => "Aguardando a imagem",
+            ScreenText::StopWatching => "Parar de assistir",
+            ScreenText::WatchNote => "A imagem abre em uma janela própria.",
+            ScreenText::DirectMs => "Direto, %@ ms",
+            ScreenText::RelayMs => "Por retransmissão, %@ ms",
+            ScreenText::HomeWatching => "Assistindo a %@",
+            ScreenText::ToastOffered => "%@ está compartilhando %@",
+            ScreenText::ToastWatchEnded => "%@ parou de compartilhar.",
+            ScreenText::ToastShareEnded => "Sua tela não está mais compartilhada.",
+            ScreenText::ErrorNoGame => "Inicie um jogo primeiro e depois compartilhe a tela dele.",
+            ScreenText::ErrorNotInParty => "Entre em uma party para compartilhar sua tela.",
+            ScreenText::ErrorBusy => "Você já está compartilhando ou assistindo a uma tela.",
+            ScreenText::ErrorNoEncoder => "Este PC não consegue compartilhar a tela.",
+            ScreenText::ErrorNotFound => "Essa tela não está mais compartilhada.",
+            ScreenText::SomeoneUnknown => "Alguém",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
@@ -176,11 +360,15 @@ mod tests {
         let count = |s: &str| s.matches("%@").count();
         for text in ONE_ARGUMENT {
             assert_eq!(count(text.english()), 1, "{text:?}");
-            assert_eq!(count(text.turkish()), 1, "{text:?}");
+            for language in Language::ALL {
+                assert_eq!(count(text.text(language)), 1, "{text:?} {language:?}");
+            }
         }
         for text in TWO_ARGUMENTS {
             assert_eq!(count(text.english()), 2, "{text:?}");
-            assert_eq!(count(text.turkish()), 2, "{text:?}");
+            for language in Language::ALL {
+                assert_eq!(count(text.text(language)), 2, "{text:?} {language:?}");
+            }
         }
     }
 

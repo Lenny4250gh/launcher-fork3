@@ -8,7 +8,7 @@ use super::PanelHost;
 use crate::app::model::{Effect, Model};
 use crate::app::online::OnlineService;
 use crate::app::overlay::OverlayCx;
-use crate::screens::online::{OnlineAction, OnlineData};
+use crate::screens::online::{OnlineAction, OnlineData, Page};
 use crate::screens::online_call_strings::CallText as CT;
 use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
@@ -40,6 +40,14 @@ impl PanelHost {
         } else {
             None
         };
+        // A friend link: the request page with the handle typed in. Signed out, it waits for the
+        // sign-in.
+        let prefill = if wanted && cx.model.online.is_signed_in() {
+            cx.model.friend_request.take()
+        } else {
+            None
+        };
+        let start = start.or_else(|| prefill.as_ref().map(|_| (Page::AddFriend, None)));
         let actions = {
             let data = OnlineData {
                 online: &cx.model.online,
@@ -58,16 +66,25 @@ impl PanelHost {
                 if let Some((page, item)) = start {
                     // The profile screen sent the player to a page.
                     self.friends.show_page(page, &data);
+                    if let Some(handle) = prefill {
+                        self.friends.set_friend_text(handle, &data);
+                    }
                     if let Some(index) =
                         item.and_then(|id| data.online.feed.items.iter().position(|i| i.id == id))
                     {
-                        self.friends.set_feed_focus(index, None);
+                        self.friends.set_feed_focus(index);
                     }
                 } else if resume {
                     // Back from the profile screen: the page the player left.
                     self.friends.resume(&data);
                 } else {
                     self.friends.open(&data);
+                }
+            } else if wanted && self.friends.is_open() && prefill.is_some() {
+                // The link came while the panel was open.
+                self.friends.show_page(Page::AddFriend, &data);
+                if let Some(handle) = prefill {
+                    self.friends.set_friend_text(handle, &data);
                 }
             } else if !wanted && self.friends.is_active() && self.friends.is_open() {
                 self.friends.close();
@@ -110,12 +127,16 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
             model.effects.push(Effect::RelayOnlyChanged);
         }
         OnlineAction::AppearOffline(on) => online.set_appear_offline(on),
+        OnlineAction::PublicProfile(on) => online.set_public_profile(on),
+        OnlineAction::PublicProfileRefresh => online.request_public_profile(),
         OnlineAction::TrophyAudience(trophies) => {
             online.set_trophy_audience(trophies);
         }
+        OnlineAction::PlayedWithRefresh(force) => online.request_played_with(force),
+        OnlineAction::PlayedWithClear => online.clear_played_with(),
+        OnlineAction::PlayedWithRemember(on) => online.set_remember_played_with(on),
         OnlineAction::FeedRefresh => online.request_feed(),
         OnlineAction::FeedOlder => online.request_older_feed(),
-        OnlineAction::React(item, reaction) => online.react(item, reaction),
         OnlineAction::Profile(account) => online.request_profile(account),
         OnlineAction::OpenProfile(account) => {
             model.open_profile(account, crate::app::profile::Back::Friends);
@@ -137,6 +158,8 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
         OnlineAction::OpenDiscord(link) => crate::screens::calls::open_discord_link(&link),
         OnlineAction::VoiceMode(mode) => online.set_voice_mode(mode),
         OnlineAction::VoiceKey(key) => online.set_voice_key(Some(key)),
+        OnlineAction::VoicePad(pad) => online.set_voice_pad(pad),
+        OnlineAction::VoiceNoise(on) => online.set_noise_reduction(on),
         OnlineAction::VoiceDevice(kind, name) => online.set_voice_device(kind, name),
         OnlineAction::RefreshVoiceDevices => online.request_voice_devices(),
         OnlineAction::PeerVolume(account, percent) => online.set_peer_volume(account, percent),
@@ -145,6 +168,7 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
             model.effects.push(Effect::ScreenStart);
         }
         OnlineAction::Screen(command) => online.screen_send(command),
+        OnlineAction::SharePlay(command) => online.share_play_send(command),
         OnlineAction::BrowserSignIn { create } => {
             online.send(
                 Purpose::BrowserSignIn { create },
@@ -201,8 +225,12 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
                     details: String::new(),
                     conversation,
                     seq,
+                    listing: None,
                 },
             );
+        }
+        OnlineAction::OpenMedia { conversation, seq } => {
+            super::lfg::open_media(model, &conversation, seq);
         }
         OnlineAction::PlayTogether => {
             if let Some(id) = crate::app::together::hostable(model).map(|g| g.id.clone()) {
@@ -211,6 +239,7 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
             }
         }
         OnlineAction::Join(friend) => crate::app::together::join_friend(model, friend),
+        OnlineAction::InviteLink => model.request_invite_link(),
         OnlineAction::Invite(account) => {
             online.send(
                 Purpose::Invite,
@@ -252,6 +281,9 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
                     },
                 );
             }
+        }
+        OnlineAction::PartyCreate => {
+            online.send(Purpose::PartyCreate, Command::PartyCreate);
         }
         OnlineAction::PartyInvite(accounts) => {
             // Adding to a call rings; inviting to a party does not.

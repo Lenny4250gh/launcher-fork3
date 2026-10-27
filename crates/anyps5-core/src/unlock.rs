@@ -94,6 +94,10 @@ pub struct UnlockRecord {
     /// release. An unlock again that changes none of it keeps that output instead of relinking.
     #[serde(default, rename = "relinkKey", skip_serializing_if = "Option::is_none")]
     pub relink_key: Option<String>,
+    /// The relinker ran with `--trace-imports`: the engine can write the observation log of the
+    /// game's network calls.
+    #[serde(default, rename = "traceImports", skip_serializing_if = "is_false")]
+    pub trace_imports: bool,
     /// The files the relinker made besides the executable, relative to `app0`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub generated: Vec<String>,
@@ -265,6 +269,9 @@ pub struct UnlockRequest {
     pub toolkit: Toolkit,
     /// D1: convert AMD-only instructions for an Intel host.
     pub to_intel: bool,
+    /// Pass `--trace-imports`, so the engine can record the game's network calls. Only while the
+    /// player records them: it changes the relinker's output and the key.
+    pub trace_imports: bool,
     /// Relinker patch file text for this title and build (PORT.md 6.9), if it has patches.
     pub patches_toml: Option<String>,
     /// Selected output resolution for a toolkit's Mach-O patch catalogue.
@@ -273,6 +280,9 @@ pub struct UnlockRequest {
     /// ones are passed.
     pub relink_flags: Vec<String>,
     pub link_mode: LinkMode,
+    /// Where the dump cannot be hard-linked (another drive), link its files symbolically when the
+    /// system allows it, instead of copying them. The dump is only ever read.
+    pub symlinks: bool,
     /// Test hook: `Some(free)` replaces the games folder's real free space; `Some(None)`
     /// simulates a volume whose free space cannot be read; `None` asks the volume.
     pub free_space_override: Option<Option<u64>>,
@@ -295,10 +305,12 @@ impl UnlockRequest {
             root,
             toolkit,
             to_intel: false,
+            trace_imports: false,
             patches_toml: None,
             resolution: None,
             relink_flags: Vec::new(),
             link_mode: LinkMode::Auto,
+            symlinks: true,
             free_space_override: None,
             backup_dir: None,
             background: false,
@@ -324,6 +336,10 @@ pub fn unlocked_copy(title_id: &str, game: &GameId, root: &Path) -> PathBuf {
 }
 
 /// The record of an unlocked copy; `None` when there is no relinked executable or no valid record.
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 pub fn read_record(copy: &Path) -> Option<UnlockRecord> {
     if !copy.join(EXECUTABLE).is_file() {
         return None;
@@ -356,6 +372,18 @@ pub fn remove_leftovers(root: &Path) {
 /// Deletes a game's unlocked copy, saves and trophies included. The dump is untouched.
 pub fn remove_unlocked(title_id: &str, game: &GameId, root: &Path) -> io::Result<()> {
     fsx::remove_tree_retry(&unlocked_copy(title_id, game, root))
+}
+
+/// [`remove_unlocked`] that tells how far it is (0..=1) and stops between two files when `cancel`
+/// is set. A stopped removal leaves a game that no longer starts: unlocking it again replaces it.
+pub fn remove_unlocked_progress(
+    title_id: &str,
+    game: &GameId,
+    root: &Path,
+    cancel: &CancelToken,
+    progress: impl FnMut(f32),
+) -> io::Result<fsx::Removal> {
+    fsx::remove_tree_progress(&unlocked_copy(title_id, game, root), cancel, progress)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1027,7 +1055,24 @@ fn preflight(
             None => Ok(()),
         }
     };
-    let dump_probe = probe(&plan, &request.folder);
+    let mut dump_probe = probe(&plan, &request.folder);
+    if let Some(reason) = dump_probe.as_ref().err().cloned()
+        && request.symlinks
+        && request.link_mode == LinkMode::Auto
+        && let Some(file) = first_file(&plan, &request.folder)
+    {
+        // Another drive: the copy can point at the dump's files instead of holding them.
+        match fsx::symlink_probe(&file, &games) {
+            Ok(()) => {
+                reporter.log(format!(
+                    "files linked symbolically, not copied: {reason}; saves {} GB",
+                    gb_down(plan.bytes)
+                ));
+                dump_probe = Ok(());
+            }
+            Err(error) => reporter.log(format!("symbolic links are not possible here: {error}")),
+        }
+    }
     let libs_plan = fsx::plan_tree(request.toolkit.libs(), &[]).unwrap_or_default();
     let libs_probe = probe(&libs_plan, request.toolkit.libs());
     let need = SpaceNeed {
@@ -1098,6 +1143,13 @@ pub fn run_unlock(
         last: None,
     };
     let linker = Linker::new(request.link_mode);
+    // The dump stays where it is, so its files may be symbolic links when a hard link is not
+    // possible. Nothing else is: the toolkit and the work folder can go away.
+    let dump_linker = if request.symlinks {
+        Linker::with_symlinks(request.link_mode)
+    } else {
+        Linker::new(request.link_mode)
+    };
     let mut clock = Stopwatch::new(control);
 
     // 0. Enough room on the games folder's volume, before anything is written.
@@ -1130,6 +1182,9 @@ pub fn run_unlock(
         args.push("--to-rosetta".into());
     } else if request.to_intel {
         args.push("--to-intel".into());
+    }
+    if request.trace_imports {
+        args.push("--trace-imports".into());
     }
     for directory in module_directories(&modules) {
         args.push("--module-dir".into());
@@ -1235,15 +1290,18 @@ pub fn run_unlock(
         background: control.is_background(),
     };
     match &dump_plan {
-        Some(plan) => {
-            fsx::link_tree_planned(&request.folder, plan, &app0, &linker, &tree, &mut |f| {
-                reporter.progress(Step::Copy, f)
-            })
-        }
+        Some(plan) => fsx::link_tree_planned(
+            &request.folder,
+            plan,
+            &app0,
+            &dump_linker,
+            &tree,
+            &mut |f| reporter.progress(Step::Copy, f),
+        ),
         None => fsx::link_tree(
             &request.folder,
             &app0,
-            &linker,
+            &dump_linker,
             &[STORE_NAME],
             &tree,
             &mut |f| reporter.progress(Step::Copy, f),
@@ -1281,12 +1339,19 @@ pub fn run_unlock(
             ));
         }
     }
-    if let Some(note) = linker.take_note() {
+    for note in [dump_linker.take_note(), linker.take_note()]
+        .into_iter()
+        .flatten()
+    {
         reporter.log(note);
     }
-    let (linked, copied) = linker.counts();
+    let (linked, copied) = (
+        linker.counts().0 + dump_linker.counts().0,
+        linker.counts().1 + dump_linker.counts().1,
+    );
+    let symlinked = dump_linker.symlinked();
     reporter.log(format!(
-        "layout: {linked} files linked, {copied} copied, {} threads",
+        "layout: {linked} files linked, {symlinked} symbolic links, {copied} copied, {} threads",
         fsx::link_threads()
     ));
 
@@ -1351,6 +1416,7 @@ pub fn run_unlock(
         relinker_sha256: request.toolkit.digests().map(|d| d.relinker.clone()),
         libs_sha256: request.toolkit.digests().map(|d| d.libs.clone()),
         relink_key: key.filter(|_| !cfg!(target_os = "macos")),
+        trace_imports: request.trace_imports,
         generated,
         sidecars,
     };
@@ -2064,6 +2130,56 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_error_is_told_by_what_the_player_can_do_about_it() {
+        let io = |code: i32| UnlockError::Io {
+            context: "copy".into(),
+            source: io::Error::from_raw_os_error(code),
+        };
+        let cases = [
+            (UnlockError::ToolkitMissing, FailureKind::ToolkitMissing),
+            (
+                UnlockError::NotAnExecutable { file: "a".into() },
+                FailureKind::BadDump,
+            ),
+            (UnlockError::NoOutput, FailureKind::Converter),
+            (
+                UnlockError::Relinker {
+                    code: Some(3),
+                    last_line: String::new(),
+                },
+                FailureKind::Converter,
+            ),
+            (
+                UnlockError::LocationMissing(PathBuf::from("D:/x")),
+                FailureKind::LocationMissing,
+            ),
+            (
+                UnlockError::NotEnoughSpace {
+                    needed: 2,
+                    free: 1,
+                    folder: PathBuf::from("D:/x"),
+                    copying: false,
+                },
+                FailureKind::DiskFull,
+            ),
+            (UnlockError::Cancelled, FailureKind::Other),
+        ];
+        for (error, kind) in cases {
+            assert_eq!(error.kind(), kind, "{error}");
+        }
+        #[cfg(windows)]
+        {
+            assert_eq!(io(112).kind(), FailureKind::DiskFull);
+            assert_eq!(io(32).kind(), FailureKind::FileInUse);
+        }
+        #[cfg(unix)]
+        {
+            assert_eq!(io(28).kind(), FailureKind::DiskFull);
+            assert_eq!(io(13).kind(), FailureKind::FileInUse);
+        }
+    }
+
+    #[test]
     fn required_bytes_counts_work_twice_and_copies_only_what_is_copied() {
         let linked = SpaceNeed {
             binaries: 100,
@@ -2326,6 +2442,7 @@ mod tests {
             relinker_sha256: None,
             libs_sha256: None,
             relink_key: None,
+            trace_imports: false,
             generated: Vec::new(),
             sidecars: Vec::new(),
         };

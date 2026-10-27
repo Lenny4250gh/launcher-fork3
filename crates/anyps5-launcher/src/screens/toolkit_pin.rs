@@ -8,6 +8,7 @@ use anyps5_core::compat;
 use anyps5_core::toolkit::{GameToolkit, compare_tags, pin_tag};
 use egui::{Color32, Context};
 
+use crate::screens::dialog;
 use crate::screens::rows::{self, Change, Row};
 use crate::screens::side::{self, SideState, SideView};
 use crate::screens::strings::Extra;
@@ -78,10 +79,86 @@ impl Pin {
         }
     }
 
+    pub const fn german(self) -> &'static str {
+        match self {
+            Pin::Title => "Toolkit für dieses Spiel",
+            Pin::FollowGlobal => "Globaler Einstellung folgen",
+            Pin::Recommended => "Empfohlen: %@",
+            Pin::NotInstalled => "%@ (nicht installiert)",
+            Pin::Pinned => "%@ (festgelegt)",
+            Pin::MissingAsk => {
+                "Dieses Spiel bleibt bei Toolkit %@, das nicht installiert ist. Lade es noch einmal herunter oder lass das Spiel der globalen Einstellung folgen."
+            }
+            Pin::Download => "%@ herunterladen",
+            Pin::Remove => "%@ entfernen",
+            Pin::RemoveDetail => "%@ · Kein Spiel nutzt es",
+            Pin::Removed => "%@ entfernt",
+            Pin::RemoveFailed => "Das Toolkit konnte nicht entfernt werden.",
+        }
+    }
+
+    pub const fn spanish(self) -> &'static str {
+        match self {
+            Pin::Title => "Toolkit para este juego",
+            Pin::FollowGlobal => "Seguir el ajuste global",
+            Pin::Recommended => "Recomendado: %@",
+            Pin::NotInstalled => "%@ (no instalado)",
+            Pin::Pinned => "%@ (fijado)",
+            Pin::MissingAsk => {
+                "Este juego se queda con el Toolkit %@, que no está instalado. Descárgalo de nuevo o deja que el juego siga el ajuste global."
+            }
+            Pin::Download => "Descargar %@",
+            Pin::Remove => "Quitar %@",
+            Pin::RemoveDetail => "%@ · Ningún juego lo usa",
+            Pin::Removed => "%@ quitado",
+            Pin::RemoveFailed => "No se pudo quitar el Toolkit.",
+        }
+    }
+
+    pub const fn french(self) -> &'static str {
+        match self {
+            Pin::Title => "Toolkit pour ce jeu",
+            Pin::FollowGlobal => "Suivre le paramètre global",
+            Pin::Recommended => "Recommandé\u{a0}: %@",
+            Pin::NotInstalled => "%@ (non installé)",
+            Pin::Pinned => "%@ (épinglé)",
+            Pin::MissingAsk => {
+                "Ce jeu reste sur le Toolkit %@, qui n’est pas installé. Télécharge-le de nouveau ou laisse le jeu suivre le paramètre global."
+            }
+            Pin::Download => "Télécharger %@",
+            Pin::Remove => "Supprimer %@",
+            Pin::RemoveDetail => "%@ · Aucun jeu ne l’utilise",
+            Pin::Removed => "%@ supprimé",
+            Pin::RemoveFailed => "Impossible de supprimer le Toolkit.",
+        }
+    }
+
+    pub const fn portuguese(self) -> &'static str {
+        match self {
+            Pin::Title => "Toolkit para este jogo",
+            Pin::FollowGlobal => "Seguir a configuração global",
+            Pin::Recommended => "Recomendado: %@",
+            Pin::NotInstalled => "%@ (não instalado)",
+            Pin::Pinned => "%@ (fixado)",
+            Pin::MissingAsk => {
+                "Este jogo fica no Toolkit %@, que não está instalado. Baixe de novo ou deixe o jogo seguir a configuração global."
+            }
+            Pin::Download => "Baixar %@",
+            Pin::Remove => "Remover %@",
+            Pin::RemoveDetail => "%@ · Nenhum jogo usa",
+            Pin::Removed => "%@ removido",
+            Pin::RemoveFailed => "Não foi possível remover o Toolkit.",
+        }
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => self.german(),
+            Language::Spanish => self.spanish(),
+            Language::French => self.french(),
+            Language::Portuguese => self.portuguese(),
         }
     }
 
@@ -269,7 +346,9 @@ fn missing_rows(data: &MissingData<'_>) -> Vec<Row> {
     vec![
         download,
         Row::command("follow", Pin::FollowGlobal.text(language)).icon(Icon::STACK),
-        Row::command("cancel", language.text(Key::Cancel)).icon(Icon::X),
+        Row::command("cancel", language.text(Key::Cancel))
+            .icon(Icon::X)
+            .refusal(),
     ]
 }
 
@@ -326,7 +405,7 @@ impl MissingPanel {
         let language = data.language;
         if self.side.is_open() {
             let rows = missing_rows(data);
-            let driven = rows::drive(shell, &mut self.side.nav, &rows, &side::commands(events));
+            let driven = dialog::drive(shell, &mut self.side.nav, &rows, &side::commands(events));
             for change in &driven.changes {
                 self.handle(change, &mut actions);
             }
@@ -354,7 +433,7 @@ impl MissingPanel {
                 for change in &changes {
                     self.handle(change, &mut actions);
                 }
-                if drawn.scrim_clicked {
+                if drawn.back_clicked {
                     self.side.close();
                     actions.push(MissingAction::Cancel);
                 }

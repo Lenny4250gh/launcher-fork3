@@ -11,7 +11,7 @@ use egui::epaint::{Mesh, Vertex, WHITE_UV};
 use egui::{Color32, Painter, Rect, Shape, TextureId, pos2};
 
 use crate::ui::anim::{self, lerp};
-use crate::ui::theme::black;
+use crate::ui::theme::scrim;
 
 /// Scale at the start and end of the drift.
 pub const DRIFT_SCALE: (f32, f32) = (1.01, 1.07);
@@ -59,6 +59,28 @@ pub fn paint_artwork(
     reduced: bool,
     alpha: f32,
 ) {
+    paint_artwork_with(
+        painter,
+        rect,
+        texture,
+        image_aspect,
+        time,
+        reduced,
+        (alpha, 1.0),
+    );
+}
+
+/// [`paint_artwork`] with the picture itself drawn at a share of its opacity (`picture`, 0..1)
+/// under scrims of the full one: a see-through window lets the window show through the picture.
+pub fn paint_artwork_with(
+    painter: &Painter,
+    rect: Rect,
+    texture: TextureId,
+    image_aspect: f32,
+    time: f64,
+    reduced: bool,
+    (alpha, picture): (f32, f32),
+) {
     let alpha = alpha.clamp(0.0, 1.0);
     if alpha <= 0.0 {
         return;
@@ -69,7 +91,11 @@ pub fn paint_artwork(
         drift_zoom(time, reduced),
     );
     let mut mesh = Mesh::with_texture(texture);
-    mesh.add_rect_with_uv(rect, uv, Color32::WHITE.gamma_multiply(alpha));
+    mesh.add_rect_with_uv(
+        rect,
+        uv,
+        Color32::WHITE.gamma_multiply(alpha * picture.clamp(0.0, 1.0)),
+    );
     painter.add(Shape::mesh(mesh));
     paint_scrims(painter, rect, alpha);
 }
@@ -102,7 +128,7 @@ pub fn scrim_alpha(u: f32, v: f32) -> f32 {
 fn gradient(rect: Rect, stops: &[(f32, f32)], along_x: bool, alpha: f32) -> Mesh {
     let mut mesh = Mesh::default();
     for &(t, a) in stops {
-        let colour = black(a * alpha);
+        let colour = scrim(a * alpha);
         let (p0, p1) = if along_x {
             let x = lerp(rect.min.x, rect.max.x, t);
             (pos2(x, rect.min.y), pos2(x, rect.max.y))

@@ -65,6 +65,8 @@ pub struct ReportInput {
     pub crash: Option<String>,
     /// The log text of the last start.
     pub session: String,
+    /// The controllers connected now, by name (no serial numbers).
+    pub controllers: Vec<String>,
     /// RFC 3339, UTC.
     pub now: String,
 }
@@ -103,6 +105,14 @@ pub fn diagnostic_text(input: &ReportInput) -> String {
                 "System"
             },
             or_unknown(&system.windows)
+        ),
+        format!(
+            "Controllers: {}",
+            if input.controllers.is_empty() {
+                "none connected".to_string()
+            } else {
+                input.controllers.join("; ")
+            }
         ),
         format!("Launcher: {}", input.launcher_version),
         format!(
@@ -172,6 +182,11 @@ pub fn write_report(paths: &AppPaths, input: &ReportInput) -> io::Result<PathBuf
 /// The "Launcher log" section: the last `LAUNCHER_LOG_KEEP` bytes of the launcher's own log,
 /// read from the end so a full file costs no more than its tail. `None` when there is no log.
 fn launcher_log_section(path: &std::path::Path) -> Option<String> {
+    log_section("Launcher log", path)
+}
+
+/// The end of a log file as a report section titled `title`.
+fn log_section(title: &str, path: &std::path::Path) -> Option<String> {
     use std::io::{Read, Seek, SeekFrom};
     let mut file = fs::File::open(path).ok()?;
     let len = file.metadata().ok()?.len();
@@ -191,7 +206,7 @@ fn launcher_log_section(path: &std::path::Path) -> Option<String> {
         &text
     };
     Some(format!(
-        "Launcher log (last 100 KiB):\n{}\n",
+        "{title} (last 100 KiB):\n{}\n",
         tail(text, LAUNCHER_LOG_KEEP).trim_end()
     ))
 }
@@ -411,6 +426,7 @@ mod tests {
             settings: serde_json::json!({"windowSize": 75, "fullscreen": false, "vsync": true, "overlay": "off"}),
             crash: Some("EXCEPTION_ACCESS_VIOLATION".into()),
             session: " 2026-10-22T09:30:00Z PPSA02100\nline 1\nline 2".into(),
+            controllers: vec!["Xbox Wireless Controller".into()],
             now: "2026-10-22T09:31:00Z".into(),
         }
     }
@@ -424,6 +440,7 @@ Game: Stray (PPSA02100, version 01.000.000)
 PC: AMD Ryzen 5 3600 6-Core Processor, 12 threads, 31 GB
 GPU: NVIDIA GeForce RTX 3060 (driver 552.22 (31.0.15.5222)); AMD Radeon(TM) Graphics
 Windows: Windows 11 Home 25H2 (build 26200.1000)
+Controllers: Xbox Wireless Controller
 Launcher: v0.1.0-3-gabc
 Toolkit: 0.1.3-abcdef123456
 Reason: The GPU stopped responding.

@@ -130,8 +130,10 @@ impl LauncherApp {
         if !self.model.onboarded() {
             return false;
         }
-        matches!(link, Link::Settings(_) | Link::Join { .. })
-            || self.model.prefs.games_folder.is_none()
+        matches!(
+            link,
+            Link::Settings(_) | Link::Join { .. } | Link::Friend { .. }
+        ) || self.model.prefs.games_folder.is_none()
             || (!self.model.scanning && (self.offline || self.model.library_loaded))
     }
 
@@ -148,6 +150,8 @@ impl LauncherApp {
                     told: false,
                 });
             }
+            // The friend request opens filled in; the player sends it.
+            Link::Friend { handle } => self.model.show_friend_request(handle),
             Link::Open { path } => match library::inspect(&path) {
                 Some(game) => self.model.show_dump(&game),
                 None => {
@@ -229,6 +233,13 @@ impl Model {
     pub fn show_settings(&mut self, page: Option<SettingsPage>) {
         self.settings_page = page;
         self.open(Overlay::Settings);
+    }
+
+    /// Opens the friend request for `handle`, filled in and not sent. Signed out, the player is
+    /// taken to the sign-in page and the handle waits for it.
+    pub fn show_friend_request(&mut self, handle: String) {
+        self.friend_request = Some(handle);
+        self.open(Overlay::Friends);
     }
 
     /// Shows a dump the player pointed at: it has to be in the library to be shown.

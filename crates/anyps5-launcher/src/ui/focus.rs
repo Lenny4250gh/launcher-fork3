@@ -17,8 +17,9 @@ use crate::ui::sound::Cue;
 /// Where focus sits on the home screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum HomeFocus {
-    /// Top bar, left to right: [`HomeFocus::LIBRARY`], [`HomeFocus::FRIENDS`],
-    /// [`HomeFocus::SETTINGS`], [`HomeFocus::PROFILE`].
+    /// Top bar, left to right: [`HomeFocus::LIBRARY`], [`HomeFocus::CAPTURES`],
+    /// [`HomeFocus::FRIENDS`], [`HomeFocus::NOTIFICATIONS`], [`HomeFocus::SETTINGS`],
+    /// [`HomeFocus::PROFILE`].
     Top(u8),
     /// The tile row.
     #[default]
@@ -29,6 +30,12 @@ pub enum HomeFocus {
     Ask(usize),
     /// The launcher update notice after the title: its buttons from the left.
     Update(u8),
+    /// The Play Together card at the top centre: its buttons from the left (the quiet answer
+    /// first, the primary one last). The pad reaches it from the library button, to the left.
+    Card(u8),
+    /// The shelves below the tile row (Recently Played, Friends Playing Now, New): the games
+    /// of both from the left, counted over the shelves.
+    Shelf(usize),
 }
 
 /// What the home screen needs to know to navigate.
@@ -46,13 +53,17 @@ pub struct HomeContext {
     pub asking: bool,
     /// Buttons of the launcher update notice (0 = no notice).
     pub notice: u8,
+    /// Buttons of the Play Together card (0 = no card).
+    pub card: u8,
+    /// Games on the shelves that are on screen (0 = no shelf).
+    pub shelf: usize,
 }
 
 impl HomeContext {
     /// Number of buttons in the action row: primary, Play Together (optional), trophies
-    /// (optional), "...".
+    /// (optional), the Game Hub, "...".
     pub fn action_count(&self) -> usize {
-        2 + usize::from(self.has_trophies) + usize::from(self.together)
+        3 + usize::from(self.has_trophies) + usize::from(self.together)
     }
 
     /// What a press on button `index` of the action row does.
@@ -67,8 +78,14 @@ impl HomeContext {
             }
             slot += 1;
         }
-        if self.has_trophies && index == slot {
-            return HomeIntent::OpenTrophies;
+        if self.has_trophies {
+            if index == slot {
+                return HomeIntent::OpenTrophies;
+            }
+            slot += 1;
+        }
+        if index == slot {
+            return HomeIntent::OpenHub;
         }
         HomeIntent::OpenGameSettings
     }
@@ -83,16 +100,24 @@ pub enum HomeIntent {
     PlayTogether,
     /// Open the trophy list.
     OpenTrophies,
+    /// Open the Game Hub of the selected game.
+    OpenHub,
     /// Open the game settings side panel.
     OpenGameSettings,
     /// Answer "How did it run?" (0 to 3) or dismiss it (4).
     AnswerRun(usize),
     /// A button of the launcher update notice (0 = the main one).
     UpdateAction(usize),
+    /// A button of the Play Together card, in the order it is drawn.
+    CardAction(usize),
+    /// A game of a shelf: join the friend's session, or select the game.
+    ShelfItem(usize),
     OpenLibrary,
     /// The captures button: the screenshots and clips.
     OpenCaptures,
     OpenSettings,
+    /// The bell: the Notification Center.
+    OpenNotifications,
     /// The friends button: the online area on the friends list, or on sign-in while signed out.
     OpenFriends,
     /// The profile: sign-in, or the account's online area.
@@ -116,10 +141,11 @@ impl HomeFocus {
     pub const LIBRARY: HomeFocus = HomeFocus::Top(0);
     pub const CAPTURES: HomeFocus = HomeFocus::Top(1);
     pub const FRIENDS: HomeFocus = HomeFocus::Top(2);
-    pub const SETTINGS: HomeFocus = HomeFocus::Top(3);
-    pub const PROFILE: HomeFocus = HomeFocus::Top(4);
+    pub const NOTIFICATIONS: HomeFocus = HomeFocus::Top(3);
+    pub const SETTINGS: HomeFocus = HomeFocus::Top(4);
+    pub const PROFILE: HomeFocus = HomeFocus::Top(5);
     /// The last stop of the top bar.
-    const LAST_TOP: u8 = 4;
+    const LAST_TOP: u8 = 5;
 
     /// What a press on stop `index` of the top bar does.
     pub fn top_intent(index: u8) -> HomeIntent {
@@ -127,7 +153,8 @@ impl HomeFocus {
             0 => HomeIntent::OpenLibrary,
             1 => HomeIntent::OpenCaptures,
             2 => HomeIntent::OpenFriends,
-            3 => HomeIntent::OpenSettings,
+            3 => HomeIntent::OpenNotifications,
+            4 => HomeIntent::OpenSettings,
             _ => HomeIntent::OpenOnline,
         }
     }
@@ -135,8 +162,10 @@ impl HomeFocus {
     /// Every stop of the home screen in reading order: the top bar from left to right, the tile
     /// row (one stop, the arrows pick the tile), the action row and, while asked, the question.
     pub fn reading_order(ctx: HomeContext) -> Vec<HomeFocus> {
-        let mut order: Vec<HomeFocus> = (0..=Self::LAST_TOP).map(HomeFocus::Top).collect();
+        let mut order: Vec<HomeFocus> = (0..ctx.card).map(HomeFocus::Card).collect();
+        order.extend((0..=Self::LAST_TOP).map(HomeFocus::Top));
         order.push(HomeFocus::Tiles);
+        order.extend((0..ctx.shelf).map(HomeFocus::Shelf));
         if ctx.games > 0 {
             order.extend((0..ctx.action_count()).map(HomeFocus::Actions));
             if ctx.asking {
@@ -160,6 +189,10 @@ impl HomeFocus {
             .iter()
             .position(|f| *f == self)
             .unwrap_or_else(|| match self {
+                HomeFocus::Shelf(_) => order
+                    .iter()
+                    .rposition(|f| matches!(f, HomeFocus::Shelf(_)))
+                    .unwrap_or(tiles),
                 HomeFocus::Actions(_) | HomeFocus::Ask(_) => order
                     .iter()
                     .rposition(|f| matches!(f, HomeFocus::Actions(_)))
@@ -206,6 +239,7 @@ impl HomeFocus {
                     step.sound = Some(Cue::Move);
                 }
                 Command::Up => go(&mut step, HomeFocus::SETTINGS),
+                Command::Down if has_games && ctx.shelf > 0 => go(&mut step, HomeFocus::Shelf(0)),
                 Command::Down if has_games => go(&mut step, HomeFocus::Actions(0)),
                 Command::Select => {
                     step.intent = Some(if has_games {
@@ -220,6 +254,9 @@ impl HomeFocus {
             HomeFocus::Top(i) => match command {
                 Command::Left if i == 0 && ctx.notice > 0 => {
                     go(&mut step, HomeFocus::Update(ctx.notice - 1));
+                }
+                Command::Left if i == 0 && ctx.card > 0 => {
+                    go(&mut step, HomeFocus::Card(ctx.card - 1));
                 }
                 Command::Left => go(&mut step, HomeFocus::Top(i.saturating_sub(1))),
                 Command::Right => go(&mut step, HomeFocus::Top((i + 1).min(Self::LAST_TOP))),
@@ -236,6 +273,7 @@ impl HomeFocus {
                     Command::Left => go(&mut step, HomeFocus::Actions(i.saturating_sub(1))),
                     Command::Right => go(&mut step, HomeFocus::Actions((i + 1).min(last))),
                     Command::Down if ctx.asking => go(&mut step, HomeFocus::Ask(0)),
+                    Command::Up if ctx.shelf > 0 => go(&mut step, HomeFocus::Shelf(0)),
                     Command::Up | Command::Back => go(&mut step, HomeFocus::Tiles),
                     Command::Select => {
                         step.intent = Some(ctx.action_intent(i));
@@ -246,12 +284,39 @@ impl HomeFocus {
                     _ => {}
                 }
             }
+            HomeFocus::Shelf(i) => {
+                let last = ctx.shelf.saturating_sub(1);
+                match command {
+                    Command::Left => go(&mut step, HomeFocus::Shelf(i.saturating_sub(1))),
+                    Command::Right => go(&mut step, HomeFocus::Shelf((i + 1).min(last))),
+                    Command::Up | Command::Back => go(&mut step, HomeFocus::Tiles),
+                    Command::Down if has_games => go(&mut step, HomeFocus::Actions(0)),
+                    Command::Select => step.intent = Some(HomeIntent::ShelfItem(i)),
+                    Command::Options if has_games => {
+                        step.intent = Some(HomeIntent::OpenGameSettings)
+                    }
+                    _ => {}
+                }
+            }
             HomeFocus::Update(i) => match command {
+                Command::Left if i == 0 && ctx.card > 0 => {
+                    go(&mut step, HomeFocus::Card(ctx.card - 1));
+                }
                 Command::Left => go(&mut step, HomeFocus::Update(i.saturating_sub(1))),
                 Command::Right if i + 1 < ctx.notice => go(&mut step, HomeFocus::Update(i + 1)),
                 Command::Right => go(&mut step, HomeFocus::Top(0)),
                 Command::Down | Command::Back => go(&mut step, HomeFocus::Tiles),
                 Command::Select => step.intent = Some(HomeIntent::UpdateAction(usize::from(i))),
+                Command::Options if has_games => step.intent = Some(HomeIntent::OpenGameSettings),
+                _ => {}
+            },
+            HomeFocus::Card(i) => match command {
+                Command::Left => go(&mut step, HomeFocus::Card(i.saturating_sub(1))),
+                Command::Right if i + 1 < ctx.card => go(&mut step, HomeFocus::Card(i + 1)),
+                Command::Right if ctx.notice > 0 => go(&mut step, HomeFocus::Update(0)),
+                Command::Right => go(&mut step, HomeFocus::Top(0)),
+                Command::Down => go(&mut step, HomeFocus::Tiles),
+                Command::Select => step.intent = Some(HomeIntent::CardAction(usize::from(i))),
                 Command::Options if has_games => step.intent = Some(HomeIntent::OpenGameSettings),
                 _ => {}
             },
@@ -368,7 +433,7 @@ impl PanelNav {
         self.categories > 1
     }
 
-    fn first_focusable(rows: &[RowKind]) -> usize {
+    pub fn first_focusable(rows: &[RowKind]) -> usize {
         rows.iter().position(|k| k.focusable()).unwrap_or(0)
     }
 
@@ -471,6 +536,8 @@ mod tests {
             together: false,
             asking: false,
             notice: 0,
+            card: 0,
+            shelf: 0,
         }
     }
 
@@ -490,6 +557,37 @@ mod tests {
         assert_eq!(select.intent, Some(HomeIntent::AnswerRun(2)));
         let up = HomeFocus::Ask(3).navigate(Command::Up, c);
         assert_eq!(up.focus, HomeFocus::Actions(0));
+    }
+
+    #[test]
+    fn the_pad_reaches_every_button_of_the_card() {
+        let mut c = ctx(3, 0, true);
+        c.card = 2;
+        // Left of the library button: the card's primary (last) button, then its quiet one.
+        let left = HomeFocus::LIBRARY.navigate(Command::Left, c);
+        assert_eq!(left.focus, HomeFocus::Card(1));
+        let left = HomeFocus::Card(1).navigate(Command::Left, c);
+        assert_eq!(left.focus, HomeFocus::Card(0));
+        let select = HomeFocus::Card(0).navigate(Command::Select, c);
+        assert_eq!(select.intent, Some(HomeIntent::CardAction(0)));
+        // Right walks back to the top bar; Down leaves for the tiles.
+        let right = HomeFocus::Card(0).navigate(Command::Right, c);
+        assert_eq!(right.focus, HomeFocus::Card(1));
+        let right = HomeFocus::Card(1).navigate(Command::Right, c);
+        assert_eq!(right.focus, HomeFocus::LIBRARY);
+        let down = HomeFocus::Card(1).navigate(Command::Down, c);
+        assert_eq!(down.focus, HomeFocus::Tiles);
+        // With an update notice too, the notice sits between the card and the top bar.
+        c.notice = 2;
+        let left = HomeFocus::Update(0).navigate(Command::Left, c);
+        assert_eq!(left.focus, HomeFocus::Card(1));
+        let right = HomeFocus::Card(1).navigate(Command::Right, c);
+        assert_eq!(right.focus, HomeFocus::Update(0));
+        // No card, no stop.
+        c.card = 0;
+        c.notice = 0;
+        let left = HomeFocus::LIBRARY.navigate(Command::Left, c);
+        assert_eq!(left.focus, HomeFocus::LIBRARY);
     }
 
     #[test]
@@ -515,10 +613,12 @@ mod tests {
                 HomeFocus::Top(2),
                 HomeFocus::Top(3),
                 HomeFocus::Top(4),
+                HomeFocus::Top(5),
                 HomeFocus::Tiles,
                 HomeFocus::Actions(0),
                 HomeFocus::Actions(1),
                 HomeFocus::Actions(2),
+                HomeFocus::Actions(3),
             ]
         );
         let end = at.tab(false, c);
@@ -529,18 +629,18 @@ mod tests {
         assert_eq!(HomeFocus::LIBRARY.tab(true, c).focus, HomeFocus::LIBRARY);
         // The question line joins while it is asked.
         c.asking = true;
-        assert_eq!(HomeFocus::Actions(2).tab(false, c).focus, HomeFocus::Ask(0));
+        assert_eq!(HomeFocus::Actions(3).tab(false, c).focus, HomeFocus::Ask(0));
         assert_eq!(HomeFocus::Ask(4).tab(false, c).focus, HomeFocus::Ask(4));
-        // A stop that has gone is replaced by the nearest one: Tab from a third action when only two
-        // are left goes to nothing further, Shift+Tab to the one before.
-        let two = ctx(3, 0, false);
+        // A stop that has gone is replaced by the nearest one: Tab from a fourth action when only
+        // three are left goes to nothing further, Shift+Tab to the one before.
+        let three = ctx(3, 0, false);
         assert_eq!(
-            HomeFocus::Actions(2).tab(true, two).focus,
-            HomeFocus::Actions(0)
+            HomeFocus::Actions(3).tab(true, three).focus,
+            HomeFocus::Actions(1)
         );
         assert_eq!(
-            HomeFocus::Ask(1).tab(false, two).focus,
-            HomeFocus::Actions(1)
+            HomeFocus::Ask(1).tab(false, three).focus,
+            HomeFocus::Actions(2)
         );
         // No games: the top bar and the one tile stop (choose a folder).
         let empty = ctx(0, 0, false);
@@ -589,11 +689,12 @@ mod tests {
     fn top_bar_navigation() {
         let c = ctx(3, 1, false);
         let nav = |from: HomeFocus, command| from.navigate(command, c);
-        // Left to right: library, captures, friends, settings, profile; no wrap at either end.
+        // Left to right: library, captures, friends, bell, settings, profile; no wrap at either end.
         let order = [
             HomeFocus::LIBRARY,
             HomeFocus::CAPTURES,
             HomeFocus::FRIENDS,
+            HomeFocus::NOTIFICATIONS,
             HomeFocus::SETTINGS,
             HomeFocus::PROFILE,
         ];
@@ -615,6 +716,7 @@ mod tests {
             (HomeFocus::LIBRARY, HomeIntent::OpenLibrary),
             (HomeFocus::CAPTURES, HomeIntent::OpenCaptures),
             (HomeFocus::FRIENDS, HomeIntent::OpenFriends),
+            (HomeFocus::NOTIFICATIONS, HomeIntent::OpenNotifications),
             (HomeFocus::SETTINGS, HomeIntent::OpenSettings),
             (HomeFocus::PROFILE, HomeIntent::OpenOnline),
         ] {
@@ -633,8 +735,8 @@ mod tests {
             HomeFocus::Actions(1)
         );
         assert_eq!(
-            HomeFocus::Actions(2).navigate(Command::Right, with).focus,
-            HomeFocus::Actions(2)
+            HomeFocus::Actions(3).navigate(Command::Right, with).focus,
+            HomeFocus::Actions(3)
         );
         assert_eq!(
             HomeFocus::Actions(1).navigate(Command::Select, with).intent,
@@ -642,17 +744,27 @@ mod tests {
         );
         assert_eq!(
             HomeFocus::Actions(2).navigate(Command::Select, with).intent,
+            Some(HomeIntent::OpenHub)
+        );
+        assert_eq!(
+            HomeFocus::Actions(3).navigate(Command::Select, with).intent,
             Some(HomeIntent::OpenGameSettings)
         );
         let without = ctx(2, 0, false);
         assert_eq!(
-            HomeFocus::Actions(1)
+            HomeFocus::Actions(2)
                 .navigate(Command::Right, without)
                 .focus,
-            HomeFocus::Actions(1)
+            HomeFocus::Actions(2)
         );
         assert_eq!(
             HomeFocus::Actions(1)
+                .navigate(Command::Select, without)
+                .intent,
+            Some(HomeIntent::OpenHub)
+        );
+        assert_eq!(
+            HomeFocus::Actions(2)
                 .navigate(Command::Select, without)
                 .intent,
             Some(HomeIntent::OpenGameSettings)
@@ -826,5 +938,41 @@ mod tests {
             PanelEffect::None
         );
         assert!(single.in_rows);
+    }
+
+    #[test]
+    fn the_shelves_sit_between_the_tiles_and_the_actions() {
+        let mut c = ctx(3, 0, false);
+        let down = HomeFocus::Tiles.navigate(Command::Down, c);
+        assert_eq!(down.focus, HomeFocus::Actions(0), "no shelf, no stop");
+        c.shelf = 4;
+        let down = HomeFocus::Tiles.navigate(Command::Down, c);
+        assert_eq!(down.focus, HomeFocus::Shelf(0));
+        let right = HomeFocus::Shelf(3).navigate(Command::Right, c);
+        assert_eq!(
+            right.focus,
+            HomeFocus::Shelf(3),
+            "the last game is the last stop"
+        );
+        let left = HomeFocus::Shelf(2).navigate(Command::Left, c);
+        assert_eq!(left.focus, HomeFocus::Shelf(1));
+        let down = HomeFocus::Shelf(1).navigate(Command::Down, c);
+        assert_eq!(down.focus, HomeFocus::Actions(0));
+        let up = HomeFocus::Actions(0).navigate(Command::Up, c);
+        assert_eq!(up.focus, HomeFocus::Shelf(0));
+        let up = HomeFocus::Shelf(2).navigate(Command::Up, c);
+        assert_eq!(up.focus, HomeFocus::Tiles);
+        let select = HomeFocus::Shelf(2).navigate(Command::Select, c);
+        assert_eq!(select.intent, Some(HomeIntent::ShelfItem(2)));
+    }
+
+    #[test]
+    fn tab_walks_the_shelves_after_the_tiles() {
+        let mut c = ctx(3, 0, false);
+        c.shelf = 2;
+        let step = HomeFocus::Tiles.tab(false, c);
+        assert_eq!(step.focus, HomeFocus::Shelf(0));
+        let step = HomeFocus::Shelf(1).tab(false, c);
+        assert_eq!(step.focus, HomeFocus::Actions(0));
     }
 }

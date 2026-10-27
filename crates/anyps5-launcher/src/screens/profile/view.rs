@@ -16,12 +16,11 @@
 
 use std::collections::BTreeMap;
 
-use anyps5_core::online::api::{
-    AccountId, Count, FeedEvent, FeedItem, Friend, Reaction, TrophyLevel,
-};
+use anyps5_core::online::api::{AccountId, Count, FeedEvent, FeedItem, Friend, TrophyLevel};
 use anyps5_core::online::{self, Online};
 
 use crate::screens::format;
+use crate::screens::hub_strings::HubText;
 use crate::screens::online::{
     Avatar, Local, OwnedGame, ago_text, monogram_colour, presence_text, rarity_text,
 };
@@ -73,6 +72,8 @@ pub struct OwnLibrary {
     pub trophies: Vec<OwnTrophy>,
     /// Earned trophies by grade: platinum, gold, silver, bronze.
     pub grades: [u32; 4],
+    /// Seconds played in all games over the last seven days.
+    pub week_seconds: u64,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -93,6 +94,8 @@ pub enum Press {
     Retry,
     /// Leave the profile for this game on Home.
     OpenGame(String),
+    /// The trophies of all games together.
+    OpenTrophies,
     /// Open the feed on this item (where the reactions are).
     OpenFeed(u64),
     /// Compare the player's trophies in this game (a title ID) with this account's.
@@ -170,8 +173,6 @@ pub struct ActivityRow {
     pub avatar: Option<Avatar>,
     pub text: String,
     pub when: String,
-    /// "GG 3 · Nice 1", only the reactions that were given.
-    pub reactions: String,
     pub press: Press,
 }
 
@@ -229,8 +230,6 @@ pub enum Body {
     Failed,
     /// Another player shows nothing to someone who is not their friend.
     Private,
-    /// A friend with nothing to show yet.
-    Empty,
     Ready(Box<Ready>),
 }
 
@@ -245,6 +244,9 @@ pub struct ProfileView {
     /// What a screen reader says for the whole screen.
     pub name: String,
     pub body: Body,
+    /// The one way out of a page that is not there: Try Again after a failure, Add Friend on a
+    /// private profile.
+    pub state_action: Option<Action>,
 }
 
 /// Everything [`view`] reads.
@@ -335,6 +337,7 @@ pub fn view(inputs: &Inputs<'_>) -> ProfileView {
         tint,
         name: name.clone(),
         body,
+        state_action: None,
     };
 
     let relation = if own {
@@ -350,13 +353,21 @@ pub fn view(inputs: &Inputs<'_>) -> ProfileView {
     };
 
     if !own && page.is_none() {
-        return shell(if entry.is_some_and(|e| e.failed) {
+        let failed = entry.is_some_and(|e| e.failed);
+        let body = if failed {
             Body::Failed
         } else if !online.is_online() {
             Body::Offline
         } else {
             Body::Loading
-        });
+        };
+        return ProfileView {
+            state_action: failed.then(|| Action {
+                press: Press::Retry,
+                label: F::TryAgain.text(language).to_owned(),
+            }),
+            ..shell(body)
+        };
     }
 
     let mut ready = Ready {
@@ -378,6 +389,18 @@ pub fn view(inputs: &Inputs<'_>) -> ProfileView {
         other_parts(inputs, page, &mut ready);
     }
     activity(inputs, &mut ready);
+    // A new player's page: one line in place of three empty sections.
+    if own
+        && ready.note.is_none()
+        && ready.games.rows.is_empty()
+        && ready.trophies.rows.is_empty()
+        && ready.activity.rows.is_empty()
+    {
+        ready.games.empty = None;
+        ready.trophies.empty = None;
+        ready.activity.empty = None;
+        ready.note = Some(P::OwnNothingYet.text(language).to_owned());
+    }
     // One figure alone only repeats a caption: the strip needs two to be a strip.
     if ready.stats.len() < 2 {
         ready.stats.clear();
@@ -385,11 +408,27 @@ pub fn view(inputs: &Inputs<'_>) -> ProfileView {
 
     // Another player's profile with nothing to see.
     if !own && nothing_to_show(&ready) {
-        return shell(if relation == Relation::Stranger {
-            Body::Private
-        } else {
-            Body::Empty
-        });
+        if relation == Relation::Stranger {
+            // The way to see it is to ask: a private profile offers the request.
+            let ask = online.is_online() && !handle.is_empty();
+            return ProfileView {
+                state_action: ask.then(|| Action {
+                    press: Press::AddFriend(handle.clone()),
+                    label: P::AddFriend.text(language).to_owned(),
+                }),
+                ..shell(Body::Private)
+            };
+        }
+        if relation == Relation::Requested {
+            // Asked and not answered yet: the profile is private, it is not empty.
+            return shell(Body::Private);
+        }
+        // A friend or a request to answer keeps the header: Accept and Friend Options live there,
+        // so the page is the ready one with a single line in place of three empty sections.
+        ready.games.empty = None;
+        ready.trophies.empty = None;
+        ready.activity.empty = None;
+        ready.note = Some(P::EmptyNote.format(language, &[Arg::Str(&handle)]));
     }
     shell(Body::Ready(Box::new(ready)))
 }
@@ -463,6 +502,15 @@ fn header(inputs: &Inputs<'_>, handle: &str, ready: &mut Ready) {
                     .push(action(Press::AppearOffline(!appearing), label));
             } else {
                 ready.note = Some(P::OwnOfflineNote.text(language).to_owned());
+            }
+            if inputs
+                .library
+                .is_some_and(|l| l.grades.iter().any(|count| *count > 0))
+            {
+                ready.actions.push(action(
+                    Press::OpenTrophies,
+                    HubText::OverviewTitle.text(language),
+                ));
             }
         }
         Relation::Friend => {
@@ -607,6 +655,18 @@ fn own_parts(inputs: &Inputs<'_>, page: Option<&online::api::ProfilePage>, ready
     }
     let minutes: u64 = library.games.iter().map(|g| g.seconds / 60).sum();
     ready.stats.extend(time_stat(minutes, language));
+    let week = library.week_seconds / 60;
+    if week > 0 {
+        let figure = playtime_text(week, language);
+        let label = HubText::WeekLabel.text(language);
+        ready.stats.push(Stat {
+            name: format!("{label}: {figure}"),
+            figure,
+            label: label.to_owned(),
+            grades: None,
+            level: None,
+        });
+    }
     ready.stats.extend(trophy_stat(library.grades, language));
     // The level is the cloud's: without its answer (offline, still loading) there is none.
     if let Some(level) = page.and_then(|p| p.level.as_ref()) {
@@ -880,24 +940,6 @@ fn items_of<'a>(inputs: &Inputs<'a>) -> Vec<&'a FeedItem> {
 // Activity: the same for both
 // ---------------------------------------------------------------------------------------------
 
-/// "GG 3 · Nice 1": the reactions that were given, in the order of the buttons.
-pub fn reactions_text(item: &FeedItem, language: Language) -> String {
-    Reaction::ALL
-        .iter()
-        .filter(|r| item.reactions.of(**r) > 0)
-        .map(|r| {
-            let word = match r {
-                Reaction::Nice => F::ReactNice,
-                Reaction::Gg => F::ReactGg,
-                Reaction::Wow => F::ReactWow,
-                Reaction::Same => F::ReactSame,
-            };
-            format!("{} {}", word.text(language), item.reactions.of(*r))
-        })
-        .collect::<Vec<_>>()
-        .join(" · ")
-}
-
 /// The activity of an account: its items, but not the trophies, which have their own section.
 fn activity(inputs: &Inputs<'_>, ready: &mut Ready) {
     let language = inputs.language;
@@ -929,7 +971,6 @@ fn activity(inputs: &Inputs<'_>, ready: &mut Ready) {
                 handle,
                 avatar: inputs.local.avatar(hash),
                 when: when(inputs, i64::try_from(item.at).unwrap_or(0)),
-                reactions: reactions_text(item, language),
                 press: Press::OpenFeed(item.id),
             }
         })

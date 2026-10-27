@@ -19,7 +19,7 @@ The launcher builds against one network commit everywhere: the full SHA in [`net
 
 ## The net service
 
-For online play the launcher looks for the net service `anyplay-net` next to itself, or where `ANYPLAY_NET` points. Build it in the network repository with `cargo build --release -p anyplay-net`. Setting `ANYPLAY_NET_EMBED` to a built service at build time carries it inside the launcher, as releases do. A build names AnyPlay's own cloud with `ANYPLAY_DEFAULT_CLOUD`; without it the player enters a cloud.
+For online play the launcher looks for the net service `anyplay-net` next to itself, or where `ANYPLAY_NET` points. Build it in the network repository with `cargo build --release -p anyplay-net`. Setting `ANYPLAY_NET_EMBED` to a built service at build time carries it inside the launcher, as releases do. Share screen and clips use a second program, `anyplay-share` (`cargo build --release -p anyplay-share-worker` in the network repository), found the same way: next to the launcher, where `ANYPLAY_SHARE` points, or embedded with `ANYPLAY_SHARE_EMBED`. A build names AnyPlay's own cloud with `ANYPLAY_DEFAULT_CLOUD`; without it the player enters a cloud.
 
 ## Windows
 
@@ -30,7 +30,7 @@ Two toolchains are used:
 
 ## Linux
 
-Install the development packages first (Debian and Ubuntu names: `pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev`). `tools/linux/package.sh <version> <binary> <folder>` makes the AppImage and the tarball.
+Install the development packages first (Debian and Ubuntu names: `pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev`). `tools/linux/package.sh <version> <binary> <folder>` makes the AppImage and the tarball, and `tools/linux/flatpak.sh` makes the Flatpak bundle ([packaging/flatpak](../packaging/flatpak/README.md)).
 
 ## macOS
 
@@ -51,11 +51,11 @@ tools/macos/package.sh 0.1.3 target/release/anyplay-launcher /tmp/THIRD-PARTY-LI
 
 The app stays ad hoc signed for distribution; no Developer ID or notarization is configured. See the first-start instructions in [INSTALL.md](INSTALL.md#macos). macOS CI checks formatting, Clippy and tests, builds and packages the launcher, and renders Metal screenshots alongside the Windows and Linux jobs.
 
-Mac CI and release builds compile `anyplay-net` natively with its `devices` feature and embed it through `ANYPLAY_NET_EMBED`. A process integration test extracts that service and exchanges real control messages with it. Local builds can set the same variable to their own compiled service; without it, place `anyplay-net` beside the launcher. This enables the launcher online area; online gameplay still requires the macOS bridge in AnyPlay's engine fork. Mac share-screen capture and the optional Discord SDK are not included. The release workflow builds the Apple silicon app on macOS, verifies the signature and architecture after unzipping, and publishes the zip, dependency SBOM, checksums and provenance. The Mac zip is included in the signed update manifest and in its weekly renewal.
+The Mac package does not yet embed `anyplay-net`, so online integration needs a follow-up. The release workflow builds the Apple silicon app on macOS, verifies the signature and architecture after unzipping, and publishes the zip, dependency SBOM, checksums and provenance. The Mac zip is included in the signed update manifest and in its weekly renewal.
 
 ## Releases
 
-A release is made by pushing a tag `v<version>` that matches the version in `Cargo.toml`. The [release workflow](../.github/workflows/release.yml) builds the net service from [anyplaynet/network](https://github.com/anyplaynet/network) at the commit in `network.ref` and embeds it, then builds the portable exe and the installer (`tools/installer/anyplay-launcher.iss`, Inno Setup), the Linux AppImage and tarball, the Apple silicon macOS app zip, and a licence file for every third-party crate. It publishes all of them with their checksums in `SHA256SUMS.txt`. Started by hand it only builds them and keeps them as workflow artifacts. The `platform: macos` choice exercises the same Mac release job and licence build without building other platforms or publishing. Release notes live in [docs/releases](releases). Before the tag, refresh the README screenshots in `docs/media` from the release build, taken with a separate profile and no personal data.
+A release is made by pushing a tag `v<version>` that matches the version in `Cargo.toml`. The [release workflow](../.github/workflows/release.yml) builds the net service from [anyplaynet/network](https://github.com/anyplaynet/network) at the commit in `network.ref` and embeds it, then builds the portable exe and the installer (`tools/installer/anyplay-launcher.iss`, Inno Setup), the Linux AppImage, tarball and Flatpak, the Apple silicon macOS app zip, and a licence file for every third-party crate. It publishes all of them with their checksums in `SHA256SUMS.txt`. Started by hand it only builds them and keeps them as workflow artifacts. A pushed tag is published only when the `ci` run of that commit on main has succeeded: the job `gate` checks it next to the builds (it waits for a run that is still going) and `sign` and `release` need it; if a flaky test made it red, re-run the failed jobs of that `ci` run, then the `gate` job. Pull requests build the release profile and the packages only on integration branches and on main, and run the macOS jobs there and when a pull request touches macOS files (`ci.yml`, job `changes`). Release notes live in [docs/releases](releases). Before the tag, refresh the README screenshots in `docs/media` from the release build, taken with a separate profile and no personal data.
 
 ## More
 

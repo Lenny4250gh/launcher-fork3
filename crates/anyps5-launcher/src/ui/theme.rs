@@ -6,6 +6,7 @@
 //! multiplies by one global scale). Widgets therefore use these numbers as they are.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use egui::epaint::Shadow;
 use egui::{Color32, Context, FontData, FontDefinitions, FontFamily, FontId, FontTweak, RichText};
@@ -57,14 +58,40 @@ pub fn rgb(r: f32, g: f32, b: f32) -> Color32 {
     rgba(r, g, b, 1.0)
 }
 
-/// White with straight alpha, the building block of all chrome.
+/// The ink of the light look: a deep blue-black, not pure black (docs/DESIGN.md 3.16).
+pub const LIGHT_INK: [f32; 3] = [0.055, 0.075, 0.130];
+/// The paper of the light look: the warm white that scrims and panels take there.
+pub const LIGHT_PAPER: [f32; 3] = [0.965, 0.960, 0.945];
+
+/// The ink of every token on a dark look: white with straight alpha, the building block of all
+/// chrome. On the light look (Daylight) the same call gives [`LIGHT_INK`] at that alpha, so ink,
+/// surfaces and edges all turn over together and a page does not know which look it is on.
 pub fn white(alpha: f32) -> Color32 {
-    rgba(1.0, 1.0, 1.0, alpha)
+    let t = light_t();
+    if t <= 0.0 {
+        return rgba(1.0, 1.0, 1.0, alpha);
+    }
+    let k = |ink: f32| 1.0 + (ink - 1.0) * t;
+    rgba(k(LIGHT_INK[0]), k(LIGHT_INK[1]), k(LIGHT_INK[2]), alpha)
 }
 
-/// Black with straight alpha.
+/// Black with straight alpha: shadows and the dark plates of a picture. What calms a backdrop
+/// behind ink is [`scrim`].
 pub fn black(alpha: f32) -> Color32 {
     rgba(0.0, 0.0, 0.0, alpha)
+}
+
+/// What is laid over a backdrop (or a picture) so the ink on it reads: black on a dark look, the
+/// warm paper on the light one.
+pub fn scrim(alpha: f32) -> Color32 {
+    let t = light_t();
+    let k = |paper: f32| paper * t;
+    rgba(
+        k(LIGHT_PAPER[0]),
+        k(LIGHT_PAPER[1]),
+        k(LIGHT_PAPER[2]),
+        alpha,
+    )
 }
 
 /// The ink for text or a glyph on `bg` (opaque): white, or the dark `on_primary` when that reads
@@ -81,7 +108,7 @@ pub fn readable_ink(bg: Color32) -> Color32 {
         };
         0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b())
     };
-    let dark = color::on_primary();
+    let dark = DARK_INK;
     let (l, ld) = (lum(bg) + 0.05, lum(dark) + 0.05);
     if 1.05 / l >= l / ld {
         Color32::WHITE
@@ -105,24 +132,130 @@ pub fn mix(from: Color32, to: Color32, t: f32) -> Color32 {
     Color32::from_rgba_unmultiplied(l(a[0], b[0]), l(a[1], b[1]), l(a[2], b[2]), l(a[3], b[3]))
 }
 
-/// The three built-in looks: an animated background plus a default accent.
+/// The label on a light fill: 16:1 on white.
+pub const DARK_INK: Color32 = Color32::from_rgb(10, 13, 23);
+
+/// How light the look is, 0 (every dark look) to 1 (Daylight). The backdrop eases it with the
+/// theme change, so ink, panels and scrims turn over with the cross-fade, not before it.
+static LIGHT_T: AtomicU32 = AtomicU32::new(0);
+
+#[cfg(test)]
+thread_local! {
+    /// Tests run side by side: each measures a look on its own thread without touching the rest.
+    static LIGHT_OVERRIDE: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+}
+
+pub fn set_light(t: f32) {
+    LIGHT_T.store(t.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+}
+
+/// 0 on a dark look, 1 on the light one, in between while the look changes.
+pub fn light_t() -> f32 {
+    #[cfg(test)]
+    if let Some(t) = LIGHT_OVERRIDE.with(std::cell::Cell::get) {
+        return t;
+    }
+    f32::from_bits(LIGHT_T.load(Ordering::Relaxed))
+}
+
+/// Whether ink is dark (past the middle of the change).
+pub fn is_light() -> bool {
+    light_t() > 0.5
+}
+
+/// Runs `f` as if the look were light (or dark) on this thread only.
+#[cfg(test)]
+pub fn with_light<R>(light: bool, f: impl FnOnce() -> R) -> R {
+    let before = LIGHT_OVERRIDE.with(|c| c.replace(Some(if light { 1.0 } else { 0.0 })));
+    let out = f();
+    LIGHT_OVERRIDE.with(|c| c.set(before));
+    out
+}
+
+/// High Contrast (docs/DESIGN.md 3.14): brighter ink and edges and no frosted glass. Set by the
+/// shell from the preference; read by the colour tokens and the glass.
+static HIGH_CONTRAST: AtomicBool = AtomicBool::new(false);
+
+pub fn set_high_contrast(on: bool) {
+    HIGH_CONTRAST.store(on, Ordering::Relaxed);
+}
+
+pub fn high_contrast() -> bool {
+    HIGH_CONTRAST.load(Ordering::Relaxed)
+}
+
+/// Larger Text: every size of the type scale times this, one step up the scale (16 to 18, 17 to 19,
+/// 19 to 21, 22 to 25).
+pub const LARGER_TEXT: f32 = 1.12;
+static TEXT_SCALE: AtomicU32 = AtomicU32::new(0x3f80_0000);
+
+pub fn set_larger_text(on: bool) {
+    let scale: f32 = if on { LARGER_TEXT } else { 1.0 };
+    TEXT_SCALE.store(scale.to_bits(), Ordering::Relaxed);
+}
+
+/// The factor every text role is drawn at: 1, or [`LARGER_TEXT`].
+pub fn text_scale() -> f32 {
+    f32::from_bits(TEXT_SCALE.load(Ordering::Relaxed))
+}
+
+/// The built-in looks: an animated background plus a default accent. The last takes its colours
+/// from the selected game's art ([`crate::ui::gamecolors`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum Theme {
     #[default]
     Cosmic,
     Aurora,
     Sunset,
+    GameColors,
+    /// Warm: embers rising from a low hearth.
+    Ember,
+    /// Deep and cool: light moving through water.
+    Tide,
+    /// Light: soft daylight, with dark ink.
+    Daylight,
 }
 
 impl Theme {
-    pub const ALL: [Theme; 3] = [Theme::Cosmic, Theme::Aurora, Theme::Sunset];
+    /// The fixed looks, which the onboarding cards and the gallery show.
+    pub const ALL: [Theme; 6] = [
+        Theme::Cosmic,
+        Theme::Aurora,
+        Theme::Sunset,
+        Theme::Ember,
+        Theme::Tide,
+        Theme::Daylight,
+    ];
+    /// What Settings offers: the fixed looks, then Game Colors.
+    pub const CHOICES: [Theme; 7] = [
+        Theme::Cosmic,
+        Theme::Aurora,
+        Theme::Sunset,
+        Theme::Ember,
+        Theme::Tide,
+        Theme::Daylight,
+        Theme::GameColors,
+    ];
 
-    /// 0 = Cosmic, 1 = Aurora, 2 = Sunset (also the shader's theme index).
+    /// 0 = Cosmic, 1 = Aurora, 2 = Sunset, 3 = Game Colors, 4 = Ember, 5 = Tide, 6 = Daylight.
+    /// The number the shader paints by (Game Colors paints Cosmic's) and the preferences store.
     pub const fn index(self) -> u32 {
         match self {
             Theme::Cosmic => 0,
             Theme::Aurora => 1,
             Theme::Sunset => 2,
+            Theme::GameColors => 3,
+            Theme::Ember => 4,
+            Theme::Tide => 5,
+            Theme::Daylight => 6,
+        }
+    }
+
+    /// The pattern the backdrop shader paints: Game Colors paints Cosmic's, in its own colours.
+    pub const fn shader_index(self) -> u32 {
+        match self {
+            Theme::GameColors => 0,
+            other => other.index(),
         }
     }
 
@@ -130,23 +263,41 @@ impl Theme {
         match index {
             1 => Theme::Aurora,
             2 => Theme::Sunset,
+            3 => Theme::GameColors,
+            4 => Theme::Ember,
+            5 => Theme::Tide,
+            6 => Theme::Daylight,
             _ => Theme::Cosmic,
         }
     }
 
+    /// Whether the look is light: dark ink on a pale backdrop (docs/DESIGN.md 3.16).
+    pub const fn is_light(self) -> bool {
+        matches!(self, Theme::Daylight)
+    }
+
     /// Localised name.
     pub fn title(self, language: Language) -> &'static str {
+        use crate::screens::theme_strings::ThemeText;
         language.text(match self {
             Theme::Cosmic => Key::ThemeCosmic,
             Theme::Aurora => Key::ThemeAurora,
             Theme::Sunset => Key::ThemeSunset,
+            Theme::Ember => return ThemeText::Ember.text(language),
+            Theme::Tide => return ThemeText::Tide.text(language),
+            Theme::Daylight => return ThemeText::Daylight.text(language),
+            Theme::GameColors => {
+                return crate::screens::feel_strings::FeelText::ThemeGameColors.text(language);
+            }
         })
     }
 
-    /// Deep, middle and bright tones the shader blends (display-referred sRGB floats).
+    /// Deep, middle and bright tones the shader blends (display-referred sRGB floats). On the
+    /// light look "deep" is the darkest tone and "bright" the lightest, as on the others.
     pub const fn palette(self) -> Palette {
         match self {
-            Theme::Cosmic => Palette {
+            // Game Colors has none of its own until a game gives it one: Cosmic's.
+            Theme::Cosmic | Theme::GameColors => Palette {
                 deep: [0.012, 0.024, 0.090],
                 middle: [0.040, 0.150, 0.420],
                 bright: [0.420, 0.640, 1.000],
@@ -161,14 +312,35 @@ impl Theme {
                 middle: [0.520, 0.110, 0.220],
                 bright: [1.000, 0.640, 0.330],
             },
+            // Charcoal-brown to copper, with an amber glow: warm but near black, nothing pink.
+            Theme::Ember => Palette {
+                deep: [0.030, 0.011, 0.006],
+                middle: [0.250, 0.085, 0.030],
+                bright: [1.000, 0.560, 0.170],
+            },
+            // Petrol to icy cyan: the deep end of the water, light from above.
+            Theme::Tide => Palette {
+                deep: [0.004, 0.020, 0.036],
+                middle: [0.010, 0.190, 0.300],
+                bright: [0.480, 0.930, 1.000],
+            },
+            // A morning sky that is not pale: saturated blue above, lilac at the middle, apricot
+            // at the horizon. Mid-light on purpose (no near-white wash), the ink stays dark.
+            Theme::Daylight => Palette {
+                deep: [0.480, 0.640, 0.910],
+                middle: [0.790, 0.720, 0.950],
+                bright: [1.000, 0.760, 0.580],
+            },
         }
     }
 
     pub const fn default_accent(self) -> Accent {
         match self {
-            Theme::Cosmic => Accent::Blue,
+            Theme::Cosmic | Theme::GameColors | Theme::Daylight => Accent::Blue,
             Theme::Aurora => Accent::Mint,
             Theme::Sunset => Accent::Coral,
+            Theme::Ember => Accent::Gold,
+            Theme::Tide => Accent::Violet,
         }
     }
 
@@ -222,62 +394,52 @@ impl Accent {
     ];
 
     pub fn color(self) -> Color32 {
-        match self {
+        let dark = match self {
             Accent::Blue => rgb(0.40, 0.64, 1.0),
             Accent::Mint => rgb(0.36, 0.92, 0.74),
             Accent::Coral => rgb(1.0, 0.50, 0.40),
             Accent::Violet => rgb(0.70, 0.57, 1.0),
             Accent::Gold => rgb(1.0, 0.80, 0.36),
             Accent::White => rgb(0.94, 0.94, 0.94),
+        };
+        let t = light_t();
+        if t > 0.0 {
+            mix(dark, self.on_light(), t)
+        } else {
+            dark
+        }
+    }
+
+    /// The same hue deepened to 3:1 or more on the light look's panels (`ui::contrast` measures it).
+    fn on_light(self) -> Color32 {
+        match self {
+            Accent::Blue => rgb(0.16, 0.38, 0.82),
+            Accent::Mint => rgb(0.02, 0.42, 0.32),
+            Accent::Coral => rgb(0.70, 0.22, 0.14),
+            Accent::Violet => rgb(0.45, 0.33, 0.86),
+            Accent::Gold => rgb(0.52, 0.33, 0.0),
+            Accent::White => rgb(0.25, 0.27, 0.32),
         }
     }
 
     /// Localised name (not part of the string table in the original either).
     pub fn title(self, language: Language) -> &'static str {
-        let tr = language == Language::Turkish;
-        match self {
-            Accent::Blue => {
-                if tr {
-                    "Mavi"
-                } else {
-                    "Blue"
-                }
-            }
-            Accent::Mint => {
-                if tr {
-                    "Nane"
-                } else {
-                    "Mint"
-                }
-            }
-            Accent::Coral => {
-                if tr {
-                    "Mercan"
-                } else {
-                    "Coral"
-                }
-            }
-            Accent::Violet => {
-                if tr {
-                    "Mor"
-                } else {
-                    "Violet"
-                }
-            }
-            Accent::Gold => {
-                if tr {
-                    "Altın"
-                } else {
-                    "Gold"
-                }
-            }
-            Accent::White => {
-                if tr {
-                    "Beyaz"
-                } else {
-                    "White"
-                }
-            }
+        // English, Turkish, German, Spanish, French, Portuguese.
+        let [en, tr, de, es, fr, pt] = match self {
+            Accent::Blue => ["Blue", "Mavi", "Blau", "Azul", "Bleu", "Azul"],
+            Accent::Mint => ["Mint", "Nane", "Minze", "Menta", "Menthe", "Menta"],
+            Accent::Coral => ["Coral", "Mercan", "Koralle", "Coral", "Corail", "Coral"],
+            Accent::Violet => ["Violet", "Mor", "Violett", "Violeta", "Violet", "Violeta"],
+            Accent::Gold => ["Gold", "Altın", "Gold", "Dorado", "Or", "Dourado"],
+            Accent::White => ["White", "Beyaz", "Weiß", "Blanco", "Blanc", "Branco"],
+        };
+        match language {
+            Language::English => en,
+            Language::Turkish => tr,
+            Language::German => de,
+            Language::Spanish => es,
+            Language::French => fr,
+            Language::Portuguese => pt,
         }
     }
 }
@@ -295,12 +457,30 @@ impl Grade {
     pub const ALL: [Grade; 4] = [Grade::Platinum, Grade::Gold, Grade::Silver, Grade::Bronze];
 
     pub fn color(self) -> Color32 {
-        match self {
+        let dark = match self {
             Grade::Platinum => rgb(0.74, 0.84, 0.97),
             Grade::Gold => rgb(0.97, 0.78, 0.34),
             Grade::Silver => rgb(0.80, 0.82, 0.86),
             Grade::Bronze => rgb(0.83, 0.55, 0.36),
+        };
+        let t = light_t();
+        if t <= 0.0 {
+            return dark;
         }
+        // Deeper on the light look, in the same order of brightness.
+        let light = match self {
+            Grade::Platinum => rgb(0.16, 0.30, 0.58),
+            Grade::Gold => rgb(0.46, 0.28, 0.0),
+            Grade::Silver => rgb(0.27, 0.30, 0.38),
+            Grade::Bronze => rgb(0.50, 0.22, 0.06),
+        };
+        mix(dark, light, t)
+    }
+
+    /// The grade of a trophy not earned yet: the colour dimmed. Dimmed less on the light look,
+    /// where a pale label on pale paper is gone (`ui::contrast` measures it).
+    pub fn dimmed(self) -> Color32 {
+        fade(self.color(), 0.55 + 0.45 * light_t())
     }
 
     pub const fn points(self) -> u32 {
@@ -335,73 +515,113 @@ pub fn trophy_percent(unlocked_points: u32, total_points: u32) -> u32 {
 pub mod color {
     use super::*;
 
+    /// Text ink at `alpha`. On the light look dark ink needs more of itself to reach the same
+    /// ratio as white ink does on the dark ones, so the alpha is lifted a third of the way to 1.
+    fn tx(alpha: f32) -> Color32 {
+        let lift = 0.34 * light_t();
+        white(alpha + (1.0 - alpha) * lift)
+    }
+
+    /// Ink of a screen's own at `alpha`, lifted on the light look like the text tokens (`tx`): a
+    /// page that dims its text to a level of its own asks here instead of fading `text()`.
+    pub fn ink_at(alpha: f32) -> Color32 {
+        tx(alpha)
+    }
+
+    /// The ink or edge level `normal`, or `high` with High Contrast on.
+    fn hc(normal: f32, high: f32) -> f32 {
+        if super::high_contrast() { high } else { normal }
+    }
+
     pub fn window_background() -> Color32 {
-        Color32::BLACK
+        mix(Color32::BLACK, paper(), light_t())
+    }
+    /// The warm white of the light look: its panels, its toast, the label on its ink-filled button.
+    pub fn paper() -> Color32 {
+        rgb(LIGHT_PAPER[0], LIGHT_PAPER[1], LIGHT_PAPER[2])
+    }
+    /// Status ink: `dark` on the dark looks, `light` (deep enough for pale panels) on the light one.
+    fn status(dark: [f32; 3], light: [f32; 3]) -> Color32 {
+        let t = light_t();
+        let k = |i: usize| dark[i] + (light[i] - dark[i]) * t;
+        rgb(k(0), k(1), k(2))
     }
     // Text
     pub fn text() -> Color32 {
         white(1.0)
     }
     pub fn text_label() -> Color32 {
-        white(0.9)
+        tx(hc(0.9, 1.0))
     }
     pub fn text_value() -> Color32 {
-        white(0.90)
+        tx(hc(0.90, 1.0))
     }
     /// The key name or face button inside a hint keycap.
     pub fn text_hint_key() -> Color32 {
         white(1.0)
     }
+    /// The dark ring behind a small mark (a reminder dot) so it reads on any glyph or picture.
+    pub fn mark_halo() -> Color32 {
+        black(0.62)
+    }
     pub fn text_hint() -> Color32 {
-        white(0.78)
+        tx(hc(0.78, 0.94))
     }
     pub fn text_subtitle() -> Color32 {
-        white(0.78)
+        tx(hc(0.78, 0.94))
     }
     pub fn text_empty() -> Color32 {
-        white(0.78)
+        tx(hc(0.78, 0.94))
     }
     pub fn text_detail() -> Color32 {
-        white(0.78)
+        tx(hc(0.78, 0.94))
     }
     pub fn text_overline() -> Color32 {
-        white(0.78)
+        tx(hc(0.78, 0.94))
     }
     /// The line under a row's title.
     pub fn text_row_detail() -> Color32 {
-        white(0.78)
+        tx(hc(0.78, 0.94))
     }
     /// A note under rows, bare on the panel.
     pub fn text_note() -> Color32 {
-        white(0.55)
+        tx(hc(0.55, 0.86))
     }
     /// A section caption over a group of rows.
     pub fn text_caption() -> Color32 {
-        white(0.55)
+        tx(hc(0.55, 0.86))
     }
     /// The title of a row that cannot be focused (a fact, not a control).
     pub fn text_inert() -> Color32 {
-        white(0.78)
+        tx(hc(0.78, 0.94))
     }
     /// The clock in the top bar: a status, quieter than the controls beside it.
     pub fn text_clock() -> Color32 {
-        white(0.90)
+        tx(hc(0.90, 1.0))
     }
     pub fn text_count() -> Color32 {
-        white(0.55)
+        tx(hc(0.55, 0.86))
     }
     pub fn text_path() -> Color32 {
-        white(0.55)
+        tx(hc(0.55, 0.86))
     }
     pub fn text_inactive() -> Color32 {
-        white(0.4)
+        tx(hc(0.4, 0.7))
+    }
+    /// The light ground of a QR code (5.8): a camera wants dark modules on white, whatever the
+    /// theme. A picture, not text: exempt from the ink table, and 21:1 against its modules.
+    pub fn qr_card() -> Color32 {
+        Color32::WHITE
+    }
+    pub fn qr_module() -> Color32 {
+        Color32::BLACK
     }
     // Surfaces
     pub fn surface() -> Color32 {
-        white(0.10)
+        white(hc(0.10, 0.16))
     }
     pub fn surface_row() -> Color32 {
-        white(0.07)
+        white(hc(0.07, 0.12))
     }
     pub fn surface_trophy_row() -> Color32 {
         white(0.07)
@@ -410,69 +630,66 @@ pub mod color {
         white(0.07)
     }
     pub fn surface_hover() -> Color32 {
-        white(0.16)
+        white(hc(0.16, 0.24))
     }
     /// A control that has the focus: one step above hover (the ring is the indicator, DESIGN.md 3.9).
     pub fn surface_focus() -> Color32 {
-        white(0.20)
+        white(hc(0.20, 0.3))
     }
     /// A control under the pointer button.
     pub fn surface_pressed() -> Color32 {
-        white(0.26)
+        white(hc(0.26, 0.36))
     }
     /// The focus ring of keyboard and gamepad focus: thin and quiet, 3:1 or more on every panel
     /// (`ui::contrast` measures it); the fill one step lighter carries the rest of the cue.
     pub fn focus_ring() -> Color32 {
-        white(0.50)
+        tx(hc(0.50, 1.0))
     }
     /// The edge of a secondary control at rest and under the pointer or focus.
     pub fn hairline_control() -> Color32 {
-        white(0.12)
+        white(hc(0.12, 0.55))
     }
     pub fn hairline_hover() -> Color32 {
-        white(0.32)
+        white(hc(0.32, 0.85))
     }
     /// The primary button: ink, not accent (one per view).
     pub fn primary() -> Color32 {
         white(0.92)
     }
     pub fn primary_hover() -> Color32 {
-        Color32::WHITE
+        white(1.0)
     }
     pub fn primary_pressed() -> Color32 {
         white(0.78)
     }
     /// The label on the primary button: 16:1 on its fill.
+    /// The knob of a switch at rest: the ink, so it stands out from its track on every look.
+    pub fn knob() -> Color32 {
+        white(1.0)
+    }
     pub fn on_primary() -> Color32 {
-        rgb(0.04, 0.05, 0.09)
+        mix(DARK_INK, paper(), light_t())
     }
     // Hairlines
     pub fn hairline_card() -> Color32 {
-        white(0.12)
+        white(hc(0.12, 0.55))
     }
     pub fn hairline_glass() -> Color32 {
-        white(0.08)
+        white(hc(0.08, 0.5))
     }
     pub fn hairline_panel_edge() -> Color32 {
-        white(0.08)
+        white(hc(0.08, 0.5))
     }
     pub fn track() -> Color32 {
-        white(0.16)
+        white(hc(0.16, 0.3))
     }
     pub fn keycap() -> Color32 {
         white(0.16)
     }
     // Scrims and panels
-    pub fn scrim_side_panel() -> Color32 {
-        black(0.35)
-    }
-    /// `Color(white: 0.06)` (a near-black gray, not white with alpha) at 0.92: the side panel fill.
-    pub fn side_panel() -> Color32 {
-        rgba(0.06, 0.06, 0.06, 0.92)
-    }
     /// `Color(white: 0.07)` at 0.94: toast and banner card fill.
     pub fn card_fill() -> Color32 {
-        rgba(0.07, 0.07, 0.07, 0.94)
+        mix(rgba(0.07, 0.07, 0.07, 0.94), fade(paper(), 0.94), light_t())
     }
     /// A message bubble from someone else, and the composer's fill.
     pub fn bubble_other() -> Color32 {
@@ -486,7 +703,7 @@ pub mod color {
         white(0.10)
     }
     pub fn switch_track_off() -> Color32 {
-        white(0.16)
+        white(hc(0.16, 0.34))
     }
     /// The off track of a switch whose row has the focus: one step above the lifted row.
     pub fn switch_track_off_on_focus() -> Color32 {
@@ -494,35 +711,35 @@ pub mod color {
     }
     // Status
     pub fn destructive_text() -> Color32 {
-        rgb(1.0, 0.72, 0.67)
+        status([1.0, 0.72, 0.67], [0.54, 0.06, 0.05])
     }
     pub fn destructive_icon() -> Color32 {
-        rgb(1.0, 0.62, 0.57)
+        status([1.0, 0.62, 0.57], [0.62, 0.10, 0.07])
     }
     pub fn error_text() -> Color32 {
-        rgb(1.0, 0.73, 0.68)
+        status([1.0, 0.73, 0.68], [0.54, 0.06, 0.05])
     }
     pub fn error_state() -> Color32 {
-        rgb(1.0, 0.72, 0.67)
+        status([1.0, 0.72, 0.67], [0.54, 0.06, 0.05])
     }
     pub fn warning_text() -> Color32 {
-        rgb(1.0, 0.78, 0.50)
+        status([1.0, 0.78, 0.50], [0.38, 0.21, 0.0])
     }
     pub fn update_available() -> Color32 {
-        rgb(1.0, 0.82, 0.40)
+        status([1.0, 0.82, 0.40], [0.36, 0.23, 0.0])
     }
     /// Secondary state label colour ("ready", "locked", "queued").
     pub fn state_neutral() -> Color32 {
-        white(0.78)
+        tx(hc(0.78, 0.94))
     }
     /// A state in progress ("Starting", "Installing", "Playing"): ink, not the accent. The accent
     /// is the player's pick and can sit on its own colour; the glyph and the word are the cue.
     pub fn text_active() -> Color32 {
-        white(0.90)
+        tx(hc(0.90, 1.0))
     }
     /// Window caption glyphs (minimise, maximise, close) at rest; white on hover.
     pub fn caption_glyph() -> Color32 {
-        white(0.6)
+        tx(hc(0.6, 0.9))
     }
     /// Behind a hovered minimise or maximise button.
     pub fn caption_hover() -> Color32 {
@@ -550,11 +767,12 @@ pub mod radius {
     /// The large cards: language and theme cards, the trophy banner.
     pub const LARGE: f32 = 20.0;
     pub const TROPHY_ROW: f32 = CARD;
-    pub const LANGUAGE_CARD: f32 = LARGE;
     pub const THEME_CARD: f32 = LARGE;
     pub const BANNER: f32 = LARGE;
     pub const BOX: f32 = CARD;
     pub const TOAST: f32 = 28.0;
+    /// The white card of a QR code (5.8).
+    pub const QR_CARD: f32 = ROW;
 
     /// Game tile radius for a tile of `size` dp.
     pub fn tile(size: f32) -> f32 {
@@ -616,7 +834,6 @@ pub mod size {
     pub const INFO_CARD_PADDING: f32 = 18.0;
     pub const INFO_CARD_GAP: f32 = 14.0;
     pub const SIDE_PANEL_WIDTH: f32 = 560.0;
-    pub const SIDE_PANEL_PADDING: f32 = 36.0;
     /// Inset of row lists inside their panel (room for the focused row to grow).
     pub const LIST_INSET: f32 = 6.0;
     pub const SETTINGS_CATEGORY_WIDTH: f32 = 330.0;
@@ -630,7 +847,20 @@ pub mod size {
     pub const CHEVRON_GLYPH: f32 = 13.0;
     pub const CHOICE_VALUE_WIDTH: (f32, f32) = (100.0, 190.0);
     pub const STEPPER_VALUE_WIDTH: f32 = 100.0;
+    /// A slider row: the track, and the value after it (tabular, right-aligned).
+    pub const SLIDER_TRACK_WIDTH: f32 = 184.0;
+    pub const SLIDER_VALUE_WIDTH: f32 = 56.0;
+    /// The thumb's radius, the rail's height, and the height of a colour rail (hue, brightness).
+    pub const SLIDER_THUMB: f32 = 9.0;
+    pub const SLIDER_RAIL: f32 = 4.0;
+    pub const SLIDER_RAIL_COLOUR: f32 = 8.0;
     pub const TEXT_FIELD_WIDTH: f32 = 200.0;
+    /// A QR code's white card (5.8), and the light margin around the modules, in modules (the
+    /// standard's quiet zone).
+    pub const QR_CARD: f32 = 200.0;
+    pub const QR_QUIET: usize = 4;
+    /// The mono face of a link row's address (5.8).
+    pub const LINK_MONO: f32 = 14.0;
     /// A window caption button, in points at zoom 1 (the Windows 11 size, not scaled with the UI).
     pub const CAPTION_BUTTON: (f32, f32) = (46.0, 32.0);
     pub const CAPTION_GLYPH: f32 = 10.0;
@@ -643,7 +873,6 @@ pub mod size {
     pub const KEYCAP_GAP: f32 = 6.0;
     pub const TROPHY_ICON: f32 = 68.0;
     pub const TROPHY_HEADER_ICON: f32 = 112.0;
-    pub const LANGUAGE_CARD: (f32, f32) = (280.0, 150.0);
     pub const THEME_CARD_PREVIEW: (f32, f32) = (330.0, 186.0);
     pub const PROGRESS_HEIGHT: f32 = 4.0;
     pub const HERO_PROGRESS_WIDTH: f32 = 260.0;
@@ -835,13 +1064,18 @@ impl TextStyle {
         }
     }
 
+    /// The size as drawn: the role's size times the Larger Text factor.
+    pub fn px(&self) -> f32 {
+        self.size * text_scale()
+    }
+
     pub fn font(&self) -> FontId {
-        font(self.size, self.weight)
+        font(self.px(), self.weight)
     }
 
     /// Natural line height: 1.2 * size.
     pub fn line_height(&self) -> f32 {
-        1.2 * self.size
+        1.2 * self.px()
     }
 
     pub fn rich(&self, text: impl Into<String>) -> RichText {
@@ -871,7 +1105,6 @@ pub mod ty {
     pub const TITLE: TextStyle = TextStyle::new(40.0, Weight::Light);
     pub const HEADING: TextStyle = TextStyle::new(34.0, Weight::Light);
     pub const PANEL_TITLE: TextStyle = TextStyle::new(28.0, Weight::Light);
-    pub const LANGUAGE_NAME: TextStyle = TextStyle::new(28.0, Weight::Medium);
     pub const ITEM_TITLE: TextStyle = TextStyle::new(22.0, Weight::SemiBold);
     pub const STATE_TITLE: TextStyle = TextStyle::new(22.0, Weight::Medium);
     pub const BUTTON: TextStyle = TextStyle::new(19.0, Weight::SemiBold);
@@ -1062,10 +1295,69 @@ mod tests {
     }
 
     #[test]
+    fn every_look_has_its_own_number_name_and_palette() {
+        let mut seen = Vec::new();
+        for look in Theme::CHOICES {
+            assert_eq!(Theme::from_index(look.index()), look, "{look:?}");
+            assert!(!seen.contains(&look.index()), "{look:?} shares a number");
+            seen.push(look.index());
+        }
+        // The looks that paint their own pattern differ in tones and in name, in every language.
+        for (a, b) in Theme::ALL
+            .iter()
+            .flat_map(|a| Theme::ALL.iter().map(move |b| (a, b)))
+        {
+            if a != b {
+                assert_ne!(a.palette(), b.palette(), "{a:?} and {b:?}");
+                for language in Language::ALL {
+                    assert_ne!(a.title(language), b.title(language), "{a:?} and {b:?}");
+                }
+            }
+        }
+        // Numbers already stored on players' disks keep their look.
+        assert_eq!(Theme::from_index(3), Theme::GameColors);
+        assert_eq!(
+            Theme::ALL.map(Theme::shader_index),
+            [0, 1, 2, 4, 5, 6],
+            "the shader branches on these"
+        );
+    }
+
+    #[test]
+    fn only_daylight_is_light_and_it_turns_every_ink_over() {
+        assert_eq!(Theme::ALL.iter().filter(|t| t.is_light()).count(), 1);
+        assert!(Theme::Daylight.is_light());
+        let dark_ink = with_light(false, color::text);
+        let light_ink = with_light(true, color::text);
+        assert_eq!(dark_ink, Color32::WHITE);
+        assert!(lum_of(light_ink) < 0.02, "dark ink on the light look");
+        // Surfaces and edges turn over with the ink, and the primary button is ink with a light label.
+        assert!(lum_of(with_light(true, color::on_primary)) > 0.8);
+        assert!(lum_of(with_light(false, color::on_primary)) < 0.02);
+        // Text keeps its order of strength on both.
+        for light in [false, true] {
+            with_light(light, || {
+                let alphas = [
+                    color::text(),
+                    color::text_label(),
+                    color::text_detail(),
+                    color::text_note(),
+                    color::text_inactive(),
+                ]
+                .map(|c| c.a());
+                assert!(alphas.windows(2).all(|w| w[0] >= w[1]), "{alphas:?}");
+            });
+        }
+    }
+
+    #[test]
     fn default_accents_follow_the_theme() {
         assert_eq!(Theme::Cosmic.default_accent(), Accent::Blue);
         assert_eq!(Theme::Aurora.default_accent(), Accent::Mint);
         assert_eq!(Theme::Sunset.default_accent(), Accent::Coral);
+        assert_eq!(Theme::Ember.default_accent(), Accent::Gold);
+        assert_eq!(Theme::Tide.default_accent(), Accent::Violet);
+        assert_eq!(Theme::Daylight.default_accent(), Accent::Blue);
     }
 
     #[test]

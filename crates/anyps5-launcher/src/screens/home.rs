@@ -12,17 +12,22 @@ use egui::{
 
 use crate::app::model::{GameState, Model, SizeState};
 use crate::screens::glibc_strings::shortfall_text;
+use crate::screens::hub_strings::HubText;
+use crate::screens::ludus_strings::LudusText;
+use crate::screens::ludus_web_strings::BrowserText;
+use crate::screens::notification_strings::NotifyText;
 use crate::screens::online_social_strings::SocialText;
 use crate::screens::online_strings::OnlineText;
 use crate::screens::phone_strings::PhoneText;
 use crate::screens::run_strings::{RunText, friends_line};
+use crate::screens::shelves;
 use crate::screens::strings::{Extra, playtime_text};
 use crate::screens::together_strings::TogetherText;
 use crate::screens::toolkit_pin;
 use crate::screens::update_strings::UpdateText;
 use crate::screens::{
-    ScreenCx, StateLabel, paint_gradient_circle, paint_label, paint_spinner, place, state_label,
-    wrapped,
+    ScreenCx, StateLabel, is_plain_ready, paint_gradient_circle, paint_label, paint_spinner, place,
+    state_label, wrapped,
 };
 use crate::ui::anim::{AnimExt, Motion, lerp};
 use crate::ui::chrome::{self, TileImage, TileOverlay, TileStyle};
@@ -37,7 +42,7 @@ use crate::ui::input;
 use crate::ui::intro;
 use crate::ui::pad_info;
 use crate::ui::text;
-use crate::ui::theme::{self, Weight, color, pad, size, ty, white};
+use crate::ui::theme::{self, Weight, color, pad, size, space, ty, white};
 
 /// Gap between the stacked parts of the hero.
 const HERO_GAP: f32 = 22.0;
@@ -47,7 +52,10 @@ const STATE_GAP: f32 = 4.0;
 const FACTS_ABOVE: f32 = 46.0;
 const FACTS_SPACING: f32 = 48.0;
 /// Between a fact's overline and its value.
-const FACT_GAP: f32 = 6.0;
+const FACT_GAP: f32 = space::S;
+/// Most facts in the row, and the gap between a value and the quiet note beside it.
+const MAX_FACTS: usize = 4;
+const FACT_NOTE_GAP: f32 = space::S;
 /// Between the facts and the line that asks "How did it run?" below them. The row is kept free
 /// whether it shows or not, so nothing moves when it appears or goes.
 const ASK_GAP: f32 = 18.0;
@@ -57,8 +65,9 @@ const ASK_LABEL_GAP: f32 = 16.0;
 const FRIENDS_GAP: f32 = 12.0;
 /// Height of the action row (the console button).
 const ACTION_ROW: f32 = size::BUTTON_MIN_HEIGHT;
-/// Longest a failure or diagnosis text gets.
+/// Longest a failure or diagnosis text gets, and the least it is given.
 const MESSAGE_WIDTH: f32 = 520.0;
+const STATUS_MIN_WIDTH: f32 = 240.0;
 
 /// A press the model has to hear about, collected while painting.
 #[derive(Clone, Copy, Debug)]
@@ -80,18 +89,35 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
     let ctx = cx.ctx.clone();
     let screen = ctx.content_rect();
     let mut presses = Vec::new();
+    let mut shelf_presses = Vec::new();
     crate::ui::shade::paint(ui.painter(), screen, !cx.model.games.is_empty());
     // At launch the parts rise into place one after another (ui::intro).
     staged(ui, &ctx, intro::TOP_BAR, screen, |ui, screen| {
         top_bar(ui, cx, screen, &mut presses);
     });
     if cx.model.games.is_empty() {
+        cx.model.shelf_count = 0;
         staged(ui, &ctx, intro::HERO, screen, |ui, screen| {
             empty_library(ui, cx, screen, &mut presses);
         });
+        // The one button of the page is a stop like any other: the bar says what Select does (not
+        // while the scan runs, when there is nothing to select).
+        if !cx.model.scanning {
+            let language = cx.language();
+            let set = HintSet {
+                back: back_does_something(cx.model),
+                options: false,
+            };
+            staged(ui, &ctx, intro::HINTS, screen, |ui, screen| {
+                hints(ui, language, set, screen);
+            });
+        }
     } else {
         staged(ui, &ctx, intro::TILES, screen, |ui, screen| {
             tile_row(ui, cx, screen, &mut presses);
+        });
+        staged(ui, &ctx, intro::HERO, screen, |ui, screen| {
+            shelf_band(ui, cx, screen, &mut shelf_presses);
         });
         staged(ui, &ctx, intro::HERO, screen, |ui, screen| {
             hero(ui, cx, screen, &mut presses);
@@ -105,6 +131,9 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
             hints(ui, language, set, screen);
         });
     }
+    for focus in shelf_presses {
+        cx.model.click(focus);
+    }
     for press in presses {
         match press {
             Press::Tile { index, double } => cx.model.click_tile(index, double),
@@ -112,6 +141,66 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
             Press::ChooseFolder => cx.model.request_folder_dialog(),
         }
     }
+}
+
+/// What the shelves show and how many games each takes, when the window has room for them.
+struct ShelfPlan {
+    shelves: Vec<crate::app::library_view::Shelf>,
+    cap: usize,
+    /// The side of a game icon: the largest the room allows.
+    tile: f32,
+}
+
+/// The shelves fit between the tile row and the hero's title (a one-line title, with its state
+/// above it); a low or narrow window shows none, and the hero keeps its place.
+fn shelf_plan(
+    model: &Model,
+    painter: &egui::Painter,
+    screen: Rect,
+    language: Language,
+) -> Option<ShelfPlan> {
+    let all = model.shelves();
+    if all.is_empty() {
+        return None;
+    }
+    let (_, hint_height) = hint_bar_size(painter, language, true);
+    let geometry = hero_geometry(screen, hint_height, 0.0);
+    let state_height = ty::STATE_LABEL.line_height() + STATE_GAP;
+    // The room from the tile row down to the hero's title (a one-line title, its state above it).
+    let room = geometry.title_bottom
+        - ty::HERO_TITLE.line_height()
+        - state_height
+        - shelves::BELOW
+        - shelves::top(screen);
+    let tile = shelves::tile_for(room)?;
+    let cap = shelves::cap(screen, all.len(), tile);
+    if cap == 0 {
+        return None;
+    }
+    Some(ShelfPlan {
+        shelves: model.shelves_with(cap),
+        cap,
+        tile,
+    })
+}
+
+fn shelf_band(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<HomeFocus>) {
+    let painter = ui.painter().clone();
+    let language = cx.language();
+    let Some(plan) = shelf_plan(cx.model, &painter, screen, language) else {
+        cx.model.shelf_count = 0;
+        return;
+    };
+    cx.model.shelf_cap = plan.cap;
+    cx.model.shelf_count = plan.shelves.iter().map(|s| s.items.len()).sum();
+    shelves::show(
+        ui,
+        cx,
+        shelves::top(screen),
+        plan.tile,
+        &plan.shelves,
+        presses,
+    );
 }
 
 /// Draws one part of the screen at its intro stage: faded and lowered while it arrives, directly
@@ -157,7 +246,7 @@ fn top_bar(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<P
         Align2::LEFT_CENTER,
         ty::TOP_BAR_TITLE,
         language.text(Key::Games),
-        Color32::WHITE,
+        color::text(),
     );
     // An empty library shows its own scanning state in the middle.
     if cx.model.scanning && !cx.model.games.is_empty() {
@@ -166,19 +255,23 @@ fn top_bar(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<P
             pos2(title.max.x + group_gap * 0.5 + 8.0, mid),
             7.0,
             cx.ctx.clock(),
-            Color32::WHITE,
+            color::text(),
         );
     }
 
     // A connected phone sits after the title, out of the focus order: it only reports.
     let mut after_title = title.max.x;
     if let Some(name) = &cx.model.phone.connected {
+        let label = PhoneText::BarLabel.format(language, &[Arg::Str(name)]);
         after_title = phone_status(
             ui,
             pos2(title.max.x + PHONE_STATUS_GAP, mid),
+            Icon::DEVICE_MOBILE,
             name,
-            language,
-        );
+            &label,
+            None,
+        )
+        .unwrap_or(after_title);
     }
 
     // From the right: clock, then profile, settings, friends and library, all 12 apart.
@@ -228,13 +321,33 @@ fn top_bar(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<P
         .show(&mut row);
     if update_waiting {
         let dot = response.rect.right_top() + vec2(-8.0, 8.0);
-        painter.circle_filled(dot, 6.0, theme::black(0.62));
-        painter.circle_filled(dot, 4.0, white(0.92));
+        painter.circle_filled(dot, GEAR_DOT_HALO, color::mark_halo());
+        painter.circle_filled(dot, GEAR_DOT, color::text());
     }
     if response.clicked() {
         presses.push(Press::Focus(HomeFocus::SETTINGS));
     }
-    // Friends sit between the library and the settings; the count is the friends online now.
+    // The bell sits between the friends and the settings; its badge counts what was not read.
+    let unread_notes = cx.model.notes.unread();
+    let bell_name = if unread_notes == 0 {
+        NotifyText::Title.text(language).to_owned()
+    } else {
+        NotifyText::BellUnread.format(language, &[Arg::Int(unread_notes as i64)])
+    };
+    let bell = IconButton::new(Icon::BELL, bell_name)
+        .focused(focused(HomeFocus::NOTIFICATIONS))
+        .show(&mut row);
+    if unread_notes > 0 {
+        paint_count_badge(
+            &painter,
+            bell.rect.right_top() + vec2(-8.0, 8.0),
+            unread_notes,
+        );
+    }
+    if bell.clicked() {
+        presses.push(Press::Focus(HomeFocus::NOTIFICATIONS));
+    }
+    // Friends sit between the library and the bell; the count is the friends online now.
     let friends_online = online.friends_online();
     let label = match friends_online {
         0 => OnlineText::Friends.text(language).to_owned(),
@@ -266,14 +379,50 @@ fn top_bar(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<P
     if response.clicked() {
         presses.push(Press::Focus(HomeFocus::LIBRARY));
     }
-    // A connected controller sits after the phone (or the title), the same way: it only reports,
-    // and it is left out when the strip has no room for it.
-    if pad_info::connected() {
-        let left = if cx.model.phone.connected.is_some() {
+    // The first status after the title keeps its distance; the next ones sit a control gap apart.
+    let next_left = |after_title: f32| {
+        if after_title > title.max.x {
             after_title + size::CONTROL_GAP
         } else {
             title.max.x + PHONE_STATUS_GAP
-        };
+        }
+    };
+    // A LudusCtrl phone that holds the pad sits after the phone the same way; left out when
+    // the strip has no room for it. A browser client holds the same pad and wears the same pill.
+    let ludus = &cx.model.ludus;
+    let holder = match (&ludus.connected, &ludus.browser.peer) {
+        (Some(name), _) => Some((
+            name.clone(),
+            LudusText::BarLabel.format(language, &[Arg::Str(name)]),
+        )),
+        (None, Some(peer)) => {
+            // What the browser runs on names the pill when it said; else "Browser".
+            let device = ludus.browser.device.as_deref();
+            Some((
+                device
+                    .unwrap_or(BrowserText::BarName.text(language))
+                    .to_owned(),
+                BrowserText::BarLabel.format(language, &[Arg::Str(device.unwrap_or(peer))]),
+            ))
+        }
+        (None, None) => None,
+    };
+    if let Some((name, label)) = holder
+        && let Some(right) = phone_status(
+            ui,
+            pos2(next_left(after_title), mid),
+            Icon::GAME_CONTROLLER,
+            &name,
+            &label,
+            Some(row.min_rect().min.x - group_gap),
+        )
+    {
+        after_title = right;
+    }
+    // A connected controller sits after the phones (or the title), the same way: it only reports,
+    // and it is left out when the strip has no room for it.
+    if pad_info::connected() {
+        let left = next_left(after_title);
         if let Some(right) = pad_status(
             ui,
             pos2(left, mid),
@@ -330,7 +479,7 @@ fn update_notice(
     } else {
         UpdateText::NoticeName.format(language, &version)
     };
-    let height = ControlSize::Small.height() + 8.0;
+    let height = ControlSize::Small.height() + space::S;
     let labels: Vec<&str> = if notice.holding {
         vec![UpdateText::CancelRestart.text(language)]
     } else {
@@ -339,19 +488,19 @@ fn update_notice(
             UpdateText::Later.text(language),
         ]
     };
-    // What it needs: the margin, the glyph, the text and its buttons, each 12 apart.
+    // What it needs: the margin, the text and its buttons, each 12 apart.
     let measure = ui.painter().clone();
-    let needed = 16.0
-        + 18.0
-        + 12.0
+    let needed = space::L
         + text::width(&measure, ty::DETAIL_LARGE, &text)
         + labels
             .iter()
             .map(|label| {
-                12.0 + 2.0 * ControlSize::Small.text_pad() + text::width(&measure, ty::CHIP, label)
+                size::CONTROL_GAP
+                    + 2.0 * ControlSize::Small.text_pad()
+                    + text::width(&measure, ty::CHIP, label)
             })
             .sum::<f32>()
-        + 4.0;
+        + space::XS;
     // One rule for drawing it and for reaching it (the model's focus order reads this).
     let fits = left_middle.x + needed <= limit_x;
     cx.model.notice_fits = fits;
@@ -369,18 +518,9 @@ fn update_notice(
             .layout(Layout::left_to_right(Align::Center)),
     );
     row.multiply_opacity(t);
-    row.spacing_mut().item_spacing.x = 12.0;
-    row.add_space(16.0);
+    row.spacing_mut().item_spacing.x = size::CONTROL_GAP;
+    row.add_space(space::L);
     let painter = row.painter().clone();
-    let glyph = 18.0;
-    let (icon, _) = row.allocate_exact_size(vec2(glyph, glyph), Sense::hover());
-    painter.text(
-        icon.center(),
-        Align2::CENTER_CENTER,
-        Icon::ARROW_CIRCLE_DOWN.glyph(),
-        Icon::ARROW_CIRCLE_DOWN.font(text::quantize_size(glyph), false),
-        white(0.92),
-    );
     let label_width = text::width(&painter, ty::DETAIL_LARGE, &text);
     let (label, response) = row.allocate_exact_size(vec2(label_width, height), Sense::hover());
     response.widget_info(|| WidgetInfo::labeled(Role::Status, true, &group));
@@ -405,7 +545,7 @@ fn update_notice(
     let used = row.min_rect();
     let capsule = Rect::from_min_max(
         pos2(used.min.x, rect.min.y),
-        pos2(used.max.x + 4.0, rect.max.y),
+        pos2(used.max.x + space::XS, rect.max.y),
     );
     ui.painter().set(
         background,
@@ -416,6 +556,10 @@ fn update_notice(
         ),
     );
 }
+
+/// The reminder dot on the gear and the dark halo that lifts it off the glyph (radii).
+const GEAR_DOT: f32 = 4.0;
+const GEAR_DOT_HALO: f32 = 6.0;
 
 /// Room the colon of the clock takes between the hours and the minutes.
 const CLOCK_COLON: f32 = 7.0;
@@ -449,9 +593,9 @@ fn paint_clock(painter: &egui::Painter, right: f32, mid: f32) -> f32 {
         ink,
     );
     // Digits are as tall as capitals: 0.727 em in Inter.
-    let reach = style.size * 0.727 * 0.5 * 0.52;
+    let reach = style.px() * 0.727 * 0.5 * 0.52;
     for dy in [-reach, reach] {
-        painter.circle_filled(pos2(colon_x, mid + dy), style.size * 0.075, ink);
+        painter.circle_filled(pos2(colon_x, mid + dy), style.px() * 0.075, ink);
     }
     left
 }
@@ -461,45 +605,66 @@ const PHONE_STATUS_GAP: f32 = 48.0;
 const PHONE_STATUS_HEIGHT: f32 = 32.0;
 const PHONE_STATUS_NAME_MAX: f32 = 150.0;
 
-/// The status of a connected phone: its icon and name on the pills' surface, 32 high so it
-/// reads as a note beside the 44 high buttons. Not a button: nothing happens on a press.
-fn phone_status(ui: &mut Ui, left_middle: egui::Pos2, name: &str, language: Language) -> f32 {
+/// The status of a connected phone (the phone server's, or a LudusCtrl phone): its icon and name
+/// in quiet ink with no surface, so it reads as a status and not as a button beside the 44 high
+/// ones. Nothing happens on a press. The phone server's pill wears `device-mobile`, LudusCtrl's the
+/// game controller of its switch, so the two differ without reading. `label` is what a screen
+/// reader says. With `limit_x` it is left out (`None`) when it would reach past it.
+fn phone_status(
+    ui: &mut Ui,
+    left_middle: egui::Pos2,
+    icon: Icon,
+    name: &str,
+    label: &str,
+    limit_x: Option<f32>,
+) -> Option<f32> {
     let painter = ui.painter().clone();
     let shown = text::middle_truncate(&painter, ty::CHIP, name, PHONE_STATUS_NAME_MAX);
-    let glyph = 18.0;
-    let width = 12.0 + glyph + 8.0 + text::width(&painter, ty::CHIP, &shown) + 14.0;
+    let glyph = size::BUTTON_ICON_MEDIUM;
+    let width = glyph + space::S + text::width(&painter, ty::CHIP, &shown);
+    if limit_x.is_some_and(|limit| left_middle.x + width > limit) {
+        return None;
+    }
     let rect = Rect::from_min_size(
         pos2(left_middle.x, left_middle.y - PHONE_STATUS_HEIGHT * 0.5),
         vec2(width, PHONE_STATUS_HEIGHT),
     );
-    let label = PhoneText::BarLabel.format(language, &[Arg::Str(name)]);
     let response = ui.allocate_rect(rect, Sense::hover());
-    response.widget_info(|| WidgetInfo::labeled(Role::Label, true, &label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Label, true, label));
+    // The name may have been cut in the middle; the pointer reads it whole, in the launcher's own
+    // chip (DESIGN.md 3.13) and not in a tooltip of the toolkit's.
+    crate::ui::reveal::full_text(
+        ui.ctx(),
+        response.id,
+        rect,
+        name,
+        input::hovered(ui.ctx(), &response),
+        shown != name,
+    );
     if !ui.is_rect_visible(rect) {
-        return rect.max.x;
+        return Some(rect.max.x);
     }
-    components::paint_capsule(&painter, rect, color::surface());
-    let ink = white(0.92);
+    let ink = color::text_detail();
     painter.text(
-        pos2(rect.min.x + 12.0 + glyph * 0.5, rect.center().y),
+        pos2(rect.min.x + glyph * 0.5, rect.center().y),
         Align2::CENTER_CENTER,
-        Icon::DEVICE_MOBILE.glyph(),
-        Icon::DEVICE_MOBILE.font(text::quantize_size(glyph), false),
+        icon.glyph(),
+        icon.font(text::quantize_size(glyph), false),
         ink,
     );
     text::paint(
         &painter,
-        pos2(rect.min.x + 12.0 + glyph + 8.0, rect.center().y),
+        pos2(rect.min.x + glyph + space::S, rect.center().y),
         Align2::LEFT_CENTER,
         ty::CHIP,
         &shown,
         ink,
     );
-    rect.max.x
+    Some(rect.max.x)
 }
 
 /// The status of the connected controller: its icon and, where the pad reports one, its battery.
-/// Same surface and height as [`phone_status`]; not a button.
+/// Same look as [`phone_status`]: quiet ink, no surface; not a button.
 fn pad_status(
     ui: &mut Ui,
     left_middle: egui::Pos2,
@@ -523,14 +688,14 @@ fn pad_status(
         }
         pad_info::Battery::Unknown => (None, Extra::PadStatus.text(language).to_owned()),
     };
-    let glyph = 18.0;
+    let glyph = size::BUTTON_ICON_MEDIUM;
     let charging = matches!(battery, pad_info::Battery::Level { charging: true, .. });
     // A small bolt after the percent says "charging" to the eye; the label says it to the ear.
     let bolt = if charging { 6.0 + BOLT_WIDTH } else { 0.0 };
-    let text_width = shown
-        .as_deref()
-        .map_or(0.0, |s| 8.0 + text::width(&painter, ty::CHIP, s) + bolt);
-    let width = 12.0 + glyph + text_width + 14.0;
+    let text_width = shown.as_deref().map_or(0.0, |s| {
+        space::S + text::width(&painter, ty::CHIP, s) + bolt
+    });
+    let width = glyph + text_width;
     if left_middle.x + width > limit_x {
         return None;
     }
@@ -543,10 +708,9 @@ fn pad_status(
     if !ui.is_rect_visible(rect) {
         return Some(rect.max.x);
     }
-    components::paint_capsule(&painter, rect, color::surface());
-    let ink = white(0.92);
+    let ink = color::text_detail();
     painter.text(
-        pos2(rect.min.x + 12.0 + glyph * 0.5, rect.center().y),
+        pos2(rect.min.x + glyph * 0.5, rect.center().y),
         Align2::CENTER_CENTER,
         Icon::GAME_CONTROLLER.glyph(),
         Icon::GAME_CONTROLLER.font(text::quantize_size(glyph), false),
@@ -555,7 +719,7 @@ fn pad_status(
     if let Some(shown) = shown {
         let text_rect = text::paint(
             &painter,
-            pos2(rect.min.x + 12.0 + glyph + 8.0, rect.center().y),
+            pos2(rect.min.x + glyph + space::S, rect.center().y),
             Align2::LEFT_CENTER,
             ty::CHIP,
             &shown,
@@ -636,7 +800,7 @@ fn paint_pill(painter: &egui::Painter, it: &components::Interaction) -> (Rect, f
 
 /// The ink of a pill: the same white as the icon buttons, focused or not.
 fn pill_ink(_focus: f32) -> Color32 {
-    Color32::WHITE
+    color::text()
 }
 
 /// The avatar (or the sign-in glyph) and the name as one button, on the surface of the icon
@@ -741,7 +905,7 @@ fn profile_button(
             Align2::LEFT_CENTER,
             ty::CHIP,
             words,
-            white(0.72),
+            color::text_detail(),
         )
         .max
         .x;
@@ -759,7 +923,7 @@ fn profile_button(
             Align2::CENTER_CENTER,
             BADGE,
             &count,
-            Color32::BLACK,
+            theme::readable_ink(white(0.92)),
         );
     }
     it.response
@@ -832,6 +996,30 @@ fn friends_button(
     it.response
 }
 
+/// A small count in ink on the corner of a button: the number, "9+" past nine. The number is dark
+/// on the ink disc, so it reads on any picture behind it.
+fn paint_count_badge(painter: &egui::Painter, centre: egui::Pos2, count: usize) {
+    let label = if count > 9 {
+        "9+".to_owned()
+    } else {
+        count.to_string()
+    };
+    let width = if count > 9 { 24.0 } else { 18.0 };
+    let rect = Rect::from_center_size(centre, vec2(width, 18.0));
+    painter.rect_filled(rect.expand(2.0), 11.0, color::mark_halo());
+    painter.rect_filled(rect, 9.0, color::text());
+    text::paint_tabular(
+        painter,
+        pos2(
+            rect.min.x + (width - text::tabular_width(painter, ty::MICRO, &label)) * 0.5,
+            rect.center().y - ty::MICRO.line_height() * 0.5,
+        ),
+        ty::MICRO,
+        &label,
+        egui::Color32::BLACK,
+    );
+}
+
 /// Where the friends icon ends inside its 44 dp circle (the glyph is 20 dp, centred).
 const FRIENDS_ICON_END: f32 = (size::ICON_BUTTON + size::ICON_BUTTON_GLYPH) * 0.5;
 /// The online dot, its distance from the icon and from the number.
@@ -856,6 +1044,7 @@ pub fn tile_overlay(state: &GameState, weights: &crate::app::pipeline::StepWeigh
         GameState::Installing { step, fraction } => {
             TileOverlay::Installing(weights.overall(*step, *fraction))
         }
+        GameState::Uninstalling { fraction } => TileOverlay::Installing(*fraction),
         GameState::Preparing { progress, paused } => TileOverlay::Preparing {
             fraction: progress.map(|(step, fraction)| weights.overall(step, fraction)),
             paused: *paused,
@@ -988,7 +1177,7 @@ fn tile_row(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut Vec<
                 ui.interact(rect, Id::unique(("tile", game.id.as_str())), Sense::click());
             response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label.as_str()));
             crate::ui::a11y::follow(&ctx, response.id, ring_on && is_selected);
-            if input::hovered(&ctx, &response) {
+            if under_pointer && response.contains_pointer() {
                 ctx.set_cursor_icon(CursorIcon::PointingHand);
             }
             if response.double_clicked() {
@@ -1134,7 +1323,7 @@ fn paint_hero(
         &painter,
         ty::HERO_TITLE,
         &game.name,
-        Color32::WHITE,
+        color::text(),
         width,
         2,
     );
@@ -1143,48 +1332,56 @@ fn paint_hero(
             break;
         }
         let style = text::scaled(ty::HERO_TITLE, 1.0 - 0.1 * step as f32);
-        title = wrapped(&painter, style, &game.name, Color32::WHITE, width, 2);
+        title = wrapped(&painter, style, &game.name, color::text(), width, 2);
     }
     // A low window must not push a two-line title (and the state above it) over the tile row.
     let state_height = ty::STATE_LABEL.line_height() + STATE_GAP;
-    let tiles_bottom =
+    let mut tiles_bottom =
         screen.min.y + pad::HOME_TOP + size::ICON_BUTTON + 34.0 + size::TILE_LARGE + 24.0;
+    // The shelves, when they are drawn, are part of what the title must not run into.
+    if let Some(plan) = shelf_plan(cx.model, &painter, screen, language) {
+        tiles_bottom = shelves::top(screen) + shelves::height(plan.tile) + shelves::BELOW;
+    }
     if geometry.title_bottom - title.size().y - state_height < tiles_bottom {
         title = wrapped(
             &painter,
             ty::HERO_TITLE,
             &game.name,
-            Color32::WHITE,
+            color::text(),
             width,
             1,
         );
     }
     let title_top = geometry.title_bottom - title.size().y;
-    painter.galley(pos2(x, title_top), title, Color32::WHITE);
+    painter.galley(pos2(x, title_top), title, color::text());
 
-    // The state, right above the title (the selected tile carries no label of its own).
-    paint_label(
-        &painter,
-        pos2(
-            x,
-            title_top - STATE_GAP - ty::STATE_LABEL.line_height() * 0.5,
-        ),
-        &state_label(&state, language),
-        ty::STATE_LABEL,
-        width,
-        1,
-        1.0,
-    );
+    // The state, right above the title (the selected tile carries no label of its own). The plain
+    // "Ready" is left out: the Play button says it, and every game would repeat it.
+    if !is_plain_ready(&state) {
+        paint_label(
+            &painter,
+            pos2(
+                x,
+                title_top - STATE_GAP - ty::STATE_LABEL.line_height() * 0.5,
+            ),
+            &state_label(&state, language),
+            ty::STATE_LABEL,
+            width,
+            1,
+            1.0,
+        );
+    }
 
     // 2. Action row.
     let row = Rect::from_min_size(pos2(x, geometry.actions_top), vec2(width, ACTION_ROW));
     let has_trophies = cx.model.trophies.get(&game.id);
     let trophy_text =
         has_trophies.map(|set| format!("{}/{}", set.unlocked_count(), set.trophies.len()));
-    // Play, then Play Together when the game can be played together, then trophies, then "...".
+    // Play, then Play Together when the game can be played together, then trophies, then the Game Hub, then "...".
     let together = crate::app::together::hostable(cx.model).is_some();
     let trophies_index = 1 + usize::from(together);
-    let settings_index = trophies_index + usize::from(trophy_text.is_some());
+    let hub_index = trophies_index + usize::from(trophy_text.is_some());
+    let settings_index = hub_index + 1;
     let (primary_title, primary_icon, primary_fill) = primary_look(&state, language);
     let mut pressed = None;
     let after_buttons = place(ui, row, |ui| {
@@ -1193,7 +1390,13 @@ fn paint_hero(
         let primary = ConsoleButton::new(primary_title)
             .icon(primary_icon)
             .icon_fill(primary_fill)
-            .prominent(true)
+            // While the game starts or its copy is removed nothing can be pressed: the button only
+            // reports, and while it is removed it is greyed out.
+            .prominent(!matches!(
+                state,
+                GameState::Starting | GameState::Uninstalling { .. }
+            ))
+            .enabled(!matches!(state, GameState::Uninstalling { .. }))
             .min_width(size::PLAY_MIN_WIDTH)
             .focused(focused(0))
             .show(ui);
@@ -1221,6 +1424,12 @@ fn paint_hero(
                 pressed = Some(HomeFocus::Actions(trophies_index));
             }
         }
+        let hub = ConsoleButton::icon_only(Icon::SQUARES_FOUR, HubText::Overline.text(language))
+            .focused(focused(hub_index))
+            .show(ui);
+        if hub.clicked() {
+            pressed = Some(HomeFocus::Actions(hub_index));
+        }
         let more = ConsoleButton::icon_only(Icon::DOTS_THREE, language.text(Key::Options))
             .focused(focused(settings_index))
             .show(ui);
@@ -1232,39 +1441,19 @@ fn paint_hero(
     if live && let Some(focus) = pressed {
         presses.push(Press::Focus(focus));
     }
-    action_row_status(ui, cx, game, &state, after_buttons.x, geometry.actions_top);
+    action_row_status(
+        ui,
+        cx,
+        game,
+        &state,
+        after_buttons.x,
+        geometry.actions_top,
+        screen.max.x - pad::HERO_X,
+    );
 
-    // The glibc notice takes the line under Play while it applies: it says why a start may fail.
-    let glibc_line = cx
-        .model
-        .glibc
-        .filter(|_| glibc_notice_applies(&state))
-        .map(|short| shortfall_text(&short, language));
-    if let Some(line) = &glibc_line {
-        let top = geometry.actions_top + ACTION_ROW + FRIENDS_GAP;
-        let rect = Rect::from_min_size(pos2(x, top), vec2(width, ty::DETAIL_LARGE.line_height()));
-        let response = place(ui, rect, |ui| {
-            ui.allocate_exact_size(rect.size(), Sense::hover()).1
-        });
-        response.widget_info(|| WidgetInfo::labeled(Role::Label, true, line.as_str()));
-        paint_label(
-            &painter,
-            pos2(x, rect.center().y),
-            &StateLabel {
-                icon: Icon::WARNING,
-                fill: true,
-                tint: color::warning_text(),
-                text: line.clone(),
-            },
-            ty::DETAIL_LARGE,
-            width,
-            1,
-            1.0,
-        );
-    }
     // Friends who play this game now, under Play.
     let names = cx.model.online.friends_playing(&game.title_id);
-    if let Some(line) = friends_line(&names, language).filter(|_| glibc_line.is_none()) {
+    if let Some(line) = friends_line(&names, language) {
         let galley = wrapped(
             &painter,
             ty::DETAIL_LARGE,
@@ -1277,15 +1466,19 @@ fn paint_hero(
         painter.galley(pos2(x, top), galley, color::text_subtitle());
     }
 
-    // 3. Facts: size, title ID, version. The state already stands next to the selected tile.
+    // 3. Facts, at most four: size, version (the title ID quiet beside it), then what played, the
+    // toolkit and the players' verdict add. The state already stands next to the selected tile.
     let size_text = match cx.model.sizes.get(&game.id) {
         Some(SizeState::Known(bytes)) => byte_text(*bytes as i64, language),
         _ => byte_text(-1, language),
     };
-    let mut facts = vec![
-        (language.text(Key::Size), size_text),
-        (language.text(Key::TitleID), game.title_id.clone()),
-        (language.text(Key::Version), game.version.clone()),
+    let mut facts: Vec<(&str, String, Option<&str>)> = vec![
+        (language.text(Key::Size), size_text, None),
+        (
+            language.text(Key::Version),
+            game.version.clone(),
+            Some(game.title_id.as_str()),
+        ),
     ];
     // Said only once there is something to say: a game never played shows no "0 min".
     let played = cx.model.prefs.playtime(&game.id);
@@ -1293,11 +1486,12 @@ fn paint_hero(
         facts.push((
             Extra::Played.text(language),
             playtime_text(played.seconds, language),
+            None,
         ));
     }
     // The toolkit the game is unlocked and started with: the global one, or the release it stays on.
     if let Some(value) = toolkit_pin::fact_value(&cx.model.toolkit_of(&game.id), language) {
-        facts.push((Extra::Toolkit.text(language), value));
+        facts.push((Extra::Toolkit.text(language), value, None));
     }
     // What players found, once enough of them said (run reports).
     if let Some((verdict, reports)) = cx.model.online.runs.verdict(&game.title_id, &game.version) {
@@ -1308,11 +1502,26 @@ fn paint_hero(
                 Arg::Int(i64::from(reports)),
             ],
         );
-        facts.insert(3, (RunText::Runs.text(language), value));
+        facts.insert(2, (RunText::Runs.text(language), value, None));
+    }
+    // A fifth fact would crowd the row; the playing time is the one that gives way.
+    if facts.len() > MAX_FACTS
+        && let Some(at) = facts
+            .iter()
+            .position(|f| f.0 == Extra::Played.text(language))
+    {
+        facts.remove(at);
     }
     let mut left = x;
-    for (title, value) in &facts {
-        left += fact(ui, pos2(left, geometry.facts_top), title, value, language) + FACTS_SPACING;
+    for (title, value, note) in &facts {
+        left += fact(
+            ui,
+            pos2(left, geometry.facts_top),
+            title,
+            value,
+            *note,
+            language,
+        ) + FACTS_SPACING;
     }
 
     // 4. "How did it run?", once, after a session.
@@ -1406,7 +1615,7 @@ fn ask_line(
     }
 }
 
-fn primary_look(state: &GameState, language: Language) -> (&'static str, Icon, bool) {
+pub fn primary_look(state: &GameState, language: Language) -> (&'static str, Icon, bool) {
     match state {
         GameState::Installed { .. } => (language.text(Key::Play), Icon::PLAY, true),
         GameState::Preparing { .. } => (language.text(Key::Play), Icon::PLAY, true),
@@ -1417,12 +1626,41 @@ fn primary_look(state: &GameState, language: Language) -> (&'static str, Icon, b
         GameState::Installing { .. } | GameState::Queued => {
             (language.text(Key::Cancel), Icon::X, false)
         }
+        // Removing a copy cannot be undone half way: the button only says what is going on.
+        GameState::Uninstalling { .. } => (
+            crate::screens::strings::Extra::Uninstalling.text(language),
+            Icon::TRASH,
+            false,
+        ),
         GameState::Starting => (language.text(Key::Starting), Icon::HOURGLASS, false),
-        GameState::Running => (language.text(Key::Running), Icon::PLAY_CIRCLE, false),
+        // The button names what a press does (it brings the game's window back); the state line
+        // above the title already says "Playing".
+        GameState::Running => (
+            crate::screens::ingame::InGameText::BackToGame.text(language),
+            Icon::PLAY_CIRCLE,
+            false,
+        ),
     }
 }
 
+/// What the bar next to the buttons shows while a game is busy.
+struct Running {
+    /// 0..=1 on the whole bar.
+    overall: f32,
+    /// The step's name, read out with the percentage.
+    label: &'static str,
+    /// The relinker runs for a while without reporting: the bar sweeps.
+    indeterminate: bool,
+    paused: bool,
+}
+
 /// To the right of the buttons: the unlock progress, the failure or the diagnosis.
+/// How wide the status to the right of the buttons may be: the usual measure, or what the hero
+/// leaves of the window.
+fn status_width(x: f32, hero_right: f32) -> f32 {
+    MESSAGE_WIDTH.min((hero_right - x).max(STATUS_MIN_WIDTH))
+}
+
 fn action_row_status(
     ui: &mut Ui,
     cx: &mut ScreenCx<'_>,
@@ -1430,24 +1668,49 @@ fn action_row_status(
     state: &GameState,
     x: f32,
     top: f32,
+    screen_right: f32,
 ) {
     let language = cx.language();
     let accent = cx.accent();
     let painter = ui.painter().clone();
     let mid = top + ACTION_ROW * 0.5;
+    let room = status_width(x + 16.0, screen_right);
+    let relinking = |step: crate::app::pipeline::UnlockStep, fraction: f32| {
+        step == crate::app::pipeline::UnlockStep::Relink && fraction == 0.0
+    };
     let running = match state {
-        GameState::Installing { step, fraction } => Some((*step, *fraction, false)),
-        GameState::Preparing { progress, paused } => progress.map(|(s, f)| (s, f, *paused)),
+        GameState::Installing { step, fraction } => Some(Running {
+            overall: cx.model.overall(*step, *fraction),
+            label: language.text(step.title_key()),
+            indeterminate: relinking(*step, *fraction),
+            paused: false,
+        }),
+        GameState::Preparing { progress, paused } => progress.map(|(step, fraction)| Running {
+            overall: cx.model.overall(step, fraction),
+            label: language.text(step.title_key()),
+            indeterminate: relinking(step, fraction),
+            paused: *paused,
+        }),
+        // Removing a copy has no steps: one bar from 0 to 100.
+        GameState::Uninstalling { fraction } => Some(Running {
+            overall: *fraction,
+            label: crate::screens::strings::Extra::Uninstalling.text(language),
+            indeterminate: false,
+            paused: false,
+        }),
         _ => None,
     };
     match state {
         _ if running.is_some() => {
-            let (step, fraction, paused) = running.expect("checked");
-            let (step, fraction) = (&step, &fraction);
+            let Running {
+                overall,
+                label,
+                indeterminate,
+                paused,
+            } = running.expect("checked");
             // The state line above the title already names the step: the bar and its percentage
             // sit on the buttons' centre line.
             let left = x + 16.0;
-            let overall = cx.model.overall(*step, *fraction);
             let block = size::HERO_PROGRESS_WIDTH;
             let percent = format!("{}%", (overall * 100.0) as u32);
             text::paint_tabular(
@@ -1458,7 +1721,7 @@ fn action_row_status(
                 ),
                 ty::PROGRESS_PERCENT,
                 &percent,
-                white(0.85),
+                color::text_label(),
             );
             // The time left, from the measured speed; nothing until there is enough to tell.
             let note = if paused {
@@ -1470,7 +1733,7 @@ fn action_row_status(
             };
             let spoken = format!(
                 "{} {percent}{}",
-                language.text(step.title_key()),
+                label,
                 note.as_deref()
                     .map(|n| format!(", {n}"))
                     .unwrap_or_default()
@@ -1498,12 +1761,12 @@ fn action_row_status(
                 vec2(block, size::PROGRESS_HEIGHT),
             );
             place(ui, bar, |ui| {
-                if *step == crate::app::pipeline::UnlockStep::Relink && *fraction == 0.0 {
+                if indeterminate {
                     IndeterminateLine::new(accent).width(block).show(ui);
                 } else {
                     ProgressLine::new(overall, if paused { white(0.55) } else { accent })
                         .width(block)
-                        .label(language.text(step.title_key()))
+                        .label(label)
                         .show(ui);
                 }
             });
@@ -1518,48 +1781,57 @@ fn action_row_status(
                 ty::DETAIL_LARGE,
                 note,
                 color::text_subtitle(),
-                MESSAGE_WIDTH,
+                room,
                 2,
             );
             let top = mid - galley.size().y * 0.5;
             painter.galley(pos2(x + 16.0, top), galley, color::text_subtitle());
         }
         GameState::Failed(message) => {
-            // What happened and what to do, in words; the technical message stays under it, quiet.
-            let headline = wrapped(
-                &painter,
-                ty::ROW_TITLE,
-                crate::screens::prepare_strings::failure_headline(language),
-                color::error_text(),
-                MESSAGE_WIDTH,
-                2,
-            );
+            // The state line above the title says that it stopped; here is what to do, in words.
+            // The technical message is in the log, never here.
             let detail = wrapped(
                 &painter,
-                ty::DETAIL,
+                ty::DETAIL_LARGE,
                 message,
                 color::text_subtitle(),
-                MESSAGE_WIDTH,
-                2,
+                room,
+                3,
             );
-            let gap = 4.0;
-            let top = mid - (headline.size().y + gap + detail.size().y) * 0.5;
-            let detail_top = top + headline.size().y + gap;
-            painter.galley(pos2(x + 16.0, top), headline, color::error_text());
-            let total = Rect::from_min_size(
-                pos2(x + 16.0, top),
-                vec2(MESSAGE_WIDTH, detail_top + detail.size().y - top),
-            );
+            let top = mid - detail.size().y * 0.5;
+            let total = Rect::from_min_size(pos2(x + 16.0, top), vec2(room, detail.size().y));
             let name = format!(
                 "{} {message}",
                 crate::screens::prepare_strings::failure_headline(language)
             );
-            ui.allocate_rect(total, Sense::hover())
-                .widget_info(|| WidgetInfo::labeled(Role::Label, true, name.as_str()));
-            painter.galley(pos2(x + 16.0, detail_top), detail, color::text_subtitle());
+            let response = ui.allocate_rect(total, Sense::hover());
+            response.widget_info(|| WidgetInfo::labeled(Role::Label, true, name.as_str()));
+            // A sentence that did not fit stays readable in full under the pointer.
+            crate::ui::reveal::full_text(
+                cx.ctx,
+                response.id,
+                total,
+                message.as_str(),
+                input::hovered(cx.ctx, &response),
+                detail.elided,
+            );
+            painter.galley(pos2(x + 16.0, top), detail, color::text_subtitle());
         }
         _ => {
-            if let Some(summary) = cx.model.diagnoses.get(&game.id) {
+            // One status at a time: the glibc shortfall (why a start may fail) before the last
+            // run's diagnosis.
+            let glibc = cx
+                .model
+                .glibc
+                .filter(|_| glibc_notice_applies(state))
+                .map(|short| shortfall_text(&short, language));
+            if let Some(text) = glibc.or_else(|| cx.model.diagnoses.get(&game.id).cloned()) {
+                let room = status_width(x, screen_right);
+                let response = ui.allocate_rect(
+                    Rect::from_min_size(pos2(x, top), vec2(room, ACTION_ROW)),
+                    Sense::hover(),
+                );
+                response.widget_info(|| WidgetInfo::labeled(Role::Label, true, text.as_str()));
                 paint_label(
                     &painter,
                     pos2(x, mid),
@@ -1567,11 +1839,11 @@ fn action_row_status(
                         icon: Icon::WARNING,
                         fill: true,
                         tint: color::warning_text(),
-                        text: summary.clone(),
+                        text,
                     },
                     ty::DETAIL_LARGE,
-                    MESSAGE_WIDTH,
-                    2,
+                    room,
+                    3,
                     1.0,
                 );
             }
@@ -1579,30 +1851,39 @@ fn action_row_status(
     }
 }
 
-/// The glibc notice belongs to the states in which a player unlocks or starts a game; a running
-/// game has started already.
+/// The glibc notice belongs to the states in which a player is about to unlock or start a game and
+/// the status place is free. Installing, preparing and failed have a status of their own there; a
+/// running game has started already.
 fn glibc_notice_applies(state: &GameState) -> bool {
-    !matches!(
+    matches!(
         state,
-        GameState::Running | GameState::Starting | GameState::Unreadable
+        GameState::Locked | GameState::Queued | GameState::Installed { .. }
     )
 }
 
 /// One fact of the hero: a quiet overline over its value, with space and no card around it
 /// (DESIGN.md 3.7). Returns its width.
-fn fact(ui: &mut Ui, at: egui::Pos2, title: &str, value: &str, language: Language) -> f32 {
+fn fact(
+    ui: &mut Ui,
+    at: egui::Pos2,
+    title: &str,
+    value: &str,
+    note: Option<&str>,
+    language: Language,
+) -> f32 {
     let painter = ui.painter().clone();
     let overline = text::to_upper(title, language);
-    let width = text::width(&painter, ty::INFO_OVERLINE, &overline).max(text::width(
-        &painter,
-        ty::INFO_VALUE,
-        value,
-    ));
+    let note_width = note.map_or(0.0, |n| FACT_NOTE_GAP + text::width(&painter, ty::NOTE, n));
+    let width = text::width(&painter, ty::INFO_OVERLINE, &overline)
+        .max(text::width(&painter, ty::INFO_VALUE, value) + note_width);
     let rect = Rect::from_min_size(at, vec2(width, facts_height()));
     let response = place(ui, rect, |ui| {
         ui.allocate_exact_size(rect.size(), Sense::hover()).1
     });
-    let name = format!("{title}: {value}");
+    let name = match note {
+        Some(note) => format!("{title}: {value}, {note}"),
+        None => format!("{title}: {value}"),
+    };
     response.widget_info(|| WidgetInfo::labeled(Role::Label, true, name.as_str()));
     text::paint(
         &painter,
@@ -1612,15 +1893,56 @@ fn fact(ui: &mut Ui, at: egui::Pos2, title: &str, value: &str, language: Languag
         &overline,
         color::text_overline(),
     );
-    text::paint(
+    // The value and the quiet note beside it stand on one baseline.
+    let value_top = at.y + ty::INFO_OVERLINE.line_height() + FACT_GAP;
+    let baseline = value_top + baseline_offset(&painter, ty::INFO_VALUE, value);
+    paint_on_baseline(
         &painter,
-        pos2(at.x, at.y + ty::INFO_OVERLINE.line_height() + FACT_GAP),
-        Align2::LEFT_TOP,
+        pos2(at.x, baseline),
         ty::INFO_VALUE,
         value,
-        white(0.92),
+        color::text_label(),
     );
+    if let Some(note) = note {
+        let value_width = text::width(&painter, ty::INFO_VALUE, value);
+        paint_on_baseline(
+            &painter,
+            pos2(at.x + value_width + FACT_NOTE_GAP, baseline),
+            ty::NOTE,
+            note,
+            color::text_note(),
+        );
+    }
     width
+}
+
+/// How far the baseline of a line of `text` lies below its top.
+fn baseline_offset(painter: &egui::Painter, style: theme::TextStyle, text_: &str) -> f32 {
+    let galley = text::layout(painter, style, text_, Color32::WHITE, f32::INFINITY);
+    galley
+        .rows
+        .first()
+        .and_then(|row| row.glyphs.first().map(|glyph| row.pos.y + glyph.pos.y))
+        .unwrap_or(style.px())
+}
+
+/// Paints `text` with its baseline at `at.y` and its left edge at `at.x`.
+fn paint_on_baseline(
+    painter: &egui::Painter,
+    at: egui::Pos2,
+    style: theme::TextStyle,
+    text_: &str,
+    color: Color32,
+) {
+    let top = at.y - baseline_offset(painter, style, text_);
+    text::paint(
+        painter,
+        pos2(at.x, top),
+        Align2::LEFT_TOP,
+        style,
+        text_,
+        color,
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1682,7 +2004,7 @@ fn empty_library(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut
         Align2::CENTER_TOP,
         ty::EMPTY_TITLE,
         title,
-        Color32::WHITE,
+        color::text(),
     );
     y += ty::EMPTY_TITLE.line_height() + 18.0;
     // While the scan runs the advice to add dumps would contradict the title.
@@ -1718,6 +2040,10 @@ fn empty_library(ui: &mut Ui, cx: &mut ScreenCx<'_>, screen: Rect, presses: &mut
         y += ty::DETAIL.line_height() + 18.0;
     }
     y += 10.0;
+    // While the scan runs there is nothing to ask for: the state stands alone.
+    if scanning {
+        return;
+    }
     let focused = cx.model.overlay.is_none();
     let button_title = language.text(if folder_set {
         Key::ChangeFolder

@@ -2,23 +2,27 @@
 //! be screenshotted and compared with the original (`docs/DESIGN.md` screenshot table).
 //!
 //! ```text
-//! anyplay-launcher --gallery=settings|settings1..6|game-settings|confirm|controls|controls-capture|
+//! anyplay-launcher --gallery=controllers|controllers-test|controllers-lightbar|controllers-lightbar-custom|settings-sound|settings|settings1..6|game-settings|game-settings-foot|confirm|controls|controls-capture|
 //!                           controls-end|advanced|trophies|trophies-hidden|trophies-revealed|banner|start|unlocking|log|report|library|
 //!                           captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
-//!                           about-update|behavior-links|settings-codec|settings-codec-off|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
+//!                           game-hub|game-hub-running|game-hub-empty|trophies-all|
+//!                           find-players|find-players-mine|find-players-empty|post-listing|send-to-friend|
+//!                           about-update|behavior-links|settings-console-off|settings-console-autostart|settings-console|settings-console-image|settings-console-unavailable|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
 //!                           update-required|update-required-downloading|update-required-failed|
-//!                           update-required-download|update-required-offline|
-//!                           saves|saves-empty|restore|
+//!                           update-required-download|update-required-packaged|
+//!                           update-required-packaged-long|update-required-offline|
+//!                           saves|saves-empty|restore|toolkit-missing|
 //!                           online|online-browser|online-friends|online-friends-busy|
 //!                           online-friends-empty|online-requests|online-friend|
 //!                           online-account|online-account-appearing|online-picker|
 //!                           online-party|online-party-picker|online-messages|online-conversation|
 //!                           online-message|online-request|
 //!                           friends-message-own|friends-quick-replies|friends-keyboard|
-//!                           friends-chat-options|
+//!                           friends-chat-options|friends-confirm|friends-confirm-unsend|
+//!                           friends-confirm-party|
 //!                           online-party-voice|online-party-member|online-voice|online-voice-key|
 //!                           online-voice-devices|online-voice-denied|
 //!                           online-screen-ready|online-screen-hosting|online-screen-offer|
@@ -32,7 +36,7 @@
 //!                           compare|compare-secret|compare-revealed|compare-numbers|
 //!                           compare-loading|compare-offline|compare-error|compare-hidden|
 //!                           compare-empty|
-//!                           feed|feed-reaction|feed-empty|feed-loading|feed-error
+//!                           feed|feed-empty|feed-loading|feed-error
 //!                           incoming-call|incoming-call-discord|in-call|in-call-open|in-call-discord|calling|
 //!                           missed-call|party-discord
 //!                 [--screenshot=out.png] [--size=WxH] [--tr]
@@ -59,6 +63,7 @@ use crate::app::preview::{HomeStand, Scene};
 use crate::screens::advanced::{AdvancedData, AdvancedPanel};
 use crate::screens::banner::{self, BannerLook, BannerTrophy};
 use crate::screens::captures::sample::CapturesLook;
+use crate::screens::controllers::{ControllersData, ControllersPanel};
 use crate::screens::controls::{ControlsData, ControlsPanel};
 use crate::screens::game_settings::{
     GameSettingsData, GameSettingsPanel, RecommendedRow, UninstallPanel,
@@ -68,7 +73,7 @@ use crate::screens::log::{LogData, LogView, ReviewData};
 use crate::screens::recommended::{RecommendedData, RecommendedPanel};
 use crate::screens::saves::{RestorePanel, SavesData, SavesPanel};
 use crate::screens::settings::{
-    LauncherUpdate, SettingsEnv, SettingsPanel, UpdateState, apply_preferences,
+    Category, LauncherUpdate, SettingsEnv, SettingsPanel, UpdateState, apply_preferences,
 };
 use crate::screens::share_strings::Share;
 use crate::screens::start::{StartData, StartScreen};
@@ -81,8 +86,96 @@ use crate::ui::chrome::{TileImage, TileOverlay};
 use crate::ui::i18n::Key;
 use crate::ui::icons::Icon;
 use crate::ui::input::InputEvent;
-use crate::ui::theme::white;
 use anyps5_core::gamefiles::{GameInput, parse_input_ini};
+
+/// The states of the Game Hub (docs/DESIGN.md 5.22).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HubLook {
+    /// Trophies, captures, a friend playing, Play Together and a known verdict.
+    Full,
+    /// The game runs: the primary action is Back to Game.
+    Running,
+    /// Nothing to show yet: no trophies, no captures, nobody playing.
+    Empty,
+}
+
+/// General with Console Mode and the start at sign-in in one state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConsoleLook {
+    /// Everything off, on Windows: the rows of their own.
+    Off,
+    /// Start with Windows on, Console Mode off.
+    Autostart,
+    /// Console Mode on: the way out under the switch.
+    On,
+    /// Linux, the entry starts an AppImage file.
+    Image,
+    /// This copy has nothing to point an entry at.
+    Unavailable,
+}
+
+impl ConsoleLook {
+    fn env(self) -> crate::screens::settings::AutostartEnv {
+        use crate::screens::settings::{AutostartEnv, AutostartState};
+        use anyps5_core::platform::Os;
+        let (state, os) = match self {
+            ConsoleLook::Off => (AutostartState::Off, Os::Windows),
+            ConsoleLook::Autostart | ConsoleLook::On => (AutostartState::On, Os::Windows),
+            ConsoleLook::Image => (AutostartState::OnAppImage, Os::Linux),
+            ConsoleLook::Unavailable => (AutostartState::Unavailable, Os::Linux),
+        };
+        AutostartEnv { state, os }
+    }
+}
+
+/// The OpenH264 row in each of its states (Linux), for the longest texts: a failed download shows
+/// the error as the system gives it, the refusal and the load failure the share worker's words.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CodecLook {
+    Ready,
+    Off,
+    Downloading,
+    Failed,
+    Refused,
+    NotLoaded,
+}
+
+impl CodecLook {
+    pub fn env(self) -> crate::screens::settings::Openh264Env {
+        use anyps5_core::openh264::CodecState;
+        let (state, worker) = match self {
+            CodecLook::Ready | CodecLook::Off => (CodecState::Ready, Some(("ready".into(), None))),
+            CodecLook::Downloading => (CodecState::Downloading, None),
+            CodecLook::Failed => (
+                CodecState::Failed(
+                    "https://ciscobinary.openh264.org/libopenh264-2.6.0-linux64.8.so.bz2: \
+                     Connection Failed: Connect error: connection timed out"
+                        .into(),
+                ),
+                None,
+            ),
+            CodecLook::Refused => (
+                CodecState::Ready,
+                Some((
+                    "refused".into(),
+                    Some("/home/player/.local/share/AnyPlay/Network/bin/libopenh264.so.8".into()),
+                )),
+            ),
+            CodecLook::NotLoaded => (
+                CodecState::Ready,
+                Some((
+                    "failed".into(),
+                    Some(
+                        "/home/player/.local/share/AnyPlay/Network/bin/libopenh264.so.8: \
+                         cannot open shared object file"
+                            .into(),
+                    ),
+                )),
+            ),
+        };
+        crate::screens::settings::Openh264Env { state, worker }
+    }
+}
 
 /// The page to show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,9 +183,18 @@ pub enum ScreenPage {
     /// Settings on a category (0 = Appearance, in its rows; the others at the category level).
     Settings(usize),
     GameSettings,
+    /// The foot of the game settings: the last group and Uninstall alone under it.
+    GameSettingsFoot,
     /// The game sheet on "Toolkit for This Game", the game staying on its own release.
     GameToolkit,
     Confirm,
+    Controllers,
+    ControllersTest,
+    /// The light bar row of a DualSense, with a preset (`false`) or a custom colour (`true`), whose
+    /// hue and brightness sliders show under it.
+    ControllersLight(bool),
+    /// Settings, Sound: the volume sliders, the first one focused.
+    SettingsSound,
     Controls,
     ControlsCapture,
     /// The last rows: import, export, reset.
@@ -103,6 +205,8 @@ pub enum ScreenPage {
     TrophiesHidden,
     /// The same trophy after Show.
     TrophiesRevealed,
+    /// A game whose trophy set is empty.
+    TrophiesEmpty,
     Banner,
     Start,
     Unlocking,
@@ -110,8 +214,18 @@ pub enum ScreenPage {
     /// The review of a report to AnyPS5.
     Report,
     Library,
+    /// The library grid with no games.
+    LibraryEmpty,
+    /// The library with a long name on the focused tile: it shows in full, on two lines.
+    LibraryLongName,
     /// The Captures area, in one of its states.
     Captures(crate::screens::captures::sample::CapturesLook),
+    /// The Game Hub of an invented game, in one of its states.
+    Hub(HubLook),
+    /// Find Players or the friend picker for a capture, in one of its states.
+    Lfg(LfgLook),
+    /// The trophies of all invented games together.
+    TrophiesAll,
     /// The Toolkit category, in its rows: stable, an update waiting, pinned, a local build.
     Toolkit(ToolkitLook),
     /// The About page with a downloaded launcher update waiting ("Restart Now").
@@ -121,10 +235,12 @@ pub enum ScreenPage {
     WhatsNewLauncher,
     /// "Update required" in one of its states.
     Required(RequiredLook),
+    /// General with Console Mode and the start at sign-in.
+    SettingsConsole(ConsoleLook),
     /// Behavior with the AnyPlay links registered to this launcher.
     BehaviourLinks,
     /// Advanced on Linux with share screen on: the OpenH264 row turned on (and downloaded), or off.
-    SettingsCodec(bool),
+    SettingsCodec(CodecLook),
     /// Settings > Library with the unlocked games location in one state.
     UnlockedLocation(LocationLook),
     /// Behavior with Clips off, on at 30 seconds, and waiting for the clip key.
@@ -142,6 +258,15 @@ pub enum ScreenPage {
     SavesEmpty,
     /// The question before one is put back.
     Restore,
+    /// The unlocked copies and the room they take: three of them, or none.
+    Storage,
+    StorageEmpty,
+    /// The question before an unlocked copy is removed.
+    RemoveCopy,
+    /// The search of the library page.
+    LibrarySearch,
+    /// The question when the release a game stays on is gone.
+    ToolkitMissing,
     /// The online area on one of its pages, over invented friends.
     Online(OnlineLook),
     /// The Phone as Controller page in one of its states.
@@ -240,6 +365,54 @@ pub enum PhoneLook {
     NoAccess,
     /// The server could not start.
     Failed,
+    /// The LudusCtrl option on, no phone yet (the phone server waits too).
+    LudusWaiting,
+    /// A LudusCtrl phone asks to be paired.
+    LudusPairing,
+    /// A LudusCtrl phone's controller is live; two phones are paired.
+    LudusConnected,
+    /// A phone of the phone server and a LudusCtrl phone both connected: the whole page.
+    Both,
+    /// LudusCtrl's browser client waits: the QR code, the link, two other addresses.
+    BrowserWaiting,
+    /// A browser holds the pad.
+    BrowserLinked,
+    /// The certificate was made again and the port was busy: both notes.
+    BrowserReissued,
+    /// The browser client could not start.
+    BrowserFailed,
+    /// LudusCtrl's server could not start for the app: the browser client runs alone.
+    AppFailed,
+}
+
+impl PhoneLook {
+    /// Whether the phone server's switch is on in this look.
+    fn phone_on(self) -> bool {
+        self != PhoneLook::Off
+    }
+
+    /// Whether the LudusCtrl option is on in this look.
+    fn ludus_on(self) -> bool {
+        matches!(
+            self,
+            PhoneLook::LudusWaiting
+                | PhoneLook::LudusPairing
+                | PhoneLook::LudusConnected
+                | PhoneLook::Both
+        ) || self.browser_on()
+    }
+
+    /// Whether this look is one of the browser client's scenes.
+    fn browser_on(self) -> bool {
+        matches!(
+            self,
+            PhoneLook::BrowserWaiting
+                | PhoneLook::BrowserLinked
+                | PhoneLook::BrowserReissued
+                | PhoneLook::BrowserFailed
+                | PhoneLook::AppFailed
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,6 +423,8 @@ pub enum OnlineLook {
     Friends,
     /// The account page while the player appears offline.
     AccountAppearing,
+    /// The account page with the public profile switch on and focused.
+    AccountPublic,
     /// Five friend requests wait (three are answered in place), friends play, one is online.
     FriendsBusy,
     /// Signed in with nobody yet.
@@ -258,6 +433,18 @@ pub enum OnlineLook {
     FriendsOffline,
     /// The cloud has not answered yet.
     FriendsConnecting,
+    /// A friend's page while offline: no join, invitation or call is offered.
+    FriendOffline,
+    /// A thread while offline: the bar says so in the composer's place.
+    ConversationOffline,
+    /// The party room while offline: nobody can be invited.
+    PartyOffline,
+    /// No party and no cloud: the page says so and offers Try Again.
+    PartyNoneOffline,
+    /// A friend with the longest handle and game name, focused on the list: the chip reads them.
+    FriendsLong,
+    /// The party room with the same long names on a tile.
+    PartyLong,
     /// A friend's row has the focus: the quick actions come up.
     FriendsFocus,
     /// The focus stands on the rail.
@@ -266,6 +453,32 @@ pub enum OnlineLook {
     PartyNone,
     /// Every friend request on a page of its own.
     Requests,
+    /// Played With Recently: people in every standing (open, friend, request sent).
+    PlayedWith,
+    /// The list with recording switched off: the note says new people are not added.
+    PlayedWithOff,
+    /// Nobody on the list yet.
+    PlayedWithEmpty,
+    /// Recording off and nobody on the list: the switch stays to be turned on again.
+    PlayedWithOffEmpty,
+    /// The list has not answered yet.
+    PlayedWithLoading,
+    /// The same while the cloud is out: no answer is coming, so the page says offline.
+    PlayedWithOffline,
+    /// The first fetch failed.
+    PlayedWithFailed,
+    /// The question before the list is cleared.
+    PlayedWithClear,
+    /// Asked for while signed out: the sign-in page is what shows.
+    PlayedWithSignedOut,
+    /// Add a Friend, nothing typed yet.
+    AddFriend,
+    /// A name came from a friend link: Send Request has the focus.
+    AddFriendLink,
+    /// The request went out; the field is empty again.
+    AddFriendSent,
+    /// The cloud found no such account; the name stays to be mended.
+    AddFriendMissing,
     Friend,
     Account,
     Picker,
@@ -303,6 +516,10 @@ pub enum OnlineLook {
     Keyboard,
     /// Mute, pin, report, block.
     ChatOptions,
+    /// The question before a block, an unsend and leaving the party.
+    Confirm,
+    ConfirmUnsend,
+    ConfirmParty,
     /// A stranger's first messages, waiting for an answer.
     Request,
     /// The party with voice on: Lumen speaks, Kit is muted for the player.
@@ -331,6 +548,18 @@ pub enum OnlineLook {
     ScreenStalled,
     /// Home while a stream is on offer.
     ScreenHome,
+    /// Share play, party page: a game runs and the player may invite a member.
+    ShareReady,
+    /// The player invited Lumen and waits.
+    ShareWaiting,
+    /// The player shares with Lumen, who plays with their pad and asks for a second pad.
+    ShareHosting,
+    /// Lumen invites the player to play with their pad.
+    ShareInvited,
+    /// The player watches Lumen's game and may ask for a pad.
+    ShareGuest,
+    /// Home while an invitation waits.
+    ShareHome,
     /// Home while a moderator's mute runs.
     Muted,
     /// The page of that mute: what, why, until when, how to appeal.
@@ -341,8 +570,6 @@ pub enum OnlineLook {
     Banned,
     /// The feed with items of every kind, the focus on a card.
     Feed,
-    /// The feed with the focus on a reaction.
-    FeedReaction,
     FeedEmpty,
     FeedLoading,
     FeedError,
@@ -387,6 +614,10 @@ pub enum RequiredLook {
     Failed,
     /// This launcher cannot install itself: Download from GitHub.
     Download,
+    /// A package manager owns this launcher: the screen says to update with it, no download.
+    Packaged,
+    /// The same with a package manager name as long as one may be.
+    PackagedLong,
     /// The player asked for the online area and was turned back: the reason says so, and the
     /// focus is on Play Offline.
     OnlineClosed,
@@ -404,9 +635,20 @@ impl RequiredLook {
             },
             RequiredLook::Failed => LauncherUpdate::Failed(UpdateFailure::Offline),
             RequiredLook::Download => LauncherUpdate::Manual(version),
+            RequiredLook::Packaged => LauncherUpdate::Packaged {
+                version,
+                by: "Flatpak".into(),
+            },
+            RequiredLook::PackagedLong => LauncherUpdate::Packaged {
+                version,
+                by: LONG_PACKAGE_MANAGER.into(),
+            },
         }
     }
 }
+
+/// The longest name a package manager may have (32 characters): the marker file allows no more.
+const LONG_PACKAGE_MANAGER: &str = "Distribution Package Manager X12";
 
 /// Where the launcher's own update stands on the About page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -418,6 +660,10 @@ pub enum UpdateLook {
     Ready,
     Holding,
     ReadOnly,
+    /// A package manager updates the launcher.
+    Packaged,
+    /// The same with the longest package manager name there can be.
+    PackagedLong,
     Offline,
     Refused,
 }
@@ -437,6 +683,14 @@ impl UpdateLook {
             UpdateLook::Ready => LauncherUpdate::Ready(version),
             UpdateLook::Holding => LauncherUpdate::Holding(version),
             UpdateLook::ReadOnly => LauncherUpdate::ReadOnly(version),
+            UpdateLook::Packaged => LauncherUpdate::Packaged {
+                version,
+                by: "Flatpak".into(),
+            },
+            UpdateLook::PackagedLong => LauncherUpdate::Packaged {
+                version,
+                by: LONG_PACKAGE_MANAGER.into(),
+            },
             UpdateLook::Offline => LauncherUpdate::Failed(UpdateFailure::Offline),
             UpdateLook::Refused => LauncherUpdate::Failed(UpdateFailure::Refused),
         }
@@ -513,8 +767,117 @@ fn sample_phone(look: PhoneLook) -> crate::app::phone::PhoneState {
             state.info = None;
             state.failed = true;
         }
+        PhoneLook::LudusWaiting
+        | PhoneLook::LudusPairing
+        | PhoneLook::LudusConnected
+        | PhoneLook::BrowserWaiting
+        | PhoneLook::BrowserLinked
+        | PhoneLook::BrowserReissued
+        | PhoneLook::BrowserFailed
+        | PhoneLook::AppFailed => {}
+        PhoneLook::Both => {
+            state.connected = Some("Pixel 8".into());
+            state.latency_ms = Some(4.0);
+            state.paired = vec![device("a1", "Pixel 8", "2026-10-24T18:14:03Z")];
+        }
     }
     state
+}
+
+/// Invented LudusCtrl phones for the same page.
+fn sample_ludus(look: PhoneLook) -> crate::app::ludus::LudusState {
+    use crate::app::ludus::{LudusPairing, LudusPhone, LudusState};
+    use anyps5_core::remote::VirtualPadStatus;
+    let phone = |id: &str, name: &str, added: &str| LudusPhone {
+        id: id.into(),
+        name: name.into(),
+        added: added.into(),
+    };
+    let mut state = LudusState {
+        port: Some(45989),
+        addresses: vec!["192.168.178.20".parse().expect("an address")],
+        pad: Some(VirtualPadStatus::Ready),
+        ..LudusState::default()
+    };
+    match look {
+        PhoneLook::LudusPairing => {
+            state.pairing = Some(LudusPairing {
+                id: 1,
+                phone_name: "Galaxy Tab S9".into(),
+                code: "260329".into(),
+            });
+        }
+        PhoneLook::LudusConnected | PhoneLook::Both => {
+            state.connected = Some("Galaxy Tab S9".into());
+            state.controller = true;
+            state.paired = vec![
+                phone("c3", "Galaxy Tab S9", "2026-10-25T20:41:07Z"),
+                phone("d4", "Redmi Note 13 Pro", "2026-10-26T08:15:52Z"),
+            ];
+        }
+        PhoneLook::BrowserWaiting
+        | PhoneLook::BrowserLinked
+        | PhoneLook::BrowserReissued
+        | PhoneLook::BrowserFailed => {
+            state.paired = vec![phone("c3", "Galaxy Tab S9", "2026-10-25T20:41:07Z")];
+        }
+        PhoneLook::AppFailed => {
+            state.failed = true;
+            state.port = None;
+            state.addresses.clear();
+        }
+        _ => {}
+    }
+    // The browser client runs whenever LudusCtrl does.
+    if look.ludus_on() {
+        state.browser = sample_browser(look);
+    }
+    state
+}
+
+/// An invented browser client for the same page. The token is made up and as long as a real one
+/// (22 characters), so the link row shows its true width.
+fn sample_browser(look: PhoneLook) -> crate::app::ludus_web::BrowserState {
+    use crate::app::ludus_web::{BrowserInfo, BrowserState, Certificate, LUDUS_WEB_PORT};
+    if look == PhoneLook::BrowserFailed {
+        return BrowserState {
+            failed: true,
+            ..BrowserState::default()
+        };
+    }
+    let token = "q8Zk3VtW0bHn5sLc2pRj1A";
+    let port = if look == PhoneLook::BrowserReissued {
+        51234
+    } else {
+        LUDUS_WEB_PORT
+    };
+    let link = |address: &str| format!("https://{address}:{port}/#t={token}");
+    // The other addresses show in the browser client's own scene.
+    let urls = if look == PhoneLook::BrowserWaiting {
+        vec![
+            link("192.168.178.20"),
+            link("10.0.0.7"),
+            link("172.20.144.1"),
+        ]
+    } else {
+        vec![link("192.168.178.20")]
+    };
+    BrowserState {
+        info: Some(BrowserInfo {
+            urls,
+            port,
+            preferred_port: port == LUDUS_WEB_PORT,
+            certificate: if look == PhoneLook::BrowserReissued {
+                Certificate::Reissued
+            } else {
+                Certificate::Kept
+            },
+            fingerprint: String::new(),
+        }),
+        failed: false,
+        peer: (look == PhoneLook::BrowserLinked).then(|| "192.168.178.41".into()),
+        device: (look == PhoneLook::BrowserLinked).then(|| "iPhone".into()),
+    }
 }
 
 /// The page named on the command line.
@@ -522,8 +885,14 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
     Some(match name {
         "settings" => ScreenPage::Settings(0),
         "game-settings" => ScreenPage::GameSettings,
+        "game-settings-foot" => ScreenPage::GameSettingsFoot,
         "game-toolkit" => ScreenPage::GameToolkit,
         "confirm" => ScreenPage::Confirm,
+        "controllers" => ScreenPage::Controllers,
+        "controllers-test" => ScreenPage::ControllersTest,
+        "controllers-lightbar" => ScreenPage::ControllersLight(false),
+        "controllers-lightbar-custom" => ScreenPage::ControllersLight(true),
+        "settings-sound" => ScreenPage::SettingsSound,
         "controls" => ScreenPage::Controls,
         "controls-capture" => ScreenPage::ControlsCapture,
         "controls-end" => ScreenPage::ControlsEnd,
@@ -531,12 +900,15 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "trophies" => ScreenPage::Trophies,
         "trophies-hidden" => ScreenPage::TrophiesHidden,
         "trophies-revealed" => ScreenPage::TrophiesRevealed,
+        "trophies-empty" => ScreenPage::TrophiesEmpty,
         "banner" => ScreenPage::Banner,
         "start" => ScreenPage::Start,
         "unlocking" => ScreenPage::Unlocking,
         "log" => ScreenPage::Log,
         "report" => ScreenPage::Report,
         "library" => ScreenPage::Library,
+        "library-empty" => ScreenPage::LibraryEmpty,
+        "library-longname" => ScreenPage::LibraryLongName,
         "captures-empty" => ScreenPage::Captures(CapturesLook::Empty),
         "captures-few" => ScreenPage::Captures(CapturesLook::Few),
         "captures-many" => ScreenPage::Captures(CapturesLook::Many),
@@ -547,6 +919,15 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "captures-confirm" => ScreenPage::Captures(CapturesLook::Confirm),
         "captures-missing" => ScreenPage::Captures(CapturesLook::Missing),
         "captures-loading" => ScreenPage::Captures(CapturesLook::Loading),
+        "find-players" => ScreenPage::Lfg(LfgLook::List),
+        "find-players-mine" => ScreenPage::Lfg(LfgLook::Mine),
+        "find-players-empty" => ScreenPage::Lfg(LfgLook::Empty),
+        "post-listing" => ScreenPage::Lfg(LfgLook::Post),
+        "send-to-friend" => ScreenPage::Lfg(LfgLook::Send),
+        "game-hub" => ScreenPage::Hub(HubLook::Full),
+        "game-hub-running" => ScreenPage::Hub(HubLook::Running),
+        "game-hub-empty" => ScreenPage::Hub(HubLook::Empty),
+        "trophies-all" => ScreenPage::TrophiesAll,
         "about-update" => ScreenPage::AboutUpdate(UpdateLook::Ready),
         "about-update-checking" => ScreenPage::AboutUpdate(UpdateLook::Checking),
         "about-update-current" => ScreenPage::AboutUpdate(UpdateLook::UpToDate),
@@ -554,6 +935,8 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "about-update-downloading" => ScreenPage::AboutUpdate(UpdateLook::Downloading),
         "about-update-holding" => ScreenPage::AboutUpdate(UpdateLook::Holding),
         "about-update-readonly" => ScreenPage::AboutUpdate(UpdateLook::ReadOnly),
+        "about-update-packaged" => ScreenPage::AboutUpdate(UpdateLook::Packaged),
+        "about-update-packaged-long" => ScreenPage::AboutUpdate(UpdateLook::PackagedLong),
         "about-update-offline" => ScreenPage::AboutUpdate(UpdateLook::Offline),
         "about-update-refused" => ScreenPage::AboutUpdate(UpdateLook::Refused),
         "whats-new-launcher" => ScreenPage::WhatsNewLauncher,
@@ -561,10 +944,21 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "update-required-downloading" => ScreenPage::Required(RequiredLook::Downloading),
         "update-required-failed" => ScreenPage::Required(RequiredLook::Failed),
         "update-required-download" => ScreenPage::Required(RequiredLook::Download),
+        "update-required-packaged" => ScreenPage::Required(RequiredLook::Packaged),
+        "update-required-packaged-long" => ScreenPage::Required(RequiredLook::PackagedLong),
         "update-required-offline" => ScreenPage::Required(RequiredLook::OnlineClosed),
         "behavior-links" => ScreenPage::BehaviourLinks,
-        "settings-codec" => ScreenPage::SettingsCodec(true),
-        "settings-codec-off" => ScreenPage::SettingsCodec(false),
+        "settings-console-off" => ScreenPage::SettingsConsole(ConsoleLook::Off),
+        "settings-console-autostart" => ScreenPage::SettingsConsole(ConsoleLook::Autostart),
+        "settings-console" => ScreenPage::SettingsConsole(ConsoleLook::On),
+        "settings-console-image" => ScreenPage::SettingsConsole(ConsoleLook::Image),
+        "settings-console-unavailable" => ScreenPage::SettingsConsole(ConsoleLook::Unavailable),
+        "settings-codec" => ScreenPage::SettingsCodec(CodecLook::Ready),
+        "settings-codec-off" => ScreenPage::SettingsCodec(CodecLook::Off),
+        "settings-codec-downloading" => ScreenPage::SettingsCodec(CodecLook::Downloading),
+        "settings-codec-failed" => ScreenPage::SettingsCodec(CodecLook::Failed),
+        "settings-codec-refused" => ScreenPage::SettingsCodec(CodecLook::Refused),
+        "settings-codec-not-loaded" => ScreenPage::SettingsCodec(CodecLook::NotLoaded),
         "settings-location" => ScreenPage::UnlockedLocation(LocationLook::Default),
         "settings-location-custom" => ScreenPage::UnlockedLocation(LocationLook::Custom),
         "settings-location-network" => ScreenPage::UnlockedLocation(LocationLook::Network),
@@ -582,6 +976,15 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "phone-driver" => ScreenPage::Phone(PhoneLook::DriverMissing),
         "phone-access" => ScreenPage::Phone(PhoneLook::NoAccess),
         "phone-failed" => ScreenPage::Phone(PhoneLook::Failed),
+        "phone-ludus" => ScreenPage::Phone(PhoneLook::LudusWaiting),
+        "phone-ludus-pairing" => ScreenPage::Phone(PhoneLook::LudusPairing),
+        "phone-ludus-connected" => ScreenPage::Phone(PhoneLook::LudusConnected),
+        "phone-both" => ScreenPage::Phone(PhoneLook::Both),
+        "phone-browser" => ScreenPage::Phone(PhoneLook::BrowserWaiting),
+        "phone-browser-linked" => ScreenPage::Phone(PhoneLook::BrowserLinked),
+        "phone-browser-reissued" => ScreenPage::Phone(PhoneLook::BrowserReissued),
+        "phone-browser-failed" => ScreenPage::Phone(PhoneLook::BrowserFailed),
+        "phone-ludus-failed" => ScreenPage::Phone(PhoneLook::AppFailed),
         "toolkit" => ScreenPage::Toolkit(ToolkitLook::Stable),
         "toolkit-update" => ScreenPage::Toolkit(ToolkitLook::Update),
         "toolkit-newer" => ScreenPage::Toolkit(ToolkitLook::Newer),
@@ -598,6 +1001,11 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "saves" => ScreenPage::Saves,
         "saves-empty" => ScreenPage::SavesEmpty,
         "restore" => ScreenPage::Restore,
+        "storage" => ScreenPage::Storage,
+        "storage-empty" => ScreenPage::StorageEmpty,
+        "remove-copy" => ScreenPage::RemoveCopy,
+        "library-search" => ScreenPage::LibrarySearch,
+        "toolkit-missing" => ScreenPage::ToolkitMissing,
         "friends-signin" => ScreenPage::Online(OnlineLook::Start),
         "friends-browser" => ScreenPage::Online(OnlineLook::Browser),
         "friends" => ScreenPage::Online(OnlineLook::Friends),
@@ -605,13 +1013,33 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-empty" => ScreenPage::Online(OnlineLook::FriendsEmpty),
         "friends-offline" => ScreenPage::Online(OnlineLook::FriendsOffline),
         "friends-connecting" => ScreenPage::Online(OnlineLook::FriendsConnecting),
+        "friends-friend-offline" => ScreenPage::Online(OnlineLook::FriendOffline),
+        "friends-conversation-offline" => ScreenPage::Online(OnlineLook::ConversationOffline),
+        "friends-party-none-offline" => ScreenPage::Online(OnlineLook::PartyNoneOffline),
+        "friends-party-offline" => ScreenPage::Online(OnlineLook::PartyOffline),
+        "friends-long" => ScreenPage::Online(OnlineLook::FriendsLong),
+        "friends-party-long" => ScreenPage::Online(OnlineLook::PartyLong),
         "friends-focus" => ScreenPage::Online(OnlineLook::FriendsFocus),
         "friends-rail" => ScreenPage::Online(OnlineLook::FriendsRail),
         "friends-party-none" => ScreenPage::Online(OnlineLook::PartyNone),
         "friends-requests" => ScreenPage::Online(OnlineLook::Requests),
+        "friends-played-with" => ScreenPage::Online(OnlineLook::PlayedWith),
+        "friends-played-with-off" => ScreenPage::Online(OnlineLook::PlayedWithOff),
+        "friends-played-with-empty" => ScreenPage::Online(OnlineLook::PlayedWithEmpty),
+        "friends-played-with-off-empty" => ScreenPage::Online(OnlineLook::PlayedWithOffEmpty),
+        "friends-played-with-loading" => ScreenPage::Online(OnlineLook::PlayedWithLoading),
+        "friends-played-with-offline" => ScreenPage::Online(OnlineLook::PlayedWithOffline),
+        "friends-played-with-failed" => ScreenPage::Online(OnlineLook::PlayedWithFailed),
+        "friends-played-with-clear" => ScreenPage::Online(OnlineLook::PlayedWithClear),
+        "friends-played-with-signed-out" => ScreenPage::Online(OnlineLook::PlayedWithSignedOut),
+        "friends-add" => ScreenPage::Online(OnlineLook::AddFriend),
+        "friends-add-link" => ScreenPage::Online(OnlineLook::AddFriendLink),
+        "friends-add-sent" => ScreenPage::Online(OnlineLook::AddFriendSent),
+        "friends-add-missing" => ScreenPage::Online(OnlineLook::AddFriendMissing),
         "friends-friend" => ScreenPage::Online(OnlineLook::Friend),
         "friends-settings" => ScreenPage::Online(OnlineLook::Account),
         "friends-settings-appearing" => ScreenPage::Online(OnlineLook::AccountAppearing),
+        "friends-settings-public" => ScreenPage::Online(OnlineLook::AccountPublic),
         "friends-picker" => ScreenPage::Online(OnlineLook::Picker),
         "friends-party" => ScreenPage::Online(OnlineLook::Party),
         "friends-party-picker" => ScreenPage::Online(OnlineLook::PartyPicker),
@@ -630,6 +1058,9 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-quick-replies" => ScreenPage::Online(OnlineLook::QuickReplies),
         "friends-keyboard" => ScreenPage::Online(OnlineLook::Keyboard),
         "friends-chat-options" => ScreenPage::Online(OnlineLook::ChatOptions),
+        "friends-confirm" => ScreenPage::Online(OnlineLook::Confirm),
+        "friends-confirm-unsend" => ScreenPage::Online(OnlineLook::ConfirmUnsend),
+        "friends-confirm-party" => ScreenPage::Online(OnlineLook::ConfirmParty),
         "friends-request" => ScreenPage::Online(OnlineLook::Request),
         "friends-party-voice" => ScreenPage::Online(OnlineLook::PartyVoice),
         "friends-party-member" => ScreenPage::Online(OnlineLook::PartyMember),
@@ -644,6 +1075,12 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-screen-watching" => ScreenPage::Online(OnlineLook::ScreenWatching),
         "friends-screen-stalled" => ScreenPage::Online(OnlineLook::ScreenStalled),
         "friends-screen-home" => ScreenPage::Online(OnlineLook::ScreenHome),
+        "friends-share-ready" => ScreenPage::Online(OnlineLook::ShareReady),
+        "friends-share-waiting" => ScreenPage::Online(OnlineLook::ShareWaiting),
+        "friends-share-hosting" => ScreenPage::Online(OnlineLook::ShareHosting),
+        "friends-share-invited" => ScreenPage::Online(OnlineLook::ShareInvited),
+        "friends-share-guest" => ScreenPage::Online(OnlineLook::ShareGuest),
+        "friends-share-home" => ScreenPage::Online(OnlineLook::ShareHome),
         "friends-muted" => ScreenPage::Online(OnlineLook::Muted),
         "friends-restriction" => ScreenPage::Online(OnlineLook::Restriction),
         "friends-paused" => ScreenPage::Online(OnlineLook::Paused),
@@ -672,7 +1109,6 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "profile-error" => ScreenPage::Profile(ProfileLook::Error),
         "profile-offline" => ScreenPage::Profile(ProfileLook::Offline),
         "friends-activity" => ScreenPage::Online(OnlineLook::Feed),
-        "friends-activity-reaction" => ScreenPage::Online(OnlineLook::FeedReaction),
         "friends-activity-empty" => ScreenPage::Online(OnlineLook::FeedEmpty),
         "friends-activity-loading" => ScreenPage::Online(OnlineLook::FeedLoading),
         "friends-activity-error" => ScreenPage::Online(OnlineLook::FeedError),
@@ -693,8 +1129,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         }
         other => {
             let n: usize = other.strip_prefix("settings")?.parse().ok()?;
-            (n < crate::screens::settings::Category::ALL.len())
-                .then_some(ScreenPage::Settings(n))?
+            (n < Category::ALL.len()).then_some(ScreenPage::Settings(n))?
         }
     })
 }
@@ -726,6 +1161,100 @@ fn online_data<'a>(
 
 /// Invented friends: one plays a game you can join, one plays, one is online, one is not; a
 /// request waits, one was sent, and a friend invited you.
+/// Which state of Find Players or of the capture picker the gallery shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LfgLook {
+    /// Three listings of other players.
+    List,
+    /// The player's own listing with two requests.
+    Mine,
+    /// Nobody is looking.
+    Empty,
+    /// The page that posts a listing.
+    Post,
+    /// The friend picker for a screenshot.
+    Send,
+}
+
+/// A signed-in player with friends, and the listings of the first invented game.
+fn sample_lfg(look: LfgLook) -> anyps5_core::online::Online {
+    use anyps5_core::online::api::{
+        Account, AccountId, LfgAsk, LfgMine, LfgMode, LfgRequest, Listing,
+    };
+    let account = |id: u64, handle: &str| Account {
+        id: AccountId(id),
+        handle: handle.into(),
+    };
+    let now = SAMPLE_NOW as u64;
+    let listing =
+        |id: &str, poster: Account, mode, language: Option<&str>, note: &str, left: u64| Listing {
+            id: id.into(),
+            poster,
+            title_id: "PPSA90000".into(),
+            mode,
+            language: language.map(str::to_owned),
+            note: note.into(),
+            slots: 3,
+            filled: 1,
+            created: now - 600,
+            expires: now + left * 60,
+            ask: None,
+            requests: Vec::new(),
+        };
+    let mut state = sample_online(OnlineLook::Friends);
+    state.lfg.open("PPSA90000");
+    if look == LfgLook::Empty {
+        state.lfg.listings = Some(Vec::new());
+        return state;
+    }
+    let mut asked = listing(
+        "b",
+        account(3, "Juno"),
+        LfgMode::PlayTogether,
+        Some("de"),
+        "Second world, no rush",
+        41,
+    );
+    asked.ask = Some(LfgAsk::Pending);
+    state.lfg.listings = Some(vec![
+        listing(
+            "a",
+            account(2, "Lumen"),
+            LfgMode::Online,
+            Some("en"),
+            "Ranked tonight, mic on",
+            52,
+        ),
+        asked,
+        listing("c", account(4, "Kit"), LfgMode::Lan, None, "", 17),
+    ]);
+    let mut own = listing(
+        "own",
+        account(1, "Mira"),
+        LfgMode::Online,
+        Some("en"),
+        "Co-op campaign, evenings",
+        48,
+    );
+    own.requests = vec![
+        LfgRequest {
+            from: account(5, "Rook"),
+            created: now - 240,
+            accepted: false,
+        },
+        LfgRequest {
+            from: account(6, "Vale"),
+            created: now - 120,
+            accepted: false,
+        },
+    ];
+    state.lfg.mine = Some(LfgMine {
+        posted: vec![own],
+        asked: Vec::new(),
+    });
+    state
+}
+
 fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
     use anyps5_core::online::api::{
         Account, AccountId, Activity, Count, Friend, FriendLists, Invitation, Presence, Privacy,
@@ -765,7 +1294,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
     state.status = Status::Running;
     state.cloud = Some(Cloud::Online);
     match look {
-        OnlineLook::Start => return state,
+        OnlineLook::Start | OnlineLook::PlayedWithSignedOut => return state,
         OnlineLook::Browser => {
             state.pending = Some(Pending::Browser);
             return state;
@@ -832,6 +1361,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         (AccountId(4), Some(count(0, 0, 0, 0))),
     ]);
     state.privacy = Some(Privacy::default());
+    state.public_profile = Some(look == OnlineLook::AccountPublic);
     if look == OnlineLook::AccountAppearing
         && let Some(account) = state.account.as_mut()
     {
@@ -853,17 +1383,47 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         })
         .collect();
     }
+    // Add a Friend after an answer: the page shows it as news.
+    match look {
+        OnlineLook::AddFriendSent => {
+            state.record_friend_request(
+                "Lumen",
+                anyps5_core::online::FriendRequestResult::Requested,
+            );
+        }
+        OnlineLook::AddFriendMissing => {
+            state.record_friend_request(
+                "Lumne",
+                anyps5_core::online::FriendRequestResult::Failed(
+                    "No account has this name.".into(),
+                ),
+            );
+        }
+        _ => {}
+    }
     if matches!(look, OnlineLook::FriendsEmpty | OnlineLook::MessagesEmpty) {
         state.friends = FriendLists::default();
         state.invitations.clear();
     } else {
         sample_social(&mut state);
+        sample_played_with(&mut state, look);
+    }
+    if matches!(look, OnlineLook::FriendsLong | OnlineLook::PartyLong) {
+        long_names(&mut state);
     }
     match look {
-        OnlineLook::FriendsOffline => state.cloud = Some(Cloud::Offline),
+        OnlineLook::FriendsOffline
+        | OnlineLook::FriendOffline
+        | OnlineLook::ConversationOffline
+        | OnlineLook::PlayedWithOffline
+        | OnlineLook::PartyOffline => state.cloud = Some(Cloud::Offline),
         OnlineLook::FriendsConnecting => state.cloud = None,
         OnlineLook::PartyNone => {
             state.social.apply_party(None);
+        }
+        OnlineLook::PartyNoneOffline => {
+            state.social.apply_party(None);
+            state.cloud = Some(Cloud::Offline);
         }
         OnlineLook::PartyPair | OnlineLook::PartyAlone => {
             if let Some(party) = &mut state.social.party {
@@ -890,6 +1450,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
     }
     sample_voice(&mut state, look);
     sample_screen(&mut state, look);
+    sample_share_play(&mut state, look);
     sample_calls(&mut state, look);
     if matches!(
         look,
@@ -996,7 +1557,7 @@ fn sample_calls(state: &mut anyps5_core::online::Online, look: OnlineLook) {
         OnlineLook::PartyDiscord => {
             if let Some(mut party) = state.social.party.as_ref().cloned() {
                 party.revision += 1;
-                party.discord = Some("https://discord.gg/nSHbHBRdS".into());
+                party.discord = Some("https://discord.gg/9zYqf8fEsh".into());
                 state.social.apply_party(Some(party));
             }
         }
@@ -1097,6 +1658,87 @@ fn sample_voice(state: &mut anyps5_core::online::Online, look: OnlineLook) {
     ];
 }
 
+/// Share play over the invented party: Lumen is the other side of every share here.
+fn sample_share_play(state: &mut anyps5_core::online::Online, look: OnlineLook) {
+    use anyps5_core::online::api::{Account, AccountId, ShareInvitation, ShareMode};
+    use anyps5_core::online::control::{Event, Link, SharePhase, ShareRole, ShareStats, ShareView};
+    let lumen = Account {
+        id: AccountId(2),
+        handle: "Lumen".into(),
+    };
+    let view = |role, mode, phase, requested| ShareView {
+        id: "s1".into(),
+        role,
+        peer: lumen.clone(),
+        title: NAMES[1].into(),
+        mode,
+        phase,
+        link: Some(Link::Direct),
+        codec: Some("h264".into()),
+        stats: ShareStats {
+            width: 1920,
+            height: 1080,
+            fps: 60,
+            kbps: 8000,
+            rtt_ms: Some(24),
+            loss_percent: 0,
+            stream_delay_ms: None,
+            input_delay_ms: None,
+        },
+        requested,
+    };
+    let (can_start, share) = match look {
+        OnlineLook::ShareReady => (true, None),
+        OnlineLook::ShareWaiting => (
+            false,
+            Some(view(
+                ShareRole::Host,
+                ShareMode::Watch,
+                SharePhase::Invited,
+                None,
+            )),
+        ),
+        OnlineLook::ShareHosting => (
+            false,
+            Some(view(
+                ShareRole::Host,
+                ShareMode::HandOver,
+                SharePhase::Live,
+                Some(ShareMode::Together),
+            )),
+        ),
+        OnlineLook::ShareGuest => (
+            false,
+            Some(view(
+                ShareRole::Guest,
+                ShareMode::Watch,
+                SharePhase::Live,
+                None,
+            )),
+        ),
+        OnlineLook::ShareInvited | OnlineLook::ShareHome => {
+            state.apply(anyps5_core::online::Line::Output(
+                anyps5_core::online::Output::Event(Event::ShareInvitation {
+                    invitation: ShareInvitation {
+                        id: "i1".into(),
+                        from: lumen,
+                        share: "s1".into(),
+                        title_id: "GAME00001".into(),
+                        title: NAMES[1].into(),
+                        mode: ShareMode::HandOver,
+                        expires: 0,
+                    },
+                }),
+            ));
+            return;
+        }
+        _ => return,
+    };
+    state.apply(anyps5_core::online::Line::Output(
+        anyps5_core::online::Output::Event(Event::Share { can_start, share }),
+    ));
+}
+
 /// Share screen over the invented party: Lumen and Kit are the other two members.
 fn sample_screen(state: &mut anyps5_core::online::Online, look: OnlineLook) {
     use anyps5_core::online::api::AccountId;
@@ -1177,6 +1819,72 @@ fn sample_screen(state: &mut anyps5_core::online::Online, look: OnlineLook) {
 }
 
 /// An invented party of three, a session, four conversations and a stranger who wrote first.
+/// The longest handle and game name the sample friend can have: what a row, a tile and a strip
+/// have to cut and the chip has to give back.
+fn long_names(state: &mut anyps5_core::online::Online) {
+    const HANDLE: &str = "Wanderer_of_the_Skies_01";
+    const GAME: &str = "Lanternfall: The Complete Ember Drift Anthology Edition";
+    if let Some(friend) = state
+        .friends
+        .friends
+        .iter_mut()
+        .find(|f| f.account.id == anyps5_core::online::api::AccountId(2))
+    {
+        friend.account.handle = HANDLE.into();
+        if let Some(activity) = friend.presence.activity.as_mut() {
+            activity.title = GAME.into();
+        }
+    }
+    if let Some(party) = state.social.party.as_mut() {
+        for member in &mut party.members {
+            if member.account.id == anyps5_core::online::api::AccountId(2) {
+                member.account.handle = HANDLE.into();
+            }
+        }
+    }
+}
+
+/// The people of Played With Recently. Lumen is a friend, Ash has a request out, Nova is a friend
+/// the cloud says so of; the rest can be added. One has no title (a party).
+fn sample_played_with(state: &mut anyps5_core::online::Online, look: OnlineLook) {
+    use anyps5_core::online::api::{Account, AccountId, PlayedWith, PlayedWithList};
+    let at = |ago: u64| (SAMPLE_NOW as u64).saturating_sub(ago);
+    let person = |id: u64, handle: &str, ago: u64, title: Option<&str>, friend: bool| PlayedWith {
+        account: Account {
+            id: AccountId(id),
+            handle: handle.into(),
+        },
+        last: at(ago),
+        title_id: title.map(|_| "TEST00001".into()),
+        title: title.map(Into::into),
+        friend,
+    };
+    let people = vec![
+        person(20, "Pip", 40 * 60, Some(NAMES[1]), false),
+        person(2, "Lumen", 3 * 3600, Some(NAMES[4]), true),
+        person(7, "Ash", 86_400 + 600, Some(NAMES[1]), false),
+        person(22, "Orin", 3 * 86_400, None, false),
+        person(23, "Tess", 12 * 86_400, Some(NAMES[2]), false),
+    ];
+    let remember = !matches!(
+        look,
+        OnlineLook::PlayedWithOff | OnlineLook::PlayedWithOffEmpty
+    );
+    state.played_with.list = match look {
+        OnlineLook::PlayedWithLoading
+        | OnlineLook::PlayedWithOffline
+        | OnlineLook::PlayedWithFailed => None,
+        OnlineLook::PlayedWithEmpty | OnlineLook::PlayedWithOffEmpty => Some(PlayedWithList {
+            remember,
+            people: Vec::new(),
+        }),
+        _ => Some(PlayedWithList { remember, people }),
+    };
+    if look == OnlineLook::PlayedWithFailed {
+        state.played_with.fetch_failed();
+    }
+}
+
 fn sample_social(state: &mut anyps5_core::online::Online) {
     use anyps5_core::online::api::{
         Account, AccountId, Conversation, ConversationKind, Conversations, Message, Messages,
@@ -1280,8 +1988,8 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
         "c-party",
         ConversationKind::Party,
         &[(2, "Lumen"), (4, "Kit")],
-        5,
-        5,
+        0,
+        0,
         now - 3_000,
     );
     party_chat.party = Some("p1".into());
@@ -1326,9 +2034,9 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
             deleted: false,
             reactions: Vec::new(),
             rev: 0,
+            media: None,
         };
     let mut lumen_messages = vec![
-        said("c-lumen", 1, 2, "Lumen", "Are you around tonight?", 59_000),
         said(
             "c-lumen",
             2,
@@ -1365,15 +2073,15 @@ fn sample_social(state: &mut anyps5_core::online::Online) {
         said("c-lumen", 7, 2, "Lumen", "Ready when you are.", 720),
     ];
     // The things a thread can show: an edit, an answer, reactions, a message taken back.
-    lumen_messages[2].edited = Some(now - 58_000);
-    lumen_messages[5].reply = Some(Quote {
+    lumen_messages[1].edited = Some(now - 58_000);
+    lumen_messages[4].reply = Some(Quote {
         seq: 4,
         sender: account(1, "Mira"),
         text: "Bringing Juno too.".into(),
         deleted: false,
     });
-    lumen_messages[1].deleted = true;
-    lumen_messages[1].text.clear();
+    lumen_messages[0].deleted = true;
+    lumen_messages[0].text.clear();
     state.social.ingest(
         "c-lumen",
         Fetch::Newest,
@@ -1723,6 +2431,10 @@ pub struct ScreenGallery {
     uninstall: UninstallPanel,
     saves: SavesPanel,
     restore: RestorePanel,
+    storage: crate::screens::library_storage::StoragePanel,
+    remove_copy: crate::screens::library_storage::RemovePanel,
+    library_search: crate::screens::library_search::SearchPanel,
+    missing: crate::screens::toolkit_pin::MissingPanel,
     friends: crate::screens::friends::FriendsScreen,
     online: anyps5_core::online::Online,
     profile: crate::screens::profile::ProfileScreen,
@@ -1736,7 +2448,9 @@ pub struct ScreenGallery {
     update: UpdateState,
     toolkit_version: String,
     phone: crate::app::phone::PhoneState,
+    ludus: crate::app::ludus::LudusState,
     controls: ControlsPanel,
+    controllers: ControllersPanel,
     /// A game whose files name its controls, for the controls page.
     game_input: GameInput,
     /// Layouts the community shares for the invented game.
@@ -1745,7 +2459,11 @@ pub struct ScreenGallery {
     trophies: TrophyListPanel,
     library: LibraryGrid,
     captures: crate::screens::captures::CapturesScreen,
+    lfg_panel: crate::screens::lfg::LfgPanel,
+    send_panel: crate::screens::send::SendPanel,
     captures_sample: Option<crate::screens::captures::sample::Sample>,
+    hub: crate::screens::hub::HubScreen,
+    overview: crate::screens::overview::OverviewScreen,
     log: LogView,
     start: StartScreen,
     banner_icons: IconCache,
@@ -1762,10 +2480,8 @@ impl ScreenGallery {
     ) -> Self {
         let mut prefs = Preferences::first_run();
         prefs.theme = crate::screens::convert::theme_to_core(theme);
-        // --tr shows the page in Turkish.
-        if language == crate::ui::i18n::Language::Turkish {
-            prefs.language = anyps5_core::settings::Language::Turkish;
-        }
+        // --tr shows the page in Turkish, --de in German, --es Spanish, --fr French, --pt Portuguese.
+        prefs.language = crate::screens::convert::language_to_core(language);
         prefs.onboarded = true;
         prefs.profile_name = "Mira".into();
         prefs.games_folder = Some("D:\\Games".into());
@@ -1795,10 +2511,11 @@ impl ScreenGallery {
                 ToolkitLook::Unused | ToolkitLook::Glibc => {}
             }
         }
-        let phone = match page {
+        let (phone, ludus) = match page {
             ScreenPage::Phone(look) => {
-                prefs.phone_remote = look != PhoneLook::Off;
-                sample_phone(look)
+                prefs.phone_remote = look.phone_on();
+                prefs.phone_ludusctrl = look.ludus_on();
+                (sample_phone(look), sample_ludus(look))
             }
             _ => Default::default(),
         };
@@ -1816,13 +2533,14 @@ impl ScreenGallery {
                 notes: ReleaseNotes::parse(SAMPLE_NOTES),
             },
             launcher_notes: Published {
-                tag: "0.1.4".into(),
+                tag: "0.3.0".into(),
                 date: String::new(),
                 notes: ReleaseNotes::parse_launcher(LAUNCHER_SAMPLE_NOTES),
             },
             update,
             toolkit_version,
             phone,
+            ludus,
             page,
             covers: Vec::new(),
             avatars: Vec::new(),
@@ -1836,6 +2554,10 @@ impl ScreenGallery {
             uninstall: UninstallPanel::default(),
             saves: SavesPanel::default(),
             restore: RestorePanel::default(),
+            storage: Default::default(),
+            remove_copy: Default::default(),
+            library_search: Default::default(),
+            missing: crate::screens::toolkit_pin::MissingPanel::default(),
             friends: crate::screens::friends::FriendsScreen::default(),
             profile: crate::screens::profile::ProfileScreen::default(),
             compare: crate::screens::compare::CompareScreen::default(),
@@ -1851,16 +2573,22 @@ impl ScreenGallery {
                     crate::screens::gallery_feed::sample_compare(&mut state, look);
                     state
                 }
+                ScreenPage::Lfg(look) => sample_lfg(look),
                 _ => anyps5_core::online::Online::default(),
             },
             controls: ControlsPanel::default(),
+            controllers: ControllersPanel::default(),
             game_input: sample_game_input(),
             community: sample_community(),
             advanced: AdvancedPanel::default(),
             trophies: TrophyListPanel::default(),
             library: LibraryGrid::default(),
             captures: crate::screens::captures::CapturesScreen::default(),
+            lfg_panel: crate::screens::lfg::LfgPanel::default(),
+            send_panel: crate::screens::send::SendPanel::default(),
             captures_sample: None,
+            hub: crate::screens::hub::HubScreen::default(),
+            overview: crate::screens::overview::OverviewScreen::default(),
             log: LogView::default(),
             start: StartScreen::default(),
             banner_icons: IconCache::default(),
@@ -1875,16 +2603,10 @@ impl ScreenGallery {
     }
 
     /// The ringing card and the call strip of the call looks.
-    fn call_surfaces(
-        &self,
-        ctx: &Context,
-        look: OnlineLook,
-        accent: Color32,
-        language: crate::ui::i18n::Language,
-    ) {
+    fn call_surfaces(&self, ctx: &Context, look: OnlineLook, language: crate::ui::i18n::Language) {
         use crate::screens::calls;
         if let Some(card) = calls::card_data(&self.online, 0) {
-            calls::incoming_card(ctx, accent, &card, language, 1.0, true);
+            calls::incoming_card(ctx, &card, language, 1.0, true);
         }
         if matches!(
             look,
@@ -1896,6 +2618,174 @@ impl ScreenGallery {
         {
             calls::call_strip(ctx, &strip, language, 1.0, true);
         }
+    }
+
+    /// The Game Hub of the first invented game.
+    fn hub_screen(&mut self, shell: &mut Shell, ctx: &Context, look: HubLook) {
+        use crate::screens::hub::{Block, CaptureBlock, HubData, TrophyBlock};
+        use crate::screens::hub_strings::HubText as H;
+        use crate::screens::ingame::InGameText;
+        use crate::screens::run_strings::RunText;
+        use crate::ui::i18n::{Arg, Key};
+        let language = shell.language;
+        let accent = shell.accent_color();
+        let empty = look == HubLook::Empty;
+        let running = look == HubLook::Running;
+        let art = Some(self.tile(0));
+        let thumbs: Vec<Option<TileImage>> = (1..=4).map(|i| Some(self.tile(i))).collect();
+        let (primary_title, primary_icon) = if running {
+            (InGameText::BackToGame.text(language), Icon::PLAY_CIRCLE)
+        } else {
+            (language.text(Key::Play), Icon::PLAY)
+        };
+        let trophies = if empty {
+            TrophyBlock {
+                figure: String::new(),
+                fraction: None,
+                grades: [0; 4],
+                note: H::NoTrophyList.text(language).to_owned(),
+            }
+        } else {
+            TrophyBlock {
+                figure: H::TrophyCount.format(language, &[Arg::Int(12), Arg::Int(40)]),
+                fraction: Some(0.3),
+                grades: [0, 2, 4, 6],
+                note: H::LatestTrophy
+                    .format(language, &[Arg::Str("First Light"), Arg::Str("Gold")]),
+            }
+        };
+        let time = if empty {
+            Block::note(H::NeverPlayed.text(language))
+        } else {
+            Block::value(
+                "14 h 20 min",
+                Some(format!(
+                    "{}\n{}",
+                    H::ThisWeek.format(language, &[Arg::Str("2 h 5 min")]),
+                    H::LastPlayed.format(language, &[Arg::Str("yesterday")])
+                )),
+            )
+        };
+        let captures = CaptureBlock {
+            count: (!empty).then(|| H::CaptureCount.format(language, &[Arg::Int(7)])),
+            thumbs: if empty { Vec::new() } else { thumbs },
+            empty: H::NoCaptures.text(language).to_owned(),
+        };
+        let friends = if empty {
+            Block::note(H::NoFriendsPlaying.text(language))
+        } else {
+            Block::note(H::FriendsPlaying.format(language, &[Arg::Str("Mira, Lumen")]))
+        };
+        let together = if empty {
+            Block::note(H::TogetherNone.text(language))
+        } else {
+            Block::value(H::TogetherUpTo.format(language, &[Arg::Int(4)]), None)
+        };
+        let compat = if empty {
+            Block::note(H::CompatNone.text(language))
+        } else {
+            Block::note(RunText::Verdict.format(
+                language,
+                &[Arg::Str(RunText::Playable.text(language)), Arg::Int(23)],
+            ))
+        };
+        let music = if empty {
+            Block::note(H::MusicNone.text(language))
+        } else {
+            Block::value(H::MusicOn.text(language), None)
+        };
+        let data = HubData {
+            language,
+            accent,
+            name: NAMES[0],
+            subtitle: "1.00".to_owned(),
+            art,
+            primary_title: primary_title.to_owned(),
+            primary_icon,
+            primary_ready: !running,
+            trophies,
+            has_trophy_list: !empty,
+            time,
+            captures,
+            friends,
+            together,
+            compat,
+            music,
+        };
+        self.hub.show(shell, ctx, &[], &data);
+    }
+
+    /// The trophies of the invented games together.
+    fn overview_screen(&mut self, shell: &mut Shell, ctx: &Context) {
+        use crate::screens::hub_strings::HubText as H;
+        use crate::screens::overview::{OverviewData, OverviewRow};
+        use crate::ui::i18n::Arg;
+        let language = shell.language;
+        let accent = shell.accent_color();
+        let sample = [
+            (0usize, 12usize, 40usize),
+            (1, 3, 24),
+            (2, 0, 18),
+            (3, 31, 31),
+        ];
+        let rows: Vec<OverviewRow> = sample
+            .into_iter()
+            .map(|(i, earned, total)| {
+                let latest = if earned > 0 {
+                    H::OverviewLatest.format(language, &[Arg::Str("3 Oct")])
+                } else {
+                    H::OverviewNothingYet.text(language).to_owned()
+                };
+                OverviewRow {
+                    title_id: format!("PPSA{:05}", 90000 + i),
+                    name: NAMES[i].to_owned(),
+                    art: Some(self.tile(i)),
+                    earned,
+                    total,
+                    fraction: earned as f32 / total as f32,
+                    grades: if earned > 0 {
+                        [u32::from(earned == total), 2, 4, 6]
+                    } else {
+                        [0; 4]
+                    },
+                    label: format!("{}: {earned} of {total}. {latest}", NAMES[i]),
+                    latest,
+                }
+            })
+            .collect();
+        let data = OverviewData {
+            language,
+            accent,
+            summary: H::OverviewSummary.format(language, &[Arg::Int(46), Arg::Int(4)]),
+            loading: false,
+            rows: &rows,
+        };
+        self.overview.show(shell, ctx, &[], &data);
+    }
+
+    /// Find Players, or the friend picker of Captures, over the invented library.
+    fn lfg_screen(&mut self, shell: &mut Shell, ctx: &Context, look: LfgLook) {
+        let language = shell.language;
+        let accent = shell.accent_color();
+        if look == LfgLook::Send {
+            let data = crate::screens::send::SendData {
+                name: "Screenshot 2026-10-26 20-14-03.png",
+                online: &self.online,
+                language,
+                accent,
+            };
+            self.send_panel.show(shell, ctx, &[], &data);
+            return;
+        }
+        let data = crate::screens::lfg::LfgData {
+            game: NAMES[0],
+            title_id: "PPSA90000",
+            online: &self.online,
+            now: SAMPLE_NOW as u64,
+            language,
+            accent,
+        };
+        self.lfg_panel.show(shell, ctx, &[], &data);
     }
 
     /// The Captures area over the invented folder.
@@ -2079,6 +2969,7 @@ impl ScreenGallery {
                 ]
             },
             grades: if new { [0; 4] } else { [1, 4, 9, 30] },
+            week_seconds: if new { 0 } else { 5 * 3_600 + 1_200 },
         };
         let inputs = Inputs {
             online: &self.online,
@@ -2147,28 +3038,47 @@ impl ScreenGallery {
                 .get_or_insert_with(|| HomeStand::new(&ctx, self.prefs.clone(), scene, !unlocking))
                 .paint(ui, shell);
         }
-        let entries: Vec<LibraryEntry> = (0..NAMES.len())
+        let shown = if matches!(self.page, ScreenPage::LibraryEmpty) {
+            0
+        } else {
+            NAMES.len()
+        };
+        let entries: Vec<LibraryEntry> = (0..shown)
             .map(|i| LibraryEntry {
-                name: NAMES[i].to_owned(),
+                name: if i == 1 && matches!(self.page, ScreenPage::LibraryLongName) {
+                    "Lanternfall: Director's Cut, Complete Edition".to_owned()
+                } else {
+                    NAMES[i].to_owned()
+                },
                 icon: Some(self.tile(i)),
                 overlay: if i == 5 {
                     TileOverlay::Running
                 } else {
                     TileOverlay::None
                 },
-                state: if i == 5 {
+                state: if i == 1 && matches!(self.page, ScreenPage::LibraryLongName) {
+                    StateText {
+                        icon: Icon::ARROW_CIRCLE_DOWN,
+                        text: "Update available".into(),
+                        tint: crate::ui::theme::color::update_available(),
+                        quiet: false,
+                    }
+                } else if i == 5 {
                     StateText {
                         icon: Icon::PLAY_CIRCLE,
                         text: language.text(Key::Running).into(),
                         tint: crate::ui::theme::color::text_active(),
+                        quiet: false,
                     }
                 } else {
                     StateText {
                         icon: Icon::CHECK_CIRCLE,
                         text: language.text(Key::Ready).into(),
-                        tint: white(0.75),
+                        tint: crate::ui::theme::color::text_detail(),
+                        quiet: true,
                     }
                 },
+                compat: sample_compat(i, language),
             })
             .collect();
         let resolutions: Vec<String> = Vec::new();
@@ -2215,6 +3125,10 @@ impl ScreenGallery {
                 ScreenPage::AboutUpdate(UpdateLook::Ready | UpdateLook::Holding)
             ),
             default_screenshots: std::path::Path::new("C:\\Users\\mira\\Pictures\\AnyPS5"),
+            autostart: match self.page {
+                ScreenPage::SettingsConsole(look) => look.env(),
+                _ => ConsoleLook::Off.env(),
+            },
             links: if matches!(self.page, ScreenPage::BehaviourLinks) {
                 anyps5_core::linkreg::Handler::ThisExe
             } else {
@@ -2222,15 +3136,16 @@ impl ScreenGallery {
             },
             cjk_fonts: anyps5_core::fonts::CjkState::Missing,
             phone: &self.phone,
-            openh264: matches!(self.page, ScreenPage::SettingsCodec(_)).then(|| {
-                crate::screens::settings::Openh264Env {
-                    state: anyps5_core::openh264::CodecState::Ready,
-                    worker: Some(("ready".into(), None)),
-                }
-            }),
+            ludus: &self.ludus,
+            openh264: match self.page {
+                ScreenPage::SettingsCodec(look) => Some(look.env()),
+                _ => None,
+            },
+            windows_rows: true,
             clips: crate::screens::settings::ClipsEnv {
                 count: if self.prefs.clips_seconds > 0 { 3 } else { 0 },
                 capturing: matches!(self.page, ScreenPage::BehaviourClipsKey),
+                broadcast_key: false,
             },
             location: match self.page {
                 ScreenPage::UnlockedLocation(look) => look.env(),
@@ -2260,6 +3175,7 @@ impl ScreenGallery {
                     changes: 1,
                     needed: true,
                 }),
+                find_players: true,
                 unlock_note: Some(
                     "Unlocked with v0.1.2. v0.1.3 is installed. This update changes how games are converted."
                         .into(),
@@ -2271,6 +3187,18 @@ impl ScreenGallery {
             self.game_panel.show(shell, &ctx, &events, &mut data);
         }
         self.uninstall.show(shell, &ctx, &events, language, accent);
+        self.missing.show(
+            shell,
+            &ctx,
+            &events,
+            &crate::screens::toolkit_pin::MissingData {
+                title: name,
+                tag: "0.1.2",
+                downloading: false,
+                language,
+                accent,
+            },
+        );
         {
             let backups = if self.page == ScreenPage::SavesEmpty {
                 Vec::new()
@@ -2295,6 +3223,48 @@ impl ScreenGallery {
                 .show(shell, &ctx, &events, &stamp, language, accent);
         }
         {
+            use crate::screens::library_search::SearchData;
+            use crate::screens::library_storage::{StorageData, StorageEntry};
+            let entries: Vec<StorageEntry> = if self.page == ScreenPage::StorageEmpty {
+                Vec::new()
+            } else {
+                [
+                    ("Lanternfall", Some(42_300_000_000u64)),
+                    ("Skybound", Some(18_900_000_000)),
+                    ("Cinder Run", None),
+                ]
+                .into_iter()
+                .map(|(name, bytes)| StorageEntry {
+                    name: name.to_owned(),
+                    bytes,
+                    running: false,
+                })
+                .collect()
+            };
+            let data = StorageData {
+                entries: &entries,
+                free: Some(212_000_000_000),
+                language,
+                accent,
+            };
+            self.storage.show(shell, &ctx, &events, &data);
+            self.remove_copy.show(
+                shell,
+                &ctx,
+                &events,
+                ("Lanternfall", Some(42_300_000_000)),
+                language,
+                accent,
+            );
+            let search = SearchData {
+                query: "sky",
+                found: 1,
+                language,
+                accent,
+            };
+            self.library_search.show(shell, &ctx, &events, &search);
+        }
+        {
             let data = online_data(&self.online, self.together_name(), language, accent);
             if self.friends.wants_local() {
                 self.friends.set_local(crate::screens::gallery_feed::local(
@@ -2306,7 +3276,7 @@ impl ScreenGallery {
             self.friends.show(shell, &ctx, &events, &data);
         }
         if let ScreenPage::Online(look) = self.page {
-            self.call_surfaces(&ctx, look, accent, language);
+            self.call_surfaces(&ctx, look, language);
         }
         if let ScreenPage::Together(look) = self.page {
             crate::screens::gallery_together::paint(&ctx, accent, look, language);
@@ -2331,10 +3301,12 @@ impl ScreenGallery {
                 NotesView::Ready(&self.notes)
             };
             let data = WhatsNewData {
-                tag: if launcher { "0.1.4" } else { "0.1.3" },
+                tag: if launcher { "0.3.0" } else { "0.1.3" },
                 view,
                 language,
                 launcher,
+                showcase: launcher,
+                accent,
             };
             self.whats_new.show(shell, &ctx, &events, &data);
         }
@@ -2367,6 +3339,15 @@ impl ScreenGallery {
             self.controls.show(shell, &ctx, &events, &mut data);
         }
         {
+            let mut data = ControllersData {
+                prefs: &mut self.prefs,
+                language,
+                accent,
+                game_running: false,
+            };
+            self.controllers.show(shell, &ctx, &events, &mut data);
+        }
+        {
             let game = &self.games[1];
             let mut data = AdvancedData {
                 game,
@@ -2377,6 +3358,15 @@ impl ScreenGallery {
             };
             self.advanced.show(shell, &ctx, &events, &mut data);
         }
+        let none = TrophySet {
+            trophies: Vec::new(),
+            ..self.set.clone()
+        };
+        let set = if matches!(self.page, ScreenPage::TrophiesEmpty) {
+            &none
+        } else {
+            &self.set
+        };
         self.trophies.show(
             shell,
             &ctx,
@@ -2384,7 +3374,7 @@ impl ScreenGallery {
             &TrophyData {
                 game_key: "gallery",
                 game_name: name,
-                set: &self.set,
+                set,
                 language,
                 accent,
                 show_hidden: self.prefs.show_hidden_trophies,
@@ -2399,6 +3389,15 @@ impl ScreenGallery {
         if let ScreenPage::Captures(look) = self.page {
             self.captures_screen(shell, &ctx, look);
         }
+        if let ScreenPage::Hub(look) = self.page {
+            self.hub_screen(shell, &ctx, look);
+        }
+        if let ScreenPage::Lfg(look) = self.page {
+            self.lfg_screen(shell, &ctx, look);
+        }
+        if self.page == ScreenPage::TrophiesAll {
+            self.overview_screen(shell, &ctx);
+        }
         self.library.show(
             shell,
             &ctx,
@@ -2407,6 +3406,9 @@ impl ScreenGallery {
                 entries: &entries,
                 language,
                 accent,
+                folder_set: false,
+                scanning: false,
+                bar: sample_bar(language),
             },
         );
         let diagnosis =
@@ -2446,13 +3448,28 @@ impl ScreenGallery {
     fn open_page(&mut self, shell: &mut Shell, ctx: &Context) {
         match self.page {
             ScreenPage::Settings(n) => self.settings.open_at(n, n == 0),
-            ScreenPage::GameSettings => self.game_panel.open_row(3),
-            ScreenPage::GameToolkit => self.game_panel.open_row(10),
+            ScreenPage::GameSettings => self.game_panel.open_row(5),
+            ScreenPage::GameSettingsFoot => self.game_panel.open_row(18),
+            ScreenPage::GameToolkit => self.game_panel.open_row(11),
             ScreenPage::Confirm => self.uninstall.open(),
             ScreenPage::Saves | ScreenPage::SavesEmpty => self.saves.open(),
             ScreenPage::Restore => self.restore.open(),
+            ScreenPage::Storage => self.storage.open_copy(0),
+            ScreenPage::StorageEmpty => {
+                let none: [crate::screens::library_storage::StorageEntry; 0] = [];
+                let data = crate::screens::library_storage::StorageData {
+                    entries: &none,
+                    free: None,
+                    language: shell.language,
+                    accent: shell.accent_color(),
+                };
+                self.storage.open(&data);
+            }
+            ScreenPage::RemoveCopy => self.remove_copy.open(),
+            ScreenPage::LibrarySearch => self.library_search.open(),
+            ScreenPage::ToolkitMissing => self.missing.open(),
             ScreenPage::Online(look) => {
-                use crate::screens::online::Page;
+                use crate::screens::online::{Ask, Page};
                 let language = shell.language;
                 let data = online_data(
                     &self.online,
@@ -2475,11 +3492,49 @@ impl ScreenGallery {
                 self.friends.open(&data);
                 match look {
                     OnlineLook::Requests => self.friends.show_page(Page::Requests, &data),
+                    OnlineLook::PlayedWith
+                    | OnlineLook::PlayedWithOff
+                    | OnlineLook::PlayedWithEmpty
+                    | OnlineLook::PlayedWithOffEmpty
+                    | OnlineLook::PlayedWithLoading
+                    | OnlineLook::PlayedWithOffline
+                    | OnlineLook::PlayedWithFailed
+                    | OnlineLook::PlayedWithSignedOut => {
+                        self.friends.show_page(Page::PlayedWith, &data);
+                    }
+                    OnlineLook::PlayedWithClear => self.friends.show_page(
+                        Page::Confirm(Ask::ClearPlayedWith, Box::new(Page::PlayedWith)),
+                        &data,
+                    ),
+                    OnlineLook::AddFriend => self.friends.show_page(Page::AddFriend, &data),
+                    OnlineLook::AddFriendSent => {
+                        self.friends.show_page(Page::AddFriend, &data);
+                        self.friends.show_answer_as_news();
+                    }
+                    OnlineLook::AddFriendLink => {
+                        self.friends.show_page(Page::AddFriend, &data);
+                        self.friends.set_friend_text("Lumen".into(), &data);
+                    }
+                    OnlineLook::AddFriendMissing => {
+                        self.friends.show_page(Page::AddFriend, &data);
+                        self.friends.set_friend_text("Lumne".into(), &data);
+                        self.friends.show_answer_as_news();
+                    }
                     OnlineLook::FriendsFocus => {
                         self.friends.focus_row("friendRow", 1, &data);
                     }
                     OnlineLook::FriendsRail => self.friends.focus_rail(),
-                    OnlineLook::PartyNone => self.friends.show_page(Page::Party, &data),
+                    OnlineLook::PartyNone
+                    | OnlineLook::PartyNoneOffline
+                    | OnlineLook::PartyOffline
+                    | OnlineLook::PartyLong => self.friends.show_page(Page::Party, &data),
+                    OnlineLook::FriendOffline => self
+                        .friends
+                        .show_page(Page::Friend(anyps5_core::online::api::AccountId(2)), &data),
+                    OnlineLook::ConversationOffline => self
+                        .friends
+                        .show_page(Page::Conversation("c-lumen".into()), &data),
+                    OnlineLook::FriendsLong => self.friends.focus_row("friendRow", 0, &data),
                     OnlineLook::MissedCall => self.friends.show_page(Page::Home, &data),
                     OnlineLook::PartyDiscord => self.friends.show_page(Page::Party, &data),
                     OnlineLook::Friend => self
@@ -2487,6 +3542,10 @@ impl ScreenGallery {
                         .show_page(Page::Friend(anyps5_core::online::api::AccountId(2)), &data),
                     OnlineLook::Account | OnlineLook::AccountAppearing => {
                         self.friends.show_page(Page::Account, &data);
+                    }
+                    OnlineLook::AccountPublic => {
+                        self.friends.show_page(Page::Account, &data);
+                        self.friends.focus_row("publicProfile", 0, &data);
                     }
                     OnlineLook::Party
                     | OnlineLook::PartyPair
@@ -2510,7 +3569,12 @@ impl ScreenGallery {
                     | OnlineLook::ScreenOffer
                     | OnlineLook::ScreenCannot
                     | OnlineLook::ScreenWatching
-                    | OnlineLook::ScreenStalled => self.friends.show_page(Page::Party, &data),
+                    | OnlineLook::ScreenStalled
+                    | OnlineLook::ShareReady
+                    | OnlineLook::ShareWaiting
+                    | OnlineLook::ShareHosting
+                    | OnlineLook::ShareInvited
+                    | OnlineLook::ShareGuest => self.friends.show_page(Page::Party, &data),
                     OnlineLook::PartyMember => self.friends.show_page(
                         Page::PartyMember(anyps5_core::online::api::AccountId(2)),
                         &data,
@@ -2561,6 +3625,26 @@ impl ScreenGallery {
                     OnlineLook::Request => self
                         .friends
                         .show_page(Page::MessageRequest("c-nyx".into()), &data),
+                    OnlineLook::Confirm => {
+                        let lumen = anyps5_core::online::api::AccountId(2);
+                        self.friends.show_page(
+                            Page::Confirm(Ask::Block(lumen), Box::new(Page::Friend(lumen))),
+                            &data,
+                        );
+                    }
+                    OnlineLook::ConfirmUnsend => self.friends.show_page(
+                        Page::Confirm(
+                            Ask::Unsend {
+                                conversation: "c-lumen".into(),
+                                seq: 4,
+                            },
+                            Box::new(Page::Message("c-lumen".into(), 4)),
+                        ),
+                        &data,
+                    ),
+                    OnlineLook::ConfirmParty => self
+                        .friends
+                        .show_page(Page::Confirm(Ask::LeaveParty, Box::new(Page::Party)), &data),
                     OnlineLook::Muted => self.friends.show_page(Page::Home, &data),
                     OnlineLook::Restriction => self
                         .friends
@@ -2570,15 +3654,12 @@ impl ScreenGallery {
                         .show_page(Page::Conversation("c-lumen".into()), &data),
                     OnlineLook::Banned => self.friends.show_page(Page::Start, &data),
                     OnlineLook::Feed
-                    | OnlineLook::FeedReaction
                     | OnlineLook::FeedEmpty
                     | OnlineLook::FeedLoading
                     | OnlineLook::FeedError => {
                         self.friends.show_page(Page::Feed, &data);
-                        match look {
-                            OnlineLook::Feed => self.friends.set_feed_focus(1, None),
-                            OnlineLook::FeedReaction => self.friends.set_feed_focus(1, Some(1)),
-                            _ => {}
+                        if look == OnlineLook::Feed {
+                            self.friends.set_feed_focus(1);
                         }
                     }
                     _ => {}
@@ -2613,6 +3694,43 @@ impl ScreenGallery {
                     _ => {}
                 }
             }
+            ScreenPage::Controllers => self.controllers.open(),
+            ScreenPage::ControllersTest => self.controllers.open_test(),
+            ScreenPage::ControllersLight(custom) => {
+                crate::ui::pad_hub::publish_pads(vec![crate::ui::pad_hub::PadInfo {
+                    id: 0,
+                    name: "DualSense Wireless Controller".into(),
+                    vendor: Some(0x054C),
+                    product: Some(0x0CE6),
+                    family: crate::ui::pad_info::Family::PlayStation,
+                    link: crate::ui::pad_hub::Link::Bluetooth,
+                    battery: crate::ui::pad_info::Battery::Unknown,
+                    backend: "gilrs (WGI), HID".into(),
+                    active: true,
+                    dualsense: true,
+                    rumble: true,
+                }]);
+                self.prefs.lightbar = Some(if custom {
+                    crate::ui::lightbar::hex(crate::ui::lightbar::custom(210, 80))
+                } else {
+                    crate::ui::lightbar::hex(crate::ui::lightbar::COLOURS[0].1)
+                });
+                // The caption, the pad, the test caption and its two rows, the dead zone, then the
+                // light bar; with a custom colour the hue slider is the next row.
+                self.controllers.open_row(if custom { 7 } else { 6 });
+            }
+            ScreenPage::SettingsSound => {
+                self.prefs.sounds = true;
+                self.prefs.music = true;
+                self.prefs.game_music = true;
+                self.prefs.notification_sounds = true;
+                self.prefs.volume_interface = 70;
+                self.prefs.volume_music = 40;
+                self.prefs.volume_game_music = 100;
+                self.prefs.volume_notifications = 0;
+                self.settings.open_at(Category::Sound.index(), true);
+                self.settings.focus_row_id("volInterface");
+            }
             ScreenPage::Controls => self.controls.open(),
             ScreenPage::ControlsCapture => {
                 self.controls.open_row(3);
@@ -2620,26 +3738,42 @@ impl ScreenGallery {
             }
             ScreenPage::Advanced => self.advanced.open_row(4),
             ScreenPage::Trophies => self.trophies.open_at(1),
+            ScreenPage::TrophiesEmpty => self.trophies.open_at(0),
             ScreenPage::TrophiesHidden => self.trophies.open_at(SECRET_TROPHY),
             ScreenPage::TrophiesRevealed => {
                 self.trophies.open_at(SECRET_TROPHY);
                 self.trophies.reveal(SECRET_TROPHY);
             }
-            ScreenPage::Library => self.library.open(1),
+            ScreenPage::Library | ScreenPage::LibraryLongName => self.library.open(1),
+            ScreenPage::LibraryEmpty => self.library.open(0),
             ScreenPage::Captures(look) => self.open_captures(ctx, look),
+            ScreenPage::Hub(_) => self.hub.open(),
+            ScreenPage::Lfg(LfgLook::Send) => self.send_panel.open(),
+            ScreenPage::Lfg(LfgLook::Post) => {
+                self.lfg_panel.open_on(crate::screens::lfg::Page::Post)
+            }
+            ScreenPage::Lfg(LfgLook::Mine) => self
+                .lfg_panel
+                .open_on(crate::screens::lfg::Page::Mine("own".into())),
+            ScreenPage::Lfg(_) => self.lfg_panel.open(),
+            ScreenPage::TrophiesAll => {
+                self.overview.open();
+                self.overview.set_focus(1);
+            }
             ScreenPage::ControlsEnd => self.controls.open_row(30),
             ScreenPage::Toolkit(look) => {
-                self.settings.open_at(5, true);
+                self.settings.open_at(Category::Toolkit.index(), true);
                 // The update page lands on the install row.
                 if look == ToolkitLook::Update {
                     self.settings.focus_row(3);
                 }
                 if look == ToolkitLook::Unused {
-                    self.settings.focus_row(7);
+                    self.settings
+                        .focus_row_id(crate::screens::toolkit_pin::REMOVE_ROWS[0]);
                 }
             }
             ScreenPage::AboutUpdate(look) => {
-                self.settings.open_at(7, true);
+                self.settings.open_at(Category::About.index(), true);
                 // The row that acts, when there is one; else the first row that can be focused.
                 self.settings.focus_row(match look {
                     UpdateLook::Ready
@@ -2652,13 +3786,25 @@ impl ScreenGallery {
                 });
             }
             ScreenPage::WhatsNewLauncher => {
-                self.whats_new
-                    .open_launcher(&self.launcher_notes.notes, shell.language);
+                self.whats_new.open_showcase();
             }
-            ScreenPage::BehaviourLinks => self.settings.open_at(3, true),
-            ScreenPage::SettingsCodec(on) => {
-                self.prefs.online_openh264 = on;
-                self.settings.open_at(6, true);
+            ScreenPage::SettingsConsole(look) => {
+                self.prefs.console_mode = look == ConsoleLook::On;
+                self.settings.open_at(Category::General.index(), true);
+                self.settings.focus_row_id(match look {
+                    ConsoleLook::On => "desktop",
+                    ConsoleLook::Unavailable => "console",
+                    ConsoleLook::Off => "console",
+                    _ => "autostart",
+                });
+            }
+            ScreenPage::BehaviourLinks => {
+                self.settings.open_at(Category::ConnectedApps.index(), true);
+                self.settings.focus_row_id("links");
+            }
+            ScreenPage::SettingsCodec(look) => {
+                self.prefs.online_openh264 = look != CodecLook::Off;
+                self.settings.open_at(Category::Advanced.index(), true);
             }
             ScreenPage::UnlockedLocation(look) => {
                 if look != LocationLook::Default {
@@ -2667,33 +3813,59 @@ impl ScreenGallery {
                 if look == LocationLook::Left {
                     self.prefs.unlocked_moving_from = Some("D:\\Games\\PS5".into());
                 }
-                self.settings.open_at(1, true);
+                self.settings.open_at(Category::Library.index(), true);
                 self.settings.focus_row(2);
             }
             ScreenPage::BehaviourClipsOff => {
                 self.prefs.clips_seconds = 0;
-                self.settings.open_at(3, true);
-                self.settings.focus_row(8);
+                self.settings.open_at(Category::Captures.index(), true);
+                self.settings.focus_row_id("clips");
             }
             ScreenPage::BehaviourClips | ScreenPage::BehaviourClipsKey => {
                 self.prefs.clips_seconds = 30;
-                self.settings.open_at(3, true);
+                self.settings.open_at(Category::Captures.index(), true);
                 self.settings
-                    .focus_row(if self.page == ScreenPage::BehaviourClipsKey {
-                        9
+                    .focus_row_id(if self.page == ScreenPage::BehaviourClipsKey {
+                        "clipsKey"
                     } else {
-                        8
+                        "clips"
                     });
             }
             ScreenPage::BehaviourSteam => {
-                self.settings.open_at(3, true);
-                self.settings.focus_row(12);
+                self.settings.open_at(Category::ConnectedApps.index(), true);
+                self.settings.focus_row_id("addToSteam");
             }
             ScreenPage::Phone(look) => {
-                self.settings.open_at(4, true);
+                self.settings.open_at(Category::Phone.index(), true);
                 // The question lands on its first answer.
                 if look == PhoneLook::Pairing {
-                    self.settings.focus_row(4);
+                    self.settings.focus_row_id("pairAllow");
+                }
+                // LudusCtrl's question lands on its first answer; a connected LudusCtrl phone
+                // shows the end of the page, where the app comes from. LudusCtrl waiting is the
+                // switch just turned on, which keeps the QR code in view; the browser client's
+                // scenes land on the QR code's group.
+                let focus = match look {
+                    PhoneLook::LudusWaiting => Some("ludusctrl"),
+                    PhoneLook::LudusPairing => Some("ludusAllow"),
+                    PhoneLook::LudusConnected => Some("ludusApp"),
+                    PhoneLook::BrowserWaiting => Some("browserCopy"),
+                    PhoneLook::BrowserLinked => Some("browserStatus"),
+                    PhoneLook::BrowserFailed => Some("browserFailed"),
+                    PhoneLook::AppFailed => Some("ludusFailed"),
+                    PhoneLook::BrowserReissued => Some("browserNewLink"),
+                    _ => None,
+                };
+                if let Some(focus) = focus {
+                    let rows = crate::screens::phone::page(
+                        &self.prefs,
+                        &self.phone,
+                        &self.ludus,
+                        shell.language,
+                    );
+                    if let Some(at) = rows.iter().position(|r| r.id == focus) {
+                        self.settings.focus_row(at);
+                    }
                 }
             }
             ScreenPage::Recommended | ScreenPage::RecommendedWarning => {
@@ -2773,6 +3945,7 @@ fn sample_report() -> ReportInput {
         settings: serde_json::json!({"fullscreen": true, "windowSize": 100, "controls": {"Cross": ["KEY:F"]}}),
         crash: None,
         session: SAMPLE_LOG.into(),
+        controllers: vec!["DualSense Wireless Controller".into()],
         now: "2026-10-22T09:31:00Z".into(),
     }
 }
@@ -2889,5 +4062,41 @@ impl LocationLook {
             }),
             left: (self == LocationLook::Left).then(|| ("D:\\Games\\PS5".into(), 3)),
         }
+    }
+}
+
+/// What players found, for a few of the sample games.
+fn sample_compat(index: usize, language: crate::ui::i18n::Language) -> Option<StateText> {
+    use crate::app::library_view::Compat;
+    let tags: &[Compat] = match index {
+        0 => &[Compat::RunsWell, Compat::Lan],
+        1 => &[Compat::RunsWithIssues, Compat::Lan],
+        2 => &[Compat::RunsWithIssues],
+        3 => &[Compat::NoStart],
+        4 => &[Compat::Lan],
+        _ => &[],
+    };
+    crate::app::library_panels::compat_line(tags, language)
+}
+
+/// The bar of the library page as a player meets it first.
+fn sample_bar(language: crate::ui::i18n::Language) -> crate::screens::library::BarData {
+    use crate::screens::library_strings::LibraryText as T;
+    crate::screens::library::BarData {
+        sort: T::SortBy.format(
+            language,
+            &[crate::ui::i18n::Arg::Str(T::SortName.text(language))],
+        ),
+        filter: T::ShowFilter.format(
+            language,
+            &[crate::ui::i18n::Arg::Str(T::FilterAll.text(language))],
+        ),
+        query: String::new(),
+        search: T::Search.text(language).to_owned(),
+        storage: T::Storage.text(language).to_owned(),
+        narrowed: false,
+        nothing_title: T::NothingHere.text(language).to_owned(),
+        nothing_text: T::NothingHereText.text(language).to_owned(),
+        clear: T::ClearFilters.text(language).to_owned(),
     }
 }

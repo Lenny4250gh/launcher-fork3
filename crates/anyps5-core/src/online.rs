@@ -19,10 +19,14 @@ mod calls;
 mod compare;
 mod feed;
 mod join;
+pub mod lfg;
+pub mod media;
+pub mod played_with;
 mod profile;
 mod restrictions;
 mod runs;
 mod screen;
+mod share;
 mod social;
 mod voice;
 
@@ -31,6 +35,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command as Process, Stdio};
 use std::sync::mpsc::{Receiver, channel};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub use anyplay_control::anyplay_api as api;
@@ -54,6 +59,7 @@ pub use profile::{
 pub use restrictions::{Blocked, Restrictions, in_force};
 pub use runs::Runs;
 pub use screen::{Screen, ScreenCommand, ScreenNotice};
+pub use share::{SharePlay, SharePlayCommand, SharePlayNotice};
 pub use social::{
     Fetch, Ingested, KEPT, Listed, Social, delivered_to_other, others, plain, read_by_other,
     seen_by, snippet,
@@ -147,8 +153,33 @@ pub enum Line {
 /// The net service as a child process.
 pub struct NetProcess {
     child: Option<Child>,
-    stdin: Option<ChildStdin>,
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
     lines: Receiver<Line>,
+}
+
+/// A second way to write to the net service's input, for a thread that must not wait for a UI
+/// frame (the push-to-talk key while a game has the screen and the launcher is minimised and
+/// draws nothing). Lines of both ways never mix: each write holds the pipe until it is done.
+#[derive(Clone)]
+pub struct LineWriter(Arc<Mutex<Option<ChildStdin>>>);
+
+impl LineWriter {
+    /// Writes the lines; an error means the service is gone.
+    pub fn write(&self, lines: &[String]) -> std::io::Result<()> {
+        let mut stdin = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(stdin) = stdin.as_mut() else {
+            return Err(std::io::ErrorKind::BrokenPipe.into());
+        };
+        for line in lines {
+            stdin.write_all(line.as_bytes())?;
+        }
+        stdin.flush()
+    }
+
+    /// The push-to-talk key went down or up. Its answer is not waited for: the number 0 is one the launcher never gives to a command it waits on.
+    pub fn push_to_talk(&self, talking: bool) -> std::io::Result<()> {
+        self.write(&[control::command_line(0, &Command::PushToTalk { talking })])
+    }
 }
 
 /// The `X-AnyPlay-Client` value the net service sends for this launcher.
@@ -213,7 +244,7 @@ impl NetProcess {
             .stdout
             .take()
             .ok_or_else(|| std::io::Error::other("no output pipe"))?;
-        let stdin = child.stdin.take();
+        let stdin = Arc::new(Mutex::new(child.stdin.take()));
         let (tx, lines) = channel();
         std::thread::Builder::new()
             .name("net-read".into())
@@ -251,13 +282,12 @@ impl NetProcess {
 
     /// Writes command lines. An error means the service is gone; its end arrives as a line.
     pub fn write(&mut self, lines: &[String]) -> std::io::Result<()> {
-        let Some(stdin) = &mut self.stdin else {
-            return Err(std::io::ErrorKind::BrokenPipe.into());
-        };
-        for line in lines {
-            stdin.write_all(line.as_bytes())?;
-        }
-        stdin.flush()
+        self.writer().write(lines)
+    }
+
+    /// Another handle on the service's input.
+    pub fn writer(&self) -> LineWriter {
+        LineWriter(self.stdin.clone())
     }
 
     /// The lines that arrived since the last call.
@@ -271,7 +301,7 @@ impl Drop for NetProcess {
     /// still connected, once that game ends); a service that does not end in ten seconds while
     /// no game holds it is stopped.
     fn drop(&mut self) {
-        drop(self.stdin.take());
+        drop(self.stdin.lock().unwrap_or_else(|e| e.into_inner()).take());
         if let Some(mut child) = self.child.take() {
             let _ = std::thread::Builder::new()
                 .name("net-stop".into())
@@ -381,6 +411,24 @@ pub enum Purpose {
     Cards,
     Privacy,
     SetPrivacy,
+    /// Whether the player's page at `/u/<handle>` is shown to everyone.
+    PublicProfile,
+    /// The public profile switch on or off; `before` is what it was.
+    SetPublicProfile {
+        on: bool,
+        before: bool,
+    },
+    /// The people the player played with recently.
+    PlayedWith,
+    /// The list emptied; `before` is what it held, to put back on a refusal.
+    ClearPlayedWith {
+        before: Vec<api::PlayedWith>,
+    },
+    /// Recording the people played with on or off; `before` is what it was.
+    SetRememberPlayedWith {
+        on: bool,
+        before: bool,
+    },
     /// A page of the feed: the newest, or the one that starts before an item.
     Feed {
         before: Option<u64>,
@@ -416,6 +464,8 @@ pub enum Purpose {
     },
     // Parties and messages
     Party,
+    /// A party of one, made without an invitation.
+    PartyCreate,
     PartyInvite,
     PartyAnswer {
         id: String,
@@ -470,6 +520,28 @@ pub enum Purpose {
     },
     AcceptRequest(String),
     LeaveConversation(String),
+    // Looking for group and media
+    /// The open listings of a game.
+    Lfg {
+        title_id: String,
+    },
+    LfgMine,
+    LfgPost,
+    LfgClose(String),
+    LfgAsk(String),
+    LfgWithdraw(String),
+    LfgAnswer {
+        listing: String,
+        accept: bool,
+    },
+    /// A screenshot or clip on its way to a conversation.
+    SendMedia {
+        conversation: String,
+    },
+    /// A received file being downloaded to the cache.
+    FetchMedia {
+        media: String,
+    },
     // Voice
     /// Switching voice on or off, its mode, a member's volume or mute.
     Voice,
@@ -483,6 +555,14 @@ pub enum Purpose {
     ScreenLeave,
     /// Telling the net service where the share worker is.
     ScreenWorker,
+    // Share play
+    ShareStart,
+    ShareAnswer {
+        accept: bool,
+    },
+    ShareMode,
+    ShareRequest,
+    ShareStop,
 }
 
 /// The game's invitation dialog, waiting for the player to pick friends.
@@ -541,15 +621,43 @@ pub enum Notice {
     VoiceFailed(Problem),
     /// A party member started or ended a shared screen, or the player's own ended.
     Screen(ScreenNotice),
+    /// Something about share play: an invitation, a request, a mode, an end.
+    SharePlay(SharePlayNotice),
     /// A moderator limited the account while the launcher ran.
     Restricted(control::Restriction),
     /// The account was banned and is signed out.
     Banned(control::Restriction),
+    /// Someone asked to join a listing of the player.
+    LfgRequest { from: Account, title_id: String },
+    /// A poster accepted the player's request: their party invitation is on its way.
+    LfgAccepted { by: Account, title_id: String },
+}
+
+/// What the last friend request came to, for the page that sent it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FriendRequestOutcome {
+    /// Counts up with every answer, so a page can tell a new one from one it has shown.
+    pub serial: u64,
+    /// The name the player typed.
+    pub handle: String,
+    pub result: FriendRequestResult,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FriendRequestResult {
+    /// The request waits for the other player.
+    Requested,
+    /// The other player had asked first, or the two already were friends.
+    Friends,
+    /// The cloud said no; the text says why, in the player's language.
+    Failed(String),
 }
 
 /// What the launcher knows about the player's online state.
 #[derive(Debug, Default)]
 pub struct Online {
+    /// What the last friend request came to; the Add a Friend page shows it.
+    pub friend_request: Option<FriendRequestOutcome>,
     pub status: Status,
     pub cloud: Option<Cloud>,
     pub account: Option<SignedIn>,
@@ -568,6 +676,8 @@ pub struct Online {
     pub voice: Voice,
     /// Share screen: what the player shares, what is offered to them and what they watch.
     pub screen: Screen,
+    /// Share play: the share the player is in and the invitations waiting for an answer.
+    pub share_play: SharePlay,
     /// Calls: who the player is calling, missed calls.
     pub calls: Calls,
     /// What limits the account: mutes, a new account's limits, a ban.
@@ -585,10 +695,18 @@ pub struct Online {
     pub compares: BTreeMap<CompareKey, CompareEntry>,
     /// Who sees the player's trophies; `None` until the cloud said.
     pub privacy: Option<api::Privacy>,
+    /// Whether the page at `/u/<handle>` is shown to everyone; `None` until the cloud said.
+    pub public_profile: Option<bool>,
+    /// Played with recently: the private list of people from shared parties and sessions.
+    pub played_with: played_with::PlayedWithState,
     /// What players found per title (run reports).
     pub runs: Runs,
     /// The join code behind the Join button on Discord.
     pub join: JoinOffer,
+    /// Looking for group: the listings of the game on screen and the player's own.
+    pub lfg: lfg::Lfg,
+    /// The files of received screenshots and clips.
+    pub media: media::Cache,
     /// How many trophies of each title the cloud has recorded since this sign-in.
     uploaded: BTreeMap<String, usize>,
     /// How many secret trophies of each title the cloud has been told about since this sign-in.
@@ -604,6 +722,16 @@ pub struct Online {
 }
 
 impl Online {
+    /// Keeps what a friend request came to.
+    pub fn record_friend_request(&mut self, handle: &str, result: FriendRequestResult) {
+        let serial = self.friend_request.as_ref().map_or(1, |o| o.serial + 1);
+        self.friend_request = Some(FriendRequestOutcome {
+            serial,
+            handle: handle.to_owned(),
+            result,
+        });
+    }
+
     /// Queues `command`; [`Online::take_outbox`] hands it to the process.
     pub fn send(&mut self, purpose: Purpose, command: Command) -> u64 {
         self.next += 1;
@@ -726,6 +854,12 @@ impl Online {
         }
         match purpose {
             Purpose::Feed { .. } => self.feed.error = Some(failure.clone()),
+            Purpose::Lfg { .. } => self.lfg.failed = true,
+            Purpose::FetchMedia { media } => {
+                self.media.asked.remove(media);
+                self.media.failed.insert(media.clone());
+            }
+            Purpose::LfgPost => self.lfg.post_error = Some(failure.code.clone()),
             Purpose::Conversations => self.social.fetch_failed(None),
             Purpose::Messages {
                 conversation,
@@ -744,6 +878,15 @@ impl Online {
                 // unless an answer is shown already.
                 entry.hidden = failure.is(api::ErrorCode::NotFound);
                 entry.failed = !entry.hidden && entry.data.is_none();
+            }
+            Purpose::PlayedWith => self.played_with.fetch_failed(),
+            Purpose::ClearPlayedWith { before } => self.played_with.restore_people(before.clone()),
+            Purpose::SetRememberPlayedWith { before, .. } => {
+                self.played_with.set_remember(*before);
+            }
+            Purpose::SetPublicProfile { before, .. } => {
+                // The same: the switch showed the choice at once.
+                self.public_profile = Some(*before);
             }
             Purpose::AppearOffline { before, .. } => {
                 // The choice showed at once; the refusal takes it back.
@@ -894,6 +1037,31 @@ impl Online {
                 let known = sent.entry(title_id.clone()).or_default();
                 *known = (*known).max(*count);
             }
+            Purpose::PublicProfile | Purpose::SetPublicProfile { .. } => {
+                if let Ok(now) = serde_json::from_value::<api::PublicProfile>(value.clone()) {
+                    self.public_profile = Some(now.public_profile);
+                }
+            }
+            Purpose::PlayedWith => {
+                if let Ok(list) = serde_json::from_value::<api::PlayedWithList>(value.clone()) {
+                    self.played_with.keep(list);
+                }
+            }
+            Purpose::SetRememberPlayedWith { .. } => {
+                if let Ok(now) = serde_json::from_value::<api::RememberPlayedWith>(value.clone()) {
+                    self.played_with.set_remember(now.remember_played_with);
+                }
+            }
+            Purpose::AddFriend(handle) => {
+                if let Ok(added) = serde_json::from_value::<control::FriendAdded>(value.clone()) {
+                    let friends = added.result == api::FriendState::Friends;
+                    self.played_with.request_sent(handle, friends);
+                }
+            }
+            Purpose::Block(account) => {
+                self.played_with.blocked(*account);
+                self.request_played_with(true);
+            }
             Purpose::Privacy | Purpose::SetPrivacy => {
                 if let Ok(privacy) = serde_json::from_value(value.clone()) {
                     self.privacy = Some(privacy);
@@ -909,6 +1077,41 @@ impl Online {
                 }
             }
             Purpose::Hello => self.voice_hello(),
+            Purpose::Lfg { title_id } => {
+                if let Ok(answer) = serde_json::from_value::<api::Listings>(value.clone()) {
+                    self.lfg.keep_listings(title_id, answer);
+                }
+            }
+            Purpose::FetchMedia { media } => {
+                self.media.failed.remove(media);
+                self.media.ready.insert(media.clone());
+            }
+            Purpose::LfgMine => {
+                if let Ok(mine) = serde_json::from_value::<api::LfgMine>(value.clone()) {
+                    self.lfg.mine = Some(mine);
+                }
+            }
+            Purpose::LfgPost => {
+                self.lfg.post_error = None;
+                if let Ok(listing) = serde_json::from_value::<api::Listing>(value.clone()) {
+                    let mine = self.lfg.mine.get_or_insert_with(Default::default);
+                    mine.posted.retain(|l| l.id != listing.id);
+                    mine.posted.insert(0, listing);
+                }
+            }
+            Purpose::LfgClose(id) | Purpose::LfgWithdraw(id) => self.lfg.remove(id),
+            Purpose::LfgAsk(_) | Purpose::LfgAnswer { .. } => {
+                if let Ok(listing) = serde_json::from_value::<api::Listing>(value.clone()) {
+                    self.lfg.replace(&listing);
+                    // The player's request is a new row of "asked" until the next fetch.
+                    if let Some(mine) = self.lfg.mine.as_mut()
+                        && matches!(purpose, Purpose::LfgAsk(_))
+                        && !mine.asked.iter().any(|l| l.id == listing.id)
+                    {
+                        mine.asked.push(listing);
+                    }
+                }
+            }
             Purpose::JoinCode => match serde_json::from_value::<api::JoinCode>(value.clone()) {
                 Ok(code) => self.join.issued(code),
                 Err(_) => self.join.failed(false, false, unix_now()),
@@ -920,7 +1123,7 @@ impl Online {
                 }
             }
             Purpose::Call(friend) => self.call_placed(*friend, value, notices),
-            Purpose::Party => {
+            Purpose::Party | Purpose::PartyCreate => {
                 if let Ok(state) = serde_json::from_value::<control::PartyState>(value.clone()) {
                     self.party_changed(state.party);
                 }
@@ -976,6 +1179,16 @@ impl Online {
                     }
                     if *announce {
                         self.announce(conversation, &got.new, notices);
+                    }
+                }
+            }
+            Purpose::SendMedia { conversation } => {
+                if let Ok(message) = serde_json::from_value::<Message>(value.clone()) {
+                    let seq = message.seq;
+                    let got = self.social.ingest_sent(message);
+                    self.social.mark_read(conversation, seq);
+                    if let Some(next) = got.follow {
+                        self.fetch(conversation, next, false);
                     }
                 }
             }
@@ -1377,6 +1590,147 @@ impl Online {
         }
     }
 
+    /// The screen of a game's listings opened: forget another game's, ask for this one's.
+    pub fn open_lfg(&mut self, title_id: &str) {
+        self.lfg.open(title_id);
+        self.refresh_lfg();
+    }
+
+    /// Asks the cloud for the listings of the game on screen and for the player's own, unless
+    /// that question waits already.
+    pub fn refresh_lfg(&mut self) {
+        let Some(title_id) = self.lfg.title_id.clone() else {
+            return;
+        };
+        if !self.is_online() {
+            return;
+        }
+        self.lfg.asked_at = unix_now();
+        if !self.is_waiting(|p| matches!(p, Purpose::Lfg { .. })) {
+            self.send(
+                Purpose::Lfg {
+                    title_id: title_id.clone(),
+                },
+                Command::Lfg {
+                    title_id,
+                    mode: None,
+                    language: None,
+                },
+            );
+        }
+        if !self.is_waiting(|p| *p == Purpose::LfgMine) {
+            self.send(Purpose::LfgMine, Command::LfgMine);
+        }
+    }
+
+    /// Posts a listing for the game on screen.
+    pub fn post_lfg(
+        &mut self,
+        title_id: String,
+        mode: api::LfgMode,
+        language: Option<String>,
+        note: String,
+        slots: u8,
+    ) {
+        if !self.is_online() || self.is_waiting(|p| *p == Purpose::LfgPost) {
+            return;
+        }
+        self.lfg.post_error = None;
+        self.send(
+            Purpose::LfgPost,
+            Command::LfgPost {
+                title_id,
+                mode,
+                language,
+                note,
+                slots,
+            },
+        );
+    }
+
+    pub fn close_lfg(&mut self, listing: &str) {
+        self.send(
+            Purpose::LfgClose(listing.to_owned()),
+            Command::LfgClose {
+                listing: listing.to_owned(),
+            },
+        );
+    }
+
+    pub fn ask_lfg(&mut self, listing: &str) {
+        self.send(
+            Purpose::LfgAsk(listing.to_owned()),
+            Command::LfgAsk {
+                listing: listing.to_owned(),
+            },
+        );
+    }
+
+    pub fn withdraw_lfg(&mut self, listing: &str) {
+        self.send(
+            Purpose::LfgWithdraw(listing.to_owned()),
+            Command::LfgWithdraw {
+                listing: listing.to_owned(),
+            },
+        );
+    }
+
+    /// The poster's answer to a request.
+    pub fn answer_lfg(&mut self, listing: &str, account: AccountId, accept: bool) {
+        self.send(
+            Purpose::LfgAnswer {
+                listing: listing.to_owned(),
+                accept,
+            },
+            Command::LfgAnswer {
+                listing: listing.to_owned(),
+                account,
+                accept,
+            },
+        );
+    }
+
+    /// Reports a listing and its poster.
+    pub fn report_listing(&mut self, poster: AccountId, listing: &str, reason: api::ReportReason) {
+        self.send(
+            Purpose::Report(poster),
+            Command::Report {
+                account: poster,
+                reason,
+                details: String::new(),
+                conversation: None,
+                seq: None,
+                listing: Some(listing.to_owned()),
+            },
+        );
+    }
+
+    /// Sends a screenshot or clip to a conversation.
+    pub fn send_media(&mut self, conversation: &str, path: &Path) {
+        self.send(
+            Purpose::SendMedia {
+                conversation: conversation.to_owned(),
+            },
+            Command::SendMedia {
+                conversation: conversation.to_owned(),
+                path: path.to_string_lossy().into_owned(),
+            },
+        );
+    }
+
+    /// Downloads the file of a media message into `path`.
+    pub fn fetch_media(&mut self, media: &str, path: &Path) {
+        self.send(
+            Purpose::FetchMedia {
+                media: media.to_owned(),
+            },
+            Command::FetchMedia {
+                media: media.to_owned(),
+                path: path.to_string_lossy().into_owned(),
+            },
+        );
+    }
+
     /// Asks for the newest page of the feed, unless that question waits already.
     pub fn request_feed(&mut self) {
         if !self.is_signed_in() || self.is_waiting(|p| *p == Purpose::Feed { before: None }) {
@@ -1597,6 +1951,87 @@ impl Online {
         );
     }
 
+    /// Asks the cloud for the people the player played with recently. `force` asks even when the
+    /// list was fetched a moment ago (the page was opened); without it a list stays for
+    /// [`played_with::REFRESH_SECS`]. One question at a time.
+    pub fn request_played_with(&mut self, force: bool) {
+        let now = unix_now();
+        if !self.is_online()
+            || self.is_waiting(|p| matches!(p, Purpose::PlayedWith))
+            || !(force || self.played_with.due(now))
+        {
+            return;
+        }
+        self.played_with.asked_at = now;
+        self.send(Purpose::PlayedWith, Command::PlayedWith);
+    }
+
+    /// Empties the list. It shows empty at once; a refusal puts the people back.
+    pub fn clear_played_with(&mut self) {
+        if !self.is_signed_in()
+            || self.played_with.count() == 0
+            || self.is_waiting(|p| matches!(p, Purpose::ClearPlayedWith { .. }))
+        {
+            return;
+        }
+        let before = self.played_with.take_people();
+        self.send(
+            Purpose::ClearPlayedWith { before },
+            Command::ClearPlayedWith,
+        );
+    }
+
+    /// Turns the recording of new people on or off. The choice shows at once, the cloud's answer
+    /// settles it and a refusal takes it back. Before the list is known there is nothing to flip.
+    pub fn set_remember_played_with(&mut self, on: bool) {
+        if !self.is_signed_in() {
+            return;
+        }
+        let Some(before) = self.played_with.list.as_ref().map(|l| l.remember) else {
+            self.request_played_with(true);
+            return;
+        };
+        if before == on || self.is_waiting(|p| matches!(p, Purpose::SetRememberPlayedWith { .. })) {
+            return;
+        }
+        self.played_with.set_remember(on);
+        self.send(
+            Purpose::SetRememberPlayedWith { on, before },
+            Command::SetRememberPlayedWith { on },
+        );
+    }
+
+    /// Asks the cloud whether the player's page at `/u/<handle>` is public, unless it is known.
+    pub fn request_public_profile(&mut self) {
+        if self.is_signed_in()
+            && self.public_profile.is_none()
+            && !self.is_waiting(|p| matches!(p, Purpose::PublicProfile))
+        {
+            self.send(Purpose::PublicProfile, Command::PublicProfile);
+        }
+    }
+
+    /// Shows the player's page at `/u/<handle>` to everyone, or only to friends again. The choice
+    /// shows at once, the cloud's answer settles it and a refusal takes it back. Before the cloud
+    /// said what it is now there is nothing to flip: the launcher asks first.
+    pub fn set_public_profile(&mut self, on: bool) {
+        if !self.is_signed_in() {
+            return;
+        }
+        let Some(before) = self.public_profile else {
+            self.request_public_profile();
+            return;
+        };
+        if before == on || self.is_waiting(|p| matches!(p, Purpose::SetPublicProfile { .. })) {
+            return;
+        }
+        self.public_profile = Some(on);
+        self.send(
+            Purpose::SetPublicProfile { on, before },
+            Command::SetPublicProfile { on },
+        );
+    }
+
     /// Changes who sees the player's trophies. The cloud replaces the whole setting, so the other
     /// parts go back as the cloud last said; before it said anything, the launcher asks again
     /// instead of guessing them. The choice shows at once and comes back with the answer.
@@ -1636,6 +2071,7 @@ impl Online {
                     self.social = Social::default();
                     self.voice.reset();
                     self.screen.reset();
+                    self.share_play.reset();
                     self.calls = Calls::default();
                     self.session = None;
                     self.cards.clear();
@@ -1644,11 +2080,14 @@ impl Online {
                     self.profiles.clear();
                     self.compares.clear();
                     self.privacy = None;
+                    self.public_profile = None;
+                    self.played_with.reset();
                     self.uploaded.clear();
                     self.secrets_sent.clear();
                     self.revealed_sent.clear();
                     self.playtime_sent.clear();
                     self.join = JoinOffer::default();
+                    self.lfg.reset();
                 }
                 if self.account.is_some() {
                     self.restrictions.signed_in();
@@ -1789,11 +2228,32 @@ impl Online {
                 offers,
                 watching,
             } => notices.extend(self.screen_event(can_share, can_watch, hosting, offers, watching)),
+            event @ (Event::Share { .. }
+            | Event::ShareInvitation { .. }
+            | Event::ShareInvitationGone { .. }
+            | Event::ShareRequest { .. }) => self.share_play_event(event, &mut notices),
             // News, not data: the page that was looked at reads the feed again.
             Event::Feed => {
                 if self.feed.loaded {
                     self.request_feed();
                 }
+            }
+            Event::LfgRequest {
+                listing: _,
+                title_id,
+                from,
+            } => {
+                // The poster's list of requests is read again the next time it is looked at.
+                self.lfg.asked_at = 0;
+                notices.push(Notice::LfgRequest { from, title_id });
+            }
+            Event::LfgAccepted {
+                listing: _,
+                title_id,
+                by,
+            } => {
+                self.lfg.asked_at = 0;
+                notices.push(Notice::LfgAccepted { by, title_id });
             }
             // The Discord Social SDK is not used by this launcher yet.
             Event::Discord(_) => {}
@@ -1832,7 +2292,7 @@ impl Online {
             .find(|f| f.account.id == account)
     }
 
-    /// The account behind an incoming request, an outgoing one or a block.
+    /// The account behind a friend, a request, a block or a person played with recently.
     pub fn known(&self, account: AccountId) -> Option<&Account> {
         self.friends
             .friends
@@ -1841,6 +2301,12 @@ impl Online {
             .chain(self.friends.incoming.iter().map(|r| &r.account))
             .chain(self.friends.outgoing.iter().map(|r| &r.account))
             .chain(self.friends.blocked.iter())
+            .chain(
+                self.played_with
+                    .list
+                    .iter()
+                    .flat_map(|l| l.people.iter().map(|p| &p.account)),
+            )
             .find(|a| a.id == account)
     }
 }
@@ -2528,6 +2994,7 @@ mod tests {
                     deleted: false,
                     reactions: Vec::new(),
                     rev: 0,
+                    media: None,
                 })
                 .collect(),
             last: to,
@@ -2809,6 +3276,7 @@ mod tests {
                 deleted: false,
                 reactions: Vec::new(),
                 rev: 0,
+                media: None,
             },
         );
         assert!(!notices.iter().any(|n| matches!(n, Notice::Message { .. })));
@@ -3142,6 +3610,279 @@ mod tests {
             total: tally,
             level: api::TrophyLevel::of(tally.points),
         }
+    }
+
+    #[test]
+    fn the_public_profile_switch_waits_for_the_cloud_then_shows_at_once() {
+        let mut online = Online::default();
+        signed_in(&mut online);
+        online.take_outbox();
+        // Not known yet: pressing the switch asks, and sends no change.
+        online.set_public_profile(true);
+        let lines = online.take_outbox();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::PublicProfile
+        );
+        assert_eq!(online.public_profile, None);
+        let id = online.next;
+        answer(&mut online, id, api::PublicProfile::default());
+        assert_eq!(online.public_profile, Some(false));
+        online.set_public_profile(true);
+        assert_eq!(
+            online.public_profile,
+            Some(true),
+            "the choice shows at once"
+        );
+        let lines = online.take_outbox();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::SetPublicProfile { on: true }
+        );
+        // A second press while the first waits sends nothing.
+        online.set_public_profile(false);
+        assert!(online.take_outbox().is_empty());
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert_eq!(
+            online.public_profile,
+            Some(false),
+            "refused: back to what it was"
+        );
+    }
+
+    fn met(id: u64, handle: &str, friend: bool) -> api::PlayedWith {
+        api::PlayedWith {
+            account: Account {
+                id: AccountId(id),
+                handle: handle.into(),
+            },
+            last: 1_000 + id,
+            title_id: None,
+            title: None,
+            friend,
+        }
+    }
+
+    /// Signed in with a list of three people the cloud answered.
+    fn with_played_with(remember: bool) -> Online {
+        let mut online = Online::default();
+        signed_in(&mut online);
+        online.take_outbox();
+        online.request_played_with(true);
+        let lines = online.take_outbox();
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::PlayedWith
+        );
+        let id = online.next;
+        answer(
+            &mut online,
+            id,
+            api::PlayedWithList {
+                remember,
+                people: vec![
+                    met(2, "Lumen", false),
+                    met(3, "Nova", true),
+                    met(4, "Ash", false),
+                ],
+            },
+        );
+        online
+    }
+
+    #[test]
+    fn the_played_with_list_loads_once_at_a_time_and_goes_with_the_sign_out() {
+        let mut online = Online::default();
+        // Signed out: nothing is asked.
+        online.request_played_with(true);
+        assert!(online.take_outbox().is_empty());
+        let mut online = with_played_with(true);
+        assert_eq!(online.played_with.count(), 3);
+        assert!(online.played_with.remember());
+        // Fresh: a plain refresh waits, a forced one asks, and not twice at once.
+        online.request_played_with(false);
+        assert!(online.take_outbox().is_empty());
+        online.request_played_with(true);
+        online.request_played_with(true);
+        assert_eq!(online.take_outbox().len(), 1);
+        // The people are known by name for the actions on them.
+        assert_eq!(online.known(AccountId(2)).unwrap().handle, "Lumen");
+        online.apply(event(Event::State {
+            cloud: Cloud::Online,
+            account: None,
+            pending: None,
+        }));
+        assert!(online.played_with.list.is_none());
+    }
+
+    #[test]
+    fn a_failed_first_fetch_shows_as_failed_and_a_later_one_keeps_the_list() {
+        let mut online = Online::default();
+        signed_in(&mut online);
+        online.take_outbox();
+        online.request_played_with(true);
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert!(online.played_with.failed);
+        let mut online = with_played_with(true);
+        online.request_played_with(true);
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert!(!online.played_with.failed);
+        assert_eq!(online.played_with.count(), 3);
+    }
+
+    #[test]
+    fn clearing_the_played_with_list_shows_at_once_and_a_refusal_puts_it_back() {
+        let mut online = with_played_with(true);
+        online.take_outbox();
+        online.clear_played_with();
+        assert_eq!(online.played_with.count(), 0, "empty at once");
+        let lines = online.take_outbox();
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::ClearPlayedWith
+        );
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert_eq!(
+            online.played_with.count(),
+            3,
+            "refused: the people are back"
+        );
+        // Cleared and answered: it stays empty, and an empty list sends nothing.
+        online.clear_played_with();
+        let id = online.next;
+        answer(&mut online, id, control::Done {});
+        assert_eq!(online.played_with.count(), 0);
+        online.take_outbox();
+        online.clear_played_with();
+        assert!(online.take_outbox().is_empty());
+    }
+
+    #[test]
+    fn the_remember_switch_shows_at_once_and_a_refusal_takes_it_back() {
+        let mut online = Online::default();
+        signed_in(&mut online);
+        online.take_outbox();
+        // Not known yet: pressing asks for the list and sends no change.
+        online.set_remember_played_with(false);
+        let lines = online.take_outbox();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::PlayedWith
+        );
+        let mut online = with_played_with(true);
+        online.take_outbox();
+        online.set_remember_played_with(false);
+        assert!(!online.played_with.remember(), "the choice shows at once");
+        let lines = online.take_outbox();
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::SetRememberPlayedWith { on: false }
+        );
+        // A second press while the first waits sends nothing.
+        online.set_remember_played_with(true);
+        assert!(online.take_outbox().is_empty());
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert!(
+            online.played_with.remember(),
+            "refused: back to what it was"
+        );
+        // The answer settles it, and turning it off keeps the people.
+        online.set_remember_played_with(false);
+        let id = online.next;
+        answer(
+            &mut online,
+            id,
+            api::RememberPlayedWith {
+                remember_played_with: false,
+            },
+        );
+        assert!(!online.played_with.remember());
+        assert_eq!(online.played_with.count(), 3);
+    }
+
+    #[test]
+    fn a_request_from_the_list_marks_the_person_and_a_block_hides_them() {
+        use super::played_with::Standing;
+        let mut online = with_played_with(true);
+        online.take_outbox();
+        let standing = |online: &Online, id: u64| {
+            let person = online
+                .played_with
+                .people()
+                .find(|p| p.account.id == AccountId(id))
+                .unwrap();
+            online.played_with.standing(person, false, false)
+        };
+        assert_eq!(standing(&online, 2), Standing::Open);
+        assert_eq!(standing(&online, 3), Standing::Friend, "the cloud said so");
+        online.send(
+            Purpose::AddFriend("lumen".into()),
+            Command::AddFriend {
+                handle: "lumen".into(),
+            },
+        );
+        let id = online.next;
+        answer(
+            &mut online,
+            id,
+            control::FriendAdded {
+                result: api::FriendState::Requested,
+            },
+        );
+        assert_eq!(standing(&online, 2), Standing::Requested);
+        online.send(
+            Purpose::AddFriend("Ash".into()),
+            Command::AddFriend {
+                handle: "Ash".into(),
+            },
+        );
+        let id = online.next;
+        answer(
+            &mut online,
+            id,
+            control::FriendAdded {
+                result: api::FriendState::Friends,
+            },
+        );
+        assert_eq!(standing(&online, 4), Standing::Friend);
+        // Blocking leaves the person out at once (the cloud leaves them out of the next answer),
+        // asks the list again, and the name is still there for the toast.
+        online.take_outbox();
+        online.send(
+            Purpose::Block(AccountId(2)),
+            Command::Block {
+                account: AccountId(2),
+            },
+        );
+        online.take_outbox();
+        let id = online.next;
+        answer(&mut online, id, control::Done {});
+        assert_eq!(online.played_with.count(), 2);
+        assert!(
+            online
+                .played_with
+                .people()
+                .all(|p| p.account.id != AccountId(2))
+        );
+        assert_eq!(online.known(AccountId(2)).unwrap().handle, "Lumen");
+        let lines = online.take_outbox();
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::PlayedWith
+        );
+        // Open requests in the friend lists count too.
+        let person = met(9, "Zed", false);
+        assert_eq!(
+            online.played_with.standing(&person, false, true),
+            Standing::Requested
+        );
+        assert_eq!(
+            online.played_with.standing(&person, true, false),
+            Standing::Friend
+        );
     }
 
     #[test]

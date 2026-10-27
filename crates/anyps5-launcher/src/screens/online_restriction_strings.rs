@@ -202,10 +202,318 @@ impl RestrictionText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            Self::MutedTitle => "Nachrichten und Freundschaftsanfragen pausiert",
+            Self::NewAccountTitle => "Grenzen für neue Konten",
+            Self::BannedTitle => "Konto gesperrt",
+            Self::OtherTitle => "Konto eingeschränkt",
+            Self::FriendRequestsPaused => "Freundschaftsanfragen pausiert",
+            Self::MessagesPaused => "Nachrichten pausiert",
+            Self::Until => "Bis %@",
+            Self::UntilFurtherNotice => "Bis auf Weiteres",
+            Self::Restrictions => "Einschränkungen",
+            Self::WhatThisMeans => "Was das bedeutet",
+            Self::Reason => "Grund",
+            Self::ModeratorNote => "Hinweis des Moderators",
+            Self::Appeal => "Einspruch",
+            Self::Rule => "Regel",
+            Self::MutedExplain => {
+                "Solange das gilt, kannst du keine Nachrichten oder Freundschaftsanfragen senden. Alles andere funktioniert wie gewohnt."
+            }
+            Self::MutedExplainForGood => {
+                "Du kannst keine Nachrichten oder Freundschaftsanfragen senden. Alles andere funktioniert wie gewohnt."
+            }
+            Self::NewAccountExplain => {
+                "Neue Konten können ein paar Freundschaftsanfragen senden und noch nicht an Personen schreiben, die keine Freunde sind. Das öffnet sich am %@. Nachrichten an Freunde gehen immer."
+            }
+            Self::NewAccountExplainUnknown => {
+                "Neue Konten können ein paar Freundschaftsanfragen senden und noch nicht an Personen schreiben, die keine Freunde sind. Nachrichten an Freunde gehen immer."
+            }
+            Self::BannedExplain => {
+                "Dieses Konto ist abgemeldet und kann sich bis %@ nicht wieder anmelden."
+            }
+            Self::BannedExplainForGood => {
+                "Dieses Konto ist abgemeldet und kann sich nicht anmelden."
+            }
+            Self::OtherExplain => "Ein Teil dieses Kontos ist gerade eingeschränkt.",
+            Self::AppealAvailable => {
+                "Wenn du glaubst, dass das ein Fehler ist, sag uns warum. Ein Mensch liest jeden Einspruch. Du kannst bis %@ Einspruch einlegen."
+            }
+            Self::AppealField => "Warum glaubst du, dass das ein Fehler ist?",
+            Self::SendAppeal => "Einspruch senden",
+            Self::AppealSent => "Einspruch gesendet.",
+            Self::AppealTooLong => "Kürze den Text auf 1.000 Zeichen",
+            Self::AppealOpen => {
+                "Dein Einspruch wurde gesendet. Ein Mensch liest ihn, die Antwort erscheint hier."
+            }
+            Self::AppealUpheld => {
+                "Ein Moderator hat deinen Einspruch gelesen, die Einschränkung bleibt bestehen."
+            }
+            Self::AppealExpired => "Die Frist für den Einspruch endete am %@.",
+            Self::AppealInBrowser => "Einspruch im Browser",
+            Self::AppealInBrowserNote => {
+                "Melde dich in deinem Browser mit diesem Konto an. Die Seite zeigt, warum es gesperrt wurde, und lässt dich Einspruch einlegen."
+            }
+            Self::ToastMuted => "Nachrichten und Freundschaftsanfragen sind bis %@ pausiert.",
+            Self::ToastMutedForGood => "Nachrichten und Freundschaftsanfragen sind pausiert.",
+            Self::ToastNewAccountFriend => {
+                "Neue Konten können ein paar Freundschaftsanfragen senden. Nach %@ kannst du mehr senden."
+            }
+            Self::ToastNewAccountStranger => {
+                "Neue Konten können nach %@ an Personen schreiben, die keine Freunde sind."
+            }
+            Self::ToastNewAccount => "Das öffnet sich für neue Konten nach %@.",
+            Self::ToastBanned => {
+                "Dieses Konto ist bis %@ gesperrt. Öffne Online, um den Grund und den Einspruch zu sehen."
+            }
+            Self::ToastBannedForGood => {
+                "Dieses Konto ist gesperrt. Öffne Online, um den Grund und den Einspruch zu sehen."
+            }
+            Self::ToastOther => "Dieses Konto ist bis %@ eingeschränkt.",
+            Self::ToastUnknown => "Dieses Konto kann das gerade nicht.",
+            _ => return None,
+        })
+    }
+
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            Self::MutedTitle => "Mensajes y solicitudes de amistad en pausa",
+            Self::NewAccountTitle => "Límites de cuenta nueva",
+            Self::BannedTitle => "Cuenta suspendida",
+            Self::OtherTitle => "Cuenta limitada",
+            Self::FriendRequestsPaused => "Solicitudes de amistad en pausa",
+            Self::MessagesPaused => "Mensajes en pausa",
+            Self::Until => "Hasta %@",
+            Self::UntilFurtherNotice => "Hasta nuevo aviso",
+            Self::Restrictions => "Restricciones",
+            Self::WhatThisMeans => "Qué significa",
+            Self::Reason => "Motivo",
+            Self::ModeratorNote => "Nota del moderador",
+            Self::Appeal => "Apelación",
+            Self::Rule => "Norma",
+            Self::MutedExplain => {
+                "Mientras dure, no puedes enviar mensajes ni solicitudes de amistad. Todo lo demás funciona como siempre."
+            }
+            Self::MutedExplainForGood => {
+                "No puedes enviar mensajes ni solicitudes de amistad. Todo lo demás funciona como siempre."
+            }
+            Self::NewAccountExplain => {
+                "Las cuentas nuevas pueden enviar unas pocas solicitudes de amistad y aún no pueden escribir a quien no es amigo. Esto se abre el %@. Los mensajes a amigos siempre funcionan."
+            }
+            Self::NewAccountExplainUnknown => {
+                "Las cuentas nuevas pueden enviar unas pocas solicitudes de amistad y aún no pueden escribir a quien no es amigo. Los mensajes a amigos siempre funcionan."
+            }
+            Self::BannedExplain => {
+                "Esta cuenta ha cerrado sesión y no puede volver a iniciarla hasta el %@."
+            }
+            Self::BannedExplainForGood => "Esta cuenta ha cerrado sesión y no puede iniciarla.",
+            Self::OtherExplain => "Una parte de esta cuenta está limitada ahora mismo.",
+            Self::AppealAvailable => {
+                "Si crees que es un error, cuéntanos por qué. Una persona lee cada apelación. Puedes apelar hasta el %@."
+            }
+            Self::AppealField => "¿Por qué crees que es un error?",
+            Self::SendAppeal => "Enviar apelación",
+            Self::AppealSent => "Apelación enviada.",
+            Self::AppealTooLong => "Acórtalo a 1000 caracteres",
+            Self::AppealOpen => {
+                "Tu apelación se ha enviado. Una persona la leerá y la respuesta aparecerá aquí."
+            }
+            Self::AppealUpheld => "Un moderador leyó tu apelación y la restricción se mantiene.",
+            Self::AppealExpired => "El plazo para apelar terminó el %@.",
+            Self::AppealInBrowser => "Apelar en el navegador",
+            Self::AppealInBrowserNote => {
+                "Inicia sesión con esta cuenta en tu navegador. La página muestra por qué se suspendió y te deja apelar."
+            }
+            Self::ToastMuted => {
+                "Los mensajes y las solicitudes de amistad están en pausa hasta el %@."
+            }
+            Self::ToastMutedForGood => "Los mensajes y las solicitudes de amistad están en pausa.",
+            Self::ToastNewAccountFriend => {
+                "Las cuentas nuevas pueden enviar unas pocas solicitudes de amistad. Podrás enviar más después del %@."
+            }
+            Self::ToastNewAccountStranger => {
+                "Las cuentas nuevas pueden escribir a quien no es amigo después del %@."
+            }
+            Self::ToastNewAccount => "Esto se abre para las cuentas nuevas después del %@.",
+            Self::ToastBanned => {
+                "Esta cuenta está suspendida hasta el %@. Abre En línea para ver el motivo y cómo apelar."
+            }
+            Self::ToastBannedForGood => {
+                "Esta cuenta está suspendida. Abre En línea para ver el motivo y cómo apelar."
+            }
+            Self::ToastOther => "Esta cuenta está limitada hasta el %@.",
+            Self::ToastUnknown => "Esta cuenta no puede hacer eso ahora mismo.",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            Self::MutedTitle => "Messages et demandes d’ami en pause",
+            Self::NewAccountTitle => "Limites des nouveaux comptes",
+            Self::BannedTitle => "Compte banni",
+            Self::OtherTitle => "Compte limité",
+            Self::FriendRequestsPaused => "Demandes d’ami en pause",
+            Self::MessagesPaused => "Messages en pause",
+            Self::Until => "Jusqu’au %@",
+            Self::UntilFurtherNotice => "Jusqu’à nouvel ordre",
+            Self::Restrictions => "Restrictions",
+            Self::WhatThisMeans => "Ce que cela signifie",
+            Self::Reason => "Motif",
+            Self::ModeratorNote => "Note du modérateur",
+            Self::Appeal => "Recours",
+            Self::Rule => "Règle",
+            Self::MutedExplain => {
+                "Tant que cela dure, tu ne peux pas envoyer de messages ni de demandes d’ami. Tout le reste fonctionne comme avant."
+            }
+            Self::MutedExplainForGood => {
+                "Tu ne peux pas envoyer de messages ni de demandes d’ami. Tout le reste fonctionne comme avant."
+            }
+            Self::NewAccountExplain => {
+                "Les nouveaux comptes peuvent envoyer quelques demandes d’ami et ne peuvent pas encore écrire aux personnes qui ne sont pas des amis. Cela s’ouvre le %@. Les messages aux amis fonctionnent toujours."
+            }
+            Self::NewAccountExplainUnknown => {
+                "Les nouveaux comptes peuvent envoyer quelques demandes d’ami et ne peuvent pas encore écrire aux personnes qui ne sont pas des amis. Les messages aux amis fonctionnent toujours."
+            }
+            Self::BannedExplain => {
+                "Ce compte est déconnecté et ne peut pas se reconnecter avant le %@."
+            }
+            Self::BannedExplainForGood => "Ce compte est déconnecté et ne peut pas se connecter.",
+            Self::OtherExplain => "Une partie de ce compte est limitée pour le moment.",
+            Self::AppealAvailable => {
+                "Si tu penses que c’est une erreur, dis-nous pourquoi. Une personne lit chaque recours. Tu peux faire un recours jusqu’au %@."
+            }
+            Self::AppealField => "Pourquoi penses-tu que c’est une erreur\u{a0}?",
+            Self::SendAppeal => "Envoyer le recours",
+            Self::AppealSent => "Recours envoyé.",
+            Self::AppealTooLong => "Raccourcis-le à 1\u{a0}000 caractères",
+            Self::AppealOpen => {
+                "Ton recours est envoyé. Une personne le lira et la réponse s’affichera ici."
+            }
+            Self::AppealUpheld => "Un modérateur a lu ton recours et la restriction est maintenue.",
+            Self::AppealExpired => "Le délai de recours s’est terminé le %@.",
+            Self::AppealInBrowser => "Faire un recours dans le navigateur",
+            Self::AppealInBrowserNote => {
+                "Connecte-toi avec ce compte dans ton navigateur. La page montre pourquoi il a été banni et te laisse faire un recours."
+            }
+            Self::ToastMuted => "Les messages et les demandes d’ami sont en pause jusqu’au %@.",
+            Self::ToastMutedForGood => "Les messages et les demandes d’ami sont en pause.",
+            Self::ToastNewAccountFriend => {
+                "Les nouveaux comptes peuvent envoyer quelques demandes d’ami. Tu pourras en envoyer plus après le %@."
+            }
+            Self::ToastNewAccountStranger => {
+                "Les nouveaux comptes peuvent écrire aux personnes qui ne sont pas des amis après le %@."
+            }
+            Self::ToastNewAccount => "Cela s’ouvre pour les nouveaux comptes après le %@.",
+            Self::ToastBanned => {
+                "Ce compte est banni jusqu’au %@. Ouvre En ligne pour voir le motif et comment faire un recours."
+            }
+            Self::ToastBannedForGood => {
+                "Ce compte est banni. Ouvre En ligne pour voir le motif et comment faire un recours."
+            }
+            Self::ToastOther => "Ce compte est limité jusqu’au %@.",
+            Self::ToastUnknown => "Ce compte ne peut pas faire cela pour le moment.",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            Self::MutedTitle => "Mensagens e pedidos de amizade pausados",
+            Self::NewAccountTitle => "Limites de conta nova",
+            Self::BannedTitle => "Conta banida",
+            Self::OtherTitle => "Conta limitada",
+            Self::FriendRequestsPaused => "Pedidos de amizade pausados",
+            Self::MessagesPaused => "Mensagens pausadas",
+            Self::Until => "Até %@",
+            Self::UntilFurtherNotice => "Até novo aviso",
+            Self::Restrictions => "Restrições",
+            Self::WhatThisMeans => "O que isso significa",
+            Self::Reason => "Motivo",
+            Self::ModeratorNote => "Nota do moderador",
+            Self::Appeal => "Recurso",
+            Self::Rule => "Regra",
+            Self::MutedExplain => {
+                "Enquanto isso durar, você não pode enviar mensagens nem pedidos de amizade. Todo o resto funciona como antes."
+            }
+            Self::MutedExplainForGood => {
+                "Você não pode enviar mensagens nem pedidos de amizade. Todo o resto funciona como antes."
+            }
+            Self::NewAccountExplain => {
+                "Contas novas podem enviar alguns pedidos de amizade e ainda não podem escrever para quem não é amigo. Isso é liberado em %@. Mensagens para amigos sempre funcionam."
+            }
+            Self::NewAccountExplainUnknown => {
+                "Contas novas podem enviar alguns pedidos de amizade e ainda não podem escrever para quem não é amigo. Mensagens para amigos sempre funcionam."
+            }
+            Self::BannedExplain => "Esta conta foi desconectada e não pode entrar de novo até %@.",
+            Self::BannedExplainForGood => "Esta conta foi desconectada e não pode entrar.",
+            Self::OtherExplain => "Uma parte desta conta está limitada no momento.",
+            Self::AppealAvailable => {
+                "Se você acha que é um engano, conte por quê. Uma pessoa lê cada recurso. Você pode recorrer até %@."
+            }
+            Self::AppealField => "Por que você acha que é um engano?",
+            Self::SendAppeal => "Enviar recurso",
+            Self::AppealSent => "Recurso enviado.",
+            Self::AppealTooLong => "Reduza para 1.000 caracteres",
+            Self::AppealOpen => {
+                "Seu recurso foi enviado. Uma pessoa vai lê-lo e a resposta aparece aqui."
+            }
+            Self::AppealUpheld => "Um moderador leu seu recurso e a restrição continua.",
+            Self::AppealExpired => "O prazo para recorrer terminou em %@.",
+            Self::AppealInBrowser => "Recorrer no navegador",
+            Self::AppealInBrowserNote => {
+                "Entre com esta conta no seu navegador. A página mostra por que ela foi banida e deixa você recorrer."
+            }
+            Self::ToastMuted => "Mensagens e pedidos de amizade estão pausados até %@.",
+            Self::ToastMutedForGood => "Mensagens e pedidos de amizade estão pausados.",
+            Self::ToastNewAccountFriend => {
+                "Contas novas podem enviar alguns pedidos de amizade. Você poderá enviar mais depois de %@."
+            }
+            Self::ToastNewAccountStranger => {
+                "Contas novas podem escrever para quem não é amigo depois de %@."
+            }
+            Self::ToastNewAccount => "Isso é liberado para contas novas depois de %@.",
+            Self::ToastBanned => {
+                "Esta conta está banida até %@. Abra Online para ver o motivo e como recorrer."
+            }
+            Self::ToastBannedForGood => {
+                "Esta conta está banida. Abra Online para ver o motivo e como recorrer."
+            }
+            Self::ToastOther => "Esta conta está limitada até %@.",
+            Self::ToastUnknown => "Esta conta não pode fazer isso no momento.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
@@ -261,17 +569,37 @@ pub fn explanation(restriction: &Restriction, offset: Option<i32>, language: Lan
 
 /// The name of a rule of the terms, as the cloud names it (`harassment`).
 pub fn rule_name(rule: &str, language: Language) -> String {
-    let (en, tr) = match rule {
-        "cheating" => ("Cheating", "Hile"),
-        "harassment" => ("Harassment", "Taciz"),
-        "spam" => ("Spam", "Spam"),
-        "name" => ("Name", "İsim"),
-        "illegal" => ("Illegal content", "Yasa dışı içerik"),
-        _ => ("Other", "Diğer"),
+    let (en, tr, de, es, fr, pt) = match rule {
+        "cheating" => (
+            "Cheating", "Hile", "Cheaten", "Trampas", "Triche", "Trapaça",
+        ),
+        "harassment" => (
+            "Harassment",
+            "Taciz",
+            "Belästigung",
+            "Acoso",
+            "Harcèlement",
+            "Assédio",
+        ),
+        "spam" => ("Spam", "Spam", "Spam", "Spam", "Spam", "Spam"),
+        "name" => ("Name", "İsim", "Name", "Nombre", "Nom", "Nome"),
+        "illegal" => (
+            "Illegal content",
+            "Yasa dışı içerik",
+            "Illegale Inhalte",
+            "Contenido ilegal",
+            "Contenu illégal",
+            "Conteúdo ilegal",
+        ),
+        _ => ("Other", "Diğer", "Sonstiges", "Otro", "Autre", "Outro"),
     };
     match language {
         Language::English => en,
         Language::Turkish => tr,
+        Language::German => de,
+        Language::Spanish => es,
+        Language::French => fr,
+        Language::Portuguese => pt,
     }
     .to_owned()
 }
@@ -379,6 +707,13 @@ mod tests {
         for text in ALL {
             let count = |s: &str| s.matches("%@").count();
             assert_eq!(count(text.english()), count(text.turkish()), "{text:?}");
+            for language in Language::ALL {
+                assert_eq!(
+                    count(text.english()),
+                    count(text.text(language)),
+                    "{text:?} {language:?}"
+                );
+            }
         }
     }
 

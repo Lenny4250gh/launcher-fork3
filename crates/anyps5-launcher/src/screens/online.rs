@@ -3,34 +3,40 @@
 //! and asks; the net service acts, and the host turns the panel's actions into commands for it.
 
 mod chat;
+mod confirm;
 mod feed;
 mod local;
+mod played_with;
 mod profile;
 mod restriction;
 mod room;
 pub mod screen;
+mod share_play;
 mod social;
 mod voice;
 
+pub use confirm::Ask;
 pub use feed::{ago_text, monogram_colour, paint_avatar, rarity_text, sentence, theme_grade};
-pub use local::{Avatar, Local, OwnedGame};
+pub use local::{Avatar, Local, MediaThumb, OwnedGame};
 pub use voice::talk_key;
 
 use std::collections::BTreeSet;
 
-use anyps5_core::online::api::{AccountId, Audience, Count, Reaction, ReportReason};
+use anyps5_core::online::api::{AccountId, Audience, Count, ReportReason};
 use anyps5_core::online::{
-    self, Cloud, DeviceKind, Link, Online, Pending, Purpose, ScreenCommand, VoiceMode,
-    VoiceProvider,
+    self, Cloud, DeviceKind, FriendRequestOutcome, FriendRequestResult, Link, Online, Pending,
+    Purpose, ScreenCommand, SharePlayCommand, VoiceMode, VoiceProvider,
 };
 use egui::{Color32, Context, Ui};
 
+use crate::screens::dialog;
 use crate::screens::friends_strings::FriendsText as FX;
 use crate::screens::legal::Legal;
 use crate::screens::online_call_strings::{self as call_text, CallText as CT};
 use crate::screens::online_feed_strings::FeedText as F;
 use crate::screens::online_strings::OnlineText as T;
 use crate::screens::online_voice_strings::VoiceText as V;
+use crate::screens::played_with_strings::PlayedWithText as PW;
 use crate::screens::rows::{self, Change, Row, RowId};
 use crate::screens::side::{self, SideState};
 use crate::ui::Shell;
@@ -80,6 +86,8 @@ pub enum OnlineAction {
     Join(AccountId),
     /// Invite a friend to the player's session.
     Invite(AccountId),
+    /// Copy a link that asks whoever opens it to join the player's session or party.
+    InviteLink,
     AnswerInvitation {
         id: String,
         accept: bool,
@@ -89,6 +97,8 @@ pub enum OnlineAction {
     Dialog(Option<Vec<AccountId>>),
     /// Keep every tunnel on a relay, or let them go direct again.
     RelayOnly(bool),
+    /// Make a party of one; the player invites friends from inside it.
+    PartyCreate,
     /// Invite friends to the party; a party is made when the player is in none.
     PartyInvite(Vec<AccountId>),
     PartyAnswer {
@@ -136,6 +146,11 @@ pub enum OnlineAction {
         conversation: String,
         seq: u64,
     },
+    /// Open the file of a media message: download it first when this PC does not hold it.
+    OpenMedia {
+        conversation: String,
+        seq: u64,
+    },
     /// Mute or pin a conversation.
     ConversationSettings {
         conversation: String,
@@ -146,14 +161,22 @@ pub enum OnlineAction {
     CopyText(String),
     /// Appear offline to every other player, or show again.
     AppearOffline(bool),
+    /// Show the player's page on the web to everyone, or only to friends again.
+    PublicProfile(bool),
+    /// The account page opened: read the public profile switch if it is not known.
+    PublicProfileRefresh,
     /// Who sees the player's trophies.
     TrophyAudience(Audience),
+    /// Played With Recently opened or asks again: read the list (`true` even when it is fresh).
+    PlayedWithRefresh(bool),
+    /// Empty the list.
+    PlayedWithClear,
+    /// Record the people played with, or stop.
+    PlayedWithRemember(bool),
     /// The Feed page opened or asks again: read its newest items.
     FeedRefresh,
     /// Read the next older items of the feed.
     FeedOlder,
-    /// Set the player's reaction to a feed item, or take it back.
-    React(u64, Option<Reaction>),
     /// Read the profile of this account (the profile screen asks again).
     Profile(AccountId),
     /// Open the profile screen on this account.
@@ -176,6 +199,10 @@ pub enum OnlineAction {
     VoiceMode(VoiceMode),
     /// The key held to talk, by its egui name.
     VoiceKey(String),
+    /// The pad button held to talk, by name; `None` for none.
+    VoicePad(Option<String>),
+    /// "Reduce Background Noise".
+    VoiceNoise(bool),
     /// A microphone or speakers by name; `None` is the system's default.
     VoiceDevice(DeviceKind, Option<String>),
     RefreshVoiceDevices,
@@ -183,6 +210,8 @@ pub enum OnlineAction {
     PeerMute(AccountId, bool),
     /// Share screen: start, stop, watch a member's stream, leave it.
     Screen(ScreenCommand),
+    /// Invite, answer, change the mode of, ask about or end a share.
+    SharePlay(SharePlayCommand),
     Close,
 }
 
@@ -198,6 +227,8 @@ pub enum Page {
     Friend(AccountId),
     /// Every friend request that waits, each with its answers.
     Requests,
+    /// The people the player shared a party or a session with lately.
+    PlayedWith,
     Request(AccountId),
     Outgoing(AccountId),
     Blocked(AccountId),
@@ -214,7 +245,7 @@ pub enum Page {
     Messages,
     Conversation(String),
     MessageRequest(String),
-    /// One message in full: answer it, react, edit, unsend, copy, report.
+    /// One message in full: reply, edit, unsend, copy, report.
     Message(String, u64),
     /// Short answers to send without typing.
     QuickReplies(String),
@@ -230,6 +261,8 @@ pub enum Page {
     Restriction(String),
     /// What the player and their friends did.
     Feed,
+    /// Asks before something that cannot be taken back; Back and Cancel lead to the page boxed.
+    Confirm(Ask, Box<Page>),
 }
 
 /// The sections of the Friends screen: one entry of its rail each, with a page of its own to start
@@ -273,6 +306,7 @@ impl Page {
             Page::Home
             | Page::Friend(_)
             | Page::Requests
+            | Page::PlayedWith
             | Page::Request(_)
             | Page::Outgoing(_)
             | Page::Invitation(_)
@@ -294,6 +328,7 @@ impl Page {
             | Page::Message(..) => Some(Section::Messages),
             Page::Feed => Some(Section::Activity),
             Page::Account | Page::Blocked(_) | Page::Restriction(_) => Some(Section::Settings),
+            Page::Confirm(_, from) => from.section(),
         }
     }
 
@@ -354,6 +389,10 @@ pub struct OnlinePanel {
     pub page: Page,
     pub cloud_text: String,
     pub friend_text: String,
+    /// The last friend request answer the page has shown and cleared its field for.
+    add_cleared: u64,
+    /// The last friend request answer from before the page opened: it is not news.
+    add_seen: u64,
     /// The appeal being written.
     appeal_text: String,
     reason: usize,
@@ -364,6 +403,8 @@ pub struct OnlinePanel {
     request_answer: usize,
     /// Which quick action of a friend's row the keys would press.
     friend_action: Option<usize>,
+    /// The same for the rows of Played With Recently.
+    played_action: Option<usize>,
     /// The page the player came from.
     previous: Option<Page>,
     /// Where Back from the report page leads, when it did not open from a friend.
@@ -396,6 +437,8 @@ pub struct OnlinePanel {
     room_focus: room::RoomFocus,
     /// How many member tiles the room drew in a row last frame (0 before the first).
     room_columns: usize,
+    /// The row a confirmation was asked from: Cancel and Back put the focus there again.
+    confirm_row: usize,
 }
 
 impl OnlinePanel {
@@ -444,6 +487,11 @@ impl OnlinePanel {
         &self.page
     }
 
+    /// The browser has the sign-in and the launcher waits for it.
+    pub fn waiting_for_browser(&self) -> bool {
+        self.page == Page::Browser
+    }
+
     /// The title and the line under it of the page on screen.
     pub fn heading(&self, data: &OnlineData<'_>) -> (String, Option<String>) {
         let (title, subtitle, _) = self.rows(data);
@@ -464,6 +512,82 @@ impl OnlinePanel {
         }
     }
 
+    /// A page with nothing on it but its one way forward is a state page: what this place is, how
+    /// to fill it, one button (Friends without friends, Messages without conversations).
+    fn empty_page(&self, data: &OnlineData<'_>, rows: &[Row]) -> Option<EmptyPage> {
+        let language = data.language;
+        let ids: Vec<RowId> = rows.iter().map(|r| r.id).collect();
+        let label = |id: RowId| rows.iter().find(|r| r.id == id).map(|r| r.title.clone());
+        match (&self.page, ids.as_slice()) {
+            (Page::Home, ["noFriends", "addFriend"]) => Some(EmptyPage {
+                icon: Icon::USERS,
+                title: FX::NoFriendsTitle.text(language).to_owned(),
+                note: Some(FX::NoFriendsNote.text(language).to_owned()),
+                label: label("addFriend")?,
+                action: "addFriend",
+            }),
+            (Page::Messages, ["none", "openFriends"]) => Some(EmptyPage {
+                icon: Icon::ENVELOPE_SIMPLE,
+                title: FX::NoConversationsTitle.text(language).to_owned(),
+                note: Some(FX::NoConversationsNote.text(language).to_owned()),
+                label: label("openFriends")?,
+                action: "openFriends",
+            }),
+            (Page::Messages, ["none", "retryList"]) => Some(EmptyPage {
+                icon: Icon::CLOUD,
+                title: rows.first()?.title.clone(),
+                note: None,
+                label: label("retryList")?,
+                action: "retryList",
+            }),
+            // The activity feed that failed to load, or a player with no friends: the same page as
+            // the others, the button inside the block and not a row at the foot of the list.
+            (Page::Feed, ["feedRetry"]) if !self.feed_is_list(data) => {
+                self.feed_empty_page(data, "feedRetry", label("feedRetry")?)
+            }
+            (Page::Feed, ["addFriend"]) if !self.feed_is_list(data) => {
+                self.feed_empty_page(data, "addFriend", label("addFriend")?)
+            }
+            _ => None,
+        }
+    }
+
+    /// The Activity page's state with its one action.
+    fn feed_empty_page(
+        &self,
+        data: &OnlineData<'_>,
+        action: &'static str,
+        label: String,
+    ) -> Option<EmptyPage> {
+        let language = data.language;
+        let (icon, title, note) = self.feed_state(data);
+        Some(EmptyPage {
+            icon,
+            title: title.text(language).to_owned(),
+            note: note.map(|n| n.text(language).to_owned()),
+            label,
+            action,
+        })
+    }
+
+    /// What Enter does on the focused thing when "Select" would be wrong: a field edits, a
+    /// composer sends. `None` is "Select". The hint bar of the screen says it.
+    pub fn enter_hint(&self, ctx: &Context, data: &OnlineData<'_>) -> Option<&'static str> {
+        if self.chat_is_thread(data) {
+            return self.chat_enter_hint(ctx, data);
+        }
+        if self.room_is_page() || self.chat_is_list(data) || self.feed_is_list(data) {
+            return None;
+        }
+        let rows = self.rows(data).2;
+        match rows.get(self.side.nav.row).map(rows::Row::kind) {
+            Some(RowKind::Text | RowKind::Keys) => {
+                Some(crate::screens::online_social_strings::SocialText::Edit.text(data.language))
+            }
+            _ => None,
+        }
+    }
+
     /// The talk key row waits for a key.
     pub fn capturing(&self) -> bool {
         self.capturing
@@ -477,11 +601,12 @@ impl OnlinePanel {
     /// Whether Left on the focused row would only bump into its start: then the screen takes it
     /// to the rail. A row that steps (a choice, buttons) keeps it while it still has a step to go.
     pub fn left_leaves(&self, data: &OnlineData<'_>) -> bool {
-        if self.capturing {
+        // A question's buttons are side by side: Left walks them, it never leaves for the rail.
+        if self.capturing || self.asks() {
             return false;
         }
         if self.feed_is_list(data) {
-            return self.feed_focus.slot.is_none();
+            return true;
         }
         if self.room_is_page() {
             return self.room_left_leaves();
@@ -519,20 +644,46 @@ impl OnlinePanel {
         self.local = local;
     }
 
-    /// Puts the feed's focus on a card, or on one of its reactions (previews).
-    pub fn set_feed_focus(&mut self, item: usize, slot: Option<usize>) {
-        self.feed_focus = feed::FeedFocus { item, slot };
+    /// Puts the feed's focus on a card (previews).
+    pub fn set_feed_focus(&mut self, item: usize) {
+        self.feed_focus = feed::FeedFocus { item };
+    }
+
+    /// Treats the last friend request answer as news (previews show one without a visit before).
+    pub fn show_answer_as_news(&mut self) {
+        self.add_seen = 0;
+    }
+
+    /// Fills the field of Add a Friend with a name that came from a link; the focus waits on Send
+    /// Request, so one press sends it.
+    pub fn prefill_friend(&mut self, text: String, data: &OnlineData<'_>) {
+        self.friend_text = friend_handle(&text);
+        let rows = self.rows(data).2;
+        if let Some(send) = rows::position(&rows, "sendRequest") {
+            self.side.open_at(send);
+        }
     }
 
     /// Shows `page` (previews jump straight to one).
     pub fn show_page(&mut self, page: Page, data: &OnlineData<'_>) {
+        let asks = matches!(page, Page::Confirm(..));
         self.go(page, data);
+        // A question opens on its safe answer, like the real `ask`.
+        if asks {
+            self.side.open_at(confirm::CANCEL_ROW);
+        }
     }
 
     /// Shows `page`, focused on its first row that takes focus.
     pub fn go(&mut self, page: Page, data: &OnlineData<'_>) {
         if page == Page::Cloud {
             self.cloud_text = data.cloud.unwrap_or_default().to_owned();
+        }
+        if page == Page::AddFriend && self.page != page {
+            // An answer from an earlier visit is not news.
+            let serial = data.online.friend_request.as_ref().map_or(0, |o| o.serial);
+            self.add_seen = serial;
+            self.add_cleared = serial;
         }
         if page == Page::Picker {
             self.picked.clear();
@@ -549,7 +700,8 @@ impl OnlinePanel {
                 self.queued.push(OnlineAction::CallsSeen(*id));
             }
             Page::Conversation(id) | Page::MessageRequest(id) => {
-                if self.page != page && !matches!(self.page, Page::Message(..)) {
+                if self.page != page && !matches!(self.page, Page::Message(..) | Page::Confirm(..))
+                {
                     self.shown = social::SHOWN;
                 }
                 self.queued.push(OnlineAction::OpenThread(id.clone()));
@@ -565,6 +717,9 @@ impl OnlinePanel {
                     self.queued.push(OnlineAction::Profile(me.id));
                 }
             }
+            Page::Account => self.queued.push(OnlineAction::PublicProfileRefresh),
+            Page::PlayedWith => self.queued.push(OnlineAction::PlayedWithRefresh(true)),
+            Page::Home => self.queued.push(OnlineAction::PlayedWithRefresh(false)),
             _ => {}
         }
         // A message and its chat are one place: going between them is no step away from where
@@ -596,11 +751,41 @@ impl OnlinePanel {
         self.side.open_at(first);
     }
 
+    /// A request that went out empties the field, ready for the next name. One that was refused
+    /// leaves the name where it is, to be mended.
+    fn clear_sent_name(&mut self, data: &OnlineData<'_>) {
+        if self.page != Page::AddFriend {
+            return;
+        }
+        let Some(outcome) = data.online.friend_request.as_ref() else {
+            return;
+        };
+        if outcome.serial <= self.add_cleared {
+            return;
+        }
+        self.add_cleared = outcome.serial;
+        if !matches!(outcome.result, FriendRequestResult::Failed(_))
+            && friend_handle(&self.friend_text).eq_ignore_ascii_case(&outcome.handle)
+        {
+            self.friend_text.clear();
+        }
+    }
+
+    /// What the last request came to, while the field still holds that name or nothing.
+    fn friend_answer<'a>(&self, online: &'a Online) -> Option<&'a FriendRequestOutcome> {
+        let outcome = online.friend_request.as_ref()?;
+        let typed = friend_handle(&self.friend_text);
+        (outcome.serial > self.add_seen
+            && (typed.is_empty() || typed.eq_ignore_ascii_case(&outcome.handle)))
+        .then_some(outcome)
+    }
+
     /// Follows the service: a finished sign-in leads to the friends, a sign-out back to the
     /// start, and a page whose friend or invitation is gone back to the list.
     fn follow(&mut self, data: &OnlineData<'_>) {
         let online = data.online;
         self.settle_focus(data);
+        self.clear_sent_name(data);
         let wanted = match &self.page {
             Page::Restriction(_) => self.restriction_follow(data),
             Page::Start | Page::Browser if online.is_signed_in() => Some(Page::Home),
@@ -623,6 +808,7 @@ impl OnlinePanel {
                 Some(Page::Home)
             }
             Page::Picker if online.dialog.is_none() => Some(Page::Home),
+            Page::Confirm(..) => self.confirm_follow(data),
             _ => self.social_follow(data),
         };
         if let Some(page) = wanted {
@@ -641,6 +827,7 @@ impl OnlinePanel {
             Page::Voice | Page::VoiceDevices(_) => self.voice_back(),
             Page::Restriction(_) => Some(self.restriction_back(data)),
             Page::Report(id) => Some(self.report_from.clone().unwrap_or(Page::Friend(id))),
+            Page::Confirm(_, ref from) => Some((**from).clone()),
             _ => self.social_back(data).unwrap_or(Some(Page::Home)),
         }
     }
@@ -714,7 +901,12 @@ impl OnlinePanel {
                 break;
             }
             let rows = self.rows(data).2;
-            let driven = rows::drive(shell, &mut self.side.nav, &rows, &[command]);
+            // A question is a card: Left and Right walk its buttons.
+            let driven = if self.asks() {
+                dialog::drive(shell, &mut self.side.nav, &rows, &[command])
+            } else {
+                rows::drive(shell, &mut self.side.nav, &rows, &[command])
+            };
             for change in &driven.changes {
                 self.handle(ctx, change, data, &mut actions);
             }
@@ -738,7 +930,7 @@ impl OnlinePanel {
     ) -> Vec<OnlineAction> {
         let mut actions = Vec::new();
         let open = self.side.is_open();
-        let (_, _, mut rows) = self.rows(data);
+        let (head, sentence, mut rows) = self.rows(data);
         let opts = rows::ListOptions {
             accent: data.accent,
             language: data.language,
@@ -747,36 +939,81 @@ impl OnlinePanel {
         };
         // Each kind of page keeps its own scroll: walking the rail never lands on an old offset.
         let list_id = ("online-rows", std::mem::discriminant(&self.page));
-        let events = match self.page.clone() {
-            Page::Party => {
-                self.room_draw(shell, ui, data, open && focused, &mut actions);
+        let empty = self.empty_page(data, &rows);
+        let events = if let Some(state) = empty {
+            let at = rows::position(&rows, state.action).unwrap_or(0);
+            let room = ui.available_rect_before_wrap();
+            let clicked = crate::ui::state_page::show(
+                ui,
+                room,
+                &crate::ui::state_page::StatePage {
+                    icon: state.icon,
+                    title: &state.title,
+                    note: state.note.as_deref(),
+                    loading: state.icon == Icon::ARROWS_CLOCKWISE,
+                    action: Some(&state.label),
+                },
+                focused && self.side.nav.row == at,
+            );
+            if clicked {
+                vec![
+                    rows::ListEvent::Focus(at),
+                    rows::ListEvent::Effect {
+                        row: at,
+                        effect: crate::ui::focus::PanelEffect::Activate { row: at },
+                    },
+                ]
+            } else {
                 Vec::new()
             }
-            Page::Messages if self.chat_is_list(data) => {
-                self.chat_list_draw(ui, data, open && focused, &mut actions);
-                Vec::new()
+        } else {
+            match self.page.clone() {
+                Page::Party => {
+                    self.room_draw(shell, ui, data, open && focused, &mut actions);
+                    Vec::new()
+                }
+                Page::Messages if self.chat_is_list(data) => {
+                    self.chat_list_draw(ui, data, open && focused, &mut actions);
+                    Vec::new()
+                }
+                Page::Conversation(_) | Page::MessageRequest(_) if self.chat_is_thread(data) => {
+                    self.chat_thread_draw(ui, data, open && focused, &mut actions);
+                    Vec::new()
+                }
+                Page::Feed if self.feed_is_list(data) => {
+                    self.feed_draw(ui, data, open && focused, &mut actions);
+                    Vec::new()
+                }
+                Page::PlayedWith if self.played_state(data).is_some() => {
+                    rows::list_with_header(ui, list_id, &mut rows, &opts, |ui| {
+                        self.played_header(ui, data);
+                    })
+                }
+                Page::Feed => {
+                    let (icon, title, note) = self.feed_state(data);
+                    let language = data.language;
+                    rows::list_with_header(ui, list_id, &mut rows, &opts, |ui| {
+                        feed::paint_state(
+                            ui,
+                            icon,
+                            title.text(language),
+                            note.map(|n| n.text(language)),
+                        );
+                    })
+                }
+                Page::Confirm(..) => {
+                    let card = dialog::Card {
+                        id: "online-confirm",
+                        title: &head,
+                        message: sentence.as_deref(),
+                        language: data.language,
+                        focus: self.side.nav.row,
+                        force: None,
+                    };
+                    dialog::draw(ctx, open, &card, &rows).unwrap_or_default()
+                }
+                _ => rows::list(ui, list_id, &mut rows, &opts),
             }
-            Page::Conversation(_) | Page::MessageRequest(_) if self.chat_is_thread(data) => {
-                self.chat_thread_draw(ui, data, open && focused, &mut actions);
-                Vec::new()
-            }
-            Page::Feed if self.feed_is_list(data) => {
-                self.feed_draw(ui, data, open && focused, &mut actions);
-                Vec::new()
-            }
-            Page::Feed => {
-                let (icon, title, note) = self.feed_state(data);
-                let language = data.language;
-                rows::list_with_header(ui, list_id, &mut rows, &opts, |ui| {
-                    feed::paint_state(
-                        ui,
-                        icon,
-                        title.text(language),
-                        note.map(|n| n.text(language)),
-                    );
-                })
-            }
-            _ => rows::list(ui, list_id, &mut rows, &opts),
         };
         if open {
             let (changes, texts) = rows::apply_mouse(shell, &mut self.side.nav, &rows, events);
@@ -824,8 +1061,14 @@ impl OnlinePanel {
     }
 
     fn back(&mut self, data: &OnlineData<'_>, actions: &mut Vec<OnlineAction>) {
+        let asked_from = self.asks().then_some(self.confirm_row);
         match self.back_page(data) {
-            Some(page) => self.go(page, data),
+            Some(page) => {
+                self.go(page, data);
+                if let Some(row) = asked_from {
+                    self.side.open_at(row);
+                }
+            }
             None => self.close_panel(data, actions),
         }
     }
@@ -864,7 +1107,10 @@ impl OnlinePanel {
         actions: &mut Vec<OnlineAction>,
     ) {
         let online = data.online;
-        if self.voice_change(change, actions) {
+        if self.voice_change(change, actions)
+            || self.share_play_change(change, actions)
+            || self.played_change(change, data, actions)
+        {
             return;
         }
         match change {
@@ -880,6 +1126,10 @@ impl OnlinePanel {
                 row: "appearOffline",
                 on,
             } => actions.push(OnlineAction::AppearOffline(*on)),
+            Change::Toggle {
+                row: "publicProfile",
+                on,
+            } => actions.push(OnlineAction::PublicProfile(*on)),
             Change::Toggle {
                 row: "pickParty",
                 on,
@@ -971,10 +1221,13 @@ impl OnlinePanel {
     fn run(&mut self, row: &str, data: &OnlineData<'_>, actions: &mut Vec<OnlineAction>) {
         let online = data.online;
         if self.profile_feed_run(row, actions)
+            || self.confirm_run(row, data, actions)
+            || self.played_run(row, data, actions)
             || self.social_run(row, data, actions)
             || self.restriction_run(row, data, actions)
             || self.voice_run(row, data, actions)
             || self.screen_run(row, data, actions)
+            || self.share_play_run(row, data, actions)
         {
             return;
         }
@@ -994,6 +1247,8 @@ impl OnlinePanel {
             ("createAccount", _) if data.cloud.is_some() => {
                 actions.push(OnlineAction::BrowserSignIn { create: true });
             }
+            // The rows say "Set up the cloud first": pressing one takes the player there.
+            ("signIn" | "createAccount", Page::Start) => self.go(Page::Cloud, data),
             ("cancelSignIn", Page::Browser) => {
                 actions.push(OnlineAction::CancelSignIn);
                 self.go(Page::Start, data);
@@ -1026,7 +1281,18 @@ impl OnlinePanel {
                 self.go(Page::AddFriend, data);
             }
             ("sendRequest", _) => {
-                actions.push(OnlineAction::AddFriend(self.friend_text.trim().into()));
+                let handle = friend_handle(&self.friend_text);
+                if online.is_waiting(|p| matches!(p, Purpose::AddFriend(_))) {
+                    // One request at a time; the row says it is sending.
+                } else if handle.is_empty() {
+                    // Nothing to send yet: the field is where the player goes next.
+                    let rows = self.rows(data).2;
+                    if let Some(field) = rows::position(&rows, "friend") {
+                        self.side.open_at(field);
+                    }
+                } else {
+                    actions.push(OnlineAction::AddFriend(handle));
+                }
             }
             ("reconnect", _) => actions.push(OnlineAction::Reconnect),
             ("signOut", _) => actions.push(OnlineAction::SignOut),
@@ -1037,14 +1303,18 @@ impl OnlinePanel {
             ("accept", Page::Request(id)) => actions.push(OnlineAction::Accept(*id)),
             ("decline", Page::Request(id)) => actions.push(OnlineAction::Decline(*id)),
             ("block", Page::Request(id) | Page::Friend(id)) => {
-                actions.push(OnlineAction::Block(*id));
+                let id = *id;
+                self.ask(Ask::Block(id), data);
             }
             ("withdraw", Page::Outgoing(id)) => actions.push(OnlineAction::Decline(*id)),
             ("unblock", Page::Blocked(id)) => actions.push(OnlineAction::Unblock(*id)),
             ("join", Page::Friend(id)) => actions.push(OnlineAction::Join(*id)),
             ("call", Page::Friend(id)) => actions.push(OnlineAction::Call(*id)),
             ("invite", Page::Friend(id)) => actions.push(OnlineAction::Invite(*id)),
-            ("remove", Page::Friend(id)) => actions.push(OnlineAction::RemoveFriend(*id)),
+            ("remove", Page::Friend(id)) => {
+                let id = *id;
+                self.ask(Ask::RemoveFriend(id), data);
+            }
             ("report", Page::Friend(id)) => {
                 let id = *id;
                 self.report_from = None;
@@ -1127,6 +1397,7 @@ impl OnlinePanel {
                 for (id, page) in [("termsPage", Legal::Terms), ("privacyPage", Legal::Privacy)] {
                     rows.push(Row::command(id, page.name(language)).icon(Icon::FILE_TEXT));
                 }
+                // The cloud is the one quiet row after the terms; the long note under it is gone.
                 let shown = match data.cloud {
                     Some(_) if !data.custom_cloud => t(T::CloudOfficial),
                     Some(url) => url,
@@ -1138,7 +1409,6 @@ impl OnlinePanel {
                         .detail(shown)
                         .group_start(),
                 );
-                rows.push(Row::info("note", t(T::SignInNote), None).group_start());
                 (t(T::Online).to_owned(), Some(t(T::Subtitle).to_owned()))
             }
             Page::Cloud => {
@@ -1174,6 +1444,14 @@ impl OnlinePanel {
                 self.home_rows(data, &mut rows);
                 (t(T::Friends).to_owned(), None)
             }
+            Page::PlayedWith => {
+                self.played_rows(data, &mut rows);
+                let (title, subtitle) = (
+                    PW::Title.text(language).to_owned(),
+                    PW::Subtitle.text(language).to_owned(),
+                );
+                (title, Some(subtitle))
+            }
             Page::Requests => {
                 self.request_rows(data, &mut rows, None);
                 (
@@ -1186,12 +1464,13 @@ impl OnlinePanel {
             }
             Page::Friend(id) => {
                 let friend = online.friend(*id);
-                let presence = friend.map(|f| presence_text(f, language));
+                let presence = friend.map(|f| presence_text_for(f, language, online.is_online()));
                 let joinable = friend
                     .and_then(|f| f.presence.activity.as_ref())
                     .and_then(|a| a.session.as_ref())
                     .filter(|s| s.joinable);
-                if let Some(session) = joinable {
+                // Joining and inviting go through the cloud: offline they are not offered.
+                if let Some(session) = joinable.filter(|_| online.is_online()) {
                     rows.push(
                         Row::command("join", t(T::JoinGame))
                             .icon(Icon::GAME_CONTROLLER)
@@ -1218,7 +1497,7 @@ impl OnlinePanel {
                     .session
                     .as_ref()
                     .is_some_and(|s| !s.members.iter().any(|m| m.account.id == *id));
-                if in_session {
+                if in_session && online.is_online() {
                     rows.push(
                         Row::command("invite", t(T::InviteToSession)).icon(Icon::PAPER_PLANE_RIGHT),
                     );
@@ -1232,9 +1511,17 @@ impl OnlinePanel {
                 if let Some(card) = online.cards.get(id) {
                     rows.push(trophy_row(card.as_ref(), language).group_start());
                 }
+                // The trust actions come last and apart: report first, then the two that end
+                // something, both in the danger ink and both asked about first.
+                rows.push(
+                    Row::action("report", t(T::Report))
+                        .icon(Icon::FLAG)
+                        .group_start(),
+                );
                 rows.push(
                     Row::command("remove", t(T::RemoveFriend))
                         .icon(Icon::USER_MINUS)
+                        .destructive()
                         .group_start(),
                 );
                 rows.push(
@@ -1242,7 +1529,6 @@ impl OnlinePanel {
                         .icon(Icon::PROHIBIT)
                         .destructive(),
                 );
-                rows.push(Row::action("report", t(T::Report)).icon(Icon::FLAG));
                 (handle_of(*id), presence)
             }
             Page::Request(id) => {
@@ -1294,14 +1580,39 @@ impl OnlinePanel {
                 } else {
                     rows.push(
                         Row::text("friend", t(T::Handle), self.friend_text.clone())
-                            .icon(Icon::USER_CIRCLE),
+                            .icon(Icon::USER_CIRCLE)
+                            .wide(),
                     );
-                    rows.push(busy(
+                    let send = busy(
                         Row::command("sendRequest", t(T::SendRequest)).icon(Icon::USER_PLUS),
                         |p| matches!(p, Purpose::AddFriend(_)),
-                    ));
+                    );
+                    rows.push(send);
                 }
-                rows.push(Row::info("hint", t(T::AddFriendHint), None).group_start());
+                // What came of the last request, plainly, where the player looks next; the hint
+                // only while there is nothing to report.
+                match self.friend_answer(online).map(|o| (&o.handle, &o.result)) {
+                    Some((handle, FriendRequestResult::Requested)) => rows.push(
+                        Row::info("addStatus", f(T::RequestSent, &[Arg::Str(handle)]), None)
+                            .icon(Icon::CHECK)
+                            .live()
+                            .group_start(),
+                    ),
+                    Some((handle, FriendRequestResult::Friends)) => rows.push(
+                        Row::info("addStatus", f(T::NowFriends, &[Arg::Str(handle)]), None)
+                            .icon(Icon::CHECK)
+                            .live()
+                            .group_start(),
+                    ),
+                    Some((_, FriendRequestResult::Failed(text))) => rows.push(
+                        Row::info("addStatus", text.clone(), None)
+                            .icon(Icon::WARNING)
+                            .warning()
+                            .live()
+                            .group_start(),
+                    ),
+                    None => rows.push(Row::info("hint", t(T::AddFriendHint), None).group_start()),
+                }
                 (
                     t(T::AddFriend).to_owned(),
                     Some(t(T::AddFriendSubtitle).to_owned()),
@@ -1320,11 +1631,6 @@ impl OnlinePanel {
                     manage = manage.group_start();
                 }
                 rows.push(manage);
-                rows.push(Row::info(
-                    "cloud",
-                    t(T::Cloud),
-                    data.cloud.map(str::to_owned),
-                ));
                 rows.push(appear_offline_row(data).group_start());
                 rows.push(
                     Row::toggle("relayOnly", t(T::RelayOnly), data.relay_only)
@@ -1352,6 +1658,20 @@ impl OnlinePanel {
                     t(T::TrophyAudienceNote),
                     None,
                 ));
+                // Unknown until the cloud answers: the row is not drawn on a guess.
+                if let Some(public) = online.public_profile {
+                    rows.push(
+                        Row::toggle("publicProfile", t(T::PublicProfile), public)
+                            .icon(Icon::USER_CIRCLE)
+                            .detail(t(T::PublicProfileDetail))
+                            .group_start(),
+                    );
+                    rows.push(Row::info(
+                        "publicProfileNote",
+                        t(T::PublicProfileNote),
+                        None,
+                    ));
+                }
                 if !online.friends.blocked.is_empty() {
                     rows.push(Row::caption("blockedCaption", t(T::Blocked)).group_start());
                     for blocked in &online.friends.blocked {
@@ -1367,6 +1687,17 @@ impl OnlinePanel {
                     )
                     .group_start(),
                 );
+                // Which cloud the account is on is a note under Sign Out, not a row of its own: it
+                // is a fact to read, and there is nothing to press on it.
+                if let Some(cloud) = data.cloud {
+                    let host = cloud
+                        .trim_start_matches("https://")
+                        .trim_start_matches("http://")
+                        .trim_end_matches('/');
+                    rows.push(
+                        Row::info("cloud", f(T::SignedInOn, &[Arg::Str(host)]), None).attached(),
+                    );
+                }
                 (
                     FX::OnlineSettings.text(language).to_owned(),
                     account.map(|a| a.handle.clone()),
@@ -1408,6 +1739,7 @@ impl OnlinePanel {
                     Some(subtitle.text(language).to_owned()),
                 )
             }
+            Page::Confirm(ask, _) => self.confirm_rows(ask, data, &mut rows),
             Page::Party
             | Page::PartyMember(_)
             | Page::PartyPicker
@@ -1437,20 +1769,37 @@ impl OnlinePanel {
             Page::Picker => {
                 let dialog = online.dialog.as_ref();
                 for friend in picker_friends(online) {
-                    rows.push(Row::toggle(
-                        "pick",
-                        friend.account.handle.clone(),
-                        self.picked.contains(&friend.account.id),
+                    rows.push(
+                        Row::toggle(
+                            "pick",
+                            friend.account.handle.clone(),
+                            self.picked.contains(&friend.account.id),
+                        )
+                        .avatar(self.avatar_of(
+                            data,
+                            &friend.account,
+                            Some(&friend.presence),
+                        )),
+                    );
+                }
+                // Only friends who are online are listed: none of them is not "no friends".
+                if rows.is_empty() {
+                    rows.push(Row::info(
+                        "none",
+                        crate::screens::online_social_strings::SocialText::NobodyToInvite
+                            .text(language),
+                        None,
                     ));
                 }
-                if rows.is_empty() {
-                    rows.push(Row::info("none", t(T::NoFriends), None));
+                let mut send = Row::command("sendInvitations", t(T::SendInvitations))
+                    .icon(Icon::PAPER_PLANE_RIGHT)
+                    .group_start();
+                if self.picked.is_empty() {
+                    send = send.detail(
+                        crate::screens::online_social_strings::SocialText::PickFirst.text(language),
+                    );
                 }
-                rows.push(
-                    Row::command("sendInvitations", t(T::SendInvitations))
-                        .icon(Icon::PAPER_PLANE_RIGHT)
-                        .group_start(),
-                );
+                rows.push(send);
                 rows.push(Row::command("cancel", language.text(Key::Cancel)).icon(Icon::X));
                 let title = dialog.map(|d| d.title.as_str()).unwrap_or_default();
                 let max = dialog.map(|d| i64::from(d.max)).unwrap_or(1);
@@ -1480,7 +1829,17 @@ impl OnlinePanel {
             rows.push(caption);
         }
         let answers = vec![t(T::Accept).to_owned(), t(T::Decline).to_owned()];
+        // Offline the answers cannot go out: the row says so instead of offering them.
+        let online_now = data.online.is_online();
         for request in incoming.iter().take(limit.unwrap_or(usize::MAX)) {
+            if !online_now {
+                rows.push(
+                    Row::info("requestWaiting", request.account.handle.clone(), None)
+                        .avatar(self.avatar_of(data, &request.account, None))
+                        .detail(FX::RequestOffline.text(language)),
+                );
+                continue;
+            }
             rows.push(
                 Row::buttons(
                     "requestRow",
@@ -1554,6 +1913,7 @@ impl OnlinePanel {
         }
         // A stream on offer in the party: one line that leads to the party page.
         screen::home_row(data, rows);
+        share_play::home_row(data, rows);
         // Playing Together shows once someone else is in the session: alone it would list only you.
         let me = online.account.as_ref().map(|a| a.id);
         if let Some(session) = online
@@ -1577,13 +1937,21 @@ impl OnlinePanel {
                 ));
             }
         }
-        let mut add = Row::command("addFriend", t(T::AddFriend)).icon(Icon::USER_PLUS);
-        add.group_start = !rows.is_empty();
-        rows.push(add);
         let friends = online.sorted_friends();
-        if friends.is_empty() {
+        // Without friends the page says what it is for, then offers the one next step, as the
+        // empty message list does.
+        // (Only when the cloud answers: connecting or offline, the list is unknown, not empty.)
+        if friends.is_empty() && online.is_online() {
             rows.push(Row::info("noFriends", t(T::NoFriends), None).group_start());
         }
+        // Adding a friend sends a request: offline there is nothing to press (the note above says
+        // why, and Try Again is the way out).
+        if online.is_online() {
+            let mut add = Row::command("addFriend", t(T::AddFriend)).icon(Icon::USER_PLUS);
+            add.group_start = !rows.is_empty() && !friends.is_empty();
+            rows.push(add);
+        }
+        rows.extend(self.played_home_row(data));
         let mut group = None;
         for friend in friends {
             let rank = friend_group(friend);
@@ -1703,10 +2071,15 @@ pub(super) fn friend_actions(
         .as_ref()
         .and_then(|a| a.session.as_ref())
         .is_some_and(|s| s.joinable);
-    if joinable {
+    // Joining, inviting and a first message go through the cloud; a thread that is held can still
+    // be read offline.
+    let here = online.is_online();
+    if joinable && here {
         acts.push(FriendAct::Join);
     }
-    acts.push(FriendAct::Message);
+    if here || social.direct_with(friend.account.id).is_some() {
+        acts.push(FriendAct::Message);
+    }
     let me = online.account.as_ref().map(|a| a.id);
     let may_invite = social.party.is_none() || me.is_some_and(|me| social.leads(me));
     if may_invite && !social.in_party(friend.account.id) && social::free_places(online) > 0 {
@@ -1723,6 +2096,14 @@ enum FriendGroup {
     Playing,
     Online,
     Offline,
+}
+
+/// The name behind what the player typed or pasted into the Add a Friend field: no spaces, no
+/// leading `@`, and the name alone out of a pasted friend link.
+pub fn friend_handle(text: &str) -> String {
+    let text = text.trim().trim_end_matches('/');
+    let name = text.rsplit('/').next().unwrap_or(text);
+    name.trim().trim_start_matches('@').trim().to_owned()
 }
 
 fn friend_group(friend: &online::api::Friend) -> FriendGroup {
@@ -1744,6 +2125,15 @@ pub(super) fn appear_offline_row(data: &OnlineData<'_>) -> Row {
     )
     .icon(Icon::CIRCLE_DASHED)
     .detail(T::AppearOfflineDetail.text(language))
+}
+
+/// The words and the button of a page that has nothing else (see `OnlinePanel::empty_page`).
+struct EmptyPage {
+    icon: Icon,
+    title: String,
+    note: Option<String>,
+    label: String,
+    action: RowId,
 }
 
 /// How many friend requests the friends list answers in place; the rest wait behind a row.
@@ -1829,7 +2219,7 @@ fn trophy_row(count: Option<&Count>, language: Language) -> Row {
 fn call_row(data: &OnlineData<'_>, id: AccountId) -> Option<Row> {
     let online = data.online;
     let friend = online.friend(id).filter(|f| f.presence.online)?;
-    if online.calls.ringing.is_some() {
+    if !online.is_online() || online.calls.ringing.is_some() {
         return None;
     }
     let me = online.account.as_ref()?.id;
@@ -1862,23 +2252,35 @@ fn friend_detail(data: &OnlineData<'_>, friend: &online::api::Friend) -> String 
                 .saturating_sub(missed.at),
             data.language,
         ),
-        None => presence_text(friend, data.language),
+        None => presence_text_for(friend, data.language, data.online.is_online()),
     }
 }
 
 pub fn presence_text(friend: &online::api::Friend, language: Language) -> String {
+    presence_text_for(friend, language, true)
+}
+
+/// What a friend does. Offline the list may be old, so it never offers a join (`can_join`).
+pub fn presence_text_for(
+    friend: &online::api::Friend,
+    language: Language,
+    can_join: bool,
+) -> String {
     match &friend.presence.activity {
         Some(activity) => {
-            // A Play Together session reads "Playing Minecraft together (2/4)".
+            // A Play Together session reads "Playing Minecraft together · 2 of 4 players".
             let together = anyps5_core::play_together::presence(activity);
-            if let Some(line) = super::together_strings::presence_line(&together, language) {
+            if let Some(line) =
+                super::together_strings::presence_line(&together, language, can_join)
+            {
                 return line;
             }
-            let joinable = activity.session.as_ref().is_some_and(|s| s.joinable);
-            let text = if joinable {
-                T::PlayingJoinable
-            } else {
-                T::Playing
+            // In a session of the network the line says so; a game with no session is just played.
+            let joinable = can_join && activity.session.as_ref().is_some_and(|s| s.joinable);
+            let text = match (activity.session.is_some(), joinable) {
+                (true, true) => T::PlayingOnlineJoinable,
+                (true, false) => T::PlayingOnline,
+                (false, _) => T::Playing,
             };
             text.format(language, &[Arg::Str(&activity.title)])
         }
@@ -1993,8 +2395,7 @@ mod tests {
                 "consent",
                 "termsPage",
                 "privacyPage",
-                "cloudPage",
-                "note"
+                "cloudPage"
             ]
         );
         assert_eq!(rows[5].detail.as_deref(), Some("https://cloud.example.org"));
@@ -2066,13 +2467,14 @@ mod tests {
                 "requestsCaption",
                 "requestRow",
                 "addFriend",
+                "playedWith",
                 "friendsCaption",
                 "friendRow",
             ]
         );
         assert_eq!(
-            rows[4].detail.as_deref(),
-            Some("Playing Test Game · You can join")
+            rows[5].detail.as_deref(),
+            Some("Playing Test Game · Online · You can join")
         );
         // The first row that takes focus, not a caption.
         assert_eq!(panel.side.nav.row, 1);
@@ -2168,6 +2570,9 @@ mod tests {
         );
         // View Profile opens the profile screen and leaves the page where it is.
         assert!(press(&mut panel, 3).is_empty());
+        panel
+            .queued
+            .retain(|a| !matches!(a, OnlineAction::PlayedWithRefresh(_)));
         assert_eq!(panel.queued, [OnlineAction::OpenProfile(AccountId(2))]);
         // Options, and the row's body, are the friend's page.
         assert!(press(&mut panel, 4).is_empty());
@@ -2197,7 +2602,7 @@ mod tests {
         panel.open(&data(&online));
         let rows = panel.rows(&data(&online)).2;
         assert_eq!(
-            &ids(&rows)[3..],
+            &ids(&rows)[4..],
             [
                 "friendsCaption",
                 "friendRow",
@@ -2255,6 +2660,143 @@ mod tests {
         assert_eq!(ids(&panel.rows(&data(&online)).2)[0], "connecting");
         online.cloud = Some(Cloud::Online);
         assert_ne!(ids(&panel.rows(&data(&online)).2)[0], "connecting");
+    }
+
+    #[test]
+    fn offline_a_friend_request_says_why_it_cannot_be_answered() {
+        let mut online = signed_in();
+        let mut panel = OnlinePanel::default();
+        panel.open(&data(&online));
+        assert!(ids(&panel.rows(&data(&online)).2).contains(&"requestRow"));
+        online.cloud = Some(Cloud::Offline);
+        let rows = panel.rows(&data(&online)).2;
+        let ids = ids(&rows);
+        assert!(!ids.contains(&"requestRow"), "no Accept or Decline offline");
+        assert!(!ids.contains(&"addFriend"), "no request can go out offline");
+        let waiting = rows.iter().find(|r| r.id == "requestWaiting").unwrap();
+        assert_eq!(waiting.title, "Kit");
+        assert_eq!(
+            waiting.detail.as_deref(),
+            Some("Wants to be your friend. Answer when you are online.")
+        );
+        assert!(!waiting.kind().focusable(), "the row is a note, not a stop");
+    }
+
+    #[test]
+    fn offline_a_friend_offers_no_join_invitation_or_call() {
+        let mut online = signed_in();
+        let friend = online.friends.friends[0].clone();
+        let acts = friend_actions(&data(&online), &friend);
+        assert!(acts.contains(&FriendAct::Join) && acts.contains(&FriendAct::Message));
+        online.cloud = Some(Cloud::Offline);
+        let acts = friend_actions(&data(&online), &friend);
+        assert!(!acts.contains(&FriendAct::Join), "{acts:?}");
+        assert!(!acts.contains(&FriendAct::Invite), "{acts:?}");
+        // Without a conversation held there is nothing to read: no Message either.
+        assert!(!acts.contains(&FriendAct::Message), "{acts:?}");
+        assert!(call_row(&data(&online), friend.account.id).is_none());
+        assert_eq!(social::free_places(&online), 0);
+        // The friend's page offers no join and no invitation either.
+        let mut panel = OnlinePanel::default();
+        panel.open(&data(&online));
+        panel.go(Page::Friend(friend.account.id), &data(&online));
+        let page = panel.rows(&data(&online)).2;
+        for gone in ["join", "invite", "call", "inviteToParty"] {
+            assert!(!ids(&page).contains(&gone), "{gone}");
+        }
+        assert!(ids(&page).contains(&"viewProfile"));
+    }
+
+    #[test]
+    fn a_pasted_link_or_an_at_sign_is_still_a_name() {
+        assert_eq!(friend_handle("  Lumen "), "Lumen");
+        assert_eq!(friend_handle("@Lumen"), "Lumen");
+        assert_eq!(friend_handle("anyps5://v1/friend/Lumen"), "Lumen");
+        assert_eq!(friend_handle("anyps5://v1/friend/Lumen/"), "Lumen");
+        assert_eq!(friend_handle("  "), "");
+    }
+
+    #[test]
+    fn add_a_friend_is_one_field_one_button_and_the_answer_below() {
+        let mut online = signed_in();
+        let mut panel = OnlinePanel::default();
+        panel.open(&data(&online));
+        panel.go(Page::AddFriend, &data(&online));
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(ids(&rows), ["friend", "sendRequest", "hint"]);
+        // Send with nothing typed: the focus goes to the field, nothing is sent.
+        panel.side.nav.row = 1;
+        let mut actions = Vec::new();
+        panel.run("sendRequest", &data(&online), &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(panel.side.nav.row, 0);
+        // A name typed with an @ goes out as the name.
+        panel.typed("friend", " @Lumen ".into(), &mut actions);
+        panel.run("sendRequest", &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::AddFriend("Lumen".into())]);
+        // The answer replaces the hint, and a sent request empties the field.
+        online.record_friend_request("Lumen", online::FriendRequestResult::Requested);
+        panel.follow(&data(&online));
+        assert!(panel.friend_text.is_empty());
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(ids(&rows), ["friend", "sendRequest", "addStatus"]);
+        assert_eq!(rows[2].title, "Request sent to Lumen");
+        // Typing another name hides it again.
+        panel.typed("friend", "Kit".into(), &mut actions);
+        assert_eq!(
+            ids(&panel.rows(&data(&online)).2),
+            ["friend", "sendRequest", "hint"]
+        );
+        // A refusal keeps the name and says why.
+        online.record_friend_request(
+            "Kit",
+            online::FriendRequestResult::Failed("No account has this name.".into()),
+        );
+        panel.follow(&data(&online));
+        assert_eq!(panel.friend_text, "Kit");
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(rows[2].title, "No account has this name.");
+        // An answer from an earlier visit is not shown again.
+        panel.go(Page::Home, &data(&online));
+        panel.go(Page::AddFriend, &data(&online));
+        assert_eq!(
+            ids(&panel.rows(&data(&online)).2),
+            ["friend", "sendRequest", "hint"]
+        );
+    }
+
+    #[test]
+    fn enter_says_what_it_does_on_a_field() {
+        let online = signed_in();
+        let ctx = Context::default();
+        let mut panel = OnlinePanel::default();
+        panel.open(&data(&online));
+        panel.go(Page::AddFriend, &data(&online));
+        let rows = panel.rows(&data(&online)).2;
+        let field = rows.iter().position(|r| r.kind() == RowKind::Text).unwrap();
+        panel.side.nav.row = field;
+        assert_eq!(panel.enter_hint(&ctx, &data(&online)), Some("Edit"));
+        panel.go(Page::Home, &data(&online));
+        panel.side.nav.row = 0;
+        assert_eq!(
+            panel.enter_hint(&ctx, &data(&online)),
+            None,
+            "an action selects"
+        );
+    }
+
+    #[test]
+    fn the_cloud_is_a_note_under_sign_out_not_a_row_between_cards() {
+        let online = signed_in();
+        let mut panel = OnlinePanel::default();
+        panel.open(&data(&online));
+        panel.go(Page::Account, &data(&online));
+        let rows = panel.rows(&data(&online)).2;
+        let last = rows.last().unwrap();
+        assert_eq!(last.id, "cloud");
+        assert_eq!(last.title, "Signed in on cloud.example.org.");
+        assert!(last.attached && !last.kind().focusable());
+        assert_eq!(rows[rows.len() - 2].id, "signOut");
     }
 
     #[test]
@@ -2408,15 +2950,68 @@ mod tests {
                 "inviteToParty",
                 "call",
                 "viewProfile",
+                "report",
                 "remove",
-                "block",
-                "report"
+                "block"
             ]
         );
         assert_eq!(rows[0].detail.as_deref(), Some("1 of 4 players"));
         let mut actions = Vec::new();
         panel.run("join", &data(&online), &mut actions);
         assert_eq!(actions, [OnlineAction::Join(AccountId(2))]);
+    }
+
+    #[test]
+    fn what_cannot_be_taken_back_asks_first_and_cancel_holds_the_focus() {
+        let online = signed_in();
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::Friend(AccountId(2)), &data(&online));
+        for (row, title) in [
+            ("block", "Block Lumen?"),
+            ("remove", "Remove Lumen as a friend?"),
+        ] {
+            let mut actions = Vec::new();
+            panel.go(Page::Friend(AccountId(2)), &data(&online));
+            panel.run(row, &data(&online), &mut actions);
+            assert!(actions.is_empty(), "{row} must not run before the answer");
+            assert!(panel.asks());
+            let (heading, question, rows) = panel.rows(&data(&online));
+            assert_eq!(heading, title);
+            assert!(question.is_some());
+            assert_eq!(ids(&rows), ["confirmYes", "confirmCancel"]);
+            assert!(rows[0].destructive && !rows[1].destructive);
+            // The card opens on Cancel; Back and Cancel lead to where the question was asked.
+            assert_eq!(panel.side.nav.row, 1);
+            assert_eq!(
+                panel.back_page(&data(&online)),
+                Some(Page::Friend(AccountId(2)))
+            );
+            panel.run("confirmCancel", &data(&online), &mut actions);
+            assert_eq!(panel.page, Page::Friend(AccountId(2)));
+            assert!(actions.is_empty());
+        }
+        let mut actions = Vec::new();
+        panel.run("block", &data(&online), &mut actions);
+        panel.run("confirmYes", &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::Block(AccountId(2))]);
+        assert_eq!(panel.page, Page::Home);
+    }
+
+    #[test]
+    fn a_confirmation_belongs_to_the_section_it_was_asked_in_and_ends_when_its_subject_is_gone() {
+        let online = signed_in();
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::Friend(AccountId(2)), &data(&online));
+        panel.run("remove", &data(&online), &mut Vec::new());
+        assert_eq!(panel.section(), Some(Section::Friends));
+        // A friend who is gone leaves nothing to ask about.
+        let mut gone = signed_in();
+        gone.friends.friends.clear();
+        assert_eq!(
+            panel.confirm_follow(&data(&gone)),
+            Some(Page::Friend(AccountId(2)))
+        );
+        assert_eq!(panel.confirm_follow(&data(&online)), None);
     }
 
     #[test]
@@ -2443,9 +3038,9 @@ mod tests {
                 "call",
                 "viewProfile",
                 "trophies",
+                "report",
                 "remove",
-                "block",
-                "report"
+                "block"
             ]
         );
         assert_eq!(rows[5].control, Control::Info(Some("35".into())));
@@ -2536,6 +3131,255 @@ mod tests {
     }
 
     #[test]
+    fn the_public_profile_switch_is_drawn_only_once_the_cloud_said() {
+        use crate::screens::rows::Control;
+        let mut online = signed_in();
+        let mut panel = OnlinePanel::default();
+        panel.open(&data(&online));
+        panel.go(Page::Account, &data(&online));
+        // Opening the page asks for the setting.
+        assert!(panel.queued.contains(&OnlineAction::PublicProfileRefresh));
+        let rows = panel.rows(&data(&online)).2;
+        assert!(rows.iter().all(|r| r.id != "publicProfile"));
+        online.public_profile = Some(false);
+        let rows = panel.rows(&data(&online)).2;
+        let row = rows.iter().find(|r| r.id == "publicProfile").unwrap();
+        assert_eq!(row.title, "Public Profile");
+        assert_eq!(row.control, Control::Toggle(false));
+        let mut actions = Vec::new();
+        panel.handle(
+            &Context::default(),
+            &Change::Toggle {
+                row: "publicProfile",
+                on: true,
+            },
+            &data(&online),
+            &mut actions,
+        );
+        assert_eq!(actions, [OnlineAction::PublicProfile(true)]);
+    }
+
+    fn met(id: u64, handle: &str, title: Option<&str>, friend: bool) -> online::api::PlayedWith {
+        online::api::PlayedWith {
+            account: account(id, handle),
+            last: 1_792_670_400 - 3 * 86_400,
+            title_id: title.map(|_| "TEST00001".into()),
+            title: title.map(Into::into),
+            friend,
+        }
+    }
+
+    /// Signed in, with Pip (open), Lumen (a friend of the launcher's list) and Nova (a friend by
+    /// the cloud's word) on the list.
+    fn with_played_with(remember: bool) -> Online {
+        let mut online = signed_in();
+        online.played_with.keep(online::api::PlayedWithList {
+            remember,
+            people: vec![
+                met(20, "Pip", Some("Test Game"), false),
+                met(2, "Lumen", None, false),
+                met(21, "Nova", None, true),
+            ],
+        });
+        online
+    }
+
+    #[test]
+    fn played_with_recently_lists_each_person_with_the_actions_that_fit() {
+        use crate::screens::rows::Control;
+        let online = with_played_with(true);
+        let mut panel = OnlinePanel::default();
+        panel.open(&data(&online));
+        // The Friends page leads to it, with the count.
+        let home = panel.rows(&data(&online)).2;
+        let entry = home.iter().find(|r| r.id == "playedWith").unwrap();
+        assert_eq!(entry.title, "Played With Recently");
+        assert_eq!(entry.detail.as_deref(), Some("3 people"));
+        panel.go(Page::PlayedWith, &data(&online));
+        // Opening the page asks again.
+        assert!(
+            panel
+                .queued
+                .contains(&OnlineAction::PlayedWithRefresh(true))
+        );
+        let (title, subtitle, rows) = panel.rows(&data(&online));
+        assert_eq!(title, "Played With Recently");
+        assert_eq!(subtitle.as_deref(), Some("Only you see this list"));
+        assert_eq!(
+            ids(&rows),
+            [
+                "playedRow",
+                "playedRow",
+                "playedRow",
+                "rememberPlayed",
+                "playedPrivate",
+                "clearPlayed"
+            ]
+        );
+        let labels = |row: &Row| match &row.control {
+            Control::Buttons { labels, .. } => labels.clone(),
+            other => panic!("{other:?}"),
+        };
+        // Pip can be added; Lumen and Nova are friends, so only the other two actions remain.
+        assert_eq!(labels(&rows[0]), ["Add Friend", "View Profile", "Block"]);
+        assert_eq!(labels(&rows[1]), ["View Profile", "Block"]);
+        assert_eq!(labels(&rows[2]), ["View Profile", "Block"]);
+        assert_eq!(
+            rows[0].detail.as_deref(),
+            Some("Played Test Game · 3 d ago")
+        );
+        assert_eq!(rows[1].detail.as_deref(), Some("Friend · 3 d ago"));
+        assert_eq!(rows[2].detail.as_deref(), Some("Friend · 3 d ago"));
+        assert_eq!(rows[3].control, Control::Toggle(true));
+        assert!(rows[5].destructive);
+    }
+
+    #[test]
+    fn the_actions_of_a_played_with_row_use_the_ordinary_online_actions() {
+        let online = with_played_with(true);
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::PlayedWith, &data(&online));
+        let press = |panel: &mut OnlinePanel, index: usize| {
+            let mut actions = Vec::new();
+            panel.handle(
+                &Context::default(),
+                &Change::Press {
+                    row: "playedRow",
+                    index,
+                },
+                &data(&online),
+                &mut actions,
+            );
+            actions
+        };
+        // The first row is Pip, focused first: Add Friend sends a request by handle.
+        panel.side.nav.row = 0;
+        assert_eq!(
+            press(&mut panel, 0),
+            [OnlineAction::AddFriend("Pip".into())]
+        );
+        // View Profile opens the profile screen on the account.
+        press(&mut panel, 1);
+        assert!(
+            panel
+                .queued
+                .contains(&OnlineAction::OpenProfile(AccountId(20)))
+        );
+        // Block asks first, on the list's own page; nothing is blocked before the answer.
+        assert!(press(&mut panel, 2).is_empty());
+        assert_eq!(
+            panel.page,
+            Page::Confirm(Ask::Block(AccountId(20)), Box::new(Page::PlayedWith))
+        );
+        // Lumen is a friend: the first action is the profile.
+        panel.go(Page::PlayedWith, &data(&online));
+        panel.side.nav.row = 1;
+        press(&mut panel, 0);
+        assert!(
+            panel
+                .queued
+                .contains(&OnlineAction::OpenProfile(AccountId(2)))
+        );
+        // After the question, the player lands on the list again.
+        panel.go(
+            Page::Confirm(Ask::Block(AccountId(20)), Box::new(Page::PlayedWith)),
+            &data(&online),
+        );
+        let mut actions = Vec::new();
+        panel.run("confirmYes", &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::Block(AccountId(20))]);
+        assert_eq!(panel.page, Page::PlayedWith);
+    }
+
+    #[test]
+    fn the_switch_and_clearing_ask_before_they_empty_the_list() {
+        let online = with_played_with(true);
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::PlayedWith, &data(&online));
+        let mut actions = Vec::new();
+        panel.handle(
+            &Context::default(),
+            &Change::Toggle {
+                row: "rememberPlayed",
+                on: false,
+            },
+            &data(&online),
+            &mut actions,
+        );
+        assert_eq!(actions, [OnlineAction::PlayedWithRemember(false)]);
+        // Clear the List opens the question with Cancel focused; only the answer clears.
+        actions.clear();
+        panel.run("clearPlayed", &data(&online), &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(
+            panel.page,
+            Page::Confirm(Ask::ClearPlayedWith, Box::new(Page::PlayedWith))
+        );
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(ids(&rows), ["confirmYes", "confirmCancel"]);
+        assert_eq!(panel.side.nav.row, 1, "the safe answer holds the focus");
+        panel.run("confirmCancel", &data(&online), &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(panel.page, Page::PlayedWith);
+        panel.run("clearPlayed", &data(&online), &mut actions);
+        panel.run("confirmYes", &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::PlayedWithClear]);
+        assert_eq!(panel.page, Page::PlayedWith);
+    }
+
+    #[test]
+    fn the_states_of_played_with_recently_keep_what_the_player_can_still_do() {
+        let mut online = with_played_with(false);
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::PlayedWith, &data(&online));
+        // Recording off: a line says so, the people stay.
+        let rows = panel.rows(&data(&online)).2;
+        assert!(ids(&rows).contains(&"rememberOff"));
+        assert_eq!(ids(&rows).iter().filter(|i| **i == "playedRow").count(), 3);
+        // Nobody, recording off: the switch stays so it can be turned on again, and nothing can be
+        // cleared.
+        online.played_with.take_people();
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(
+            ids(&rows),
+            ["rememberPlayed", "rememberOff", "playedPrivate"]
+        );
+        assert!(panel.played_state(&data(&online)).is_some());
+        // Not loaded: a state, no switch; failed: a way to try again.
+        online.played_with.reset();
+        assert!(panel.rows(&data(&online)).2.is_empty());
+        online.played_with.fetch_failed();
+        assert_eq!(ids(&panel.rows(&data(&online)).2), ["playedRetry"]);
+        // Nobody on the list and no friends: the Friends page shows no row for it.
+        online.friends = FriendLists::default();
+        panel.go(Page::Home, &data(&online));
+        assert!(
+            panel
+                .rows(&data(&online))
+                .2
+                .iter()
+                .all(|r| r.id != "playedWith")
+        );
+    }
+
+    #[test]
+    fn played_with_recently_is_not_reachable_signed_out() {
+        let mut online = with_played_with(true);
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::PlayedWith, &data(&online));
+        online.account = None;
+        panel.follow(&data(&online));
+        assert_eq!(panel.page, Page::Start);
+        assert!(
+            panel
+                .rows(&data(&online))
+                .2
+                .iter()
+                .all(|r| r.id != "playedWith")
+        );
+    }
+
+    #[test]
     fn the_account_page_turns_relay_only_on() {
         let online = signed_in();
         let mut panel = OnlinePanel::default();
@@ -2618,7 +3462,7 @@ mod tests {
         assert_eq!(panel.page, Page::Home);
     }
 
-    fn feed_item(id: u64, reaction: Option<Reaction>) -> online::api::FeedItem {
+    fn feed_item(id: u64) -> online::api::FeedItem {
         online::api::FeedItem {
             id,
             account: account(2, "Lumen"),
@@ -2627,7 +3471,7 @@ mod tests {
                 title_id: "GAME00001".into(),
             },
             reactions: online::api::ReactionCounts::default(),
-            mine: reaction,
+            mine: None,
         }
     }
 
@@ -2638,6 +3482,9 @@ mod tests {
         panel.open(&data(&online));
         panel.go(Section::Activity.root(), &data(&online));
         assert_eq!(panel.page, Page::Feed);
+        panel
+            .queued
+            .retain(|a| !matches!(a, OnlineAction::PlayedWithRefresh(_)));
         assert_eq!(
             panel.queued[..2],
             [
@@ -2658,6 +3505,9 @@ mod tests {
         let mut actions = Vec::new();
         panel.run("viewProfile", &data(&online), &mut actions);
         assert_eq!(panel.page, Page::Friend(AccountId(2)));
+        panel
+            .queued
+            .retain(|a| !matches!(a, OnlineAction::PlayedWithRefresh(_)));
         assert_eq!(panel.queued, [OnlineAction::OpenProfile(AccountId(2))]);
     }
 
@@ -2704,10 +3554,10 @@ mod tests {
     }
 
     #[test]
-    fn a_reaction_press_sets_it_and_the_own_one_takes_it_back() {
+    fn a_card_opens_its_profile_and_the_row_after_the_cards_reads_older_items() {
         let mut online = signed_in();
         online.feed.merge_newest(online::api::Feed {
-            items: vec![feed_item(9, None), feed_item(8, Some(Reaction::Gg))],
+            items: vec![feed_item(9), feed_item(8)],
             next: Some(8),
         });
         let mut panel = OnlinePanel::default();
@@ -2715,25 +3565,17 @@ mod tests {
         assert!(panel.feed_is_list(&data(&online)));
         assert!(panel.rows(&data(&online)).2.is_empty());
         let mut actions = Vec::new();
-        let focus = |item, slot| feed::FeedFocus { item, slot };
-        panel.feed_press(focus(0, Some(1)), &data(&online), &mut actions);
-        panel.feed_press(focus(1, Some(1)), &data(&online), &mut actions);
-        panel.feed_press(focus(1, Some(2)), &data(&online), &mut actions);
+        let focus = |item| feed::FeedFocus { item };
         // The row after the cards reads older items.
-        panel.feed_press(focus(2, None), &data(&online), &mut actions);
-        assert_eq!(
-            actions,
-            [
-                OnlineAction::React(9, Some(Reaction::Gg)),
-                OnlineAction::React(8, None),
-                OnlineAction::React(8, Some(Reaction::Wow)),
-                OnlineAction::FeedOlder,
-            ]
-        );
+        panel.feed_press(focus(2), &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::FeedOlder]);
         // A card opens its account's profile screen; the panel stays on the feed.
         panel.queued.clear();
-        panel.feed_press(focus(0, None), &data(&online), &mut actions);
+        panel.feed_press(focus(0), &data(&online), &mut actions);
         assert_eq!(panel.page, Page::Feed);
+        panel
+            .queued
+            .retain(|a| !matches!(a, OnlineAction::PlayedWithRefresh(_)));
         assert_eq!(panel.queued, [OnlineAction::OpenProfile(AccountId(2))]);
     }
 }

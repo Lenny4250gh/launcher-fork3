@@ -90,6 +90,7 @@ fn item(id: u64, account: Account, event: FeedEvent) -> FeedItem {
         account,
         at: NOW as u64 - 3_600,
         event,
+        // Reactions are given on items; a profile's activity does not show them.
         reactions: ReactionCounts {
             nice: 0,
             gg: 3,
@@ -181,6 +182,12 @@ fn a_profile_that_is_not_there_is_loading_offline_or_failed() {
         },
     );
     assert!(matches!(body(&online), Body::Failed));
+    let failed = view(&inputs(&online, &local, None, 2));
+    assert_eq!(
+        failed.state_action.map(|a| a.press),
+        Some(Press::Retry),
+        "a failure offers Try Again"
+    );
     // A page that was read once stays on screen when the next read fails.
     let mut known = page(who(2, "Lumen"));
     known.profile.about = Some("Hi".into());
@@ -203,10 +210,19 @@ fn a_stranger_with_nothing_shared_is_private_and_a_friend_is_just_new() {
     let stranger = view(&inputs(&online, &local, None, 12));
     assert!(matches!(stranger.body, Body::Private));
     assert_eq!(stranger.handle, "Tarn");
-    assert!(matches!(
-        view(&inputs(&online, &local, None, 2)).body,
-        Body::Empty
-    ));
+    assert_eq!(
+        stranger.state_action.map(|a| a.press),
+        Some(Press::AddFriend("Tarn".into())),
+        "a private profile offers the request"
+    );
+    let friend = view(&inputs(&online, &local, None, 2));
+    let Body::Ready(friend) = friend.body else {
+        panic!("a friend with nothing shared keeps the header")
+    };
+    assert!(
+        friend.note.is_some(),
+        "one line in place of three empty sections"
+    );
 }
 
 #[test]
@@ -305,7 +321,11 @@ fn a_friends_trophies_come_from_their_feed_and_are_named_only_when_owned() {
     // The activity is their other items, not the trophies, and not Juno's.
     assert_eq!(ready.activity.rows.len(), 1);
     assert!(ready.activity.rows[0].text.starts_with("Lumen "));
-    assert_eq!(ready.activity.rows[0].reactions, "GG 3 · Same 1");
+    let line = &ready.activity.rows[0];
+    assert!(
+        !line.when.contains("GG") && !line.text.contains("GG"),
+        "no reaction counts"
+    );
 }
 
 #[test]
@@ -396,6 +416,7 @@ fn the_own_profile_comes_from_this_pc() {
             at: NOW - 600,
         }],
         grades: [0, 1, 0, 2],
+        week_seconds: 0,
     };
     let ready = ready(view(&inputs(&online, &local, Some(&library), 1)));
     assert_eq!(ready.relation, Relation::Own);
@@ -408,7 +429,8 @@ fn the_own_profile_comes_from_this_pc() {
         [
             Press::EditProfile,
             Press::FriendsOnline,
-            Press::AppearOffline(true)
+            Press::AppearOffline(true),
+            Press::OpenTrophies,
         ]
     );
     let figures: Vec<(&str, &str)> = ready
@@ -443,9 +465,9 @@ fn the_own_profile_names_what_an_empty_section_waits_for_and_a_friends_stays_out
     set(&mut online, page(who(1, "Mira")));
     let library = OwnLibrary::default();
     let own = ready(view(&inputs(&online, &local, Some(&library), 1)));
-    assert!(own.games.empty.is_some() && own.trophies.empty.is_some());
-    assert!(own.activity.empty.is_some());
-    assert!(own.games.shown() && own.trophies.shown() && own.activity.shown());
+    // Nothing at all: one line under the header, no three empty sections.
+    assert!(own.note.is_some());
+    assert!(!own.games.shown() && !own.trophies.shown() && !own.activity.shown());
     // A new player has no figures: zeros say nothing.
     assert!(own.stats.is_empty());
 }

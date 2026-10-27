@@ -3,7 +3,7 @@
 //! [`paint_glass`] draws one panel; [`GlassStyle`] has a preset for every use in the original
 //! (info cards, toast, log boxes, full-screen panels, side panel, splash).
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use bytemuck::{Pod, Zeroable};
 use eframe::egui_wgpu::{self, wgpu};
@@ -12,7 +12,7 @@ use egui::{Color32, Context, Painter, Rect, Stroke, StrokeKind, epaint::RectShap
 
 use crate::ui::background::{BackdropGpu, SLOT_MAIN};
 use crate::ui::gpu;
-use crate::ui::theme::{self, black, color};
+use crate::ui::theme::{self, color, scrim};
 
 /// Most glass panels drawn in one frame.
 pub const MAX_PANELS: usize = 512;
@@ -41,6 +41,16 @@ pub struct GlassStyle {
 /// Material tint toward white and saturation boost of the blurred copy (estimates, DESIGN.md 12).
 const MATERIAL_TINT: f32 = 0.06;
 const MATERIAL_SATURATION: f32 = 1.25;
+
+/// How much paper the light look lays over the backdrop where a panel replaces `black` of dark:
+/// 1.1 times the black, at most `LIGHT_VEIL_MAX`, so the sky's colour stays visible through the panel
+/// (`ui::contrast` measures the ink on it from this same function).
+pub fn light_veil(black: f32) -> f32 {
+    (black * 1.1).min(LIGHT_VEIL_MAX)
+}
+
+/// The most paper a panel of the light look is veiled in.
+pub const LIGHT_VEIL_MAX: f32 = 0.88;
 
 impl GlassStyle {
     /// `.glass(radius, opacity:)` of the original.
@@ -76,6 +86,15 @@ impl GlassStyle {
     }
 
     /// Full-screen panels (settings, library, trophies): material plus black 0.74.
+    /// The frame of the game panels: a full-screen panel a shade darker (black 0.84), so the danger
+    /// ink of a pressed row keeps its ratio on every theme (ui::contrast).
+    pub const fn game_panel() -> Self {
+        Self {
+            black: 0.84,
+            ..Self::fullscreen_panel()
+        }
+    }
+
     pub const fn fullscreen_panel() -> Self {
         Self {
             radius: 0.0,
@@ -100,18 +119,6 @@ impl GlassStyle {
         Self {
             black: 0.55,
             ..Self::fullscreen_panel()
-        }
-    }
-
-    /// Side panel: material plus a near-black gray at 0.92.
-    pub fn side_panel() -> Self {
-        Self {
-            radius: 0.0,
-            material_mix: 1.0,
-            black: 0.0,
-            overlay: color::side_panel(),
-            stroke: false,
-            alpha: 1.0,
         }
     }
 }
@@ -343,6 +350,21 @@ pub(crate) fn panels_painted() -> bool {
     PANELS.load(Ordering::Relaxed) > 0
 }
 
+/// Mac style: the window is see-through this frame (docs/DESIGN.md 19.2).
+static WINDOW_GLASS: AtomicBool = AtomicBool::new(false);
+/// How much of the game artwork is drawn while the window is see-through: the rest is the window.
+pub const WINDOW_GLASS_ARTWORK: f32 = 0.40;
+
+/// Whether the window is see-through this frame.
+pub(crate) fn window_glass() -> bool {
+    WINDOW_GLASS.load(Ordering::Relaxed)
+}
+
+/// Set by the backdrop at the start of a frame.
+pub(crate) fn set_window_glass(on: bool) {
+    WINDOW_GLASS.store(on, Ordering::Relaxed);
+}
+
 /// Next free position in this pass's uniform ring.
 fn next_index(ctx: &Context) -> usize {
     #[derive(Clone, Default)]
@@ -384,6 +406,28 @@ pub fn paint_glass_on(
     // The shader and the stroke share one pixel-aligned rect and one whole-dp radius.
     let rect = rect.round_to_pixels(ctx.pixels_per_point());
     style.radius = style.radius.round();
+    let light = theme::light_t();
+    let dark_black = style.black;
+    if light > 0.0 && style.overlay.a() == 0 {
+        // The light look: a panel is the backdrop veiled in paper, not darkened by black. The
+        // veil is a little stronger than the black it replaces, so the dark ink on it reads.
+        style.overlay = scrim(light_veil(style.black) * light);
+        style.black *= 1.0 - light;
+    }
+    if theme::high_contrast() {
+        // High Contrast: no frosted glass, a plate (dark, or paper on the light look) with a clear edge.
+        // The painter applies its own opacity again; the rest of the fade is in the alpha.
+        let fade = style.alpha / painter.opacity().max(0.001);
+        let plate = plate_colour((dark_black + 0.22).clamp(0.82, 0.94) * fade.min(1.0));
+        painter.rect_filled(rect, style.radius, plate);
+        painter.add(RectShape::stroke(
+            rect,
+            style.radius,
+            Stroke::new(1.0 / ctx.pixels_per_point(), color::hairline_glass()),
+            StrokeKind::Inside,
+        ));
+        return;
+    }
     painter.add(egui_wgpu::Callback::new_paint_callback(
         rect,
         GlassCallback {
@@ -410,7 +454,16 @@ pub fn paint_glass(ctx: &Context, painter: &Painter, rect: Rect, style: GlassSty
     paint_glass_on(ctx, painter, rect, ctx.content_rect(), SLOT_MAIN, style);
 }
 
+/// A flat plate: black on the dark looks, paper on the light one.
+fn plate_colour(alpha: f32) -> Color32 {
+    if theme::is_light() {
+        scrim(alpha)
+    } else {
+        theme::black(alpha)
+    }
+}
+
 /// Fallback when the GPU path is unavailable: the flat black overlay alone.
 pub fn paint_flat(painter: &Painter, rect: Rect, style: GlassStyle) {
-    painter.rect_filled(rect, style.radius, black(style.black.max(0.3)));
+    painter.rect_filled(rect, style.radius, plate_colour(style.black.max(0.3)));
 }

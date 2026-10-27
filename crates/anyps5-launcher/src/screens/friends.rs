@@ -14,6 +14,7 @@ mod paint;
 use anyps5_core::online::api::AccountId;
 use egui::{Align, Context, Layout, Rect, UiBuilder, pos2, vec2};
 
+use crate::screens::footer_hints_enter;
 use crate::screens::friends_strings::FriendsText as FX;
 use crate::screens::online::{
     OnlineAction, OnlineData, OnlinePanel, Page, Section, monogram_colour, status_line,
@@ -21,10 +22,9 @@ use crate::screens::online::{
 use crate::screens::online_feed_strings::FeedText as F;
 use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
-use crate::screens::right_aligned_hints;
 use crate::ui::Shell;
 use crate::ui::chrome::{RowAvatar, fullscreen_panel};
-use crate::ui::components::{ConsoleButton, ControlSize};
+use crate::ui::components::{ConsoleButton, ControlSize, HintSet};
 use crate::ui::glass::GlassStyle;
 use crate::ui::i18n::{Arg, Key, Language};
 use crate::ui::icons::Icon;
@@ -70,6 +70,17 @@ impl FriendsScreen {
         self.land(data);
     }
 
+    /// Types `text` into the field of the request page (a friend link names the handle) and puts
+    /// the focus on Send Request.
+    pub fn set_friend_text(&mut self, text: String, data: &OnlineData<'_>) {
+        self.panel.prefill_friend(text, data);
+    }
+
+    /// Treats the last friend request answer as news (previews).
+    pub fn show_answer_as_news(&mut self) {
+        self.panel.show_answer_as_news();
+    }
+
     /// Shows `page` (a profile sent the player to one; previews jump straight to one).
     pub fn show_page(&mut self, page: Page, data: &OnlineData<'_>) {
         self.panel.show_page(page, data);
@@ -113,9 +124,9 @@ impl FriendsScreen {
         self.panel.set_local(local);
     }
 
-    /// Puts the focus of the activity page on a card, or on one of its reactions (previews).
-    pub fn set_feed_focus(&mut self, item: usize, slot: Option<usize>) {
-        self.panel.set_feed_focus(item, slot);
+    /// Puts the focus of the activity page on a card (previews).
+    pub fn set_feed_focus(&mut self, item: usize) {
+        self.panel.set_feed_focus(item);
     }
 
     /// Puts the focus on a message of the open thread (previews).
@@ -166,6 +177,7 @@ impl FriendsScreen {
         // A conversation stands on its own, full screen, without the rail.
         let chat = self.panel.chat_screen(data);
         let thread = self.panel.chat_is_thread(data);
+        let asks = self.panel.asks();
         let has_rail = data.online.is_signed_in() && section.is_some() && !chat;
         if !has_rail {
             self.zone = Some(Zone::Page);
@@ -221,6 +233,12 @@ impl FriendsScreen {
         // The rail has the focus: the page takes the other events (a captured key) but no
         // command, and draws without a focused row.
         let page_focus = self.focus().zone == Zone::Page;
+        // What Enter does where the focus stands: the rail selects, the page may edit or send.
+        let enter = if page_focus && open {
+            self.panel.enter_hint(ctx, data)
+        } else {
+            None
+        };
         actions.extend(self.panel.update(shell, ctx, &pass, data));
 
         let language = data.language;
@@ -237,23 +255,24 @@ impl FriendsScreen {
             |ui, _| {
                 let screen = ui.max_rect();
                 let area = screen.shrink2(vec2(pad::TROPHIES.0, pad::TROPHIES.1));
-                right_aligned_hints(
-                    ui,
-                    Rect::from_min_size(area.min, vec2(area.width(), 26.0)),
-                    language,
-                );
-                let mut back = ui.new_child(
-                    UiBuilder::new()
-                        .max_rect(Rect::from_min_size(area.min, vec2(200.0, 32.0)))
-                        .layout(Layout::left_to_right(Align::Center)),
-                );
-                if ConsoleButton::new(language.text(Key::Back))
-                    .icon(Icon::CARET_LEFT)
-                    .size(ControlSize::Small)
-                    .show(&mut back)
-                    .clicked()
-                {
-                    back_clicked = true;
+                // The bar stands bottom right like on Home; the Back button is on screen, so the
+                // bar leaves "Back" out.
+                // A question is a card over this page: it brings its own hints and answers Back.
+                if !asks {
+                    footer_hints_enter(ui, screen, language, HintSet::BASIC.without_back(), enter);
+                    let mut back = ui.new_child(
+                        UiBuilder::new()
+                            .max_rect(Rect::from_min_size(area.min, vec2(200.0, 32.0)))
+                            .layout(Layout::left_to_right(Align::Center)),
+                    );
+                    if ConsoleButton::new(language.text(Key::Back))
+                        .icon(Icon::CARET_LEFT)
+                        .size(ControlSize::Small)
+                        .show(&mut back)
+                        .clicked()
+                    {
+                        back_clicked = true;
+                    }
                 }
                 let mut top = area.min.y + 32.0 + 28.0;
                 let (page_left, page_width) = if chat {
@@ -298,8 +317,8 @@ impl FriendsScreen {
                     let width = area.width().min(640.0);
                     (area.center().x - width * 0.5, width)
                 };
-                let list_top = if thread {
-                    // The thread draws its own header.
+                let list_top = if thread || asks {
+                    // The thread draws its own header; a question is the card's.
                     top
                 } else {
                     let (title, note) = self.panel.heading(data);
@@ -318,6 +337,7 @@ impl FriendsScreen {
                         page_width - 2.0 * inset,
                         &title,
                         note,
+                        self.panel.waiting_for_browser(),
                     );
                     top + used + 22.0
                 };

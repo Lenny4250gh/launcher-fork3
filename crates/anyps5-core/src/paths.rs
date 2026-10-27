@@ -194,6 +194,16 @@ impl AppPaths {
             .join(if name.is_empty() { "unknown" } else { &name })
     }
 
+    /// `notifications.json`: the notification history (docs/DESIGN.md 9.12).
+    pub fn notifications_file(&self) -> PathBuf {
+        self.data.join("notifications.json")
+    }
+
+    /// `game-colors.json`: the colours Game Colors found in each game's art (docs/DESIGN.md 3.13).
+    pub fn game_colors_file(&self) -> PathBuf {
+        self.data.join("game-colors.json")
+    }
+
     pub fn cache_dir(&self) -> PathBuf {
         self.data.join("Cache")
     }

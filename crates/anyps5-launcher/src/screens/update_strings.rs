@@ -34,6 +34,9 @@ pub enum UpdateText {
     NoteReadOnly,
     /// This launcher cannot install updates itself (a Linux `.tar.gz`).
     NoteManual,
+    /// A package manager owns this launcher (Flatpak, the AUR). `%@` = the version, then the
+    /// package manager's name.
+    NotePackaged,
     NoteOffline,
     NoteRefused,
     NoteOther,
@@ -71,10 +74,12 @@ pub enum UpdateText {
     RequiredNoNewer,
     /// Required and this launcher cannot install it itself.
     RequiredNoteManual,
+    /// Required and a package manager owns this launcher. `%@` = the package manager's name.
+    RequiredNotePackaged,
 }
 
 impl UpdateText {
-    pub const ALL: [UpdateText; 37] = [
+    pub const ALL: [UpdateText; 39] = [
         UpdateText::Row,
         UpdateText::Checking,
         UpdateText::UpToDate,
@@ -90,6 +95,7 @@ impl UpdateText {
         UpdateText::NoteHolding,
         UpdateText::NoteReadOnly,
         UpdateText::NoteManual,
+        UpdateText::NotePackaged,
         UpdateText::NoteOffline,
         UpdateText::NoteRefused,
         UpdateText::NoteOther,
@@ -112,6 +118,7 @@ impl UpdateText {
         UpdateText::RequiredOffline,
         UpdateText::RequiredNoNewer,
         UpdateText::RequiredNoteManual,
+        UpdateText::RequiredNotePackaged,
     ];
 
     pub const fn english(self) -> &'static str {
@@ -124,8 +131,8 @@ impl UpdateText {
             UpdateText::Ready => "%@ ready",
             UpdateText::WaitingForGame => "Waiting for your game",
             UpdateText::Available => "%@ available",
-            UpdateText::NotReachable => "Not reachable",
-            UpdateText::NotInstalled => "Not installed",
+            UpdateText::NotReachable => "Could not check",
+            UpdateText::NotInstalled => "Update failed",
             UpdateText::NoteDownloading => "Launcher %@ downloads in the background.",
             UpdateText::NoteReady => {
                 "Restart now, or the update installs the next time you close the launcher."
@@ -139,6 +146,7 @@ impl UpdateText {
             UpdateText::NoteManual => {
                 "This launcher cannot update itself. Download the new version from GitHub, or use the AppImage, which updates itself."
             }
+            UpdateText::NotePackaged => "Version %@ is available. %@ updates the launcher.",
             UpdateText::NoteOffline => "Could not reach GitHub. The launcher tries again later.",
             UpdateText::NoteRefused => {
                 "The update could not be verified, so it was not installed. Download the latest launcher from GitHub."
@@ -175,6 +183,7 @@ impl UpdateText {
             UpdateText::RequiredNoteManual => {
                 "Download the new version from GitHub and install it."
             }
+            UpdateText::RequiredNotePackaged => "Update the launcher with %@.",
         }
     }
 
@@ -188,8 +197,8 @@ impl UpdateText {
             UpdateText::Ready => "%@ hazır",
             UpdateText::WaitingForGame => "Oyunun kapanması bekleniyor",
             UpdateText::Available => "%@ var",
-            UpdateText::NotReachable => "Ulaşılamadı",
-            UpdateText::NotInstalled => "Kurulmadı",
+            UpdateText::NotReachable => "Denetlenemedi",
+            UpdateText::NotInstalled => "Güncelleme başarısız",
             UpdateText::NoteDownloading => "Başlatıcı %@ arka planda indiriliyor.",
             UpdateText::NoteReady => {
                 "Şimdi yeniden başlat ya da güncelleme, başlatıcıyı bir sonraki kapatışında kurulur."
@@ -203,6 +212,7 @@ impl UpdateText {
             UpdateText::NoteManual => {
                 "Bu başlatıcı kendini güncelleyemez. Yeni sürümü GitHub'dan indir ya da kendini güncelleyen AppImage'i kullan."
             }
+            UpdateText::NotePackaged => "Sürüm %@ var. Başlatıcıyı %@ günceller.",
             UpdateText::NoteOffline => "GitHub'a ulaşılamadı. Başlatıcı daha sonra yeniden dener.",
             UpdateText::NoteRefused => {
                 "Güncelleme doğrulanamadı, bu yüzden kurulmadı. Son sürümü GitHub'dan indir."
@@ -235,13 +245,312 @@ impl UpdateText {
                 "Henüz daha yeni bir başlatıcı bulunamadı. Biraz sonra tekrar dene."
             }
             UpdateText::RequiredNoteManual => "Yeni sürümü GitHub'dan indir ve kur.",
+            UpdateText::RequiredNotePackaged => "Başlatıcıyı %@ ile güncelle.",
         }
+    }
+
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            UpdateText::Row => "Launcher-Update",
+            UpdateText::Checking => "Wird geprüft…",
+            UpdateText::UpToDate => "Aktuell",
+            UpdateText::Downloading => "%@ wird geladen",
+            UpdateText::Verifying => "Wird überprüft",
+            UpdateText::Ready => "%@ bereit",
+            UpdateText::WaitingForGame => "Wartet auf dein Spiel",
+            UpdateText::Available => "%@ verfügbar",
+            UpdateText::NotReachable => "Prüfung nicht möglich",
+            UpdateText::NotInstalled => "Update fehlgeschlagen",
+            UpdateText::NoteDownloading => "Launcher %@ wird im Hintergrund geladen.",
+            UpdateText::NoteReady => {
+                "Starte jetzt neu, oder das Update wird beim nächsten Schließen des Launchers installiert."
+            }
+            UpdateText::NoteHolding => {
+                "Launcher %@ startet neu, sobald dein Spiel endet. Dein Spiel läuft weiter."
+            }
+            UpdateText::NoteReadOnly => {
+                "Der Launcher kann sich in diesem schreibgeschützten Ordner nicht selbst aktualisieren. Lade ihn von GitHub herunter."
+            }
+            UpdateText::NoteManual => {
+                "Dieser Launcher kann sich nicht selbst aktualisieren. Lade die neue Version von GitHub herunter oder nutze das AppImage, das sich selbst aktualisiert."
+            }
+            UpdateText::NotePackaged => "Version %@ ist verfügbar. %@ aktualisiert den Launcher.",
+            UpdateText::NoteOffline => {
+                "GitHub war nicht erreichbar. Der Launcher versucht es später erneut."
+            }
+            UpdateText::NoteRefused => {
+                "Das Update konnte nicht überprüft werden und wurde nicht installiert. Lade den neuesten Launcher von GitHub herunter."
+            }
+            UpdateText::NoteOther => {
+                "Das Update konnte nicht installiert werden. Lade den neuesten Launcher von GitHub herunter."
+            }
+            UpdateText::CancelRestart => "Neustart abbrechen",
+            UpdateText::Later => "Später",
+            UpdateText::WhatsNewIn => "Neu in %@",
+            UpdateText::Download => "Von GitHub herunterladen",
+            UpdateText::NoticeReady => "Launcher %@ ist bereit",
+            UpdateText::NoticeHolding => "Neustart, sobald dein Spiel endet",
+            UpdateText::NoticeName => "Launcher %@ ist bereit zur Installation",
+            UpdateText::NoticeHoldingName => "Launcher %@ startet neu, sobald dein Spiel endet",
+            UpdateText::SettingsBadge => "%@, Update bereit",
+            UpdateText::RequiredTitle => "Update erforderlich",
+            UpdateText::RequiredReason => "Für Online-Spiele braucht es AnyPlay Launcher %@.",
+            UpdateText::RequiredReasonUnknown => {
+                "Mit dieser Version von AnyPlay Launcher kannst du nicht mehr online spielen."
+            }
+            UpdateText::RequiredOnline => {
+                "Der Online-Bereich braucht den neuesten Launcher. Deine Spiele laufen weiterhin offline."
+            }
+            UpdateText::UpdateNow => "Jetzt aktualisieren",
+            UpdateText::PlayOffline => "Offline spielen",
+            UpdateText::TryAgain => "Erneut versuchen",
+            UpdateText::RequiredOffline => {
+                "GitHub war nicht erreichbar. Prüfe deine Verbindung und versuche es erneut."
+            }
+            UpdateText::RequiredNoNewer => {
+                "Noch kein neuerer Launcher gefunden. Versuche es gleich noch einmal."
+            }
+            UpdateText::RequiredNoteManual => {
+                "Lade die neue Version von GitHub herunter und installiere sie."
+            }
+            UpdateText::RequiredNotePackaged => "Aktualisiere den Launcher mit %@.",
+            _ => return None,
+        })
+    }
+
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            UpdateText::Row => "Actualización del launcher",
+            UpdateText::Checking => "Comprobando…",
+            UpdateText::UpToDate => "Al día",
+            UpdateText::Downloading => "Descargando %@",
+            UpdateText::Verifying => "Verificando",
+            UpdateText::Ready => "%@ lista",
+            UpdateText::WaitingForGame => "Esperando a tu juego",
+            UpdateText::Available => "%@ disponible",
+            UpdateText::NotReachable => "No se pudo comprobar",
+            UpdateText::NotInstalled => "Error al actualizar",
+            UpdateText::NoteDownloading => "El launcher %@ se descarga en segundo plano.",
+            UpdateText::NoteReady => {
+                "Reinicia ahora, o la actualización se instalará la próxima vez que cierres el launcher."
+            }
+            UpdateText::NoteHolding => {
+                "El launcher %@ se reiniciará cuando se cierre tu juego. Tu juego sigue en marcha."
+            }
+            UpdateText::NoteReadOnly => {
+                "El launcher no puede actualizarse en esta carpeta de solo lectura. Descárgalo desde GitHub."
+            }
+            UpdateText::NoteManual => {
+                "Este launcher no puede actualizarse solo. Descarga la nueva versión desde GitHub o usa el AppImage, que se actualiza solo."
+            }
+            UpdateText::NotePackaged => "La versión %@ está disponible. %@ actualiza el launcher.",
+            UpdateText::NoteOffline => {
+                "No se pudo conectar con GitHub. El launcher lo intentará más tarde."
+            }
+            UpdateText::NoteRefused => {
+                "No se pudo verificar la actualización, así que no se instaló. Descarga el último launcher desde GitHub."
+            }
+            UpdateText::NoteOther => {
+                "No se pudo instalar la actualización. Descarga el último launcher desde GitHub."
+            }
+            UpdateText::CancelRestart => "Cancelar reinicio",
+            UpdateText::Later => "Más tarde",
+            UpdateText::WhatsNewIn => "Novedades de %@",
+            UpdateText::Download => "Descargar desde GitHub",
+            UpdateText::NoticeReady => "El launcher %@ está listo",
+            UpdateText::NoticeHolding => "Se reinicia al cerrarse tu juego",
+            UpdateText::NoticeName => "El launcher %@ está listo para instalarse",
+            UpdateText::NoticeHoldingName => {
+                "El launcher %@ se reiniciará cuando se cierre tu juego"
+            }
+            UpdateText::SettingsBadge => "%@, actualización lista",
+            UpdateText::RequiredTitle => "Actualización necesaria",
+            UpdateText::RequiredReason => "Se necesita AnyPlay Launcher %@ para jugar en línea.",
+            UpdateText::RequiredReasonUnknown => {
+                "Esta versión de AnyPlay Launcher ya no puede jugar en línea."
+            }
+            UpdateText::RequiredOnline => {
+                "La zona en línea necesita el último launcher. Tus juegos siguen funcionando sin conexión."
+            }
+            UpdateText::UpdateNow => "Actualizar ahora",
+            UpdateText::PlayOffline => "Jugar sin conexión",
+            UpdateText::TryAgain => "Reintentar",
+            UpdateText::RequiredOffline => {
+                "No se pudo conectar con GitHub. Comprueba tu conexión e inténtalo de nuevo."
+            }
+            UpdateText::RequiredNoNewer => {
+                "Todavía no hay un launcher más reciente. Inténtalo de nuevo en un momento."
+            }
+            UpdateText::RequiredNoteManual => "Descarga la nueva versión desde GitHub e instálala.",
+            UpdateText::RequiredNotePackaged => "Actualiza el launcher con %@.",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            UpdateText::Row => "Mise à jour du launcher",
+            UpdateText::Checking => "Vérification…",
+            UpdateText::UpToDate => "À jour",
+            UpdateText::Downloading => "Téléchargement de %@",
+            UpdateText::Verifying => "Vérification",
+            UpdateText::Ready => "%@ prête",
+            UpdateText::WaitingForGame => "En attente de ton jeu",
+            UpdateText::Available => "%@ disponible",
+            UpdateText::NotReachable => "Vérification impossible",
+            UpdateText::NotInstalled => "Échec de la mise à jour",
+            UpdateText::NoteDownloading => "Le launcher %@ se télécharge en arrière-plan.",
+            UpdateText::NoteReady => {
+                "Redémarre maintenant, sinon la mise à jour s’installera à la prochaine fermeture du launcher."
+            }
+            UpdateText::NoteHolding => {
+                "Le launcher %@ redémarrera à la fermeture de ton jeu. Ton jeu continue de tourner."
+            }
+            UpdateText::NoteReadOnly => {
+                "Le launcher ne peut pas se mettre à jour dans ce dossier en lecture seule. Télécharge-le depuis GitHub."
+            }
+            UpdateText::NoteManual => {
+                "Ce launcher ne peut pas se mettre à jour seul. Télécharge la nouvelle version depuis GitHub ou utilise l’AppImage, qui se met à jour seule."
+            }
+            UpdateText::NotePackaged => "La version %@ est disponible. %@ met à jour le launcher.",
+            UpdateText::NoteOffline => {
+                "Impossible de joindre GitHub. Le launcher réessaiera plus tard."
+            }
+            UpdateText::NoteRefused => {
+                "La mise à jour n’a pas pu être vérifiée, elle n’a donc pas été installée. Télécharge le dernier launcher depuis GitHub."
+            }
+            UpdateText::NoteOther => {
+                "La mise à jour n’a pas pu être installée. Télécharge le dernier launcher depuis GitHub."
+            }
+            UpdateText::CancelRestart => "Annuler le redémarrage",
+            UpdateText::Later => "Plus tard",
+            UpdateText::WhatsNewIn => "Nouveautés de %@",
+            UpdateText::Download => "Télécharger depuis GitHub",
+            UpdateText::NoticeReady => "Le launcher %@ est prêt",
+            UpdateText::NoticeHolding => "Redémarre à la fermeture de ton jeu",
+            UpdateText::NoticeName => "Le launcher %@ est prêt à être installé",
+            UpdateText::NoticeHoldingName => "Le launcher %@ redémarrera à la fermeture de ton jeu",
+            UpdateText::SettingsBadge => "%@, mise à jour prête",
+            UpdateText::RequiredTitle => "Mise à jour requise",
+            UpdateText::RequiredReason => "AnyPlay Launcher %@ est nécessaire pour jouer en ligne.",
+            UpdateText::RequiredReasonUnknown => {
+                "Cette version d’AnyPlay Launcher ne permet plus de jouer en ligne."
+            }
+            UpdateText::RequiredOnline => {
+                "L’espace en ligne demande le dernier launcher. Tes jeux restent jouables hors ligne."
+            }
+            UpdateText::UpdateNow => "Mettre à jour maintenant",
+            UpdateText::PlayOffline => "Jouer hors ligne",
+            UpdateText::TryAgain => "Réessayer",
+            UpdateText::RequiredOffline => {
+                "Impossible de joindre GitHub. Vérifie ta connexion, puis réessaie."
+            }
+            UpdateText::RequiredNoNewer => {
+                "Aucun launcher plus récent n’a été trouvé pour l’instant. Réessaie dans un instant."
+            }
+            UpdateText::RequiredNoteManual => {
+                "Télécharge la nouvelle version depuis GitHub et installe-la."
+            }
+            UpdateText::RequiredNotePackaged => "Mets le launcher à jour avec %@.",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            UpdateText::Row => "Atualização do launcher",
+            UpdateText::Checking => "Verificando…",
+            UpdateText::UpToDate => "Atualizado",
+            UpdateText::Downloading => "Baixando %@",
+            UpdateText::Verifying => "Verificando",
+            UpdateText::Ready => "%@ pronta",
+            UpdateText::WaitingForGame => "Aguardando seu jogo",
+            UpdateText::Available => "%@ disponível",
+            UpdateText::NotReachable => "Não foi possível verificar",
+            UpdateText::NotInstalled => "Falha na atualização",
+            UpdateText::NoteDownloading => "O launcher %@ está sendo baixado em segundo plano.",
+            UpdateText::NoteReady => {
+                "Reinicie agora, ou a atualização será instalada na próxima vez que você fechar o launcher."
+            }
+            UpdateText::NoteHolding => {
+                "O launcher %@ será reiniciado quando seu jogo fechar. Seu jogo continua rodando."
+            }
+            UpdateText::NoteReadOnly => {
+                "O launcher não consegue se atualizar nesta pasta somente leitura. Baixe-o no GitHub."
+            }
+            UpdateText::NoteManual => {
+                "Este launcher não consegue se atualizar sozinho. Baixe a nova versão no GitHub ou use o AppImage, que se atualiza sozinho."
+            }
+            UpdateText::NotePackaged => "A versão %@ está disponível. %@ atualiza o launcher.",
+            UpdateText::NoteOffline => {
+                "Não foi possível acessar o GitHub. O launcher tentará de novo mais tarde."
+            }
+            UpdateText::NoteRefused => {
+                "Não foi possível verificar a atualização, por isso ela não foi instalada. Baixe o launcher mais recente no GitHub."
+            }
+            UpdateText::NoteOther => {
+                "Não foi possível instalar a atualização. Baixe o launcher mais recente no GitHub."
+            }
+            UpdateText::CancelRestart => "Cancelar reinício",
+            UpdateText::Later => "Mais tarde",
+            UpdateText::WhatsNewIn => "Novidades em %@",
+            UpdateText::Download => "Baixar do GitHub",
+            UpdateText::NoticeReady => "O launcher %@ está pronto",
+            UpdateText::NoticeHolding => "Reinicia quando seu jogo fechar",
+            UpdateText::NoticeName => "O launcher %@ está pronto para instalar",
+            UpdateText::NoticeHoldingName => "O launcher %@ será reiniciado quando seu jogo fechar",
+            UpdateText::SettingsBadge => "%@, atualização pronta",
+            UpdateText::RequiredTitle => "Atualização necessária",
+            UpdateText::RequiredReason => "O AnyPlay Launcher %@ é necessário para jogar online.",
+            UpdateText::RequiredReasonUnknown => {
+                "Esta versão do AnyPlay Launcher não consegue mais jogar online."
+            }
+            UpdateText::RequiredOnline => {
+                "A área online precisa do launcher mais recente. Seus jogos continuam funcionando offline."
+            }
+            UpdateText::UpdateNow => "Atualizar agora",
+            UpdateText::PlayOffline => "Jogar offline",
+            UpdateText::TryAgain => "Tentar de novo",
+            UpdateText::RequiredOffline => {
+                "Não foi possível acessar o GitHub. Verifique sua conexão e tente de novo."
+            }
+            UpdateText::RequiredNoNewer => {
+                "Ainda não há um launcher mais novo. Tente de novo daqui a pouco."
+            }
+            UpdateText::RequiredNoteManual => "Baixe a nova versão no GitHub e instale-a.",
+            UpdateText::RequiredNotePackaged => "Atualize o launcher com %@.",
+            _ => return None,
+        })
     }
 
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
@@ -290,6 +599,24 @@ mod tests {
             for language in Language::ALL {
                 assert!(text.text(language).contains("%@"), "{text:?} {language:?}");
             }
+        }
+    }
+
+    #[test]
+    fn the_packaged_texts_name_the_package_manager() {
+        for language in Language::ALL {
+            let note =
+                UpdateText::NotePackaged.format(language, &[Arg::Str("0.3.0"), Arg::Str("AUR")]);
+            assert!(
+                note.contains("0.3.0") && note.contains("AUR"),
+                "{language:?}"
+            );
+            assert!(!note.contains("%@"), "{language:?}");
+            let required = UpdateText::RequiredNotePackaged.format(language, &[Arg::Str("AUR")]);
+            assert!(
+                required.contains("AUR") && !required.contains("%@"),
+                "{language:?}"
+            );
         }
     }
 

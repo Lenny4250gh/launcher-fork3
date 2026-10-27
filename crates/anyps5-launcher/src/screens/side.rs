@@ -1,18 +1,33 @@
-//! The side panel family (docs/DESIGN.md 5.9): game settings, controls, advanced and the uninstall
-//! confirmation are four panels on one frame. They share the slide-in, so switching from one to
-//! another keeps the panel on screen and only swaps the content, as in the original.
+//! The panel family of a game (docs/DESIGN.md 5.9): game settings, controls, advanced, saves, the
+//! recommended settings, the toolkit pin, the Home-button panel and the confirmations are panels on
+//! one frame. The frame is a full-screen area like Friends and Captures: the Back row on top, a
+//! content column under it, the enter and exit of every full-screen area. Switching from one panel
+//! to another keeps the area on screen and only swaps the content. A confirmation is not a panel
+//! of the frame: it is the centred card of `screens::dialog` over the dimmed page.
 
-use egui::{Context, Ui};
+use egui::{Context, Ui, UiBuilder, pos2, vec2};
 
-use crate::screens::rows::{self, ListEvent, ListOptions, Row};
+use crate::screens::dialog::{self, Card};
+use crate::screens::rows::{self, Change, ListEvent, ListOptions, Row};
+use crate::screens::{BACK_ROW, back_button, footer_hints};
+use crate::ui::Shell;
 use crate::ui::chrome;
-use crate::ui::components::Force;
-use crate::ui::focus::PanelNav;
+use crate::ui::components::{Force, HintSet};
+use crate::ui::focus::{PanelNav, RowKind};
+use crate::ui::glass::GlassStyle;
 use crate::ui::i18n::Language;
 use crate::ui::input::{Command, InputEvent};
+use crate::ui::sound::Cue;
+use crate::ui::text;
+use crate::ui::theme::{color, pad, size, space, ty};
 
-/// The animation identity all four panels share.
+/// The animation identity all the panels of the family share.
 const SIDE_ID: &str = "game-side-panel";
+
+/// The content column: as wide as a row list reads well, centred in the area.
+const COLUMN: f32 = 720.0;
+/// The leading of a quiet subtitle.
+const SUBTITLE_LEADING: f32 = 1.2;
 
 /// Open and closing state plus the focus model of one side panel.
 #[derive(Clone, Copy, Debug)]
@@ -40,7 +55,7 @@ impl SideState {
         self.nav = PanelNav::single(row);
     }
 
-    /// Slides out.
+    /// Leaves with the exit of a full-screen area.
     pub fn close(&mut self) {
         if self.open {
             self.open = false;
@@ -48,7 +63,7 @@ impl SideState {
         }
     }
 
-    /// Leaves without a slide: another panel of the family takes over the frame.
+    /// Leaves without an exit: another panel of the family takes over the frame.
     pub fn dismiss(&mut self) {
         self.open = false;
         self.closing = false;
@@ -58,12 +73,12 @@ impl SideState {
         self.open
     }
 
-    /// True while the panel is open or still sliding out; the host keeps calling `show`.
+    /// True while the panel is open or still leaving; the host keeps calling `show`.
     pub fn is_active(&self) -> bool {
         self.open || self.closing
     }
 
-    /// Called when the slide-out has finished.
+    /// Called when the exit has finished.
     pub fn finished(&mut self) {
         self.closing = false;
     }
@@ -78,6 +93,115 @@ pub fn commands(events: &[InputEvent]) -> Vec<Command> {
             _ => None,
         })
         .collect()
+}
+
+/// How a panel leaves when the player steps back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Leave {
+    /// With the exit of a full-screen area: the panel was the last one.
+    Slide,
+    /// Without an exit: another panel of the family takes the frame over.
+    Dismiss,
+}
+
+/// What a row-list panel says about itself; the rows come from a builder.
+pub struct Frame<'a> {
+    pub title: &'a str,
+    pub subtitle: Option<&'a str>,
+    pub list_id: &'static str,
+    pub accent: egui::Color32,
+    pub language: Language,
+}
+
+impl SideState {
+    /// One frame of a panel that is a list of rows, the routine every such panel shares: drive the
+    /// commands, draw the frame, apply the pointer, and turn Back (key or button) into `back`.
+    /// `build` makes the rows (twice a frame, as the focus may move between the two); `handle`
+    /// turns one change into the panel's own actions; both see `data`, the panel's own state
+    /// (a panel that only reads passes its borrowed data, one that edits passes `&mut`). Draws nothing once the panel is not active.
+    #[allow(clippy::too_many_arguments)]
+    pub fn show_rows<A: Clone, D>(
+        &mut self,
+        shell: &mut Shell,
+        ctx: &Context,
+        events: &[InputEvent],
+        data: &mut D,
+        frame: &Frame<'_>,
+        leave: Leave,
+        build: impl Fn(&D) -> Vec<Row>,
+        mut handle: impl FnMut(&mut SideState, &mut Shell, &mut D, &Change, &mut Vec<A>),
+        back: A,
+        actions: &mut Vec<A>,
+    ) {
+        if !self.is_active() {
+            return;
+        }
+        let step_back = |state: &mut SideState| match leave {
+            Leave::Slide => state.close(),
+            Leave::Dismiss => state.dismiss(),
+        };
+        if self.is_open() {
+            let rows = build(data);
+            // A caption is no stop: a panel that opens on one starts on the first row after it.
+            self.nav.row = settle(&rows::kinds(&rows), self.nav.row);
+            // One command at a time: a change names the row that was focused when it ran.
+            for command in commands(events) {
+                let driven = rows::drive(shell, &mut self.nav, &rows, &[command]);
+                for change in &driven.changes {
+                    handle(self, shell, data, change, actions);
+                }
+                if driven.close {
+                    step_back(self);
+                    actions.push(back.clone());
+                    break;
+                }
+            }
+            if !self.is_active() {
+                return;
+            }
+        }
+        let mut rows = build(data);
+        let view = SideView {
+            title: frame.title,
+            subtitle: frame.subtitle,
+            question: false,
+            list_id: frame.list_id,
+            nav: &self.nav,
+            accent: frame.accent,
+            language: frame.language,
+            force: None,
+        };
+        match draw(ctx, self.is_open(), &view, &mut rows) {
+            Some(drawn) if self.is_open() => {
+                let (changes, _) = rows::apply_mouse(shell, &mut self.nav, &rows, drawn.events);
+                for change in &changes {
+                    handle(self, shell, data, change, actions);
+                }
+                if drawn.back_clicked {
+                    shell.play(Cue::Close);
+                    step_back(self);
+                    actions.push(back);
+                }
+            }
+            Some(_) => {}
+            None => self.finished(),
+        }
+    }
+}
+
+/// The row a panel stands on when it opens on `row`: a caption is no stop, so it is the first row
+/// after it that can be focused (the caption itself when nothing follows).
+pub(crate) fn settle(kinds: &[RowKind], row: usize) -> usize {
+    match kinds.get(row..) {
+        Some(tail) if tail.first().is_some_and(|k| !k.focusable()) => {
+            if tail.iter().any(|k| k.focusable()) {
+                row + PanelNav::first_focusable(tail)
+            } else {
+                row
+            }
+        }
+        _ => row,
+    }
 }
 
 /// What a panel frame produced: actions for the host and whether the settings it edits changed
@@ -101,7 +225,8 @@ impl<A> Default for Output<A> {
 pub struct SideView<'a> {
     pub title: &'a str,
     pub subtitle: Option<&'a str>,
-    /// The subtitle is the question of a confirmation: set in body size and ink, not as a quiet line.
+    /// The view is a confirmation: drawn as the card of `screens::dialog` (title, the subtitle as
+    /// its sentence, the command rows as its buttons), not as a panel.
     pub question: bool,
     pub list_id: &'static str,
     pub nav: &'a PanelNav,
@@ -112,11 +237,12 @@ pub struct SideView<'a> {
 
 /// What came back from drawing.
 pub struct SideDrawn {
-    pub scrim_clicked: bool,
+    /// The Back button was clicked: the same as the Back command.
+    pub back_clicked: bool,
     pub events: Vec<ListEvent>,
 }
 
-/// Draws the panel (or its slide-out). `None` once it is fully closed.
+/// Draws the panel (or its exit). `None` once it is fully closed.
 pub fn draw(ctx: &Context, open: bool, view: &SideView<'_>, rows: &mut [Row]) -> Option<SideDrawn> {
     draw_with_header(ctx, open, view, rows, |_| {})
 }
@@ -130,43 +256,130 @@ pub fn draw_with_header(
     rows: &mut [Row],
     header: impl FnOnce(&mut Ui),
 ) -> Option<SideDrawn> {
+    if view.question {
+        let card = Card {
+            id: view.list_id,
+            title: view.title,
+            message: view.subtitle,
+            language: view.language,
+            focus: view.nav.row,
+            force: view.force,
+        };
+        return dialog::draw(ctx, open, &card, rows).map(|events| SideDrawn {
+            back_clicked: false,
+            events,
+        });
+    }
     let opts = ListOptions {
         accent: view.accent,
         language: view.language,
         focus: Some(view.nav.row),
         force: view.force,
     };
-    chrome::side_panel(
+    // "Select" is only said where something can be selected: the live controller test has nothing
+    // to select (Back leaves it) and says so itself.
+    let selectable = rows::kinds(rows).iter().any(|k| k.focusable());
+    panel(
         ctx,
-        SIDE_ID,
         open,
         view.title,
         view.subtitle,
-        view.question,
+        view.language,
+        selectable,
         |ui| rows::list_with_header(ui, view.list_id, rows, &opts, header),
     )
-    .map(|(output, events)| SideDrawn {
-        scrim_clicked: output.scrim_clicked,
+    .map(|(back_clicked, events)| SideDrawn {
+        back_clicked,
         events,
     })
 }
 
-/// The panel frame with contents of the page's own: the feed's cards. Returns whether the scrim
-/// was clicked, and what `contents` returned; `None` once the panel is fully closed.
-pub fn frame<R>(
+/// The frame: a full-screen area with the Back row, the title and subtitle on the content column's
+/// edge and `contents` under them. Returns whether the Back button was clicked and what `contents`
+/// returned; `None` once the area is fully closed.
+fn panel<R>(
     ctx: &Context,
     open: bool,
     title: &str,
     subtitle: Option<&str>,
+    language: crate::ui::i18n::Language,
+    selectable: bool,
     contents: impl FnOnce(&mut Ui) -> R,
 ) -> Option<(bool, R)> {
-    chrome::side_panel(ctx, SIDE_ID, open, title, subtitle, false, contents)
-        .map(|(output, r)| (output.scrim_clicked, r))
+    chrome::fullscreen_panel(ctx, SIDE_ID, open, GlassStyle::game_panel(), |ui, _| {
+        let screen = ui.max_rect();
+        let area = screen.shrink2(vec2(pad::TROPHIES.0, pad::TROPHIES.1));
+        let painter = ui.painter().clone();
+        // The hint bar is the footer's, as everywhere (DESIGN.md 3.12); "Back" is left out where a
+        // Back button is on screen.
+        if selectable {
+            footer_hints(ui, screen, language, HintSet::BASIC.without_back());
+        }
+        let back = back_button(ui, area, language);
+        let top = area.min.y + BACK_ROW;
+        let width = COLUMN.min(area.width());
+        let x = area.center().x - width * 0.5;
+        // Title and subtitle start on the text of the rows below them (the icon's edge).
+        let edge = x + size::LIST_INSET + size::ROW_PADDING_X;
+        // Text wraps inside the rows' right edge, as far in as it starts from the left.
+        let text_width = width - (edge - x) * 2.0;
+        let title_galley = text::layout(
+            &painter,
+            ty::SIDE_PANEL_TITLE,
+            title,
+            color::text(),
+            text_width,
+        );
+        let mut y = top;
+        let title_h = title_galley.size().y;
+        painter.galley(pos2(edge, y), title_galley, color::text());
+        y += title_h + space::S;
+        if let Some(subtitle) = subtitle {
+            // Wraps, and is a quiet line.
+            let (style, ink, leading) = (ty::SENTENCE, color::text_detail(), SUBTITLE_LEADING);
+            let galley = text::layout_font_pretty(
+                &painter,
+                style.font(),
+                style.px() * leading,
+                style.tracking,
+                subtitle,
+                ink,
+                text_width,
+            );
+            let height = galley.size().y;
+            painter.galley(pos2(edge, y), galley, ink);
+            y += height + space::S;
+        }
+        y += space::M;
+        // The list runs down to the foot of the screen: the hint bar sits at the trailing
+        // edge, clear of the column.
+        let column =
+            egui::Rect::from_min_max(pos2(x, y), pos2(x + width, screen.max.y - space::XL));
+        let mut child = ui.new_child(
+            UiBuilder::new()
+                .max_rect(column)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        (back, contents(&mut child))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_panel_opening_on_a_caption_starts_on_the_first_row_after_it() {
+        use RowKind::{Action, Info};
+        // caption, row, row, caption, row, caption
+        let kinds = [Info, Action, Action, Info, Action, Info];
+        assert_eq!(settle(&kinds, 0), 1, "the first focusable row");
+        assert_eq!(settle(&kinds, 2), 2, "a row stays");
+        assert_eq!(settle(&kinds, 3), 4, "the next group's first row");
+        assert_eq!(settle(&kinds, 5), 5, "a trailing caption stays put");
+        assert_eq!(settle(&kinds, 9), 9, "past the end stays");
+        assert_eq!(settle(&[], 0), 0);
+    }
 
     #[test]
     fn open_close_and_switch() {
@@ -175,12 +388,12 @@ mod tests {
         s.open_at(1);
         assert!(s.is_open() && s.nav.row == 1 && s.nav.in_rows);
         s.close();
-        assert!(!s.is_open() && s.is_active(), "still sliding out");
+        assert!(!s.is_open() && s.is_active(), "still leaving");
         s.finished();
         assert!(!s.is_active());
         s.open_at(0);
         s.dismiss();
-        assert!(!s.is_active(), "a switch does not slide");
+        assert!(!s.is_active(), "a switch does not leave");
     }
 
     #[test]

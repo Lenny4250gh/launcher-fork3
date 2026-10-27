@@ -5,12 +5,15 @@
 //! anyplay-launcher --demo
 //! ```
 //!
-//! Scenes: `onboarding0`, `onboarding1`, `onboarding2` (folder chosen), `onboarding2-empty`,
-//! `onboarding3` (signing in, with a cloud),
-//! `home`, `home-actions`, `home-trophies`, `home-locked`, `home-unlocking`, `home-relinking`,
+//! Scenes: `onboarding-language`, `onboarding-look`, `onboarding-look-access` (the three switches on),
+//! `onboarding-controller`, `onboarding-controller-xbox`, `onboarding-controller-lost`,
+//! `onboarding-games` (folder found), `onboarding-games-none`, `onboarding-games-empty`,
+//! `onboarding-games-scanning`, `onboarding-online`, `onboarding-done`, `onboarding-done-signin`,
+//! `onboarding-done-bare` (no pad, no folder),
+//! `settings-language` (Settings > Language), `home`, `home-actions`, `home-trophies`, `home-locked`, `home-unlocking`, `home-relinking`,
 //! `home-failed`, `home-queued`, `home-running`, `home-outdated`, `home-diagnosis`, `home-messages` (the
 //! profile button with unread messages), `home-friends` (signed in, three friends online),
-//! `home-appearing` (signed in, appearing offline), `home-friends-quiet` (nobody online), `home-phone` (a phone is connected), `home-friends-focus` and `home-signin-focus` (the top bar's
+//! `home-appearing` (signed in, appearing offline), `home-friends-quiet` (nobody online), `home-phone` (a phone is connected), `home-ludus` (a phone and a LudusCtrl phone are connected), `home-browser` (a phone and a LudusCtrl browser client are connected), `home-friends-focus` and `home-signin-focus` (the top bar's
 //! two pills focused), `home-theme1`,
 //! `home-ask` (signed in, a session just ended: "How did it run?"), `home-runs` (the community verdict),
 //! `home-glibc` and `home-glibc-locked` (the system's glibc is older than the libraries ask for),
@@ -29,7 +32,7 @@ use anyps5_core::online::api::{
     Account, AccountId, Activity, Friend, Presence, RunSummary, Verdict, VerdictCounts,
 };
 use anyps5_core::paths::{AppPaths, GameId};
-use anyps5_core::settings::{Language as CoreLanguage, Preferences, Theme as CoreTheme};
+use anyps5_core::settings::Preferences;
 use anyps5_core::trophies::{Grade, Trophy, TrophySet};
 use egui::{ColorImage, Context, Ui};
 use image::{Rgba, RgbaImage};
@@ -45,15 +48,81 @@ use crate::ui::icons::Icon;
 use crate::ui::input::{Command, InputEvent};
 use crate::ui::theme::Theme;
 
+/// The states of the first start the gallery shows (docs/DESIGN.md 5.15).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ob {
+    Language,
+    Look,
+    /// Larger Text, High Contrast and Reduced Motion on.
+    LookAccess,
+    /// A DualSense is connected and Circle is pressed.
+    Controller,
+    /// An Xbox pad, and the right face button confirms.
+    ControllerXbox,
+    /// The pad was seen and went away.
+    ControllerLost,
+    /// A folder with games in it.
+    Games,
+    /// No folder chosen yet.
+    GamesNone,
+    /// A folder without games.
+    GamesEmpty,
+    GamesScanning,
+    Online,
+    /// With a controller and a folder.
+    Done,
+    /// ... after Sign In on the online step.
+    DoneSignIn,
+    /// No controller and no folder.
+    DoneBare,
+}
+
+impl Ob {
+    fn step(self) -> crate::app::model::Step {
+        use crate::app::model::Step;
+        match self {
+            Ob::Language => Step::Language,
+            Ob::Look | Ob::LookAccess => Step::Look,
+            Ob::Controller | Ob::ControllerXbox | Ob::ControllerLost => Step::Controller,
+            Ob::Games | Ob::GamesNone | Ob::GamesEmpty | Ob::GamesScanning => Step::Games,
+            Ob::Online => Step::Online,
+            Ob::Done | Ob::DoneSignIn | Ob::DoneBare => Step::Done,
+        }
+    }
+
+    /// No games folder at all.
+    fn no_folder(self) -> bool {
+        matches!(self, Ob::GamesNone | Ob::DoneBare)
+    }
+
+    /// A folder, but no library in it.
+    fn no_games(self) -> bool {
+        matches!(self, Ob::GamesEmpty | Ob::GamesScanning) || self.no_folder()
+    }
+
+    fn pad(self) -> Option<crate::ui::pad_info::Family> {
+        use crate::ui::pad_info::Family;
+        match self {
+            Ob::Controller | Ob::ControllerLost | Ob::Done | Ob::DoneSignIn => {
+                Some(Family::PlayStation)
+            }
+            Ob::ControllerXbox => Some(Family::Xbox),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scene {
-    Onboarding(usize),
-    OnboardingEmpty,
+    Onboarding(Ob),
     Home,
     HomeActions,
+    /// Settings > Language: the list of the languages' own names.
+    SettingsLanguage,
     HomeTrophies,
     HomeLocked,
     HomeUnlocking,
+    HomeUninstalling,
     /// The launcher prepares the selected game on its own: progress, time left, the quiet tile band.
     HomePreparing,
     /// ... and it stands still because the PC is busy.
@@ -62,6 +131,8 @@ pub enum Scene {
     HomePreparingWaiting,
     HomeRelinking,
     HomeFailed,
+    HomeFailedLong,
+    HomeLongTitle,
     HomeQueued,
     HomeRunning,
     /// The running game with the Home button's quick panel in front.
@@ -80,10 +151,22 @@ pub enum Scene {
     HomeFriendsQuiet,
     /// A paired phone is connected: its name after the title.
     HomePhone,
+    /// The phone server's phone and a LudusCtrl phone are connected: both after the title.
+    HomeLudus,
+    HomeBrowser,
     /// The friends button focused, twelve friends online (two digits).
     HomeFriendsFocus,
     /// Signed out with the sign-in button focused.
     HomeSignInFocus,
+    /// Three entries not read yet: the count on the bell, the bell focused.
+    HomeNotifyBadge,
+    /// The Notification Center with a mix of entries, each with its action.
+    Notifications,
+    /// The Notification Center with nothing in it.
+    NotificationsEmpty,
+    /// The Notification Center with a message longer than two lines: the sentence is cut and the
+    /// chip reads it whole once the focus has rested on the entry.
+    NotificationsLong,
     /// Signed in, the session just ended: the question "How did it run?" below the facts.
     HomeAsk,
     /// Signed in, enough players reported: the Runs fact.
@@ -107,34 +190,60 @@ pub enum Scene {
     HomeNoFolder,
     Starting,
     Toast,
+    /// A failure toast: it stays until dismissed, with its Close button.
+    ToastError,
+    /// A game crashed: the failure toast offers Send Report.
+    ToastCrash,
+    /// A long failure message: the toast shows all of it and keeps off the top bar's buttons.
+    ToastErrorLong,
     /// A verified launcher update waits: the notice after the title.
     HomeUpdate,
+    HomeUpdateNarrow,
     /// The same with the notice's first button focused.
     HomeUpdateFocus,
     /// "Restart Now" was pressed while a game runs: the restart waits.
     HomeUpdateHolding,
     /// "Later" was pressed: no notice, a dot on the settings button.
     HomeUpdateLater,
+    /// Friends play games of the library and one shelf has the focus.
+    HomeShelves,
+    /// Recently played and new games on the shelves.
+    HomeNew,
+    /// The scan found a new game: the toast names it.
+    ToastNewGame,
 }
 
 impl Scene {
     pub fn from_name(name: &str) -> Option<Scene> {
         Some(match name {
-            "onboarding0" | "onboarding" => Scene::Onboarding(0),
-            "onboarding1" => Scene::Onboarding(1),
-            "onboarding2" => Scene::Onboarding(2),
-            "onboarding3" => Scene::Onboarding(3),
-            "onboarding2-empty" => Scene::OnboardingEmpty,
+            "onboarding-language" | "onboarding" => Scene::Onboarding(Ob::Language),
+            "onboarding-look" => Scene::Onboarding(Ob::Look),
+            "onboarding-look-access" => Scene::Onboarding(Ob::LookAccess),
+            "onboarding-controller" => Scene::Onboarding(Ob::Controller),
+            "onboarding-controller-xbox" => Scene::Onboarding(Ob::ControllerXbox),
+            "onboarding-controller-lost" => Scene::Onboarding(Ob::ControllerLost),
+            "onboarding-games" => Scene::Onboarding(Ob::Games),
+            "onboarding-games-none" => Scene::Onboarding(Ob::GamesNone),
+            "onboarding-games-empty" => Scene::Onboarding(Ob::GamesEmpty),
+            "onboarding-games-scanning" => Scene::Onboarding(Ob::GamesScanning),
+            "onboarding-online" => Scene::Onboarding(Ob::Online),
+            "onboarding-done" => Scene::Onboarding(Ob::Done),
+            "onboarding-done-signin" => Scene::Onboarding(Ob::DoneSignIn),
+            "onboarding-done-bare" => Scene::Onboarding(Ob::DoneBare),
             "home" => Scene::Home,
             "home-actions" => Scene::HomeActions,
+            "settings-language" => Scene::SettingsLanguage,
             "home-trophies" => Scene::HomeTrophies,
             "home-locked" => Scene::HomeLocked,
             "home-unlocking" => Scene::HomeUnlocking,
+            "home-uninstalling" => Scene::HomeUninstalling,
             "home-preparing" => Scene::HomePreparing,
             "home-preparing-paused" => Scene::HomePreparingPaused,
             "home-preparing-waiting" => Scene::HomePreparingWaiting,
             "home-relinking" => Scene::HomeRelinking,
             "home-failed" => Scene::HomeFailed,
+            "home-failed-long" => Scene::HomeFailedLong,
+            "home-long-title" => Scene::HomeLongTitle,
             "home-queued" => Scene::HomeQueued,
             "home-running" => Scene::HomeRunning,
             "home-ingame" => Scene::HomeInGame,
@@ -146,14 +255,23 @@ impl Scene {
             "home-appearing" => Scene::HomeAppearing,
             "home-friends-quiet" => Scene::HomeFriendsQuiet,
             "home-phone" => Scene::HomePhone,
+            "home-ludus" => Scene::HomeLudus,
+            "home-browser" => Scene::HomeBrowser,
             "home-friends-focus" => Scene::HomeFriendsFocus,
             "home-signin-focus" => Scene::HomeSignInFocus,
+            "home-notify-badge" => Scene::HomeNotifyBadge,
+            "notifications" => Scene::Notifications,
+            "notifications-empty" => Scene::NotificationsEmpty,
+            "notifications-long" => Scene::NotificationsLong,
             "home-ask" => Scene::HomeAsk,
             "home-runs" => Scene::HomeRuns,
             "home-friends-playing" => Scene::HomeFriendsPlaying,
             "home-together" => Scene::HomeTogether,
             "home-theme1" => Scene::HomeTheme(1),
             "home-theme2" => Scene::HomeTheme(2),
+            "home-ember" => Scene::HomeTheme(4),
+            "home-tide" => Scene::HomeTheme(5),
+            "home-daylight" => Scene::HomeTheme(6),
             "home-noartwork" => Scene::HomeNoArtwork,
             "home-toolkit" => Scene::HomeToolkit,
             "home-toolkit-missing" => Scene::HomeToolkitMissing,
@@ -164,22 +282,39 @@ impl Scene {
             "home-nofolder" => Scene::HomeNoFolder,
             "starting" => Scene::Starting,
             "toast" => Scene::Toast,
+            "toast-error" => Scene::ToastError,
+            "toast-crash" => Scene::ToastCrash,
+            "toast-error-long" => Scene::ToastErrorLong,
             "home-update" => Scene::HomeUpdate,
+            "home-update-narrow" => Scene::HomeUpdateNarrow,
             "home-update-focus" => Scene::HomeUpdateFocus,
             "home-update-holding" => Scene::HomeUpdateHolding,
             "home-update-later" => Scene::HomeUpdateLater,
+            "home-shelves" => Scene::HomeShelves,
+            "home-new" => Scene::HomeNew,
+            "toast-new-game" => Scene::ToastNewGame,
             _ => return None,
         })
     }
 
-    pub const ALL_NAMES: [&'static str; 44] = [
-        "onboarding0",
-        "onboarding1",
-        "onboarding2",
-        "onboarding2-empty",
-        "onboarding3",
+    pub const ALL_NAMES: [&'static str; 67] = [
+        "onboarding-language",
+        "onboarding-look",
+        "onboarding-look-access",
+        "onboarding-controller",
+        "onboarding-controller-xbox",
+        "onboarding-controller-lost",
+        "onboarding-games",
+        "onboarding-games-none",
+        "onboarding-games-empty",
+        "onboarding-games-scanning",
+        "onboarding-online",
+        "onboarding-done",
+        "onboarding-done-signin",
+        "onboarding-done-bare",
         "home",
         "home-actions",
+        "settings-language",
         "home-trophies",
         "home-locked",
         "home-unlocking",
@@ -188,6 +323,8 @@ impl Scene {
         "home-preparing-waiting",
         "home-relinking",
         "home-failed",
+        "home-failed-long",
+        "home-long-title",
         "home-queued",
         "home-running",
         "home-ingame",
@@ -199,14 +336,23 @@ impl Scene {
         "home-appearing",
         "home-friends-quiet",
         "home-phone",
+        "home-ludus",
+        "home-browser",
         "home-friends-focus",
         "home-signin-focus",
+        "home-notify-badge",
+        "notifications",
+        "notifications-empty",
+        "notifications-long",
         "home-ask",
         "home-runs",
         "home-friends-playing",
         "home-together",
         "home-theme1",
         "home-theme2",
+        "home-ember",
+        "home-tide",
+        "home-daylight",
         "home-noartwork",
         "home-toolkit",
         "home-toolkit-missing",
@@ -217,6 +363,8 @@ impl Scene {
         "home-nofolder",
         "starting",
         "toast",
+        "toast-error",
+        "toast-error-long",
     ];
 }
 
@@ -232,6 +380,12 @@ pub struct Options {
     /// `--fullscreen`: fill the screen the window opens on, as the launcher does.
     pub fullscreen: bool,
     pub turkish: bool,
+    /// `--de`, `--es`, `--fr`, `--pt`: German, Spanish, French, Brazilian Portuguese (`--tr` wins
+    /// when several are given, then the first of these in that order).
+    pub german: bool,
+    pub spanish: bool,
+    pub french: bool,
+    pub portuguese: bool,
     /// `--pad`: hint bars show gamepad buttons instead of keys.
     pub pad: bool,
     /// `--theme=aurora|sunset|cosmic`: the backdrop theme (the scenes `home-theme1` and `-2` set it too).
@@ -243,6 +397,13 @@ pub struct Options {
     /// `--hover=X,Y`: where the pointer rests, in dp (to screenshot a hover state).
     pub hover: Option<(f32, f32)>,
     pub frames: u32,
+    /// `--time=SECONDS`: where the backdrop's clock stands (a still of any moment of its motion).
+    pub time: Option<f32>,
+    /// `--reduced`: Reduced Motion on (a still frame of the backdrop, fades only).
+    pub reduced: bool,
+    /// `--sequence=COUNT@FPS`: with `--screenshot=dir/frame_%04d.png`, COUNT frames of the backdrop
+    /// at FPS from `--time`, one picture each (the presentation videos are made from them).
+    pub sequence: Option<(u32, f32)>,
     /// Commands fed to the app one after the other (`--script=right,select,wait60`).
     pub script: Vec<Step>,
     /// A real dump whose `icon0.png` and `pic0.png` replace the second game's generated art, for
@@ -252,6 +413,26 @@ pub struct Options {
     /// icon0.png, pic0.png) that replace the generated library, in folder-name order. For the
     /// README's pictures; the art stays where it is.
     pub showcase: Option<PathBuf>,
+}
+
+impl Options {
+    /// The language the flags ask for: `--tr`, else `--de`, `--es`, `--fr`, `--pt`, else English.
+    pub fn language(&self) -> crate::ui::i18n::Language {
+        use crate::ui::i18n::Language;
+        if self.turkish {
+            Language::Turkish
+        } else if self.german {
+            Language::German
+        } else if self.spanish {
+            Language::Spanish
+        } else if self.french {
+            Language::French
+        } else if self.portuguese {
+            Language::Portuguese
+        } else {
+            Language::English
+        }
+    }
 }
 
 /// One step of a scripted run.
@@ -291,12 +472,19 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
         at: None,
         fullscreen: false,
         turkish: false,
+        german: false,
+        spanish: false,
+        french: false,
+        portuguese: false,
         pad: false,
         theme: None,
         bright: false,
         intro: false,
         hover: None,
         frames: 100,
+        time: None,
+        reduced: false,
+        sequence: None,
         script: Vec::new(),
         real_art: std::env::var_os("ANYPS5_PREVIEW_REAL_ART").map(PathBuf::from),
         showcase: std::env::var_os("ANYPS5_PREVIEW_GAMES").map(PathBuf::from),
@@ -321,6 +509,18 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
             if let Some((Ok(x), Ok(y))) = at.split_once(',').map(|(x, y)| (x.parse(), y.parse())) {
                 options.at = Some((x, y));
             }
+        } else if arg == "--offscreen" {
+            // Far outside every desktop (not -32000, which Windows reads as "minimised"), so a
+            // screenshot run never shows a window on the screen of whoever is at the PC.
+            options.at = Some((-20000.0, -20000.0));
+        } else if arg == "--reduced" {
+            options.reduced = true;
+        } else if let Some(t) = arg.strip_prefix("--time=") {
+            options.time = t.parse().ok();
+        } else if let Some(spec) = arg.strip_prefix("--sequence=") {
+            options.sequence = spec
+                .split_once('@')
+                .and_then(|(n, fps)| Some((n.parse().ok()?, fps.parse().ok()?)));
         } else if let Some(frames) = arg.strip_prefix("--frames=") {
             options.frames = frames.parse().unwrap_or(100);
         } else if let Some(script) = arg.strip_prefix("--script=") {
@@ -344,6 +544,14 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
             options.fullscreen = true;
         } else if arg == "--tr" {
             options.turkish = true;
+        } else if arg == "--de" {
+            options.german = true;
+        } else if arg == "--es" {
+            options.spanish = true;
+        } else if arg == "--fr" {
+            options.french = true;
+        } else if arg == "--pt" {
+            options.portuguese = true;
         }
     }
     seen.then_some(options)
@@ -526,6 +734,41 @@ fn make_trophies(game: &Game, unlocked: usize) -> TrophySet {
 // Scenes
 // ---------------------------------------------------------------------------------------------
 
+/// A controller of the gallery: published like the pad thread does, with Circle (or B) held.
+fn show_pad(m: &mut crate::app::model::Model, family: crate::ui::pad_info::Family, ob: Ob) {
+    use crate::app::model::PadSeen;
+    use crate::ui::pad_hub::{self, Link, PadInfo};
+    use crate::ui::pad_info::{Battery, Family};
+    let name = match family {
+        Family::PlayStation => "DualSense Wireless Controller",
+        _ => "Xbox Wireless Controller",
+    };
+    m.note_pad(Some(PadSeen {
+        name: name.to_owned(),
+        family,
+    }));
+    if ob == Ob::ControllerLost {
+        m.note_pad(None);
+        return;
+    }
+    pad_hub::publish_pads(vec![PadInfo {
+        id: 0,
+        name: name.to_owned(),
+        vendor: None,
+        product: None,
+        family,
+        link: Link::Usb,
+        battery: Battery::Unknown,
+        backend: "gilrs".to_owned(),
+        active: true,
+        dualsense: family == Family::PlayStation,
+        rumble: true,
+    }]);
+    if matches!(ob, Ob::Controller | Ob::ControllerXbox) {
+        pad_hub::note_button(0, gilrs::Button::East, true);
+    }
+}
+
 /// Sets the library and the state of a scene.
 pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Game>) {
     let folder = PathBuf::from("D:\\Games\\PS5");
@@ -533,31 +776,50 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
         p.games_folder = Some(folder.clone());
         p.profile_name = "Mira".to_owned();
         p.sounds = false;
-        p.onboarded = !matches!(scene, Scene::Onboarding(_) | Scene::OnboardingEmpty);
+        p.onboarded = !matches!(scene, Scene::Onboarding(_));
         if let Scene::HomeTheme(index) = scene {
-            p.theme = match index {
-                1 => CoreTheme::Aurora,
-                _ => CoreTheme::Sunset,
-            };
+            p.theme = crate::screens::convert::theme_to_core(Theme::from_index(index));
         }
-        p.game_artwork = scene != Scene::HomeNoArtwork;
-        // The online step needs a cloud to sign in to.
-        if scene == Scene::Onboarding(3) {
+        // The three newer looks are shown by their own backdrop: no artwork over it.
+        p.game_artwork = scene != Scene::HomeNoArtwork && !matches!(scene, Scene::HomeTheme(4..));
+        // The first start has an online step when there is a cloud to sign in to.
+        if let Scene::Onboarding(ob) = scene {
             p.online_cloud = Some("https://anyplaynet.com".to_owned());
+            if ob == Ob::LookAccess {
+                p.larger_text = true;
+                p.high_contrast = true;
+                p.reduced_motion = true;
+            }
+            if ob.no_folder() {
+                p.games_folder = None;
+            }
+            if ob == Ob::ControllerXbox {
+                crate::screens::controllers::set_confirm_circle(p, true);
+            }
         }
     });
+    if let Scene::Onboarding(ob) = scene {
+        m.onboarding.step = ob.step();
+        if let Some(family) = ob.pad() {
+            show_pad(m, family, ob);
+        }
+        if ob == Ob::DoneSignIn {
+            m.onboarding_choose_sign_in(Some(false));
+        }
+    }
     m.toolkit = Some("0.1.0".to_owned());
 
     let with_games = !matches!(
         scene,
-        Scene::HomeEmpty | Scene::HomeScanning | Scene::HomeNoFolder | Scene::OnboardingEmpty
-    );
+        Scene::HomeEmpty | Scene::HomeScanning | Scene::HomeNoFolder
+    ) && !matches!(scene, Scene::Onboarding(ob) if ob.no_games());
     if matches!(scene, Scene::HomeNoFolder) {
         m.edit_prefs(|p| p.games_folder = None);
     }
-    if matches!(scene, Scene::HomeScanning | Scene::OnboardingEmpty) {
-        m.scanning = matches!(scene, Scene::HomeScanning);
-    }
+    m.scanning = matches!(
+        scene,
+        Scene::HomeScanning | Scene::Onboarding(Ob::GamesScanning)
+    );
     if !with_games {
         return;
     }
@@ -594,13 +856,12 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
         .insert(trophy_game.id.clone(), make_trophies(&trophy_game, 8));
 
     match scene {
-        Scene::Onboarding(step) => {
-            m.onboarding.step = step;
-            if step == 2 {
-                m.set_onboarding_choice(1);
-            }
-        }
+        Scene::Onboarding(_) => {}
+
         Scene::HomeActions => m.focus = HomeFocus::Actions(0),
+        Scene::SettingsLanguage => {
+            m.show_settings(Some(anyps5_core::links::SettingsPage::Language));
+        }
         Scene::HomeTogether => {
             sign_in(m);
             let id = ids[at(1)].clone();
@@ -621,6 +882,11 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
             m.selected = at(2);
             m.progress
                 .insert(ids[at(2)].clone(), (UnlockStep::Copy, 0.4));
+            m.focus = HomeFocus::Actions(0);
+        }
+        Scene::HomeUninstalling => {
+            m.selected = at(2);
+            m.uninstalling.insert(ids[at(2)].clone(), 0.4);
             m.focus = HomeFocus::Actions(0);
         }
         Scene::HomePreparing | Scene::HomePreparingPaused | Scene::HomePreparingWaiting => {
@@ -649,9 +915,38 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
                 crate::screens::prepare_strings::failure(
                     anyps5_core::unlock::FailureKind::DiskFull,
                     m.language(),
-                )
-                .to_owned(),
+                ),
             );
+        }
+        Scene::HomeFailedLong => {
+            // The longest sentence a failure can say in this language (`--tr` for Turkish).
+            use anyps5_core::unlock::FailureKind as K;
+            m.selected = at(4);
+            let language = m.language();
+            let longest = [
+                K::ToolkitMissing,
+                K::DiskFull,
+                K::LocationMissing,
+                K::FileInUse,
+                K::BadDump,
+                K::Converter,
+                K::Other,
+            ]
+            .into_iter()
+            .map(|kind| crate::screens::prepare_strings::failure(kind, language))
+            .chain([crate::screens::prepare_strings::pinned_toolkit_missing(
+                language,
+            )])
+            .max_by_key(|text| text.chars().count())
+            .unwrap_or_default();
+            m.failures.insert(ids[at(4)].clone(), longest);
+        }
+        Scene::HomeLongTitle => {
+            m.selected = at(1);
+            if let Some(game) = m.games.iter_mut().find(|g| g.id == ids[at(1)]) {
+                game.name = "The Extraordinarily Long Title of a Remastered Collection: Director's Cut, Complete Edition".into();
+            }
+            m.focus = HomeFocus::Actions(0);
         }
         Scene::HomeQueued => {
             m.selected = at(4);
@@ -707,6 +1002,15 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
         Scene::HomePhone => {
             m.phone.connected = Some("Pixel 8".into());
         }
+        Scene::HomeLudus => {
+            m.phone.connected = Some("Pixel 8".into());
+            m.ludus.connected = Some("Galaxy Tab S9".into());
+        }
+        Scene::HomeBrowser => {
+            m.phone.connected = Some("Pixel 8".into());
+            m.ludus.browser.peer = Some("192.168.178.41".into());
+            m.ludus.browser.device = Some("iPhone".into());
+        }
         Scene::HomeFriendsQuiet => {
             sign_in(m);
             add_friends(m, 0, 4);
@@ -717,6 +1021,28 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
             m.focus = HomeFocus::FRIENDS;
         }
         Scene::HomeSignInFocus => m.focus = HomeFocus::PROFILE,
+        Scene::HomeNotifyBadge => {
+            notify_sample(m, &ids[at(1)], 3);
+            m.focus = HomeFocus::NOTIFICATIONS;
+        }
+        Scene::Notifications => {
+            notify_sample(m, &ids[at(1)], 6);
+            m.switch_overlay(crate::app::overlay::Overlay::Notifications);
+        }
+        Scene::NotificationsEmpty => m.switch_overlay(crate::app::overlay::Overlay::Notifications),
+        Scene::NotificationsLong => {
+            use anyps5_core::notifications::{Act, Kind};
+            notify_sample(m, &ids[at(1)], 3);
+            let now = u64::try_from(crate::app::clock::unix_seconds()).unwrap_or(0);
+            m.notes.push(
+                Kind::Message,
+                "Mira: are you free tonight? We could finish the last chapter, then try the co-op mode and see which trophies are missing"
+                    .to_owned(),
+                Act::OpenMessages(Some("c1".into())),
+                now.saturating_sub(10),
+            );
+            m.switch_overlay(crate::app::overlay::Overlay::Notifications);
+        }
         Scene::HomeMessages => {
             use anyps5_core::online::api::{
                 Account, AccountId, Conversation, ConversationKind, Conversations,
@@ -814,16 +1140,68 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
             m.starting = Some(ids[at(1)].clone());
             m.running = Some(ids[at(1)].clone());
         }
+        // No room for the notice beside the title: only the dot on the gear says it.
+        Scene::HomeUpdateNarrow => {
+            m.phone.connected = Some("Pixel 8 Pro of a Long Name".into());
+            m.ludus.connected = Some("Galaxy Tab S9 Ultra".into());
+        }
         Scene::HomeUpdateFocus => m.focus = HomeFocus::Update(0),
         // The restart waits because a game runs.
         Scene::HomeUpdateHolding => m.running = Some(ids[at(1)].clone()),
         Scene::HomeUpdateLater => m.update_dismissed = Some("0.1.4".to_owned()),
+        Scene::HomeShelves => {
+            sign_in(m);
+            add_friends(m, 2, 0);
+            let playing: Vec<(String, String, String)> = [at(2), at(4)]
+                .iter()
+                .map(|&i| {
+                    let g = &m.games[i];
+                    (g.title_id.clone(), g.name.clone(), g.version.clone())
+                })
+                .collect();
+            for (friend, (title_id, title, version)) in
+                m.online.friends.friends.iter_mut().zip(playing)
+            {
+                friend.presence.activity = Some(anyps5_core::online::api::Activity {
+                    title_id,
+                    title,
+                    version,
+                    session: None,
+                });
+            }
+            m.focus = HomeFocus::Shelf(0);
+        }
+        Scene::HomeNew => {
+            let fresh: Vec<String> = [at(4), at(5)]
+                .iter()
+                .map(|&i| ids[i].as_str().to_owned())
+                .collect();
+            m.edit_prefs(|p| p.new_games = fresh);
+            m.focus = HomeFocus::Shelf(2);
+        }
+        Scene::ToastNewGame => {
+            m.announce_new_games(&[ids[at(4)].clone()]);
+            if let Some(toast) = m.toast.as_mut() {
+                toast.until = 1.0e6;
+            }
+        }
         Scene::Toast => {
             m.toast("Lanternfall · Ready to play", Icon::LOCK_OPEN);
             if let Some(toast) = m.toast.as_mut() {
                 toast.until = 1.0e6;
             }
         }
+        Scene::ToastError => m.toast_failure(
+            "Could not start Lanternfall. The game closed during start-up. Open the log from Game Settings for the details.",
+        ),
+        Scene::ToastCrash => {
+            if let Some(id) = m.games.first().map(|g| g.id.clone()) {
+                m.toast_crash("Lanternfall: The game crashed (EXCEPTION_ACCESS_VIOLATION).", id);
+            }
+        }
+        Scene::ToastErrorLong => m.toast_failure(
+            "Could not start Lanternfall. The game closed right after it opened, before it showed a window. The log from the last start has the technical details, and the launcher can open it from Game Settings. Try again once the toolkit is up to date, or close other programs that use the graphics card.",
+        ),
         _ => {}
     }
     // The preview has no workers: what the model asked for is dropped.
@@ -831,6 +1209,79 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
 }
 
 /// Signs the preview in as Mira, the cloud answering.
+/// The newest `count` of six made-up notifications, each with something to do: a request that
+/// waits, a Play Together invitation, a message, a trophy, an update and a missed call.
+fn notify_sample(m: &mut crate::app::model::Model, game: &GameId, count: usize) {
+    use anyps5_core::notifications::{Act, Kind};
+    use anyps5_core::online::api::{Account, AccountId, Invitation, Request, SessionKind};
+    sign_in(m);
+    let now = u64::try_from(crate::app::clock::unix_seconds()).unwrap_or(0);
+    let mira = Account {
+        id: AccountId(2),
+        handle: "Mira".into(),
+    };
+    m.online.friends.incoming.push(Request {
+        account: mira.clone(),
+        since: now,
+    });
+    m.online.invitations.push(Invitation {
+        id: "invite-1".into(),
+        from: Account {
+            id: AccountId(3),
+            handle: "Jonas".into(),
+        },
+        session: "session-1".into(),
+        kind: SessionKind::Game,
+        title_id: "PPSA00000".into(),
+        title: "Hollow Orchard".into(),
+        version: "01.000.000".into(),
+        expires: now + 3600,
+    });
+    let all = [
+        (
+            Kind::System,
+            "Missed call from Jonas",
+            Act::None,
+            3 * 86_400,
+        ),
+        (
+            Kind::Update,
+            "Launcher 0.3.0 is ready",
+            Act::OpenUpdate,
+            20 * 3600,
+        ),
+        (
+            Kind::Trophy,
+            "Hollow Orchard: Night Harvest",
+            Act::OpenTrophies(game.as_str().to_owned()),
+            3 * 3600,
+        ),
+        (
+            Kind::Message,
+            "Mira: are you free tonight? We could finish the last chapter",
+            Act::OpenMessages(Some("c1".into())),
+            25 * 60,
+        ),
+        (
+            Kind::Together,
+            "Jonas invited you to Hollow Orchard",
+            Act::JoinInvitation("invite-1".into()),
+            6 * 60,
+        ),
+        (
+            Kind::FriendRequest,
+            "Mira wants to be your friend",
+            Act::AcceptFriend(mira.id.0),
+            40,
+        ),
+    ];
+    let skip = all.len() - count;
+    for (kind, text, act, ago) in all.into_iter().skip(skip) {
+        m.notes
+            .push(kind, text.to_owned(), act, now.saturating_sub(ago));
+    }
+}
+
 fn sign_in(m: &mut crate::app::model::Model) {
     use anyps5_core::online::api::AccountId;
     use anyps5_core::online::{Cloud, SignedIn, Status};
@@ -905,12 +1356,15 @@ pub fn run(options: Options, inbox: Option<crate::instance::Inbox>) -> eframe::R
         viewport = viewport.with_position([x, y]);
     }
     let mut native = eframe::NativeOptions {
-        viewport: viewport
-            .with_title("AnyPlay Launcher preview")
-            // Frameless like the launcher, so the demo shows its caption as users see it.
-            .with_decorations(false)
-            .with_inner_size([options.size.0, options.size.1])
-            .with_resizable(options.scene.is_none()),
+        // Frameless like the launcher, so the demo shows its caption as users see it; the Mac
+        // keeps its own frame.
+        viewport: crate::macstyle::MacStyle::viewport(
+            viewport
+                .with_title("AnyPlay Launcher preview")
+                .with_decorations(false)
+                .with_inner_size([options.size.0, options.size.1])
+                .with_resizable(options.scene.is_none()),
+        ),
         ..Default::default()
     };
     crate::ui::restrict_backends(&mut native);
@@ -932,6 +1386,9 @@ struct PreviewApp {
     options: Options,
     frames: u32,
     requested: bool,
+    /// Pictures of a `--sequence` written so far, and the one asked for.
+    sequence_done: Arc<std::sync::atomic::AtomicU32>,
+    sequence_asked: u32,
     script: std::collections::VecDeque<Step>,
     wait: u32,
 }
@@ -950,18 +1407,16 @@ impl PreviewApp {
         crate::startup::mark("preview games made");
         let demo = options.scene.is_none();
         let theme = options.theme.unwrap_or(match options.scene {
-            Some(Scene::HomeTheme(1)) => Theme::Aurora,
-            Some(Scene::HomeTheme(_)) => Theme::Sunset,
+            Some(Scene::HomeTheme(index)) => Theme::from_index(index),
             _ => Theme::Cosmic,
         });
         let prefs = Preferences {
-            language: if options.turkish {
-                CoreLanguage::Turkish
-            } else {
-                CoreLanguage::English
-            },
+            language: crate::screens::convert::language_to_core(options.language()),
             onboarded: demo,
             theme: crate::screens::convert::theme_to_core(theme),
+            reduced_motion: options.reduced,
+            // `--solid`: the Mac window as it is without the glass (screenshots).
+            glass_window: !std::env::args().any(|a| a == "--solid"),
             ..Preferences::default()
         };
         let mut shell = Shell::headless(cc, theme);
@@ -972,13 +1427,10 @@ impl PreviewApp {
         if options.pad {
             crate::ui::input::set_device(&cc.egui_ctx, crate::ui::input::Device::Gamepad);
         }
-        shell.language = if options.turkish {
-            crate::ui::i18n::Language::Turkish
-        } else {
-            crate::ui::i18n::Language::English
-        };
+        shell.language = options.language();
         if !demo {
-            let clock = BackgroundClock::starting_at(f64::from(STILL_TIME_FULL));
+            let clock =
+                BackgroundClock::starting_at(f64::from(options.time.unwrap_or(STILL_TIME_FULL)));
             shell.backdrop = Backdrop::with_clock(theme, clock);
         }
         shell.sounds.enabled = demo;
@@ -1004,12 +1456,15 @@ impl PreviewApp {
                 use crate::screens::settings::LauncherUpdate;
                 let host = crate::app::panels::PanelHost::new(&cc.egui_ctx, true);
                 match options.scene {
-                    Some(Scene::HomeUpdate | Scene::HomeUpdateFocus | Scene::HomeUpdateLater) => {
-                        host.showing_launcher_update(
-                            &cc.egui_ctx,
-                            LauncherUpdate::Ready("0.1.4".into()),
-                        )
-                    }
+                    Some(
+                        Scene::HomeUpdate
+                        | Scene::HomeUpdateNarrow
+                        | Scene::HomeUpdateFocus
+                        | Scene::HomeUpdateLater,
+                    ) => host.showing_launcher_update(
+                        &cc.egui_ctx,
+                        LauncherUpdate::Ready("0.1.4".into()),
+                    ),
                     Some(Scene::HomeUpdateHolding) => host.showing_launcher_update(
                         &cc.egui_ctx,
                         LauncherUpdate::Holding("0.1.4".into()),
@@ -1029,6 +1484,7 @@ impl PreviewApp {
                 Some(Scene::HomeInGame | Scene::HomeInGameClose)
             );
         inner.freeze_backdrop = !demo;
+        inner.glass_anyway = std::env::args().any(|a| a == "--glass-anyway");
         if demo {
             crate::ui::home_button::test_game_from_env(&inner.shell.home);
         }
@@ -1056,6 +1512,8 @@ impl PreviewApp {
             inner,
             frames: 0,
             requested: false,
+            sequence_done: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            sequence_asked: 0,
             script: options.script.iter().copied().collect(),
             wait: 0,
             options,
@@ -1064,6 +1522,48 @@ impl PreviewApp {
 }
 
 impl PreviewApp {
+    /// With `--sequence`: the number of the picture to take in this frame, once the page has
+    /// settled and the one before has been written. Sets the backdrop's clock for it.
+    fn next_sequence_frame(&mut self) -> Option<u32> {
+        let (count, fps) = self.options.sequence?;
+        if self.frames < self.options.frames {
+            return None;
+        }
+        let done = self.sequence_done.load(std::sync::atomic::Ordering::SeqCst);
+        if done != self.sequence_asked || done >= count {
+            return None;
+        }
+        let start = self.options.time.unwrap_or(STILL_TIME_FULL);
+        let backdrop = &mut self.inner.shell.backdrop;
+        backdrop.paused = true;
+        backdrop.set_seconds(f64::from(start) + f64::from(done) / f64::from(fps));
+        Some(done)
+    }
+
+    fn ask_sequence_frame(&mut self, ctx: &Context, k: u32) {
+        let (count, _) = self.options.sequence.unwrap_or((0, 0.0));
+        let Some(pattern) = self.options.screenshot.clone() else {
+            return;
+        };
+        let path = PathBuf::from(
+            pattern
+                .to_string_lossy()
+                .replace("%04d", &format!("{k:04}")),
+        );
+        self.sequence_asked = k + 1;
+        let done = self.sequence_done.clone();
+        let close = ctx.clone();
+        ctx.request_screenshot(move |image| {
+            if let Err(error) = save_png(&path, &image) {
+                eprintln!("screenshot failed: {error}");
+            }
+            if done.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1 >= count {
+                println!("{count} pictures written");
+                close.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        });
+    }
+
     /// Feeds the next scripted command, one every few frames.
     fn run_script(&mut self, ctx: &Context) {
         if self.wait > 0 {
@@ -1086,6 +1586,11 @@ impl PreviewApp {
 }
 
 impl eframe::App for PreviewApp {
+    #[cfg(target_os = "macos")]
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        self.inner.clear_color()
+    }
+
     fn raw_input_hook(&mut self, _ctx: &Context, raw_input: &mut egui::RawInput) {
         if let Some((x, y)) = self.options.hover {
             raw_input
@@ -1099,6 +1604,8 @@ impl eframe::App for PreviewApp {
             crate::app::window_chrome::apply(frame);
         }
         let ctx = ui.ctx().clone();
+        let glass_setting = self.inner.model.prefs.glass_window;
+        self.inner.dress_window(&ctx, frame, glass_setting);
         if self.frames <= 3 {
             crate::startup::mark(&format!("frame {} begins", self.frames + 1));
         }
@@ -1107,6 +1614,7 @@ impl eframe::App for PreviewApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
         }
         self.run_script(&ctx);
+        let sequence_frame = self.next_sequence_frame();
         self.inner.step(&ctx);
         // With `--pad` the pointer rests where `--hover` says, like a mouse nobody touches: the pad
         // stays the device in use (the injected move would hand it back) and the hover must light
@@ -1117,11 +1625,15 @@ impl eframe::App for PreviewApp {
         self.inner.paint(ui);
         self.inner.finish_frame(&ctx);
         self.frames += 1;
+        if let Some(k) = sequence_frame {
+            self.ask_sequence_frame(&ctx, k);
+        }
         // Scenes and screenshots draw every frame; the demo idles like the launcher does.
         if self.options.scene.is_some() || self.options.screenshot.is_some() {
             ctx.request_repaint();
         }
         if let Some(path) = self.options.screenshot.clone()
+            && self.options.sequence.is_none()
             && self.frames >= self.options.frames
             && !self.requested
         {
@@ -1235,6 +1747,16 @@ mod tests {
         assert_eq!(o.scene, Some(Scene::HomeTrophies));
         assert_eq!(o.size, (1100.0, 650.0));
         assert!(o.turkish);
+        assert_eq!(o.language(), crate::ui::i18n::Language::Turkish);
+        for (flag, language) in [
+            ("--de", crate::ui::i18n::Language::German),
+            ("--es", crate::ui::i18n::Language::Spanish),
+            ("--fr", crate::ui::i18n::Language::French),
+            ("--pt", crate::ui::i18n::Language::Portuguese),
+        ] {
+            let o = parse_args(["--gallery=home-trophies".to_owned(), flag.to_owned()]).unwrap();
+            assert_eq!(o.language(), language, "{flag}");
+        }
         // The foundation's own gallery pages are not ours.
         assert!(parse_args(["--gallery=panels".to_owned()]).is_none());
         assert!(parse_args(["--demo".to_owned()]).unwrap().scene.is_none());

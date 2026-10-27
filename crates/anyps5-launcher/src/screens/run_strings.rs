@@ -61,10 +61,78 @@ impl RunText {
         }
     }
 
+    pub const fn german(self) -> &'static str {
+        match self {
+            RunText::Question => "Wie lief es?",
+            RunText::NoStart => "Startet nicht",
+            RunText::Menus => "Menüs",
+            RunText::InGame => "Im Spiel",
+            RunText::Playable => "Spielbar",
+            RunText::Dismiss => "Schließen",
+            RunText::Runs => "Läufe",
+            RunText::Verdict => "%@ · %@ Meldungen",
+            RunText::OnePlaying => "%@ spielt das gerade",
+            RunText::TwoPlaying => "%@ und %@ spielen das gerade",
+            RunText::ManyPlaying => "%@ Freunde spielen das gerade",
+        }
+    }
+
+    pub const fn spanish(self) -> &'static str {
+        match self {
+            RunText::Question => "¿Cómo funcionó?",
+            RunText::NoStart => "No inicia",
+            RunText::Menus => "Menús",
+            RunText::InGame => "En juego",
+            RunText::Playable => "Jugable",
+            RunText::Dismiss => "Cerrar",
+            RunText::Runs => "Funciona",
+            RunText::Verdict => "%@ · %@ informes",
+            RunText::OnePlaying => "%@ está jugando a esto",
+            RunText::TwoPlaying => "%@ y %@ están jugando a esto",
+            RunText::ManyPlaying => "%@ amigos están jugando a esto",
+        }
+    }
+
+    pub const fn french(self) -> &'static str {
+        match self {
+            RunText::Question => "Comment ça a tourné\u{a0}?",
+            RunText::NoStart => "Ne démarre pas",
+            RunText::Menus => "Menus",
+            RunText::InGame => "En jeu",
+            RunText::Playable => "Jouable",
+            RunText::Dismiss => "Fermer",
+            RunText::Runs => "Fonctionne",
+            RunText::Verdict => "%@ · %@ rapports",
+            RunText::OnePlaying => "%@ joue à ce jeu",
+            RunText::TwoPlaying => "%@ et %@ jouent à ce jeu",
+            RunText::ManyPlaying => "%@ amis jouent à ce jeu",
+        }
+    }
+
+    pub const fn portuguese(self) -> &'static str {
+        match self {
+            RunText::Question => "Como funcionou?",
+            RunText::NoStart => "Não inicia",
+            RunText::Menus => "Menus",
+            RunText::InGame => "No jogo",
+            RunText::Playable => "Jogável",
+            RunText::Dismiss => "Fechar",
+            RunText::Runs => "Funciona",
+            RunText::Verdict => "%@ · %@ relatos",
+            RunText::OnePlaying => "%@ está jogando isto",
+            RunText::TwoPlaying => "%@ e %@ estão jogando isto",
+            RunText::ManyPlaying => "%@ amigos estão jogando isto",
+        }
+    }
+
     pub fn text(self, language: Language) -> &'static str {
         match language {
             Language::English => self.english(),
             Language::Turkish => self.turkish(),
+            Language::German => self.german(),
+            Language::Spanish => self.spanish(),
+            Language::French => self.french(),
+            Language::Portuguese => self.portuguese(),
         }
     }
 

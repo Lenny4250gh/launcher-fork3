@@ -7,6 +7,7 @@
 //! anyps5://settings[/<page>]         open the settings, optionally on a page
 //! anyps5://open?path=<dump folder>   show the dump in the library
 //! anyps5://join/<code>               ask the network for the invitation a join code stands for
+//! anyps5://friend/<handle>           open the friend request for this handle (the player sends it)
 //! ```
 //!
 //! Every address may carry the version as its first segment (`anyps5://v1/game/<TITLEID>`), which
@@ -41,14 +42,29 @@ pub enum Link {
     /// Ask the network for the invitation this join code stands for (lower case). The launcher
     /// shows the invitation like any other; it never joins by itself.
     Join { code: String },
+    /// Open the friend request for this handle. The launcher shows it filled in and the player
+    /// sends it; nothing is sent by the link.
+    Friend { handle: String },
 }
 
 /// The pages of the settings a link can name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsPage {
+    /// Start-up behaviour, the Home button, updates.
+    General,
     Appearance,
     Library,
+    Sound,
+    Controllers,
+    /// Screenshots and Clips.
+    Captures,
+    Broadcast,
+    /// Account, privacy, voice, Show Game on Discord.
+    Online,
+    /// Steam and Discord.
+    ConnectedApps,
     Language,
+    /// The old catch-all page; it opens General (its rows now live on several pages).
     Behavior,
     /// Phone as Controller.
     Phone,
@@ -60,8 +76,15 @@ pub enum SettingsPage {
 impl SettingsPage {
     fn from_name(name: &str) -> Option<SettingsPage> {
         Some(match name {
+            "general" => SettingsPage::General,
             "appearance" => SettingsPage::Appearance,
             "library" => SettingsPage::Library,
+            "sound" => SettingsPage::Sound,
+            "controllers" | "controller" => SettingsPage::Controllers,
+            "captures" | "clips" => SettingsPage::Captures,
+            "broadcast" => SettingsPage::Broadcast,
+            "online" => SettingsPage::Online,
+            "apps" | "connected-apps" => SettingsPage::ConnectedApps,
             "language" => SettingsPage::Language,
             "behavior" | "behaviour" => SettingsPage::Behavior,
             "phone" => SettingsPage::Phone,
@@ -90,6 +113,8 @@ pub enum LinkError {
     MissingPath,
     /// A join code is ten characters of the join alphabet.
     BadJoinCode,
+    /// A handle is 3 to 16 letters, digits, `_` or `-`, a letter first.
+    BadHandle,
     /// A broken `%` escape, or bytes that are not UTF-8.
     BadEncoding,
     /// The path is not a plain absolute folder path; the reason is for logs.
@@ -109,6 +134,7 @@ impl fmt::Display for LinkError {
             LinkError::BadSettingsPage => f.write_str("unknown settings page"),
             LinkError::MissingPath => f.write_str("the link has no folder path"),
             LinkError::BadJoinCode => f.write_str("not a join code"),
+            LinkError::BadHandle => f.write_str("not a handle"),
             LinkError::BadEncoding => f.write_str("broken percent encoding"),
             LinkError::BadPath(reason) => write!(f, "refused folder path: {reason}"),
         }
@@ -175,7 +201,12 @@ pub fn parse_scheme(text: &str, scheme: &str) -> Result<Link, LinkError> {
         ("join", [code], None) => Ok(Link::Join {
             code: join_code(code)?,
         }),
-        ("game" | "settings" | "open" | "join", _, _) => Err(LinkError::Unexpected),
+        ("friend", [handle], None) => crate::online::api::check_handle(handle)
+            .map(|()| Link::Friend {
+                handle: (*handle).to_owned(),
+            })
+            .map_err(|_| LinkError::BadHandle),
+        ("game" | "settings" | "open" | "join" | "friend", _, _) => Err(LinkError::Unexpected),
         _ => Err(LinkError::UnknownAction),
     }
 }
@@ -236,6 +267,16 @@ fn join_code(text: &str) -> Result<String, LinkError> {
     } else {
         Err(LinkError::BadJoinCode)
     }
+}
+
+/// The deep link that asks the launcher of whoever opens it for the invitation `code` stands for
+/// (`anyps5://v1/join/<code>`), the link the "Copy Invite Link" button puts on the clipboard.
+/// It only asks: the launcher shows the invitation and the player decides. `None` when `code` is
+/// not a join code.
+pub fn join_link(code: &str) -> Option<String> {
+    join_code(code)
+        .ok()
+        .map(|code| format!("{SCHEME}://v1/join/{code}"))
 }
 
 /// The value of `path` in `path=<folder>`, the only key `open` takes.
@@ -520,6 +561,14 @@ x",
             Ok(Link::Settings(Some(SettingsPage::Toolkit)))
         );
         assert_eq!(
+            parse("anyps5://settings/Clips"),
+            Ok(Link::Settings(Some(SettingsPage::Captures)))
+        );
+        assert_eq!(
+            parse("anyps5://settings/connected-apps"),
+            Ok(Link::Settings(Some(SettingsPage::ConnectedApps)))
+        );
+        assert_eq!(
             parse("anyps5://settings/wallet"),
             Err(LinkError::BadSettingsPage)
         );
@@ -706,5 +755,36 @@ x",
                 Err(LinkError::BadPath("not absolute"))
             );
         }
+    }
+
+    #[test]
+    fn a_join_link_made_for_a_code_parses_back_to_it() {
+        let link = join_link("K3X9M2PQRA").expect("a code");
+        assert_eq!(link, "anyps5://v1/join/k3x9m2pqra");
+        assert_eq!(parse(&link), Ok(join("k3x9m2pqra")));
+        assert_eq!(join_link("not a code"), None);
+        assert_eq!(join_link("k3x9m2pqra/play"), None);
+    }
+
+    #[test]
+    fn a_friend_link_names_a_handle_and_nothing_else() {
+        assert_eq!(
+            parse("anyps5://v1/friend/Mira_01"),
+            Ok(Link::Friend {
+                handle: "Mira_01".into()
+            })
+        );
+        assert_eq!(parse("anyps5://friend/ab"), Err(LinkError::BadHandle));
+        assert_eq!(parse("anyps5://friend/1abc"), Err(LinkError::BadHandle));
+        assert_eq!(parse("anyps5://friend/Mira%20x"), Err(LinkError::BadHandle));
+        assert_eq!(parse("anyps5://friend"), Err(LinkError::Unexpected));
+        assert_eq!(
+            parse("anyps5://friend/Mira/add"),
+            Err(LinkError::Unexpected)
+        );
+        assert_eq!(
+            parse("anyps5://friend/Mira?send=1"),
+            Err(LinkError::Unexpected)
+        );
     }
 }

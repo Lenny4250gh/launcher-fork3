@@ -5,6 +5,7 @@
 //! share worker in its clips mode (network spec/clips.md); it keeps the pictures, this module
 //! only asks it to save and says what came of it.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyps5_core::clips::{self, HotkeyListener, Recorder, WorkerEvent};
@@ -21,6 +22,8 @@ use crate::ui::sound::Cue;
 struct Active {
     game: GameId,
     seconds: u32,
+    /// The folder the worker was told clips belong in; it refuses a save elsewhere.
+    folder: PathBuf,
     recorder: Recorder,
     /// The worker reported `ready`: pictures are being kept.
     ready: bool,
@@ -55,7 +58,8 @@ impl ClipsService {
     pub fn frame(&mut self, model: &mut Model, pipeline: &dyn Pipeline) {
         let seconds = clips::length_or_off(model.prefs.clips_seconds);
         let running = model.running.clone();
-        let wanted = !self.simulated && cfg!(windows) && seconds > 0;
+        let folder = model.prefs.screenshots_dir(&model.paths);
+        let wanted = !self.simulated && clips::SUPPORTED && seconds > 0;
         let Some(game) = running.filter(|_| wanted) else {
             self.active = None;
             self.hotkey = None;
@@ -65,7 +69,7 @@ impl ClipsService {
         if self
             .active
             .as_ref()
-            .is_some_and(|a| a.game != game || a.seconds != seconds)
+            .is_some_and(|a| a.game != game || a.seconds != seconds || a.folder != folder)
         {
             self.active = None;
         }
@@ -87,14 +91,16 @@ impl ClipsService {
         let Some(worker) = super::online::share_worker_path(model) else {
             self.gave_up = Some(game.clone());
             let text = ClipsText::NoWorker.text(model.language());
-            model.toast(text, Icon::WARNING);
+            model.toast_failure(text);
             return;
         };
+        let folder = model.prefs.screenshots_dir(&model.paths);
         let title = model.game(game).map(|g| g.name.clone()).unwrap_or_default();
         let wake = self.wake.clone();
         match Recorder::start(
             &worker,
             seconds,
+            &folder,
             target.window,
             &target.pids,
             &title,
@@ -105,6 +111,7 @@ impl ClipsService {
                 self.active = Some(Active {
                     game: game.clone(),
                     seconds,
+                    folder,
                     recorder,
                     ready: false,
                 });
@@ -120,6 +127,11 @@ impl ClipsService {
 
     /// The hotkey follows the preference: registered while a game runs with Clips on.
     fn sync_hotkey(&mut self, model: &mut Model) {
+        // No global hotkey here (macOS): the Create button saves, and nothing is said about a key
+        // another program might hold.
+        if !clips::HOTKEY_AVAILABLE {
+            return;
+        }
         let wanted = clips::hotkey_or_default(model.prefs.clips_hotkey.as_deref());
         let wanted_text = wanted.to_string();
         if self
@@ -166,12 +178,13 @@ impl ClipsService {
                     }
                     WorkerEvent::SaveFailed { reason } => {
                         tracing::warn!("clips: not saved: {reason}");
-                        let text = if reason == "empty" {
-                            ClipsText::NothingYet
+                        let text = save_failed_text(&reason);
+                        // "Nothing yet" is a notice and fades; a save that failed stays.
+                        if !matches!(text, ClipsText::NothingYet) {
+                            model.toast_failure(text.text(model.language()));
                         } else {
-                            ClipsText::SaveFailed
-                        };
-                        model.toast(text.text(model.language()), Icon::WARNING);
+                            model.toast(text.text(model.language()), Icon::WARNING);
+                        }
                     }
                     WorkerEvent::Ended { reason } => ended = Some(reason),
                 }
@@ -189,14 +202,17 @@ impl ClipsService {
     fn ended(&mut self, model: &mut Model, reason: &str) {
         let game = self.active.take().map(|a| a.game);
         tracing::info!("clips: the recorder ended: {reason}");
-        let text = match reason {
-            "no_encoder" => ClipsText::NoEncoder,
-            "no_window" => ClipsText::NoWindow,
-            "quit" => return,
-            _ => ClipsText::Stopped,
+        let Some(text) = reason_text(reason) else {
+            return;
         };
+        if reason == clips::NO_PERMISSION {
+            // Take the player to the switch; the toast says what to do there.
+            if let Some(worker) = super::online::share_worker_path(model) {
+                clips::open_screen_settings(&worker);
+            }
+        }
         self.gave_up = game;
-        model.toast(text.text(model.language()), Icon::WARNING);
+        model.toast_failure(text.text(model.language()));
     }
 
     /// The hotkey, the controller's Create button or the phone's: save the last seconds.
@@ -205,7 +221,7 @@ impl ClipsService {
         let Some(active) = self.active.as_mut() else {
             // Create was pressed in a game with Clips off: say how to turn it on, once the game
             // really runs (the button also means other things before one does).
-            if model.running.is_some() && model.prefs.clips_seconds == 0 && cfg!(windows) {
+            if model.running.is_some() && model.prefs.clips_seconds == 0 && clips::SUPPORTED {
                 model.toast(ClipsText::IsOff.text(language), Icon::CAMERA);
             }
             return;
@@ -214,7 +230,7 @@ impl ClipsService {
             model.toast(ClipsText::NothingYet.text(language), Icon::WARNING);
             return;
         }
-        let folder = model.prefs.screenshots_dir(&model.paths);
+        let folder = active.folder.clone();
         let title = model
             .game(&active.game)
             .map(|g| g.name.clone())
@@ -222,8 +238,28 @@ impl ClipsService {
         let path = clips::clip_path(&folder, &title, &stamp());
         if let Err(error) = active.recorder.save(&path) {
             tracing::warn!("clips: the save command failed: {error}");
-            model.toast(ClipsText::SaveFailed.text(language), Icon::WARNING);
+            model.toast_failure(ClipsText::SaveFailed.text(language));
         }
+    }
+}
+
+/// What to tell the player when a save failed for `reason`.
+fn save_failed_text(reason: &str) -> ClipsText {
+    match reason {
+        "empty" => ClipsText::NothingYet,
+        "outside_clips_folder" => ClipsText::OutsideFolder,
+        _ => ClipsText::SaveFailed,
+    }
+}
+
+/// What to tell the player when the recorder ended for `reason`; none for a quit.
+fn reason_text(reason: &str) -> Option<ClipsText> {
+    match reason {
+        "no_encoder" => Some(ClipsText::NoEncoder),
+        "no_window" => Some(ClipsText::NoWindow),
+        r if r == clips::NO_PERMISSION => Some(ClipsText::NoPermission),
+        "quit" => None,
+        _ => Some(ClipsText::Stopped),
     }
 }
 
@@ -237,6 +273,25 @@ fn stamp() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_reason_the_worker_gives_has_its_words() {
+        assert_eq!(reason_text("no_permission"), Some(ClipsText::NoPermission));
+        assert_eq!(reason_text("no_encoder"), Some(ClipsText::NoEncoder));
+        assert_eq!(reason_text("no_window"), Some(ClipsText::NoWindow));
+        assert_eq!(reason_text("quit"), None);
+        assert_eq!(reason_text("encoder_failed: x"), Some(ClipsText::Stopped));
+    }
+
+    #[test]
+    fn every_save_failure_has_its_words() {
+        assert_eq!(save_failed_text("empty"), ClipsText::NothingYet);
+        assert_eq!(
+            save_failed_text("outside_clips_folder"),
+            ClipsText::OutsideFolder
+        );
+        assert_eq!(save_failed_text("write: disk full"), ClipsText::SaveFailed);
+    }
 
     #[test]
     fn the_stamp_is_a_safe_file_name_part() {

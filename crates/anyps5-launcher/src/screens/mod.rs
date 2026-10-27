@@ -25,19 +25,26 @@
 #![allow(dead_code)]
 
 pub mod about_strings;
+pub mod access_strings;
 pub mod advanced;
 pub mod banner;
+pub mod broadcast_strings;
 pub mod calls;
 pub mod captures;
 pub mod captures_strings;
 pub mod clips_strings;
 pub mod compare;
 pub mod compare_strings;
+pub mod console_strings;
+pub mod controllers;
+pub mod controllers_strings;
 pub mod controls;
 pub mod convert;
+pub mod dialog;
 pub mod dialogs;
 pub mod discord_strings;
 pub mod failure_strings;
+pub mod feel_strings;
 pub mod format;
 pub mod friends;
 pub mod friends_strings;
@@ -47,23 +54,42 @@ pub mod gallery_together;
 pub mod game_settings;
 pub mod glibc_strings;
 pub mod home;
+pub mod hub;
+pub mod hub_strings;
 pub mod ingame;
+#[cfg(test)]
+mod language_coverage;
 pub mod legal;
+pub mod lfg;
+pub mod lfg_strings;
 pub mod library;
+pub mod library_search;
+pub mod library_storage;
+pub mod library_strings;
 pub mod location_strings;
 pub mod log;
+pub mod ludus;
+pub mod ludus_strings;
+pub mod ludus_web;
+pub mod ludus_web_strings;
+pub mod notification_strings;
+pub mod notifications;
 pub mod onboarding;
 pub mod onboarding_strings;
 pub mod online;
 pub mod online_call_strings;
+pub mod online_confirm_strings;
 pub mod online_feed_strings;
 pub mod online_restriction_strings;
 pub mod online_screen_strings;
+pub mod online_share_strings;
 pub mod online_social_strings;
 pub mod online_strings;
 pub mod online_voice_strings;
+pub mod overview;
 pub mod phone;
 pub mod phone_strings;
+pub mod played_with_strings;
 pub mod prepare_strings;
 pub mod profile;
 pub mod profile_strings;
@@ -74,19 +100,24 @@ pub mod rows;
 pub mod run_strings;
 pub mod saves;
 pub mod scroll;
+pub mod send;
 pub mod settings;
+pub mod settings_strings;
 pub mod share_strings;
 mod shared;
+pub mod shelves;
 pub mod side;
 pub mod start;
 pub mod steam_strings;
 pub mod strings;
+pub mod theme_strings;
 pub mod together;
 pub mod together_strings;
 pub mod toolkit_pin;
 pub mod trophies;
 pub mod unlock;
 pub mod update_strings;
+pub mod welcome;
 pub mod whatsnew;
 
 pub use shared::*;
@@ -120,6 +151,17 @@ pub fn right_aligned_hints(
     rect: egui::Rect,
     language: crate::ui::i18n::Language,
 ) {
+    right_aligned_hints_set(ui, rect, language, crate::ui::components::HintSet::BASIC);
+}
+
+/// [`right_aligned_hints`] for a [`HintSet`](crate::ui::components::HintSet): a screen whose
+/// Options does something says so.
+pub fn right_aligned_hints_set(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    language: crate::ui::i18n::Language,
+    set: crate::ui::components::HintSet,
+) {
     use egui::{Align, Layout, UiBuilder, pos2};
     let mut probe = ui.new_child(
         UiBuilder::new()
@@ -127,7 +169,7 @@ pub fn right_aligned_hints(
             .layout(Layout::left_to_right(Align::Center))
             .invisible(),
     );
-    crate::ui::components::hint_bar(&mut probe, language, false);
+    crate::ui::components::hint_bar_set(&mut probe, language, set);
     let width = probe.min_rect().width();
     let mut bar = ui.new_child(
         UiBuilder::new()
@@ -137,7 +179,7 @@ pub fn right_aligned_hints(
             ))
             .layout(Layout::left_to_right(Align::Center)),
     );
-    crate::ui::components::hint_bar(&mut bar, language, false);
+    crate::ui::components::hint_bar_set(&mut bar, language, set);
 }
 
 /// The hint bar of a full-screen area: bottom right of `screen`, where Home has it (DESIGN.md
@@ -148,11 +190,23 @@ pub fn footer_hints(
     language: crate::ui::i18n::Language,
     set: crate::ui::components::HintSet,
 ) {
-    use crate::ui::components::{hint_bar_set, hint_bar_set_size};
+    footer_hints_enter(ui, screen, language, set, None);
+}
+
+/// [`footer_hints`] where Enter says what it does on the focused thing: "Send" in a composer,
+/// "Edit" on a field (`None`: "Select"). A hint never promises what the key does not do.
+pub fn footer_hints_enter(
+    ui: &mut egui::Ui,
+    screen: egui::Rect,
+    language: crate::ui::i18n::Language,
+    set: crate::ui::components::HintSet,
+    enter: Option<&'static str>,
+) {
+    use crate::ui::components::{hint_bar_enter, hint_bar_enter_size};
     use crate::ui::theme::pad;
     use egui::{Align, Layout, Rect, UiBuilder, pos2, vec2};
     let painter = ui.painter().clone();
-    let (width, height) = hint_bar_set_size(&painter, language, set);
+    let (width, height) = hint_bar_enter_size(&painter, language, set, enter);
     let rect = Rect::from_min_size(
         pos2(
             screen.max.x - pad::HOME_X - width,
@@ -165,7 +219,7 @@ pub fn footer_hints(
             .max_rect(rect)
             .layout(Layout::left_to_right(Align::Center)),
     );
-    hint_bar_set(&mut bar, language, set);
+    hint_bar_enter(&mut bar, language, set, enter);
 }
 
 /// The room the top row of a full-screen area takes: the Back button and, level with it, the hint
@@ -176,15 +230,26 @@ pub const BACK_ROW: f32 = 60.0;
 /// trailing one, as on the Friends screen. Returns true when the button was clicked; the screen
 /// answers it like the Back command.
 pub fn back_row(ui: &mut egui::Ui, area: egui::Rect, language: crate::ui::i18n::Language) -> bool {
-    use crate::ui::components::{ConsoleButton, ControlSize};
-    use crate::ui::i18n::Key;
-    use crate::ui::icons::Icon;
-    use egui::{Align, Layout, Rect, UiBuilder, vec2};
+    use egui::{Rect, vec2};
     right_aligned_hints(
         ui,
         Rect::from_min_size(area.min, vec2(area.width(), 26.0)),
         language,
     );
+    back_button(ui, area, language)
+}
+
+/// The Back button alone, at the top leading corner of `area`: for a screen that keeps its hint bar
+/// in the footer (`footer_hints`, without "Back"). Returns true when it was clicked.
+pub fn back_button(
+    ui: &mut egui::Ui,
+    area: egui::Rect,
+    language: crate::ui::i18n::Language,
+) -> bool {
+    use crate::ui::components::{ConsoleButton, ControlSize};
+    use crate::ui::i18n::Key;
+    use crate::ui::icons::Icon;
+    use egui::{Align, Layout, Rect, UiBuilder, vec2};
     let mut back = ui.new_child(
         UiBuilder::new()
             .max_rect(Rect::from_min_size(area.min, vec2(200.0, 32.0)))
@@ -195,6 +260,33 @@ pub fn back_row(ui: &mut egui::Ui, area: egui::Rect, language: crate::ui::i18n::
         .size(ControlSize::Small)
         .show(&mut back)
         .clicked()
+}
+
+/// The button that leaves a full-screen area for the pointer: an X at the trailing end of the title
+/// row, 44 dp, named "Back" for a screen reader. Keys and the pad leave with Back as before; the
+/// mouse had only its side button, which not every mouse has. Returns the left edge it took (the
+/// hints and other buttons of the row stand to the left of it) and whether it was clicked.
+pub fn close_button(
+    ui: &mut egui::Ui,
+    row: egui::Rect,
+    language: crate::ui::i18n::Language,
+) -> (f32, bool) {
+    use crate::ui::components::{ConsoleButton, ControlSize};
+    use crate::ui::i18n::Key;
+    use crate::ui::icons::Icon;
+    use crate::ui::theme::size;
+    use egui::{Rect, UiBuilder, pos2, vec2};
+    let side = size::CONTROL_M;
+    let button = Rect::from_min_size(
+        pos2(row.max.x - side, row.center().y - side * 0.5),
+        vec2(side, side),
+    );
+    let mut child = ui.new_child(UiBuilder::new().max_rect(button));
+    let clicked = ConsoleButton::icon_only(Icon::X, language.text(Key::HintBack))
+        .size(ControlSize::Medium)
+        .show(&mut child)
+        .clicked();
+    (button.min.x, clicked)
 }
 
 /// A message for the host's toast (section 5.6): a glyph and a sentence.

@@ -2,8 +2,9 @@
 //! live in the core's [`Preferences`]; the panel edits them in place, applies theme, accent,
 //! language, motion and sound to the shell right away and reports `changed` so the host saves.
 //!
-//! Categories: Appearance, Library, Language, Behaviour, Toolkit (Windows addition: update check
-//! and CPU conversion), Advanced, About. File and folder choices that only need a native dialog run
+//! Categories (the table `TABS`, one entry per tab): General, Appearance, Library, Sound,
+//! Controllers, Captures, Phone as Controller, Online, Connected Apps, Language, Toolkit,
+//! Advanced, About. File and folder choices that only need a native dialog run
 //! here; everything that needs the host (rescan, quit, the toolkit download) is an action.
 
 use std::path::PathBuf;
@@ -17,22 +18,30 @@ use anyps5_core::settings::{Backdrop, CpuConversion, Preferences, ToolkitChannel
 use anyps5_core::toolkit::InstalledRelease;
 use egui::{Align2, Color32, Context, Rect, Sense, Ui, UiBuilder, pos2, vec2};
 
+use crate::app::ludus::LudusState;
 use crate::app::phone::PhoneState;
+use crate::screens::broadcast_strings::BroadcastText;
 use crate::screens::clips_strings::ClipsText;
+use crate::screens::console_strings::ConsoleText;
+use crate::screens::controllers_strings::Pads;
 use crate::screens::convert;
 use crate::screens::dialogs;
 use crate::screens::discord_strings::DiscordText;
+use crate::screens::feel_strings::{FeelText, volume_text};
 use crate::screens::format::{abbreviate_path, home_dir};
 use crate::screens::ingame::InGameText;
+use crate::screens::ludus::{self, LudusAction};
+use crate::screens::ludus_web;
 use crate::screens::phone::{self, PhoneAction};
 use crate::screens::phone_strings::PhoneText;
 use crate::screens::rows::{self, Change, ListOptions, Row};
+use crate::screens::settings_strings::SettingsText as words;
 use crate::screens::side::{Output, commands};
 use crate::screens::steam_strings::SteamText;
 use crate::screens::strings::Extra;
 use crate::screens::toolkit_pin::{self, REMOVE_ROWS};
 use crate::ui::Shell;
-use crate::ui::anim::{AnimExt, Motion, lerp};
+use crate::ui::anim::{AnimExt, Motion};
 use crate::ui::chrome::fullscreen_panel;
 use crate::ui::components;
 use crate::ui::focus::PanelNav;
@@ -41,41 +50,154 @@ use crate::ui::i18n::{Arg, Key, Language};
 use crate::ui::icons::Icon;
 use crate::ui::input::{self, InputEvent};
 use crate::ui::sound::Cue;
+
+/// The rows of the language list, in `Language::ALL` order (the languages' own names, A to Z).
+const LANGUAGE_ROWS: [(&str, Language); 6] = [
+    ("language-de", Language::German),
+    ("language-en", Language::English),
+    ("language-es", Language::Spanish),
+    ("language-fr", Language::French),
+    ("language-pt", Language::Portuguese),
+    ("language-tr", Language::Turkish),
+];
+
+/// The language a row of the list stands for.
+fn language_of_row(row: &str) -> Option<Language> {
+    LANGUAGE_ROWS
+        .iter()
+        .find(|(id, _)| *id == row)
+        .map(|(_, l)| *l)
+}
 use crate::ui::text;
-use crate::ui::theme::{Accent, Theme, pad, radius, size, ty, white};
+use crate::ui::theme::{Accent, Theme, color, pad, radius, size, space, ty};
 
 /// The categories, in the order of the list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Category {
+    General,
     Appearance,
     Library,
-    Language,
-    Behaviour,
+    Sound,
+    Controllers,
+    Captures,
+    Broadcast,
     Phone,
+    Online,
+    ConnectedApps,
+    Language,
     Toolkit,
     Advanced,
     About,
 }
 
-impl Category {
-    pub const ALL: [Category; 8] = [
-        Category::Appearance,
-        Category::Library,
-        Category::Language,
-        Category::Behaviour,
-        Category::Phone,
-        Category::Toolkit,
-        Category::Advanced,
-        Category::About,
-    ];
+/// One tab of the category rail. Adding a tab is one entry here, one variant above and one page
+/// in [`build_categories`].
+pub struct Tab {
+    pub category: Category,
+    pub icon: Icon,
+    pub title: fn(Language) -> &'static str,
+}
 
-    /// The category a link names.
+/// The rail: the app itself, then the things the launcher does for the player, then the network
+/// and the programs around it, then the maintenance pages.
+pub const TABS: [Tab; 14] = [
+    Tab {
+        category: Category::General,
+        icon: Icon::GEAR_SIX,
+        title: |l| words::General.text(l),
+    },
+    Tab {
+        category: Category::Appearance,
+        icon: Icon::PAINT_BRUSH,
+        title: |l| l.text(Key::Appearance),
+    },
+    Tab {
+        category: Category::Library,
+        icon: Icon::SQUARES_FOUR,
+        title: |l| l.text(Key::Storage),
+    },
+    Tab {
+        category: Category::Sound,
+        icon: Icon::SPEAKER_HIGH,
+        title: |l| words::Sound.text(l),
+    },
+    Tab {
+        category: Category::Controllers,
+        icon: Icon::GAME_CONTROLLER,
+        title: |l| words::Controllers.text(l),
+    },
+    Tab {
+        category: Category::Captures,
+        icon: Icon::CAMERA,
+        title: |l| words::Captures.text(l),
+    },
+    Tab {
+        category: Category::Broadcast,
+        icon: Icon::PLAY_CIRCLE,
+        title: |l| BroadcastText::Title.text(l),
+    },
+    Tab {
+        category: Category::Phone,
+        icon: Icon::DEVICE_MOBILE,
+        title: |l| PhoneText::Title.text(l),
+    },
+    Tab {
+        category: Category::Online,
+        icon: Icon::WIFI_HIGH,
+        title: |l| words::Online.text(l),
+    },
+    Tab {
+        category: Category::ConnectedApps,
+        icon: Icon::LINK,
+        title: |l| words::ConnectedApps.text(l),
+    },
+    Tab {
+        category: Category::Language,
+        icon: Icon::GLOBE,
+        title: |l| l.text(Key::Language),
+    },
+    Tab {
+        category: Category::Toolkit,
+        icon: Icon::HARD_DRIVE,
+        title: |l| Extra::Toolkit.text(l),
+    },
+    Tab {
+        category: Category::Advanced,
+        icon: Icon::WRENCH,
+        title: |l| l.text(Key::Advanced),
+    },
+    Tab {
+        category: Category::About,
+        icon: Icon::INFO,
+        title: |l| l.text(Key::About),
+    },
+];
+
+impl Category {
+    pub const ALL: [Category; TABS.len()] = {
+        let mut all = [Category::General; TABS.len()];
+        let mut i = 0;
+        while i < TABS.len() {
+            all[i] = TABS[i].category;
+            i += 1;
+        }
+        all
+    };
+
+    /// The category a link names. The old Behaviour page opens General: its rows now live on
+    /// several pages, and General is where it began.
     pub fn from_link(page: SettingsPage) -> Category {
         match page {
+            SettingsPage::General | SettingsPage::Behavior => Category::General,
             SettingsPage::Appearance => Category::Appearance,
             SettingsPage::Library => Category::Library,
+            SettingsPage::Sound => Category::Sound,
+            SettingsPage::Controllers => Category::Controllers,
+            SettingsPage::Captures => Category::Captures,
+            SettingsPage::Broadcast => Category::Broadcast,
+            SettingsPage::Online => Category::Online,
+            SettingsPage::ConnectedApps => Category::ConnectedApps,
             SettingsPage::Language => Category::Language,
-            SettingsPage::Behavior => Category::Behaviour,
             SettingsPage::Phone => Category::Phone,
             SettingsPage::Toolkit => Category::Toolkit,
             SettingsPage::Advanced => Category::Advanced,
@@ -83,30 +205,23 @@ impl Category {
         }
     }
 
+    /// The place of the category in the rail: what the panel's navigation counts in.
+    pub fn index(self) -> usize {
+        TABS.iter()
+            .position(|tab| tab.category == self)
+            .unwrap_or(0)
+    }
+
+    fn tab(self) -> &'static Tab {
+        &TABS[self.index()]
+    }
+
     pub fn title(self, language: Language) -> &'static str {
-        match self {
-            Category::Appearance => language.text(Key::Appearance),
-            Category::Library => language.text(Key::Storage),
-            Category::Language => language.text(Key::Language),
-            Category::Behaviour => language.text(Key::Behaviour),
-            Category::Phone => PhoneText::Title.text(language),
-            Category::Toolkit => Extra::Toolkit.text(language),
-            Category::Advanced => language.text(Key::Advanced),
-            Category::About => language.text(Key::About),
-        }
+        (self.tab().title)(language)
     }
 
     pub fn icon(self) -> Icon {
-        match self {
-            Category::Appearance => Icon::PAINT_BRUSH,
-            Category::Library => Icon::SQUARES_FOUR,
-            Category::Language => Icon::GLOBE,
-            Category::Behaviour => Icon::SLIDERS_HORIZONTAL,
-            Category::Phone => Icon::DEVICE_MOBILE,
-            Category::Toolkit => Icon::HARD_DRIVE,
-            Category::Advanced => Icon::WRENCH,
-            Category::About => Icon::INFO,
-        }
+        self.tab().icon
     }
 }
 
@@ -148,6 +263,10 @@ pub enum LauncherUpdate {
     /// A newer version exists but this launcher cannot install it itself (the Linux `.tar.gz`):
     /// its version. The player takes it from the releases page.
     Manual(String),
+    /// A newer version exists but a package manager owns this launcher's files (Flatpak, the AUR):
+    /// the version, and the package manager's name as players know it. Nothing is downloaded; the
+    /// player updates with the package manager.
+    Packaged { version: String, by: String },
     /// The check or the download failed.
     Failed(UpdateFailure),
 }
@@ -180,6 +299,8 @@ pub struct ClipsEnv {
     pub count: usize,
     /// The clip key row waits for a key press.
     pub capturing: bool,
+    /// A stream key is kept for Broadcast (the key itself never reaches the settings).
+    pub broadcast_key: bool,
 }
 
 /// What the settings show that is not a preference.
@@ -205,15 +326,49 @@ pub struct SettingsEnv<'a> {
     pub default_screenshots: &'a std::path::Path,
     /// Who answers `anyps5://` links on this PC.
     pub links: Handler,
+    /// Whether the launcher opens at sign-in, and on which system (the row's words).
+    pub autostart: AutostartEnv,
     /// Whether the built-in fonts have the Japanese, Chinese and Korean set.
     pub cjk_fonts: CjkState,
     /// What the phone server is doing.
     pub phone: &'a PhoneState,
+    /// What the LudusCtrl receiver is doing.
+    pub ludus: &'a LudusState,
     pub clips: ClipsEnv,
     pub location: LocationEnv,
     /// Linux with share screen on: Cisco's OpenH264 and what the share worker made of it. `None`
     /// shows no codec row.
     pub openh264: Option<Openh264Env>,
+    /// The rows that exist on Windows only (clips, links from websites). The gallery shows them on
+    /// every system.
+    pub windows_rows: bool,
+}
+
+/// What the start at sign-in is, read from the system's own entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AutostartEnv {
+    pub state: AutostartState,
+    pub os: anyps5_core::platform::Os,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AutostartState {
+    /// This copy has nothing an entry could point at.
+    Unavailable,
+    Off,
+    On,
+    /// On, and the entry starts an AppImage file.
+    OnAppImage,
+}
+
+impl AutostartEnv {
+    pub fn available(self) -> bool {
+        self.state != AutostartState::Unavailable
+    }
+
+    pub fn on(self) -> bool {
+        matches!(self.state, AutostartState::On | AutostartState::OnAppImage)
+    }
 }
 
 /// What the unlocked games location row shows (docs/DESIGN.md 5.7).
@@ -264,6 +419,8 @@ pub enum SettingsAction {
     ShowScreenshots,
     /// "Show Clips": the folder the clips are in.
     ShowClips,
+    /// The stream key field changed: the key to keep, or `None` to remove it.
+    BroadcastKey(Option<String>),
     /// "Check now" (or the check was switched on).
     CheckForUpdates,
     /// Download and install the latest toolkit (first install or update).
@@ -293,6 +450,8 @@ pub enum SettingsAction {
     CheckLauncherUpdate,
     /// Open the notes of the staged launcher update.
     OpenLauncherNotes,
+    /// "What's New in 0.3.0, Show again": the showcase of the big release.
+    ShowWelcome,
     /// One of the About page's links (website, Discord, privacy, terms).
     OpenPage(&'static str),
     /// "Open AnyPlay Links with This Launcher" was switched: write or remove the registration.
@@ -301,8 +460,16 @@ pub enum SettingsAction {
     AddToSteam,
     /// "Add My Games to Steam": one entry for each game.
     AddGamesToSteam,
+    /// "Start with Windows" was switched: write or remove the sign-in entry.
+    SetAutostart(bool),
+    /// "Open in Full Screen" or Console Mode was switched on or off: fill the screen now, or leave it.
+    SetFullscreen(bool),
+    /// "Controllers": the full-screen page of the pads.
+    OpenControllers,
     /// A row of the Phone as Controller page asks for something.
     Phone(PhoneAction),
+    /// A LudusCtrl row of the same page asks for something.
+    Ludus(LudusAction),
     Quit,
 }
 
@@ -328,6 +495,66 @@ fn path_text(path: &Option<PathBuf>) -> String {
     path.as_ref()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "—".to_owned())
+}
+
+/// Console Mode, and what it is made of. On, the mode owns the start at sign-in and the full screen
+/// and offers the way out; off, the two stand as rows of their own.
+fn console_rows(prefs: &Preferences, autostart: AutostartEnv, language: Language) -> Vec<Row> {
+    use anyps5_core::platform::Os;
+    let text = |t: ConsoleText| t.text(language);
+    let detail = if autostart.available() {
+        ConsoleText::ConsoleDetail
+    } else {
+        ConsoleText::ConsoleDetailManual
+    };
+    let mut rows = vec![
+        Row::toggle("console", text(ConsoleText::Console), prefs.console_mode)
+            .detail(text(detail))
+            .icon(Icon::GAME_CONTROLLER),
+    ];
+    if prefs.console_mode {
+        // The way out sits right under the switch, where the pad already is.
+        rows.push(
+            Row::command("desktop", text(ConsoleText::Desktop))
+                .detail(text(ConsoleText::DesktopDetail))
+                .icon(Icon::SIGN_OUT),
+        );
+        return rows;
+    }
+    if autostart.available() {
+        let title = if autostart.os == Os::Windows {
+            ConsoleText::AutostartWindows
+        } else {
+            ConsoleText::AutostartLogin
+        };
+        let detail = if autostart.state == AutostartState::OnAppImage {
+            ConsoleText::AutostartDetailImage
+        } else {
+            ConsoleText::AutostartDetail
+        };
+        rows.push(
+            Row::toggle("autostart", text(title), autostart.on())
+                .detail(text(detail))
+                .icon(Icon::PLAY)
+                .group_start(),
+        );
+    } else {
+        rows.push(Row::info(
+            "autostartNone",
+            text(ConsoleText::AutostartNone),
+            None,
+        ));
+    }
+    rows.push(
+        Row::toggle(
+            "fullscreen",
+            text(ConsoleText::Fullscreen),
+            prefs.fullscreen,
+        )
+        .detail(text(ConsoleText::FullscreenDetail))
+        .icon(Icon::FRAME_CORNERS),
+    );
+    rows
 }
 
 /// The rows of the unlocked games location: the place and its free space, a note that says what
@@ -482,11 +709,11 @@ pub fn build_categories(
         Row::choice(
             "theme",
             t(Key::Theme),
-            Theme::ALL
+            Theme::CHOICES
                 .iter()
                 .map(|x| x.title(language).to_owned())
                 .collect(),
-            Theme::ALL
+            Theme::CHOICES
                 .iter()
                 .position(|x| *x == convert::theme(prefs.theme))
                 .unwrap_or(0),
@@ -528,6 +755,12 @@ pub fn build_categories(
     }
     appearance
         .push(Row::toggle("artwork", t(Key::GameArtwork), prefs.game_artwork).icon(Icon::IMAGE));
+    // Only the Mac has a window to see through (docs/DESIGN.md 19).
+    if crate::macstyle::AVAILABLE {
+        appearance.push(
+            Row::toggle("glass", t(Key::GlassWindow), prefs.glass_window).icon(Icon::APP_WINDOW),
+        );
+    }
     appearance.push(
         Row::choice(
             "motion",
@@ -536,6 +769,24 @@ pub fn build_categories(
             usize::from(prefs.reduced_motion),
         )
         .icon(Icon::WIND),
+    );
+    appearance.push(
+        Row::toggle(
+            "largerText",
+            FeelText::LargerText.text(language),
+            prefs.larger_text,
+        )
+        .detail(FeelText::LargerTextDetail.text(language))
+        .icon(Icon::TEXT_AA),
+    );
+    appearance.push(
+        Row::toggle(
+            "highContrast",
+            FeelText::HighContrast.text(language),
+            prefs.high_contrast,
+        )
+        .detail(FeelText::HighContrastDetail.text(language))
+        .icon(Icon::CIRCLE_HALF),
     );
 
     // Library
@@ -549,71 +800,62 @@ pub fn build_categories(
     ];
     library.extend(location_rows(prefs, &env.location, language));
 
-    // Language
-    let languages = vec![
-        Row::choice(
-            "language",
-            t(Key::Language),
-            Language::ALL
-                .iter()
-                .map(|l| l.display_name().to_owned())
-                .collect(),
-            Language::ALL
-                .iter()
-                .position(|l| *l == convert::language(prefs.language))
-                .unwrap_or(0),
-        )
-        .icon(Icon::GLOBE),
-    ];
-
-    // Behaviour
-    let mut behaviour = vec![
-        Row::text("name", t(Key::ProfileName), prefs.profile_name.clone()).icon(Icon::USER_CIRCLE),
-        Row::toggle("sounds", t(Key::Sounds), prefs.sounds).icon(Icon::SPEAKER_HIGH),
-        Row::toggle("music", Extra::HomeMusic.text(language), prefs.music)
-            .detail(Extra::HomeMusicDetail.text(language))
-            .icon(Icon::MUSIC_NOTES),
-        Row::toggle(
-            "gameMusic",
-            Extra::GameMusic.text(language),
-            prefs.game_music,
-        )
-        .detail(Extra::GameMusicDetail.text(language))
-        .icon(Icon::GAME_CONTROLLER),
-        Row::toggle(
-            "discord",
-            Extra::DiscordPresence.text(language),
-            prefs.discord_presence,
-        )
-        .detail(Extra::DiscordPresenceDetail.text(language))
-        .icon(Icon::DISCORD_LOGO),
-    ];
-    // The button belongs to the status: without the status there is nothing to put it on.
-    if prefs.discord_presence {
-        behaviour.push(
-            Row::toggle(
-                "discordJoin",
-                DiscordText::Button.text(language),
-                prefs.discord_join_button,
-            )
-            .detail(DiscordText::ButtonDetail.text(language))
-            .icon(Icon::USER_PLUS),
+    // Language: the language, then the fonts games use. The fonts are text, and text is language.
+    // A clean list of the languages' own names, the chosen one with a check (DESIGN.md 5.15).
+    let current = convert::language(prefs.language);
+    let mut languages: Vec<Row> = LANGUAGE_ROWS
+        .iter()
+        .map(|(id, l)| Row::pick(id, l.display_name(), *l == current))
+        .collect();
+    {
+        use crate::screens::about_strings::AboutText as A;
+        languages.push(
+            Row::command("languageTranslations", A::Translations.text(language))
+                .detail(A::TranslationsDetail.text(language))
+                .icon(Icon::TRANSLATE)
+                .group_start(),
         );
     }
-    behaviour.push(
+    languages.push(Row::caption("fontsCaption", words::Fonts.text(language)).group_start());
+    languages.push(
+        Row::action("fonts", t(Key::FontsFolder))
+            .detail(fonts_detail(
+                prefs.fonts_folder.as_deref().map(abbreviated),
+                env.cjk_fonts,
+                language,
+            ))
+            .icon(Icon::TEXT_AA),
+    );
+    if prefs.fonts_folder.is_some() {
+        languages.push(Row::command("fontsReset", t(Key::FontsReset)).icon(Icon::X_CIRCLE));
+    } else if env.cjk_fonts == CjkState::Missing {
+        languages.push(
+            Row::command("fontsCjk", Extra::FontsDownloadCjk.text(language))
+                .icon(Icon::DOWNLOAD_SIMPLE),
+        );
+    }
+    languages.push(Row::info("fontsHint", t(Key::FontsHint), None));
+
+    // General: how the launcher starts and behaves around a game, then its updates.
+    let mut general = console_rows(prefs, env.autostart, language);
+    general.extend([
         Row::toggle(
             "prepare",
             crate::screens::prepare_strings::setting(language),
             prefs.prepare_games,
         )
         .detail(crate::screens::prepare_strings::setting_detail(language))
-        .icon(Icon::ARROW_CIRCLE_DOWN),
-    );
-    behaviour.push(
+        .icon(Icon::ARROW_CIRCLE_DOWN)
+        .group_start(),
         Row::toggle("hide", t(Key::HideWhilePlaying), prefs.hide_while_playing)
             .icon(Icon::EYE_SLASH),
-    );
-    behaviour.push(
+        Row::toggle(
+            "hiddenTrophies",
+            Extra::ShowHiddenTrophies.text(language),
+            prefs.show_hidden_trophies,
+        )
+        .detail(Extra::ShowHiddenTrophiesDetail.text(language))
+        .icon(Icon::TROPHY),
         Row::toggle(
             "homeButton",
             InGameText::Setting.text(language),
@@ -621,8 +863,90 @@ pub fn build_categories(
         )
         .detail(InGameText::SettingDetail.text(language))
         .icon(Icon::GAME_CONTROLLER),
+    ]);
+    // The switch covers the launcher's own update and the toolkit's; "Check Now" for the toolkit
+    // stays on the Toolkit page, next to the channel it depends on.
+    general.push(
+        Row::toggle(
+            "updateCheck",
+            Extra::UpdateCheck.text(language),
+            prefs.check_for_updates,
+        )
+        .detail(Extra::UpdateCheckDetail.text(language))
+        .icon(Icon::ARROWS_CLOCKWISE)
+        .group_start(),
     );
-    behaviour.push(
+
+    // Sound: each kind of sound, its switch, and its volume while it is on.
+    let mut sound = Vec::new();
+    let sound_rows = [
+        (
+            Row::toggle("sounds", t(Key::Sounds), prefs.sounds).icon(Icon::SPEAKER_HIGH),
+            prefs.sounds,
+            volume_row(
+                "volInterface",
+                FeelText::VolumeInterface,
+                prefs.volume_interface,
+                language,
+            ),
+        ),
+        (
+            Row::toggle("music", Extra::HomeMusic.text(language), prefs.music)
+                .detail(Extra::HomeMusicDetail.text(language))
+                .icon(Icon::MUSIC_NOTES),
+            prefs.music,
+            volume_row(
+                "volMusic",
+                FeelText::VolumeMusic,
+                prefs.volume_music,
+                language,
+            ),
+        ),
+        (
+            Row::toggle(
+                "gameMusic",
+                Extra::GameMusic.text(language),
+                prefs.game_music,
+            )
+            .detail(Extra::GameMusicDetail.text(language))
+            .icon(Icon::GAME_CONTROLLER),
+            prefs.game_music,
+            volume_row(
+                "volGameMusic",
+                FeelText::VolumeGameMusic,
+                prefs.volume_game_music,
+                language,
+            ),
+        ),
+        (
+            Row::toggle(
+                "notifSounds",
+                FeelText::NotificationSounds.text(language),
+                prefs.notification_sounds,
+            )
+            .detail(FeelText::NotificationSoundsDetail.text(language))
+            .icon(Icon::HEADPHONES),
+            prefs.notification_sounds,
+            volume_row(
+                "volNotif",
+                FeelText::VolumeNotifications,
+                prefs.volume_notifications,
+                language,
+            ),
+        ),
+    ];
+    for (switch, on, volume) in sound_rows {
+        sound.push(switch);
+        if on {
+            sound.push(volume);
+        }
+    }
+
+    // Controllers: the Controller Center first, then the pad's own rows.
+    let controllers = vec![
+        Row::action("controllers", Pads::Entry.text(language))
+            .detail(Pads::EntryDetail.text(language))
+            .icon(Icon::GAME_CONTROLLER),
         Row::choice(
             "vibration",
             Extra::Vibration.text(language),
@@ -636,30 +960,44 @@ pub fn build_categories(
         )
         .detail(Extra::VibrationDetail.text(language))
         .icon(Icon::WAVE_SINE),
-    );
-    // Where a player looks when the launcher does not react to the pad.
-    behaviour
-        .push(Row::info("controllerHelp", Extra::ControllerHelp.text(language), None).attached());
-    behaviour.push(
+        // Where a player looks when the launcher does not react to the pad: the end of the page.
+        Row::info("controllerHelp", Extra::ControllerHelp.text(language), None),
+    ];
+
+    // Online: who the player is to others, and the status on Discord.
+    let mut online = vec![
+        Row::text("name", t(Key::ProfileName), prefs.profile_name.clone()).icon(Icon::USER_CIRCLE),
         Row::toggle(
-            "hiddenTrophies",
-            Extra::ShowHiddenTrophies.text(language),
-            prefs.show_hidden_trophies,
+            "discord",
+            Extra::DiscordPresence.text(language),
+            prefs.discord_presence,
         )
-        .detail(Extra::ShowHiddenTrophiesDetail.text(language))
-        .icon(Icon::TROPHY),
-    );
-    // The recorder is the share worker, which captures windows on Windows only.
-    if cfg!(windows) {
-        push_clips_rows(&mut behaviour, prefs, env, language);
+        .detail(Extra::DiscordPresenceDetail.text(language))
+        .icon(Icon::DISCORD_LOGO)
+        .group_start(),
+    ];
+    // The button belongs to the status: without the status there is nothing to put it on.
+    if prefs.discord_presence {
+        online.push(
+            Row::toggle(
+                "discordJoin",
+                DiscordText::Button.text(language),
+                prefs.discord_join_button,
+            )
+            .detail(DiscordText::ButtonDetail.text(language))
+            .icon(Icon::USER_PLUS),
+        );
     }
+
+    // Connected Apps
+    let mut apps = Vec::new();
     // The registration lives in the registry, so only Windows has the row.
-    if cfg!(windows) {
+    if env.windows_rows {
         let detail = match env.links {
             Handler::Other(_) => Extra::LinksDetailOther,
             _ => Extra::LinksDetail,
         };
-        behaviour.push(
+        apps.push(
             Row::toggle(
                 "links",
                 Extra::Links.text(language),
@@ -670,23 +1008,27 @@ pub fn build_categories(
         );
     }
     // Steam keeps its shortcuts in files of the user folder; the rows write them (DESIGN.md 9.9).
-    if cfg!(any(windows, target_os = "linux")) {
-        behaviour.push(
+    if cfg!(any(windows, target_os = "linux", target_os = "macos")) {
+        apps.push(
             Row::command("addToSteam", SteamText::Add.text(language))
                 .detail(SteamText::AddDetail.text(language))
                 .icon(Icon::STEAM_LOGO),
         );
         if env.games_found > 0 {
-            behaviour.push(
+            apps.push(
                 Row::command("addGamesToSteam", SteamText::AddGames.text(language))
                     .detail(SteamText::AddGamesDetail.text(language))
                     .icon(Icon::STEAM_LOGO),
             );
         }
     }
+    // A page is never empty: on a system with no app to connect it says so.
+    if apps.is_empty() {
+        apps.push(Row::info("appsNone", words::NoApps.text(language), None));
+    }
 
     // Phone as Controller
-    let phone_rows = phone::rows(prefs, env.phone, language);
+    let phone_rows = phone::page(prefs, env.phone, env.ludus, language);
 
     // Toolkit
     let channel = prefs.toolkit_channel();
@@ -698,7 +1040,7 @@ pub fn build_categories(
     // about a toolkit this launcher was not tested with hangs under the row as its own.
     let mut toolkit = vec![Row::info(
         "toolkit",
-        t(Key::ToolkitVersion),
+        words::Installed.text(language),
         Some(toolkit_value),
     )];
     match env.toolkit_version.map(compat::fit) {
@@ -828,24 +1170,21 @@ pub fn build_categories(
             UpdateState::Failed => Some(Extra::CheckFailed.text(language).to_owned()),
         };
         let last_checked = prefs.toolkit_checked_at.as_deref().map_or_else(
-            || Extra::NeverChecked.text(language).to_owned(),
+            || words::NotCheckedYet.text(language).to_owned(),
             |stamp| Extra::LastCheckedOn.format(language, &[Arg::Str(stamp)]),
         );
+        // What the last look found is the command's own detail: label, detail, control.
+        let detail = match (&env.update, status) {
+            (UpdateState::Checking | UpdateState::Downloading, Some(status)) => status,
+            (_, Some(status)) => format!("{status} · {last_checked}"),
+            (_, None) => last_checked,
+        };
+        toolkit.push(Row::caption("updatesCaption", words::Updates.text(language)).group_start());
         toolkit.push(
-            Row::toggle(
-                "updateCheck",
-                Extra::UpdateCheck.text(language),
-                prefs.check_for_updates,
-            )
-            .detail(Extra::UpdateCheckDetail.text(language))
-            .icon(Icon::ARROWS_CLOCKWISE)
-            .group_start(),
+            Row::command("checkNow", Extra::CheckNow.text(language))
+                .detail(detail)
+                .icon(Icon::ARROW_CLOCKWISE),
         );
-        // The command is its title alone; what the last check found hangs under it as a note.
-        toolkit.push(
-            Row::command("checkNow", Extra::CheckNow.text(language)).icon(Icon::ARROW_CLOCKWISE),
-        );
-        toolkit.push(Row::info("checkStatus", status.unwrap_or(last_checked), None).attached());
     }
     toolkit.push(
         Row::choice(
@@ -866,6 +1205,9 @@ pub fn build_categories(
         .icon(Icon::GAUGE)
         .group_start(),
     );
+    if !env.unused.is_empty() {
+        toolkit.push(Row::caption("unusedCaption", words::Unused.text(language)).group_start());
+    }
     for (index, release) in env.unused.iter().take(REMOVE_ROWS.len()).enumerate() {
         toolkit.push(toolkit_pin::remove_row(
             index,
@@ -875,12 +1217,12 @@ pub fn build_categories(
         ));
     }
 
-    // Advanced
+    // Captures: screenshots, then (Windows) the clips.
     let screenshots = prefs
         .screenshots_folder
         .as_deref()
         .unwrap_or(env.default_screenshots);
-    let mut advanced = Vec::new();
+    let mut captures = Vec::new();
     // F12 screenshots need a build newer than v0.1.3; an older toolkit would ignore the folder.
     match env.toolkit_version {
         Some(version) if !compat::supports(Feature::Screenshots, version) => {
@@ -892,38 +1234,46 @@ pub fn build_categories(
                     Extra::NeedsNewerThan.format(language, &[Arg::Str(&format!("v{tag}"))])
                 }
             };
-            advanced.push(
+            captures.push(
                 Row::info("screenshots", t(Key::ScreenshotsFolder), Some(needs)).icon(Icon::CAMERA),
             );
         }
         _ => {
-            advanced.push(
+            captures.push(
                 Row::action("screenshots", t(Key::ScreenshotsFolder))
                     .detail(abbreviated(screenshots))
                     .icon(Icon::CAMERA),
             );
-            advanced
+            captures
                 .push(Row::command("showScreenshots", t(Key::ShowScreenshots)).icon(Icon::IMAGES));
+            captures.push(
+                Row::info("screenshotHint", words::ScreenshotHint.text(language), None).attached(),
+            );
         }
     }
-    advanced.push(
-        Row::action("fonts", t(Key::FontsFolder))
-            .detail(fonts_detail(
-                prefs.fonts_folder.as_deref().map(abbreviated),
-                env.cjk_fonts,
-                language,
-            ))
-            .icon(Icon::TEXT_AA),
-    );
-    if prefs.fonts_folder.is_some() {
-        advanced.push(Row::command("fontsReset", t(Key::FontsReset)).icon(Icon::X_CIRCLE));
-    } else if env.cjk_fonts == CjkState::Missing {
-        advanced.push(
-            Row::command("fontsCjk", Extra::FontsDownloadCjk.text(language))
-                .icon(Icon::DOWNLOAD_SIMPLE),
-        );
+    // The recorder is the share worker, which captures windows on Windows only.
+    if env.windows_rows {
+        let first = captures.len();
+        push_clips_rows(&mut captures, prefs, env, language);
+        if first > 0 {
+            captures[first].group_start = true;
+        }
     }
-    advanced.push(Row::info("fontsHint", t(Key::FontsHint), None));
+
+    // Broadcast: live streaming needs the recorder (Windows); elsewhere the page says so.
+    let mut broadcast = Vec::new();
+    if env.windows_rows {
+        push_broadcast_rows(&mut broadcast, prefs, env, language);
+    } else {
+        broadcast.push(Row::info(
+            "broadcastNone",
+            words::NoBroadcast.text(language),
+            None,
+        ));
+    }
+
+    // Advanced: the first page of the diagnostics has no heading, it is the page.
+    let mut advanced = Vec::new();
     {
         use crate::screens::online_strings::OnlineText;
         advanced.push(
@@ -933,10 +1283,12 @@ pub fn build_categories(
                 prefs.record_network,
             )
             .detail(OnlineText::RecordNetworkDetail.text(language))
-            .icon(Icon::FILE_TEXT)
-            .group_start(),
+            .icon(Icon::FILE_TEXT),
         );
         if let Some(codec) = &env.openh264 {
+            advanced.push(
+                Row::caption("shareCaption", words::ShareScreen.text(language)).group_start(),
+            );
             advanced.push(
                 Row::toggle(
                     "openh264",
@@ -944,8 +1296,7 @@ pub fn build_categories(
                     prefs.online_openh264,
                 )
                 .detail(openh264_detail(prefs.online_openh264, codec, language))
-                .icon(Icon::APP_WINDOW)
-                .group_start(),
+                .icon(Icon::APP_WINDOW),
             );
             // Cisco's licence: this text where the player turns the codec on and off.
             advanced.push(
@@ -970,6 +1321,15 @@ pub fn build_categories(
         env.launcher_notes,
         language,
     ));
+    about.push(
+        Row::command(
+            "welcomeAgain",
+            crate::screens::update_strings::UpdateText::WhatsNewIn
+                .format(language, &[Arg::Str(crate::screens::welcome::RELEASE)]),
+        )
+        .detail(crate::screens::welcome::show_again(language))
+        .icon(Icon::SPARKLE),
+    );
     {
         use crate::screens::about_strings::AboutText as A;
         about.push(
@@ -983,23 +1343,113 @@ pub fn build_categories(
                 .detail(A::DiscordDetail.text(language))
                 .icon(Icon::DISCORD_LOGO),
         );
-        about.push(Row::command("aboutPrivacy", A::Privacy.text(language)).icon(Icon::FILE_TEXT));
+        about.push(
+            Row::command("aboutPrivacy", A::Privacy.text(language))
+                .icon(Icon::FILE_TEXT)
+                .group_start(),
+        );
         about.push(Row::command("aboutTerms", A::Terms.text(language)).icon(Icon::FILE_TEXT));
+        about.push(
+            Row::command("aboutTranslations", A::Translations.text(language))
+                .detail(A::TranslationsDetail.text(language))
+                .icon(Icon::TRANSLATE),
+        );
         about.push(Row::info("credits", A::Credits.text(language), None));
+        about.push(Row::info("creditsLudus", A::LudusCredits.text(language), None).attached());
     }
+    // Quitting loses nothing, so it is ink, not danger red (docs/DESIGN.md 5.7).
     about.push(
         Row::command("quit", t(Key::Quit))
             .icon(Icon::POWER)
-            .destructive(),
+            .group_start(),
     );
 
-    [
-        appearance, library, languages, behaviour, phone_rows, toolkit, advanced, about,
+    // The pages, in the order of the rail (`TABS`).
+    let page = |category, rows| CategoryRows { category, rows };
+    vec![
+        page(Category::General, general),
+        page(Category::Appearance, appearance),
+        page(Category::Library, library),
+        page(Category::Sound, sound),
+        page(Category::Controllers, controllers),
+        page(Category::Captures, captures),
+        page(Category::Broadcast, broadcast),
+        page(Category::Phone, phone_rows),
+        page(Category::Online, online),
+        page(Category::ConnectedApps, apps),
+        page(Category::Language, languages),
+        page(Category::Toolkit, toolkit),
+        page(Category::Advanced, advanced),
+        page(Category::About, about),
     ]
-    .into_iter()
-    .zip(Category::ALL)
-    .map(|(rows, category)| CategoryRows { category, rows })
-    .collect()
+}
+
+/// Broadcast: where it goes, the server of a custom service, the stream key and the quality.
+fn push_broadcast_rows(
+    rows: &mut Vec<Row>,
+    prefs: &Preferences,
+    env: &SettingsEnv<'_>,
+    language: Language,
+) {
+    use anyps5_core::broadcast::{self, Service};
+    let service = Service::from_id(&prefs.broadcast_service);
+    let selected = Service::ALL.iter().position(|s| *s == service).unwrap_or(0);
+    let services = [
+        BroadcastText::Twitch,
+        BroadcastText::YouTube,
+        BroadcastText::Custom,
+    ]
+    .iter()
+    .map(|t| t.text(language).to_owned())
+    .collect();
+    rows.push(
+        Row::choice(
+            "broadcastService",
+            BroadcastText::Service.text(language),
+            services,
+            selected,
+        )
+        .detail(BroadcastText::ServiceDetail.text(language))
+        .icon(Icon::WIFI_HIGH),
+    );
+    if service == Service::Custom {
+        rows.push(
+            Row::text(
+                "broadcastServer",
+                BroadcastText::Server.text(language),
+                prefs.broadcast_server.clone(),
+            )
+            .detail(BroadcastText::ServerDetail.text(language))
+            .icon(Icon::KEYBOARD),
+        );
+    }
+    let shown = if env.clips.broadcast_key {
+        broadcast::MASK
+    } else {
+        ""
+    };
+    rows.push(
+        Row::text("broadcastKey", BroadcastText::Key.text(language), shown)
+            .detail(BroadcastText::KeyDetail.text(language))
+            .icon(Icon::KEYBOARD),
+    );
+    let qualities = [
+        BroadcastText::Quality720p30,
+        BroadcastText::Quality720p60,
+        BroadcastText::Quality1080p60,
+    ]
+    .iter()
+    .map(|t| t.text(language).to_owned())
+    .collect();
+    rows.push(
+        Row::choice(
+            "broadcastQuality",
+            BroadcastText::Quality.text(language),
+            qualities,
+            (prefs.broadcast_quality as usize).min(broadcast::QUALITIES.len() - 1),
+        )
+        .icon(Icon::SLIDERS_HORIZONTAL),
+    );
 }
 
 /// The lengths of Clips as the choice row shows them, Off first.
@@ -1037,8 +1487,7 @@ fn push_clips_rows(
             selected,
         )
         .detail(ClipsText::Detail.text(language))
-        .icon(Icon::CAMERA)
-        .group_start(),
+        .icon(Icon::CAMERA),
     );
     if seconds > 0 {
         let hotkey = anyps5_core::clips::hotkey_or_default(prefs.clips_hotkey.as_deref());
@@ -1156,6 +1605,10 @@ fn launcher_update_rows(
             note(U::NoteManual.text(language).to_owned()),
             download(),
         ],
+        LauncherUpdate::Packaged { version: v, by } => vec![
+            status(U::Available.format(language, &version(v))),
+            note(U::NotePackaged.format(language, &[Arg::Str(v), Arg::Str(by)])),
+        ],
         LauncherUpdate::Failed(UpdateFailure::Offline) => vec![
             status(U::NotReachable.text(language).to_owned()),
             note(U::NoteOffline.text(language).to_owned()),
@@ -1190,15 +1643,63 @@ fn whats_new_row(version: &str, language: Language) -> Row {
 }
 /// The page an About row opens.
 fn about_page(row: &str) -> Option<&'static str> {
-    use crate::screens::about_strings::{DISCORD, INSTALL_GUIDE, PRIVACY, TERMS, WEBSITE};
+    use crate::screens::about_strings::{
+        DISCORD, INSTALL_GUIDE, PRIVACY, TERMS, TRANSLATIONS, WEBSITE,
+    };
     Some(match row {
         "aboutWebsite" => WEBSITE,
         "aboutDiscord" => DISCORD,
         "aboutPrivacy" => PRIVACY,
         "aboutTerms" => TERMS,
+        "aboutTranslations" | "languageTranslations" => TRANSLATIONS,
         "toolkitGlibcGuide" => INSTALL_GUIDE,
         _ => return None,
     })
+}
+
+/// A volume row: a slider from 0 to 100 percent. The arrows, the pad and a held direction move it
+/// in steps of ten, the pointer in steps of five; Off at zero. Its tick is the screen's own (see
+/// `tick_volume`).
+fn volume_row(id: rows::RowId, title: FeelText, percent: u8, language: Language) -> Row {
+    Row::slider(
+        id,
+        title.text(language),
+        i32::from(percent),
+        (0, 100),
+        10,
+        volume_text(percent, language),
+    )
+    .own_tick()
+}
+
+/// A volume slider moved: the sound engine learns the new volume before the tick plays, so the
+/// tick sounds as loud as the volume it sets (and not at all at Off). Notification volume ticks
+/// with a notification cue, the others with the interface's.
+fn tick_volume(shell: &mut Shell, prefs: &Preferences, row: &str) {
+    shell.sounds.set_volumes(volumes_of(prefs));
+    shell.play(if row == "volNotif" {
+        Cue::Notify
+    } else {
+        Cue::Move
+    });
+}
+
+fn percent(value: i32) -> u8 {
+    value.clamp(0, 100) as u8
+}
+
+/// The volumes the sound engine is given.
+pub fn volumes_of(prefs: &Preferences) -> crate::ui::sound::Volumes {
+    crate::ui::sound::Volumes {
+        interface: f32::from(prefs.volume_interface) / 100.0,
+        music: f32::from(prefs.volume_music) / 100.0,
+        game_music: f32::from(prefs.volume_game_music) / 100.0,
+        notifications: if prefs.notification_sounds {
+            f32::from(prefs.volume_notifications) / 100.0
+        } else {
+            0.0
+        },
+    }
 }
 
 /// Applies the preferences that the shell shows: theme and accent, language, motion, sounds. The
@@ -1211,7 +1712,11 @@ pub fn apply_preferences(shell: &mut Shell, ctx: &Context, prefs: &Preferences) 
     shell.language = convert::language(prefs.language);
     shell.set_reduced_motion(ctx, prefs.reduced_motion);
     shell.sounds.enabled = prefs.sounds;
+    shell.sounds.set_volumes(volumes_of(prefs));
+    crate::ui::theme::set_larger_text(prefs.larger_text);
+    crate::ui::theme::set_high_contrast(prefs.high_contrast);
     shell.set_vibration(convert::vibration(prefs.vibration));
+    crate::ui::nav_bindings::apply(prefs);
 }
 
 /// Writes one change into the preferences. Dialogs (a picture, a folder) are the caller's
@@ -1223,7 +1728,7 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             row: "theme",
             index,
         } => {
-            if let Some(theme) = Theme::ALL.get(*index) {
+            if let Some(theme) = Theme::CHOICES.get(*index) {
                 prefs.theme = convert::theme_to_core(*theme);
             }
         }
@@ -1236,16 +1741,42 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             }
         }
         Change::Toggle { row: "artwork", on } => prefs.game_artwork = *on,
+        Change::Toggle {
+            row: "largerText",
+            on,
+        } => prefs.larger_text = *on,
+        Change::Toggle {
+            row: "highContrast",
+            on,
+        } => prefs.high_contrast = *on,
+        Change::Toggle {
+            row: "notifSounds",
+            on,
+        } => prefs.notification_sounds = *on,
+        Change::Stepper {
+            row: "volInterface",
+            value,
+        } => prefs.volume_interface = percent(*value),
+        Change::Stepper {
+            row: "volMusic",
+            value,
+        } => prefs.volume_music = percent(*value),
+        Change::Stepper {
+            row: "volGameMusic",
+            value,
+        } => prefs.volume_game_music = percent(*value),
+        Change::Stepper {
+            row: "volNotif",
+            value,
+        } => prefs.volume_notifications = percent(*value),
+        Change::Toggle { row: "glass", on } => prefs.glass_window = *on,
         Change::Choice {
             row: "motion",
             index,
         } => prefs.reduced_motion = *index == 1,
-        Change::Choice {
-            row: "language",
-            index,
-        } => {
-            if let Some(language) = Language::ALL.get(*index) {
-                prefs.language = convert::language_to_core(*language);
+        Change::Run { row } if language_of_row(row).is_some() => {
+            if let Some(language) = language_of_row(row) {
+                prefs.language = convert::language_to_core(language);
             }
         }
         Change::Toggle { row: "sounds", on } => prefs.sounds = *on,
@@ -1264,6 +1795,16 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             on,
         } => prefs.discord_join_button = *on,
         Change::Toggle { row: "hide", on } => prefs.hide_while_playing = *on,
+        Change::Toggle { row: "console", on } => {
+            prefs.console_mode = *on;
+            if *on {
+                prefs.fullscreen = true;
+            }
+        }
+        Change::Toggle {
+            row: "fullscreen",
+            on,
+        } => prefs.fullscreen = *on,
         Change::Toggle { row: "prepare", on } => prefs.prepare_games = *on,
         Change::Toggle {
             row: "homeButton",
@@ -1298,6 +1839,26 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
         } => prefs.backdrop = Backdrop::Theme,
         Change::Run { row: "fontsReset" } => prefs.fonts_folder = None,
         Change::Toggle { row: "phone", on } => prefs.phone_remote = *on,
+        Change::Toggle {
+            row: "ludusctrl",
+            on,
+        } => prefs.phone_ludusctrl = *on,
+        Change::Choice {
+            row: "broadcastService",
+            index,
+        } => {
+            if let Some(service) = anyps5_core::broadcast::Service::ALL.get(*index) {
+                prefs.broadcast_service = service.id().to_owned();
+            }
+        }
+        Change::Choice {
+            row: "broadcastQuality",
+            index,
+        } => {
+            if *index < anyps5_core::broadcast::QUALITIES.len() {
+                prefs.broadcast_quality = *index as u32;
+            }
+        }
         Change::Choice {
             row: "clips",
             index,
@@ -1319,8 +1880,12 @@ pub struct SettingsPanel {
     /// Counts category changes: each one fades the new list in.
     switches: u32,
     last_category: usize,
+    /// The tab the player left the settings on: the next plain open starts there.
+    remembered: usize,
     /// The clip key row waits for a key press.
     clip_capture: bool,
+    /// A row to put the focus on once the rows are built (the gallery shows the row that matters).
+    focus_id: Option<&'static str>,
 }
 
 impl Default for SettingsPanel {
@@ -1331,15 +1896,17 @@ impl Default for SettingsPanel {
             nav: PanelNav::settings(Category::ALL.len()),
             switches: 0,
             last_category: 0,
+            remembered: 0,
             clip_capture: false,
+            focus_id: None,
         }
     }
 }
 
 impl SettingsPanel {
-    /// Opens at the category level on the first category.
+    /// Opens at the category level on the tab the player left it on.
     pub fn open(&mut self) {
-        self.open_at(0, false);
+        self.open_at(self.remembered, false);
     }
 
     /// Opens on a category, optionally already in its rows (previews).
@@ -1353,11 +1920,27 @@ impl SettingsPanel {
             self.nav.row = 0;
         }
         self.last_category = self.nav.category;
+        self.remembered = self.nav.category;
     }
 
     /// Puts the focus on a row of the open category (the gallery shows the row that matters).
     pub fn focus_row(&mut self, row: usize) {
         self.nav.row = row;
+    }
+
+    /// The same by the row's id, so a scene does not count rows.
+    pub fn focus_row_id(&mut self, id: &'static str) {
+        self.focus_id = Some(id);
+    }
+
+    /// Puts the focus on the row asked for by id, once the rows of the open category are built.
+    fn apply_focus_id(&mut self, cats: &[CategoryRows]) {
+        if let Some(id) = self.focus_id.take()
+            && let Some(index) =
+                rows::position(&cats[self.nav.category.min(cats.len() - 1)].rows, id)
+        {
+            self.nav.row = index;
+        }
     }
 
     pub fn close(&mut self) {
@@ -1459,13 +2042,16 @@ impl SettingsPanel {
         }
         if self.nav.category != self.last_category {
             self.last_category = self.nav.category;
+            self.remembered = self.nav.category;
             self.switches += 1;
         }
         let language = convert::language(prefs.language);
         let mut cats = build_categories(prefs, env, language);
+        self.apply_focus_id(&cats);
         let open = self.open;
         let mut mouse = None;
         let mut picked_category = None;
+        let mut closed = false;
         let nav = self.nav;
         let switches = self.switches;
         let accent = shell.accent_color();
@@ -1483,12 +2069,17 @@ impl SettingsPanel {
                     language,
                     accent,
                     &mut mouse,
-                    &mut picked_category,
+                    (&mut picked_category, &mut closed),
                 )
             },
         );
         if drawn.is_none() {
             self.closing = false;
+        }
+        if open && closed {
+            shell.play(Cue::Close);
+            self.close();
+            out.actions.push(SettingsAction::Close);
         }
         if open {
             if let Some(index) = picked_category {
@@ -1507,6 +2098,13 @@ impl SettingsPanel {
                     if id == "name" && prefs.profile_name != value {
                         prefs.profile_name = value;
                         out.changed = true;
+                    } else if id == "broadcastServer" && prefs.broadcast_server != value {
+                        prefs.broadcast_server = value;
+                        out.changed = true;
+                    } else if id == "broadcastKey" {
+                        out.actions.push(SettingsAction::BroadcastKey(
+                            anyps5_core::broadcast::key_from_field(&value),
+                        ));
                     }
                 }
             }
@@ -1525,6 +2123,14 @@ impl SettingsPanel {
     ) {
         let language = convert::language(prefs.language);
         let mut changed = apply_value(prefs, change);
+        if let Change::Stepper {
+            row: row @ ("volInterface" | "volMusic" | "volGameMusic" | "volNotif"),
+            ..
+        } = change
+            && changed
+        {
+            tick_volume(shell, prefs, row);
+        }
         match change {
             Change::Choice {
                 row: "backdrop",
@@ -1555,6 +2161,7 @@ impl SettingsPanel {
                 ctx.data_mut(|d| d.insert_temp(egui::Id::unique("panel-text-focus"), true));
                 ctx.request_repaint();
             }
+            Change::Run { row: "controllers" } => out.actions.push(SettingsAction::OpenControllers),
             Change::Run { row: "rescan" } => out.actions.push(SettingsAction::Rescan),
             Change::Run {
                 row: "unlockedLocation",
@@ -1583,6 +2190,15 @@ impl SettingsPanel {
             change if phone::action(env.phone, change).is_some() => {
                 out.actions
                     .extend(phone::action(env.phone, change).map(SettingsAction::Phone));
+            }
+            change if ludus::action(env.ludus, change).is_some() => {
+                out.actions
+                    .extend(ludus::action(env.ludus, change).map(SettingsAction::Ludus));
+            }
+            change if ludus_web::action(&env.ludus.browser, change).is_some() => {
+                out.actions.extend(
+                    ludus_web::action(&env.ludus.browser, change).map(SettingsAction::Ludus),
+                );
             }
             Change::Run { row: "screenshots" } => {
                 let start = prefs.screenshots_folder.clone();
@@ -1713,6 +2329,9 @@ impl SettingsPanel {
                 row: "launcherNotes",
             } => out.actions.push(SettingsAction::OpenLauncherNotes),
             Change::Run {
+                row: "welcomeAgain",
+            } => out.actions.push(SettingsAction::ShowWelcome),
+            Change::Run {
                 row: "launcherDownload",
             } => out.actions.push(SettingsAction::OpenPage(
                 crate::screens::update_strings::RELEASES,
@@ -1732,6 +2351,23 @@ impl SettingsPanel {
                 }
             }
             Change::Toggle { row: "links", on } => out.actions.push(SettingsAction::SetLinks(*on)),
+            Change::Toggle { row: "console", on } => {
+                if *on {
+                    if env.autostart.available() && !env.autostart.on() {
+                        out.actions.push(SettingsAction::SetAutostart(true));
+                    }
+                    out.actions.push(SettingsAction::SetFullscreen(true));
+                }
+            }
+            Change::Toggle {
+                row: "autostart",
+                on,
+            } => out.actions.push(SettingsAction::SetAutostart(*on)),
+            Change::Toggle {
+                row: "fullscreen",
+                on,
+            } => out.actions.push(SettingsAction::SetFullscreen(*on)),
+            Change::Run { row: "desktop" } => out.actions.push(SettingsAction::Quit),
             Change::Run { row: "quit" } => out.actions.push(SettingsAction::Quit),
             _ => {}
         }
@@ -1773,7 +2409,7 @@ fn draw(
     language: Language,
     accent: Color32,
     mouse: &mut Option<Vec<rows::ListEvent>>,
-    picked: &mut Option<usize>,
+    (picked, closed): (&mut Option<usize>, &mut bool),
 ) {
     let ctx = ui.ctx().clone();
     let painter = ui.painter().clone();
@@ -1795,82 +2431,142 @@ fn draw(
         Align2::LEFT_TOP,
         ty::SCREEN_TITLE,
         language.text(Key::Settings),
-        Color32::WHITE,
+        color::text(),
     );
-    let list_top = title.max.y + 31.0;
-    let mut y = list_top;
+    // The way out for the pointer, and the hint bar of every full-screen area (3.12).
+    let (_, leave) = crate::screens::close_button(
+        ui,
+        Rect::from_min_size(area.min, vec2(area.width(), title.height())),
+        language,
+    );
+    *closed |= leave;
+    crate::screens::footer_hints(ui, ui.max_rect(), language, components::HintSet::BASIC);
+    let list_top = title.max.y + space::XXL;
     let column_w = size::SETTINGS_CATEGORY_WIDTH;
-    for (index, cat) in cats.iter().enumerate() {
-        let rect = Rect::from_min_size(
-            pos2(area.min.x, y),
-            vec2(column_w, size::SETTINGS_CATEGORY_ROW),
-        );
-        y += size::SETTINGS_CATEGORY_ROW + 6.0;
-        let selected = index == nav.category;
-        let focused = selected && !nav.in_rows;
-        let response = ui.interact(
-            rect,
-            ui.make_persistent_id(("category", index)),
-            Sense::click(),
-        );
-        crate::ui::a11y::follow(&ctx, response.id, focused);
-        let title_text = cat.category.title(language);
-        response.widget_info(|| {
-            egui::WidgetInfo::selected(egui::Role::Tab, true, selected, title_text)
-        });
-        if input::hovered(&ctx, &response) {
-            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+
+    // The rail: thirteen tabs do not fit under the title on a small window, so it scrolls. The
+    // selected tab is brought into view whenever it changes (keys, pad or the first frame); the
+    // wheel scrolls it freely otherwise.
+    //
+    // The first frame of a page knows no content height yet, so a scroll asked for then reaches
+    // nothing (opened straight on the last tab, "Toolkit" stood half cut off): the request is
+    // repeated for a few frames after every change.
+    const SETTLE_FRAMES: u8 = 3;
+    let rail_id = ui.make_persistent_id("settings-rail-seen");
+    let settle_id = rail_id.with("settle");
+    let bring_into_view = ctx.data_mut(|d| {
+        let seen: Option<u32> = d.get_temp(rail_id);
+        d.insert_temp(rail_id, switches);
+        let mut left: u8 = d.get_temp(settle_id).unwrap_or(0);
+        if seen != Some(switches) {
+            left = SETTLE_FRAMES;
         }
-        if response.clicked() {
-            *picked = Some(index);
-        }
-        let t_focus = ctx.focus_t(("category-focus", index), focused);
-        let t_sel = ctx.choice_t(("category-selected", index), selected);
-        let hover_t = ctx.animate_to(
-            ("category-hover", index),
-            f32::from(input::hovered(&ctx, &response) && !selected),
-            Motion::Hover,
-        );
-        // The selected category keeps its quiet fill; the one with the focus gets the ring.
-        components::paint_surface(
-            &painter,
-            rect,
-            radius::ROW,
-            white(0.12 * t_sel),
-            hover_t,
-            t_focus,
-            0.0,
-            size::FOCUS_RING,
-        );
-        let ink = white(lerp(0.7, 1.0, t_sel));
-        painter.text(
-            pos2(rect.min.x + 18.0 + 13.0, rect.center().y),
-            Align2::CENTER_CENTER,
-            cat.category.icon().glyph(),
-            cat.category.icon().font(18.0, false),
-            ink,
-        );
-        let style = if selected {
-            ty::CATEGORY_SELECTED
-        } else {
-            ty::CATEGORY
-        };
-        text::paint(
-            &painter,
-            pos2(rect.min.x + 18.0 + 26.0 + 14.0, rect.center().y),
-            Align2::LEFT_CENTER,
-            style,
-            title_text,
-            ink,
-        );
+        d.insert_temp(settle_id, left.saturating_sub(1));
+        left > 0
+    });
+    if bring_into_view {
+        ctx.request_repaint();
     }
+    // Room around the rows for the focus ring, which the scroll area would clip.
+    const RING_ROOM: f32 = 8.0;
+    let rail = Rect::from_min_max(
+        pos2(area.min.x - RING_ROOM, list_top - RING_ROOM),
+        pos2(area.min.x + column_w + RING_ROOM, area.max.y),
+    );
+    let mut rail_ui = ui.new_child(UiBuilder::new().max_rect(rail));
+    egui::ScrollArea::vertical()
+        .id_salt("settings-rail")
+        .auto_shrink([false, false])
+        .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        .show(&mut rail_ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            ui.add_space(RING_ROOM);
+            let painter = ui.painter().clone();
+            for (index, cat) in cats.iter().enumerate() {
+                let (_, slot) = ui.allocate_space(vec2(
+                    column_w + 2.0 * RING_ROOM,
+                    size::SETTINGS_CATEGORY_ROW,
+                ));
+                let rect = Rect::from_min_size(
+                    slot.min + vec2(RING_ROOM, 0.0),
+                    vec2(column_w, size::SETTINGS_CATEGORY_ROW),
+                );
+                ui.add_space(space::S);
+                let selected = index == nav.category;
+                let focused = selected && !nav.in_rows;
+                if selected && bring_into_view {
+                    ui.scroll_to_rect(rect.expand(space::S), None);
+                }
+                let response = ui.interact(
+                    rect,
+                    ui.make_persistent_id(("category", index)),
+                    Sense::click(),
+                );
+                crate::ui::a11y::follow(&ctx, response.id, focused);
+                let title_text = cat.category.title(language);
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(egui::Role::Tab, true, selected, title_text)
+                });
+                if input::hovered(&ctx, &response) {
+                    ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if response.clicked() {
+                    *picked = Some(index);
+                }
+                let t_focus = ctx.focus_t(("category-focus", index), focused);
+                let t_sel = ctx.choice_t(("category-selected", index), selected);
+                let hover_t = ctx.animate_to(
+                    ("category-hover", index),
+                    f32::from(input::hovered(&ctx, &response) && !selected),
+                    Motion::Hover,
+                );
+                // The selected category keeps its quiet fill; the one with the focus gets the ring.
+                components::paint_surface(
+                    &painter,
+                    rect,
+                    radius::ROW,
+                    color::surface().gamma_multiply(t_sel.clamp(0.0, 1.0)),
+                    hover_t,
+                    t_focus,
+                    0.0,
+                    size::FOCUS_RING,
+                );
+                let ink = color::text_detail().lerp_to_gamma(color::text(), t_sel);
+                painter.text(
+                    pos2(
+                        rect.min.x + size::ROW_PADDING_X + size::ROW_ICON_BOX * 0.5,
+                        rect.center().y,
+                    ),
+                    Align2::CENTER_CENTER,
+                    cat.category.icon().glyph(),
+                    cat.category.icon().font(size::ROW_ICON, false),
+                    ink,
+                );
+                let style = if selected {
+                    ty::CATEGORY_SELECTED
+                } else {
+                    ty::CATEGORY
+                };
+                text::paint(
+                    &painter,
+                    pos2(
+                        rect.min.x + size::ROW_PADDING_X + size::ROW_ICON_BOX + space::M,
+                        rect.center().y,
+                    ),
+                    Align2::LEFT_CENTER,
+                    style,
+                    title_text,
+                    ink,
+                );
+            }
+        });
 
     // The rows of the current category, fading in from the side when the category changes.
     let current = nav.category.min(cats.len() - 1);
     let fade_in = ctx.animate_from_to(("settings-switch", switches), 0.0, 1.0, Motion::Focus);
-    let x = area.min.x + column_w + 36.0;
+    let x = area.min.x + column_w + space::XXL;
     let list_rect = Rect::from_min_max(
-        pos2(x + 18.0 * (1.0 - fade_in), list_top - size::LIST_INSET),
+        pos2(x + space::L * (1.0 - fade_in), list_top - size::LIST_INSET),
         area.max,
     );
     let mut child = ui.new_child(UiBuilder::new().max_rect(list_rect));
@@ -1908,11 +2604,17 @@ mod tests {
             launcher_notes: false,
             default_screenshots: std::path::Path::new("C:\\Users\\me\\Pictures\\AnyPS5"),
             links: Handler::Absent,
+            autostart: AutostartEnv {
+                state: AutostartState::Off,
+                os: anyps5_core::platform::Os::Windows,
+            },
             cjk_fonts: CjkState::Missing,
             phone: Box::leak(Box::new(PhoneState::default())),
+            ludus: Box::leak(Box::new(LudusState::default())),
             clips: ClipsEnv::default(),
             location: LocationEnv::default(),
             openh264: None,
+            windows_rows: true,
         }
     }
 
@@ -1923,7 +2625,22 @@ mod tests {
             .rows
             .iter()
             .map(|r| r.id)
+            .filter(|id| *id != "glass")
             .collect()
+    }
+
+    #[test]
+    fn only_the_mac_has_the_glass_window_row() {
+        let prefs = Preferences::first_run();
+        let cats = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
+        let has = cats
+            .iter()
+            .find(|c| c.category == Category::Appearance)
+            .unwrap()
+            .rows
+            .iter()
+            .any(|r| r.id == "glass");
+        assert_eq!(has, crate::macstyle::AVAILABLE);
     }
 
     #[test]
@@ -1941,13 +2658,30 @@ mod tests {
         let cats = build_categories(&prefs, &e, Language::English);
         assert_eq!(
             ids(&cats, Category::Appearance),
-            ["theme", "accent", "backdrop", "artwork", "motion"]
+            [
+                "theme",
+                "accent",
+                "backdrop",
+                "artwork",
+                "motion",
+                "largerText",
+                "highContrast"
+            ]
         );
         prefs.backdrop = Backdrop::Image;
         let cats = build_categories(&prefs, &e, Language::English);
         assert_eq!(
             ids(&cats, Category::Appearance),
-            ["theme", "accent", "backdrop", "file", "artwork", "motion"],
+            [
+                "theme",
+                "accent",
+                "backdrop",
+                "file",
+                "artwork",
+                "motion",
+                "largerText",
+                "highContrast"
+            ],
             "the file row appears with a picture backdrop"
         );
     }
@@ -1979,7 +2713,9 @@ mod tests {
         let mut prefs = Preferences::first_run();
         let rows_of = |prefs: &Preferences| {
             build_categories(prefs, &env(None, UpdateState::Unknown), Language::English)
-                .remove(0)
+                .into_iter()
+                .find(|page| page.category == Category::Appearance)
+                .unwrap()
                 .rows
                 .into_iter()
                 .find(|r| r.id == "backdrop")
@@ -2114,6 +2850,26 @@ mod tests {
             assert!(rows.contains(&"launcherDownload"), "{rows:?}");
             assert!(!rows.contains(&"restartNow"));
         }
+        // A package manager owns the files: the note names it, and there is no download.
+        let packaged = LauncherUpdate::Packaged {
+            version: "0.2.0".into(),
+            by: "Flatpak".into(),
+        };
+        let ids = row_ids(&about_rows(packaged.clone()));
+        assert!(!ids.contains(&"launcherDownload") && !ids.contains(&"restartNow"));
+        let mut e = env(None, UpdateState::Unknown);
+        e.launcher = packaged;
+        let cats = build_categories(&Preferences::first_run(), &e, Language::English);
+        let about = cats.iter().find(|c| c.category == Category::About).unwrap();
+        let note = about
+            .rows
+            .iter()
+            .find(|r| r.id == "launcherUpdateNote")
+            .unwrap();
+        assert_eq!(
+            note.title,
+            "Version 0.2.0 is available. Flatpak updates the launcher."
+        );
         // Offline: a retry, never a download.
         let offline = row_ids(&about_rows(LauncherUpdate::Failed(UpdateFailure::Offline)));
         assert!(offline.contains(&"launcherCheck") && !offline.contains(&"launcherDownload"));
@@ -2166,7 +2922,9 @@ mod tests {
         assert_eq!(rows[at + 1], "openh264Notice");
         assert_eq!(
             detail.as_deref(),
-            Some("Share Screen cannot send or show video while it is off")
+            Some(
+                "Turn on to download Cisco's video codec. Share Screen cannot send or show video without it"
+            )
         );
         let mut prefs = Preferences::first_run();
         let mut e = env(None, UpdateState::Unknown);
@@ -2243,17 +3001,17 @@ mod tests {
         let mut e = env(None, UpdateState::Unknown);
         e.cjk_fonts = cjk;
         let cats = build_categories(prefs, &e, Language::English);
-        let advanced = cats
+        let language = cats
             .iter()
-            .find(|c| c.category == Category::Advanced)
+            .find(|c| c.category == Category::Language)
             .unwrap();
-        let detail = advanced
+        let detail = language
             .rows
             .iter()
             .find(|r| r.id == "fonts")
             .and_then(|r| r.detail.clone())
             .unwrap();
-        (detail, ids(&cats, Category::Advanced))
+        (detail, ids(&cats, Category::Language))
     }
 
     #[test]
@@ -2282,24 +3040,66 @@ mod tests {
     }
 
     #[test]
-    fn advanced_offers_the_reset_only_with_a_fonts_folder() {
+    fn the_fonts_are_on_the_language_page_and_offer_the_reset_only_with_a_folder() {
         let mut prefs = Preferences::first_run();
         let e = env(None, UpdateState::Unknown);
         let without = build_categories(&prefs, &e, Language::English);
-        assert!(!ids(&without, Category::Advanced).contains(&"fontsReset"));
+        assert!(!ids(&without, Category::Language).contains(&"fontsReset"));
         prefs.fonts_folder = Some("D:\\Fonts".into());
         let with = build_categories(&prefs, &e, Language::English);
-        assert!(ids(&with, Category::Advanced).contains(&"fontsReset"));
+        assert!(ids(&with, Category::Language).contains(&"fontsReset"));
+        assert!(!ids(&with, Category::Advanced).contains(&"fonts"));
     }
 
     #[test]
-    fn about_ends_with_the_destructive_quit() {
+    fn about_credits_ludusctrl_under_the_credits() {
+        let rows = about_rows(LauncherUpdate::None);
+        let ids = row_ids(&rows);
+        let at = |id: &str| ids.iter().position(|i| *i == id).unwrap();
+        assert_eq!(at("creditsLudus"), at("credits") + 1);
+        let prefs = Preferences::first_run();
+        let cats = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
+        let about = cats.iter().find(|c| c.category == Category::About).unwrap();
+        let row = about.rows.iter().find(|r| r.id == "creditsLudus").unwrap();
+        assert_eq!(
+            row.title,
+            "LudusCtrl protocol and app by Josip Parlov (@parl0v)"
+        );
+        assert!(row.attached);
+    }
+
+    #[test]
+    fn the_ludusctrl_switch_is_stored_and_sits_on_the_phone_page() {
+        let mut prefs = Preferences::first_run();
+        assert!(apply_value(
+            &mut prefs,
+            &Change::Toggle {
+                row: "ludusctrl",
+                on: true
+            }
+        ));
+        assert!(prefs.phone_ludusctrl && !prefs.phone_remote);
+        let cats = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
+        assert_eq!(
+            ids(&cats, Category::Phone),
+            ["phone"],
+            "an option of the phone switch"
+        );
+        prefs.phone_remote = true;
+        let cats = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
+        let phone = ids(&cats, Category::Phone);
+        let at = |id: &str| phone.iter().position(|i| *i == id).unwrap();
+        assert!(at("phonePaired") < at("ludusctrl") && at("ludusctrl") < at("ludusApp"));
+    }
+
+    #[test]
+    fn about_ends_with_quit_in_ink_not_in_danger_red() {
         let prefs = Preferences::first_run();
         let cats = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
         let about = &cats.last().unwrap().rows;
         let quit = about.last().unwrap();
         assert_eq!(quit.id, "quit");
-        assert!(quit.destructive);
+        assert!(!quit.destructive, "quitting loses nothing");
     }
 
     #[test]
@@ -2311,12 +3111,12 @@ mod tests {
         );
         let first = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
         assert!(
-            !ids(&first, Category::Behaviour).contains(&"discordJoin"),
+            !ids(&first, Category::Online).contains(&"discordJoin"),
             "a new profile shows no game on Discord and no button"
         );
         prefs.discord_presence = true;
         let shown = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
-        let rows = ids(&shown, Category::Behaviour);
+        let rows = ids(&shown, Category::Online);
         let status = rows.iter().position(|id| *id == "discord").unwrap();
         assert_eq!(
             rows[status + 1],
@@ -2326,7 +3126,7 @@ mod tests {
         prefs.discord_presence = false;
         let hidden = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
         assert!(
-            !ids(&hidden, Category::Behaviour).contains(&"discordJoin"),
+            !ids(&hidden, Category::Online).contains(&"discordJoin"),
             "no status, nothing to put a button on"
         );
     }
@@ -2400,13 +3200,7 @@ mod tests {
             }
         ));
         assert!(prefs.reduced_motion);
-        assert!(apply_value(
-            &mut prefs,
-            &Change::Choice {
-                row: "language",
-                index: 0
-            }
-        ));
+        assert!(apply_value(&mut prefs, &Change::Run { row: "language-tr" }));
         assert_eq!(prefs.language, anyps5_core::settings::Language::Turkish);
         assert!(apply_value(
             &mut prefs,
@@ -2501,7 +3295,7 @@ mod tests {
     fn the_channel_decides_which_toolkit_rows_exist() {
         let mut prefs = Preferences::default();
         let stable = toolkit_ids(&prefs, Some("0.1.3-abc"));
-        for row in ["channel", "whatsNew", "updateCheck", "checkNow", "cpu"] {
+        for row in ["channel", "whatsNew", "checkNow", "cpu"] {
             assert!(stable.contains(&row), "stable has {row}");
         }
         assert!(!stable.contains(&"pinned"));
@@ -2537,13 +3331,7 @@ mod tests {
             .unwrap()
             .rows;
         let ids: Vec<&str> = rows.iter().map(|r| r.id).collect();
-        for row in [
-            "channel",
-            "engineBuilt",
-            "updateCheck",
-            "checkNow",
-            "install",
-        ] {
+        for row in ["channel", "engineBuilt", "checkNow", "install"] {
             assert!(ids.contains(&row), "the engine has {row}");
         }
         assert!(!ids.contains(&"whatsNew") && !ids.contains(&"pinned"));
@@ -2603,7 +3391,7 @@ mod tests {
                 &env(Some(version), UpdateState::Unknown),
                 Language::English,
             );
-            ids(&cats, Category::Advanced)
+            ids(&cats, Category::Captures)
         };
         let released = advanced("0.1.3-abc");
         assert!(released.contains(&"screenshots") && !released.contains(&"showScreenshots"));
@@ -2619,5 +3407,212 @@ mod tests {
         let current = env(Some("0.1.3-abc"), UpdateState::UpToDate);
         assert_eq!(whats_new_tag(&current).as_deref(), Some("0.1.3"));
         assert_eq!(whats_new_tag(&env(None, UpdateState::Unknown)), None);
+    }
+    /// The captions of a page, in order.
+    fn captions(cats: &[CategoryRows], category: Category) -> Vec<&'static str> {
+        cats.iter()
+            .find(|c| c.category == category)
+            .unwrap()
+            .rows
+            .iter()
+            .filter(|r| matches!(r.control, rows::Control::Caption))
+            .map(|r| r.id)
+            .collect()
+    }
+
+    #[test]
+    fn the_pages_are_in_groups_and_none_starts_with_a_caption() {
+        let prefs = Preferences::first_run();
+        let cats = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
+        // Sound, the pad, the apps and the status are pages of their own: no captions.
+        for category in [
+            Category::General,
+            Category::Sound,
+            Category::Controllers,
+            Category::Captures,
+            Category::Broadcast,
+            Category::Online,
+            Category::ConnectedApps,
+        ] {
+            assert!(captions(&cats, category).is_empty(), "{category:?}");
+        }
+        // The first row of a page is a row, not a heading: the page starts where the list starts.
+        for cat in &cats {
+            assert!(
+                !matches!(cat.rows[0].control, rows::Control::Caption),
+                "{:?} starts with a caption",
+                cat.category
+            );
+        }
+    }
+
+    #[test]
+    fn every_old_behaviour_row_has_a_page_now() {
+        let prefs = Preferences::first_run();
+        let cats = build_categories(&prefs, &env(None, UpdateState::Unknown), Language::English);
+        let page_of = |id: &str| {
+            cats.iter()
+                .find(|c| c.rows.iter().any(|r| r.id == id))
+                .map(|c| c.category)
+        };
+        for (id, category) in [
+            ("prepare", Category::General),
+            ("hide", Category::General),
+            ("hiddenTrophies", Category::General),
+            ("homeButton", Category::General),
+            ("updateCheck", Category::General),
+            ("sounds", Category::Sound),
+            ("music", Category::Sound),
+            ("gameMusic", Category::Sound),
+            ("vibration", Category::Controllers),
+            ("controllerHelp", Category::Controllers),
+            ("screenshots", Category::Captures),
+            ("clips", Category::Captures),
+            ("clipsKey", Category::Captures),
+            ("showClips", Category::Captures),
+            ("name", Category::Online),
+            ("discord", Category::Online),
+            ("recordNetwork", Category::Advanced),
+        ] {
+            // Clips are off in a new profile; their key and folder rows follow the length.
+            if matches!(id, "clipsKey" | "showClips") {
+                continue;
+            }
+            assert_eq!(page_of(id), Some(category), "{id}");
+        }
+    }
+
+    #[test]
+    fn every_link_names_a_page() {
+        use anyps5_core::links::SettingsPage as P;
+        assert_eq!(Category::from_link(P::Behavior), Category::General);
+        assert_eq!(Category::from_link(P::Captures), Category::Captures);
+        assert_eq!(
+            Category::from_link(P::ConnectedApps),
+            Category::ConnectedApps
+        );
+        // The table and the list agree, and every category is in the rail once.
+        for (index, tab) in TABS.iter().enumerate() {
+            assert_eq!(tab.category.index(), index);
+            assert_eq!(Category::ALL[index], tab.category);
+        }
+    }
+
+    #[test]
+    fn the_windows_rows_stay_on_windows() {
+        let prefs = Preferences::first_run();
+        let mut e = env(None, UpdateState::Unknown);
+        let has = |e: &SettingsEnv<'_>| {
+            let cats = build_categories(&prefs, e, Language::English);
+            (
+                ids(&cats, Category::Captures).contains(&"clips"),
+                ids(&cats, Category::ConnectedApps).contains(&"links"),
+            )
+        };
+        assert_eq!(has(&e), (true, true));
+        e.windows_rows = false;
+        assert_eq!(has(&e), (false, false));
+    }
+
+    #[test]
+    fn console_mode_owns_the_start_and_the_full_screen_and_offers_the_way_out() {
+        let general = |prefs: &Preferences, state| {
+            let mut e = env(None, UpdateState::Unknown);
+            e.autostart.state = state;
+            let cats = build_categories(prefs, &e, Language::English);
+            ids(&cats, Category::General)
+        };
+        let mut prefs = Preferences::first_run();
+        assert!(!prefs.console_mode, "off until the player turns it on");
+        let off = general(&prefs, AutostartState::Off);
+        assert_eq!(&off[..3], &["console", "autostart", "fullscreen"]);
+        assert!(!off.contains(&"desktop"));
+        prefs.console_mode = true;
+        let on = general(&prefs, AutostartState::On);
+        assert_eq!(&on[..2], &["console", "desktop"]);
+        assert!(!on.contains(&"autostart") && !on.contains(&"fullscreen"));
+        // A copy with nothing to point an entry at says so instead of offering a dead switch.
+        prefs.console_mode = false;
+        let none = general(&prefs, AutostartState::Unavailable);
+        assert_eq!(&none[..3], &["console", "autostartNone", "fullscreen"]);
+    }
+
+    #[test]
+    fn turning_console_mode_on_fills_the_screen() {
+        let mut prefs = Preferences::first_run();
+        prefs.fullscreen = false;
+        let change = Change::Toggle {
+            row: "console",
+            on: true,
+        };
+        assert!(apply_value(&mut prefs, &change));
+        assert!(prefs.console_mode && prefs.fullscreen);
+    }
+
+    #[test]
+    fn the_update_check_answers_in_its_own_detail() {
+        let mut prefs = Preferences::first_run();
+        prefs.toolkit_checked_at = Some("2026-10-22 09:30".into());
+        let detail = |prefs: &Preferences, update| {
+            let cats = build_categories(prefs, &env(Some("0.1.3-abc"), update), Language::English);
+            cats.iter()
+                .find(|c| c.category == Category::Toolkit)
+                .unwrap()
+                .rows
+                .iter()
+                .find(|r| r.id == "checkNow")
+                .and_then(|r| r.detail.clone())
+                .unwrap()
+        };
+        assert_eq!(
+            detail(&prefs, UpdateState::UpToDate),
+            "Up to date · Last checked 2026-10-22 09:30"
+        );
+        assert_eq!(detail(&prefs, UpdateState::Checking), "Checking…");
+        assert_eq!(
+            detail(&prefs, UpdateState::Downloading),
+            "Downloading the toolkit…"
+        );
+        assert_eq!(
+            detail(&prefs, UpdateState::Failed),
+            "Could not check · Last checked 2026-10-22 09:30"
+        );
+        assert_eq!(
+            detail(&prefs, UpdateState::Unknown),
+            "Last checked 2026-10-22 09:30"
+        );
+        prefs.toolkit_checked_at = None;
+        assert_eq!(detail(&prefs, UpdateState::Unknown), "Not checked yet");
+    }
+
+    #[test]
+    fn toolkit_releases_nothing_uses_come_under_their_own_caption() {
+        let prefs = Preferences::first_run();
+        let unused = [InstalledRelease {
+            tag: "0.1.2".into(),
+            bytes: 1,
+        }];
+        let mut e = env(Some("0.1.3-abc"), UpdateState::UpToDate);
+        let none = build_categories(&prefs, &e, Language::English);
+        assert!(!captions(&none, Category::Toolkit).contains(&"unusedCaption"));
+        e.unused = &unused;
+        let some = build_categories(&prefs, &e, Language::English);
+        assert_eq!(
+            captions(&some, Category::Toolkit),
+            ["updatesCaption", "unusedCaption"]
+        );
+    }
+
+    #[test]
+    fn a_scene_focuses_a_row_by_its_id() {
+        let prefs = Preferences::first_run();
+        let e = env(None, UpdateState::Unknown);
+        let cats = build_categories(&prefs, &e, Language::English);
+        let want = rows::position(&cats[0].rows, "homeButton").unwrap();
+        let mut panel = SettingsPanel::default();
+        panel.open_at(0, true);
+        panel.focus_row_id("homeButton");
+        panel.apply_focus_id(&cats);
+        assert_eq!(panel.nav.row, want);
     }
 }

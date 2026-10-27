@@ -11,6 +11,23 @@ const MONTHS_TR: [&str; 12] = [
     "Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara",
 ];
 
+const MONTHS_DE: [&str; 12] = [
+    "Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez.",
+];
+
+const MONTHS_ES: [&str; 12] = [
+    "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic",
+];
+
+const MONTHS_FR: [&str; 12] = [
+    "janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.",
+    "déc.",
+];
+
+const MONTHS_PT: [&str; 12] = [
+    "jan.", "fev.", "mar.", "abr.", "mai.", "jun.", "jul.", "ago.", "set.", "out.", "nov.", "dez.",
+];
+
 /// Year, month (1..=12) and day for a count of days since 1970-01-01 (Howard Hinnant's
 /// `civil_from_days`).
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
@@ -54,6 +71,22 @@ pub fn date_text(unix_micros: i64, offset_seconds: i32, language: Language) -> S
             "{day} {} {year} {hour:02}:{minute:02}",
             MONTHS_TR[month as usize - 1]
         ),
+        Language::German => format!(
+            "{day}. {} {year}, {hour:02}:{minute:02}",
+            MONTHS_DE[month as usize - 1]
+        ),
+        Language::Spanish => format!(
+            "{day} {} {year}, {hour:02}:{minute:02}",
+            MONTHS_ES[month as usize - 1]
+        ),
+        Language::French => format!(
+            "{day} {} {year}, {hour:02}:{minute:02}",
+            MONTHS_FR[month as usize - 1]
+        ),
+        Language::Portuguese => format!(
+            "{day} de {} de {year}, {hour:02}:{minute:02}",
+            MONTHS_PT[month as usize - 1]
+        ),
     }
 }
 
@@ -91,6 +124,10 @@ pub fn message_time(unix: i64, now: i64, offset_seconds: i32, language: Language
     match language {
         Language::English => format!("{} {day}, {clock}", MONTHS_EN[month as usize - 1]),
         Language::Turkish => format!("{day} {} {clock}", MONTHS_TR[month as usize - 1]),
+        Language::German => format!("{day}. {}, {clock}", MONTHS_DE[month as usize - 1]),
+        Language::Spanish => format!("{day} {}, {clock}", MONTHS_ES[month as usize - 1]),
+        Language::French => format!("{day} {}, {clock}", MONTHS_FR[month as usize - 1]),
+        Language::Portuguese => format!("{day} de {}, {clock}", MONTHS_PT[month as usize - 1]),
     }
 }
 
@@ -117,8 +154,16 @@ pub fn day_label(unix: i64, now: i64, offset_seconds: i32, language: Language) -
     match (today - days, language) {
         (0, Language::English) => "Today".to_owned(),
         (0, Language::Turkish) => "Bugün".to_owned(),
+        (0, Language::German) => "Heute".to_owned(),
+        (0, Language::Spanish) => "Hoy".to_owned(),
+        (0, Language::French) => "Aujourd’hui".to_owned(),
+        (0, Language::Portuguese) => "Hoje".to_owned(),
         (1, Language::English) => "Yesterday".to_owned(),
         (1, Language::Turkish) => "Dün".to_owned(),
+        (1, Language::German) => "Gestern".to_owned(),
+        (1, Language::Spanish) => "Ayer".to_owned(),
+        (1, Language::French) => "Hier".to_owned(),
+        (1, Language::Portuguese) => "Ontem".to_owned(),
         _ => {
             let year =
                 |u: i64| civil_from_days((u + i64::from(offset_seconds)).div_euclid(86_400)).0;
@@ -149,6 +194,10 @@ pub fn day_text(unix: i64, offset_seconds: i32, language: Language) -> String {
     match language {
         Language::English => format!("{} {day}, {year}", MONTHS_EN[month as usize - 1]),
         Language::Turkish => format!("{day} {} {year}", MONTHS_TR[month as usize - 1]),
+        Language::German => format!("{day}. {} {year}", MONTHS_DE[month as usize - 1]),
+        Language::Spanish => format!("{day} {} {year}", MONTHS_ES[month as usize - 1]),
+        Language::French => format!("{day} {} {year}", MONTHS_FR[month as usize - 1]),
+        Language::Portuguese => format!("{day} de {} de {year}", MONTHS_PT[month as usize - 1]),
     }
 }
 
@@ -160,15 +209,21 @@ pub fn short_date(unix: i64, offset_seconds: i32, language: Language) -> String 
     match language {
         Language::English => format!("{} {day}", MONTHS_EN[month as usize - 1]),
         Language::Turkish => format!("{day} {}", MONTHS_TR[month as usize - 1]),
+        Language::German => format!("{day}. {}", MONTHS_DE[month as usize - 1]),
+        Language::Spanish => format!("{day} {}", MONTHS_ES[month as usize - 1]),
+        Language::French => format!("{day} {}", MONTHS_FR[month as usize - 1]),
+        Language::Portuguese => format!("{day} de {}", MONTHS_PT[month as usize - 1]),
     }
 }
 
-/// A count with the language's thousands separator: `65,340` in English, `65.340` in Turkish.
+/// A count with the language's thousands separator: `65,340` in English, `65.340` in Turkish,
+/// German, Spanish and Portuguese, `65 340` (no-break space) in French.
 pub fn grouped(n: u64, language: Language) -> String {
     let digits = n.to_string();
     let separator = match language {
         Language::English => ',',
-        Language::Turkish => '.',
+        Language::Turkish | Language::German | Language::Spanish | Language::Portuguese => '.',
+        Language::French => ' ',
     };
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (i, c) in digits.chars().enumerate() {
@@ -296,6 +351,31 @@ mod tests {
             ),
             "Oct 17, 2026 at 12:00 PM"
         );
+    }
+
+    #[test]
+    fn spanish_french_and_portuguese_dates_follow_their_conventions() {
+        use super::{day_label, day_text, grouped, short_date};
+        use crate::ui::i18n::Language::{French, Portuguese, Spanish};
+        // 2026-10-17 12:00 UTC.
+        assert_eq!(day_text(1_792_238_400, 0, Spanish), "17 oct 2026");
+        assert_eq!(day_text(1_792_238_400, 0, French), "17 oct. 2026");
+        assert_eq!(day_text(1_792_238_400, 0, Portuguese), "17 de out. de 2026");
+        assert_eq!(short_date(1_792_238_400, 0, Spanish), "17 oct");
+        assert_eq!(short_date(1_792_238_400, 0, French), "17 oct.");
+        assert_eq!(short_date(1_792_238_400, 0, Portuguese), "17 de out.");
+        assert_eq!(day_label(1_792_238_400, 1_792_238_400, 0, Spanish), "Hoy");
+        assert_eq!(
+            day_label(1_792_238_400 - 86_400, 1_792_238_400, 0, French),
+            "Hier"
+        );
+        assert_eq!(
+            day_label(1_792_238_400 - 86_400, 1_792_238_400, 0, Portuguese),
+            "Ontem"
+        );
+        assert_eq!(grouped(65_340, Spanish), "65.340");
+        assert_eq!(grouped(65_340, Portuguese), "65.340");
+        assert_eq!(grouped(65_340, French), "65 340");
     }
 
     #[test]

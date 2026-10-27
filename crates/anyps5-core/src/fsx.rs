@@ -28,8 +28,12 @@ pub enum LinkMode {
 #[derive(Debug, Default)]
 pub struct Linker {
     mode: LinkMode,
+    /// Where a hard link is impossible (another drive), a symbolic link to the source takes its
+    /// place when the system lets this process make one; only for sources that stay put (a dump).
+    symlinks: bool,
     first_fallback: Mutex<Option<String>>,
     linked: AtomicU64,
+    symlinked: AtomicU64,
     copied: AtomicU64,
 }
 
@@ -39,6 +43,20 @@ impl Linker {
             mode,
             ..Self::default()
         }
+    }
+
+    /// The same, but a file that cannot be hard-linked is symbolically linked to its source before
+    /// it is copied. Never use it for sources that may move or vanish.
+    pub fn with_symlinks(mode: LinkMode) -> Self {
+        Self {
+            symlinks: mode == LinkMode::Auto,
+            ..Self::new(mode)
+        }
+    }
+
+    /// Number of files symbolically linked so far (they are not in [`Linker::counts`]).
+    pub fn symlinked(&self) -> u64 {
+        self.symlinked.load(Ordering::Relaxed)
     }
 
     /// Number of files linked and copied so far.
@@ -81,6 +99,10 @@ impl Linker {
                     if error.kind() == io::ErrorKind::AlreadyExists || !src.exists() {
                         return Err(error);
                     }
+                    if self.symlinks && symlink_to(src, dst).is_ok() {
+                        self.symlinked.fetch_add(1, Ordering::Relaxed);
+                        return Ok(());
+                    }
                     self.note_fallback(|| error.to_string());
                 }
             }
@@ -91,6 +113,42 @@ impl Linker {
         self.copied.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
+}
+
+/// A symbolic link at `dst` that points to the absolute path of `src`. `dst` must not exist.
+fn symlink_to(src: &Path, dst: &Path) -> io::Result<()> {
+    symlink_file(&std::path::absolute(src)?, dst)
+}
+
+#[cfg(windows)]
+fn symlink_file(target: &Path, dst: &Path) -> io::Result<()> {
+    std::os::windows::fs::symlink_file(target, dst)
+}
+
+#[cfg(unix)]
+fn symlink_file(target: &Path, dst: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(target, dst)
+}
+
+#[cfg(not(any(windows, unix)))]
+fn symlink_file(_target: &Path, _dst: &Path) -> io::Result<()> {
+    Err(io::Error::from(io::ErrorKind::Unsupported))
+}
+
+/// Whether a symbolic link to `src_file` can be made in `dst_dir`. Windows needs Developer Mode
+/// or an elevated process for it; without either this is an error and the caller copies.
+pub fn symlink_probe(src_file: &Path, dst_dir: &Path) -> io::Result<()> {
+    let dir = dst_dir
+        .ancestors()
+        .find(|p| p.is_dir())
+        .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+    let probe = dir.join(format!(".anyps5-symlink-probe-{}", std::process::id()));
+    let _ = fs::remove_file(&probe);
+    let result = symlink_to(src_file, &probe);
+    if result.is_ok() {
+        let _ = fs::remove_file(&probe);
+    }
+    result
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -217,7 +275,10 @@ pub fn replace_file(dst: &Path) -> io::Result<()> {
 }
 
 fn clear_readonly(path: &Path) {
-    if let Ok(meta) = fs::symlink_metadata(path) {
+    // A symbolic link to a dump file: changing its flags would change the dump's.
+    if let Ok(meta) = fs::symlink_metadata(path)
+        && !meta.file_type().is_symlink()
+    {
         let mut perms = meta.permissions();
         if perms.readonly() {
             #[allow(clippy::permissions_set_readonly_false)]
@@ -276,6 +337,117 @@ pub const RETRY_PAUSE: Duration = Duration::from_millis(150);
 /// `remove_tree` with retries (D22).
 pub fn remove_tree_retry(path: &Path) -> io::Result<()> {
     retrying(|| remove_tree(path))
+}
+
+/// How [`remove_tree_progress`] ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Removal {
+    /// Everything is gone (or was not there).
+    Done,
+    /// `cancel` was set: what was removed stays removed, the rest is still there.
+    Cancelled,
+}
+
+/// Counts what [`remove_tree_progress`] has removed of the whole and tells the caller about it,
+/// at most once per half percent.
+struct Tally<'a> {
+    total: usize,
+    done: usize,
+    reported: f32,
+    report: &'a mut dyn FnMut(f32),
+}
+
+impl Tally<'_> {
+    fn tick(&mut self) {
+        self.done += 1;
+        let fraction = (self.done as f32 / self.total as f32).min(1.0);
+        if fraction - self.reported >= 0.005 || self.done >= self.total {
+            self.reported = fraction;
+            (self.report)(fraction);
+        }
+    }
+}
+
+/// The entries of a tree, the root included. A link counts as one entry and is not followed.
+fn count_entries(path: &Path) -> usize {
+    let mut count = 1;
+    if fs::symlink_metadata(path).is_ok_and(|m| m.is_dir())
+        && let Ok(entries) = fs::read_dir(path)
+    {
+        for entry in entries.flatten() {
+            count += count_entries(&entry.path());
+        }
+    }
+    count
+}
+
+/// One file, link or empty folder, with the retries of D22. A read-only flag is cleared and the
+/// next attempt goes through.
+fn remove_entry(path: &Path, is_dir: bool) -> io::Result<()> {
+    retrying(|| {
+        let result = if is_dir {
+            fs::remove_dir(path)
+        } else {
+            // A folder link on Windows is removed like a folder.
+            fs::remove_file(path).or_else(|_| fs::remove_dir(path))
+        };
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => {
+                clear_readonly(path);
+                Err(error)
+            }
+        }
+    })
+}
+
+/// `Ok(false)` when `cancel` stopped it.
+fn remove_walk(path: &Path, cancel: &CancelToken, tally: &mut Tally<'_>) -> io::Result<bool> {
+    if cancel.is_cancelled() {
+        return Ok(false);
+    }
+    let is_dir = fs::symlink_metadata(path).is_ok_and(|m| m.is_dir());
+    if is_dir {
+        let children: Vec<PathBuf> = match fs::read_dir(path) {
+            Ok(entries) => entries.flatten().map(|e| e.path()).collect(),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(true),
+            Err(error) => return Err(error),
+        };
+        for child in children {
+            if !remove_walk(&child, cancel, tally)? {
+                return Ok(false);
+            }
+        }
+    }
+    remove_entry(path, is_dir)?;
+    tally.tick();
+    Ok(true)
+}
+
+/// Removes a tree entry by entry so the player can follow it and stop it. `progress` gets the
+/// fraction removed (0..=1, ending on 1.0) and is called from the calling thread. Like
+/// [`remove_tree`], hard links only lose the link: the dump behind a linked file is untouched.
+pub fn remove_tree_progress(
+    path: &Path,
+    cancel: &CancelToken,
+    mut progress: impl FnMut(f32),
+) -> io::Result<Removal> {
+    if fs::symlink_metadata(path).is_err_and(|e| e.kind() == io::ErrorKind::NotFound) {
+        progress(1.0);
+        return Ok(Removal::Done);
+    }
+    let mut tally = Tally {
+        total: count_entries(path).max(1),
+        done: 0,
+        reported: 0.0,
+        report: &mut progress,
+    };
+    if remove_walk(path, cancel, &mut tally)? {
+        Ok(Removal::Done)
+    } else {
+        Ok(Removal::Cancelled)
+    }
 }
 
 /// `fs::rename` with retries (D22).
@@ -616,6 +788,52 @@ mod tests {
     }
 
     #[test]
+    fn removes_a_tree_and_reports_progress_up_to_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let tree = dir.path().join("copy");
+        write(&tree.join("a.txt"), "aaa");
+        write(&tree.join("sub/b.txt"), "bb");
+        fs::create_dir_all(tree.join("emptydir")).unwrap();
+        let mut seen = Vec::new();
+        let outcome = remove_tree_progress(&tree, &CancelToken::new(), |f| seen.push(f)).unwrap();
+        assert_eq!(outcome, Removal::Done);
+        assert!(!tree.exists());
+        assert!(seen.windows(2).all(|w| w[0] <= w[1]));
+        assert_eq!(*seen.last().unwrap(), 1.0);
+    }
+
+    #[test]
+    fn removing_a_tree_that_is_not_there_is_done() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut seen = Vec::new();
+        let outcome = remove_tree_progress(&dir.path().join("none"), &CancelToken::new(), |f| {
+            seen.push(f)
+        })
+        .unwrap();
+        assert_eq!(outcome, Removal::Done);
+        assert_eq!(seen, vec![1.0]);
+    }
+
+    #[test]
+    fn a_cancelled_removal_stops_and_leaves_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let tree = dir.path().join("copy");
+        for i in 0..20 {
+            write(&tree.join(format!("f{i}.txt")), "x");
+        }
+        let cancel = CancelToken::new();
+        let outcome = remove_tree_progress(&tree, &cancel, |f| {
+            if f >= 0.25 {
+                cancel.cancel();
+            }
+        })
+        .unwrap();
+        assert_eq!(outcome, Removal::Cancelled);
+        assert!(tree.exists());
+        assert!(fs::read_dir(&tree).unwrap().count() > 0);
+    }
+
+    #[test]
     fn links_a_tree_and_skips_the_store() {
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("src");
@@ -776,6 +994,28 @@ mod tests {
         assert!(can_link(&dir.path().join("a.txt"), &dst));
         assert_eq!(fs::read_dir(&dst).unwrap().count(), 0);
         assert!(!can_link(&dir.path().join("missing.txt"), &dst));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symbolic_links_leave_the_source_alone() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("dump.bin");
+        write(&src, "dump");
+        fs::set_permissions(&src, fs::Permissions::from_mode(0o444)).unwrap();
+        let dst = dir.path().join("copy");
+        fs::create_dir_all(&dst).unwrap();
+        symlink_probe(&src, &dst).unwrap();
+        assert_eq!(fs::read_dir(&dst).unwrap().count(), 0, "probe is removed");
+        symlink_to(&src, &dst.join("dump.bin")).unwrap();
+        assert_eq!(fs::read_to_string(dst.join("dump.bin")).unwrap(), "dump");
+        // Removing the copy clears flags of the copy's entries only, never the dump file's.
+        remove_tree(&dst).unwrap();
+        assert!(src.is_file());
+        let mode = fs::metadata(&src).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o444, "the dump keeps its flags");
+        let _ = Linker::with_symlinks(LinkMode::Auto);
     }
 
     #[test]

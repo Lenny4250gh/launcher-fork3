@@ -47,8 +47,7 @@ jobs:
       # alsa for cpal (sound), udev for gilrs (gamepads), xkbcommon/xcb for winit's input.
       - name: System packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          tools/apt-install.sh \
             pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -58,6 +57,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: launcher
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build against network main
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test

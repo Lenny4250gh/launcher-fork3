@@ -18,6 +18,8 @@ use egui::{
     Sense, Stroke, ViewportCommand, pos2, vec2,
 };
 
+use crate::screens::access_strings::AccessText;
+use crate::ui::i18n::{Key, Language};
 use crate::ui::input::{self, Device};
 use crate::ui::theme::{color, fade, mix, size};
 
@@ -31,7 +33,7 @@ enum Button {
 /// Draws the caption and runs what it is used for. Call once per frame, above the screens and
 /// panels and below the intro curtain. Returns the fullscreen state the player switched to, for
 /// the host to apply and remember.
-pub fn show(ctx: &Context) -> Option<bool> {
+pub fn show(ctx: &Context, language: Language) -> Option<bool> {
     let (fullscreen, maximized) = ctx.input(|i| {
         let viewport = i.viewport();
         (
@@ -55,7 +57,7 @@ pub fn show(ctx: &Context) -> Option<bool> {
             .is_some_and(|p| corner.contains(p));
         let visible = ctx.animate_bool_with_time(Id::unique("caption-visible"), near, 0.2);
         let clicked = (visible > 0.0)
-            .then(|| caption_buttons(ctx, buttons, button.x, true, visible, unit))
+            .then(|| caption_buttons(ctx, buttons, button.x, true, visible, unit, language))
             .flatten();
         return match clicked {
             Some(Button::Maximize) => Some(false),
@@ -86,7 +88,8 @@ pub fn show(ctx: &Context) -> Option<bool> {
         0.2,
     );
     if visible > 0.0
-        && let Some(which) = caption_buttons(ctx, buttons, button.x, maximized, visible, unit)
+        && let Some(which) =
+            caption_buttons(ctx, buttons, button.x, maximized, visible, unit, language)
     {
         run(ctx, which, maximized);
     }
@@ -125,6 +128,7 @@ fn caption_buttons(
     maximized: bool,
     visible: f32,
     unit: f32,
+    language: Language,
 ) -> Option<Button> {
     let area = Area::new(Id::unique("caption-buttons"))
         .order(Order::Foreground)
@@ -141,6 +145,19 @@ fn caption_buttons(
                 let cell =
                     Rect::from_min_max(pos2(left, rect.top()), pos2(left + width, rect.bottom()));
                 let response = ui.allocate_rect(cell, Sense::click());
+                let name = match which {
+                    Button::Minimize => Some(AccessText::Minimize),
+                    Button::Maximize if maximized => Some(AccessText::Restore),
+                    Button::Maximize => Some(AccessText::Maximize),
+                    Button::Close => None,
+                };
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::Role::Button,
+                        true,
+                        name.map_or_else(|| language.text(Key::Close), |n| n.text(language)),
+                    )
+                });
                 let hover = ctx.animate_bool_with_time(
                     Id::unique(("caption-hover", index)),
                     crate::ui::input::hovered(ctx, &response),

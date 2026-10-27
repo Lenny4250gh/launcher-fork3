@@ -17,9 +17,12 @@ use crate::ui::anim::{self, AnimExt, Motion, lerp};
 use crate::ui::i18n::{Key, Language};
 use crate::ui::icons::Icon;
 use crate::ui::input::{self, Device};
+use crate::ui::nav_bindings::{self, Bindings, Role as NavRole};
 use crate::ui::pad_info;
 use crate::ui::text;
-use crate::ui::theme::{TextStyle, black, color, fade, mix, radius, shadows, size, ty, white};
+use crate::ui::theme::{
+    self, TextStyle, black, color, fade, mix, radius, shadows, size, space, ty, white,
+};
 
 /// Forces a visual state so galleries and tests can show hover or press without a pointer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -144,7 +147,9 @@ pub fn paint_caret(painter: &Painter, centre: Pos2, right: bool, size: f32, colo
     ));
 }
 
-/// A spinning three-quarter arc with round ends (the original's small `ProgressView`).
+/// A spinning three-quarter arc with round ends (the original's small `ProgressView`). Under
+/// "Animations: Reduced" the arc stands still and pulses in opacity instead (`anim::loading_pulse`),
+/// so every spinner of the launcher follows the setting from this one place.
 pub fn paint_spinner_arc(
     painter: &Painter,
     centre: Pos2,
@@ -154,7 +159,16 @@ pub fn paint_spinner_arc(
     color: Color32,
 ) {
     const POINTS: usize = 36;
-    let angle = (time * std::f64::consts::TAU * 1.1) as f32;
+    let ctx = painter.ctx();
+    let (angle, color) = if ctx.reduced_motion() {
+        ctx.request_repaint();
+        (
+            -std::f32::consts::FRAC_PI_2,
+            color.gamma_multiply(anim::loading_pulse(time)),
+        )
+    } else {
+        ((time * std::f64::consts::TAU * 1.1) as f32, color)
+    };
     let points: Vec<Pos2> = (0..=POINTS)
         .map(|i| {
             let a = angle + i as f32 / POINTS as f32 * std::f32::consts::PI * 1.5;
@@ -377,7 +391,7 @@ pub fn paint_control(
                 if destructive {
                     color::destructive_icon()
                 } else {
-                    Color32::WHITE
+                    crate::ui::theme::color::text()
                 },
             )
         }
@@ -543,6 +557,28 @@ impl<'a> ConsoleButton<'a> {
     pub fn force(mut self, force: Option<Force>) -> Self {
         self.force = force;
         self
+    }
+
+    /// The width the button will take, for layouts that place it by its right edge.
+    pub fn width(&self, painter: &Painter) -> f32 {
+        let style = self.size.style();
+        let has_text = !self.title.is_empty();
+        let icon_width = self.icon.map_or(0.0, |_| self.size.glyph(has_text));
+        let gap = if self.icon.is_some() && has_text {
+            self.size.gap()
+        } else {
+            0.0
+        };
+        let text_width = if has_text {
+            text::width(painter, style, self.title)
+        } else {
+            0.0
+        };
+        if has_text {
+            (self.size.text_pad() * 2.0 + icon_width + gap + text_width).max(self.min_width)
+        } else {
+            self.size.height().max(self.min_width)
+        }
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
@@ -784,7 +820,7 @@ impl Switch {
         }
         // White on the off track; on the accent the knob turns dark, because white on mint or gold
         // is 1.5:1 and the knob is what shows the state (DESIGN.md 3.10).
-        let knob_ink = mix(Color32::WHITE, color::on_primary(), t);
+        let knob_ink = mix(color::knob(), color::on_primary(), t);
         painter.circle_filled(centre, knob * 0.5, fade(knob_ink, a));
         response
     }
@@ -861,6 +897,37 @@ pub fn paint_progress(painter: &Painter, rect: Rect, fraction: f32, accent: Colo
     paint_capsule(painter, fill, accent);
 }
 
+/// A player's trophies by grade, platinum first, from `pos`: the grade's cup in its colour and
+/// the count in ink beside it; a grade with none is left out. Returns the width it took. The cup
+/// carries the colour, the count carries the number: nothing rests on colour alone.
+pub fn paint_grade_counts(painter: &Painter, pos: Pos2, grades: [u32; 4]) -> f32 {
+    let style = ty::CHIP;
+    let glyph = 14.0;
+    let mut x = pos.x;
+    for (grade, count) in theme::Grade::ALL.into_iter().zip(grades) {
+        if count == 0 {
+            continue;
+        }
+        painter.text(
+            pos2(x + glyph * 0.5, pos.y + style.line_height() * 0.5),
+            Align2::CENTER_CENTER,
+            Icon::TROPHY.glyph(),
+            Icon::TROPHY.font(glyph, true),
+            grade.color(),
+        );
+        x += glyph + space::XS;
+        let counted = text::paint_tabular(
+            painter,
+            pos2(x, pos.y),
+            style,
+            &count.to_string(),
+            color::text_label(),
+        );
+        x += counted.width() + space::M;
+    }
+    (x - pos.x - space::M).max(0.0)
+}
+
 /// An endless sweep for steps of unknown length: a 35 %-wide gradient (clear, accent, clear)
 /// slides from -0.4 w to 1.05 w every 1.3 s, clipped to the capsule.
 pub struct IndeterminateLine {
@@ -899,9 +966,20 @@ impl IndeterminateLine {
     }
 }
 
-/// Paints the indeterminate bar for clock time `time`.
+/// Paints the indeterminate bar for clock time `time`. Under "Animations: Reduced" nothing sweeps:
+/// the whole bar fills with the accent and pulses in opacity (`anim::loading_pulse`).
 pub fn paint_indeterminate(painter: &Painter, rect: Rect, time: f64, accent: Color32) {
     paint_capsule(painter, rect, color::track());
+    if painter.ctx().reduced_motion() {
+        let accent = accent.to_srgba_unmultiplied();
+        let accent = Color32::from_rgba_unmultiplied(accent[0], accent[1], accent[2], 255);
+        paint_capsule(
+            painter,
+            rect,
+            accent.gamma_multiply(anim::loading_pulse(time)),
+        );
+        return;
+    }
     let phase = anim::indeterminate_phase(time);
     let w = rect.width();
     let x0 = rect.min.x + w * phase;
@@ -1069,7 +1147,7 @@ pub fn paint_key_string(
         let c = family.face_letter(c).unwrap_or(c);
         if let Some(glyph) = PadGlyph::from_char(c) {
             flush(&mut run, &mut x);
-            let side = style.size * 0.95;
+            let side = style.px() * 0.95;
             glyph.paint(painter, pos2(x + side * 0.5, origin.y), side, color);
             x += side;
         } else {
@@ -1092,7 +1170,7 @@ pub fn key_string_width(painter: &Painter, style: TextStyle, keys: &str) -> f32 
                 width += text::width(painter, style, &run);
                 run.clear();
             }
-            width += style.size * 0.95;
+            width += style.px() * 0.95;
         } else {
             run.push(c);
         }
@@ -1113,19 +1191,48 @@ pub enum HintAction {
 }
 
 impl HintAction {
-    fn key(self) -> &'static str {
+    fn role(self) -> NavRole {
         match self {
-            HintAction::Select => "Enter",
-            HintAction::Back => "Esc",
-            HintAction::Options => "O",
+            HintAction::Select => NavRole::Select,
+            HintAction::Back => NavRole::Back,
+            HintAction::Options => NavRole::Options,
         }
     }
 
-    fn glyph(self) -> PadGlyph {
-        match self {
-            HintAction::Select => PadGlyph::Cross,
-            HintAction::Back => PadGlyph::Circle,
-            HintAction::Options => PadGlyph::Triangle,
+    /// The key the player has for this job (the first one), named for a keycap.
+    fn key(self) -> String {
+        self.key_in(&nav_bindings::current())
+    }
+
+    fn key_in(self, bindings: &Bindings) -> String {
+        let name = bindings
+            .keys(self.role())
+            .first()
+            .map_or("?", String::as_str);
+        match name {
+            "Escape" => "Esc".to_owned(),
+            "Backspace" => "⌫".to_owned(),
+            other => other.to_owned(),
+        }
+    }
+
+    /// The pad button the player has for this job (the first one), by its name.
+    fn pad_button(self, bindings: &Bindings) -> String {
+        bindings
+            .pad_buttons(self.role())
+            .first()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// The face button glyph of the job; `None` where the player gave it a bumper, a trigger or Menu.
+    fn glyph_in(self, bindings: &Bindings) -> Option<PadGlyph> {
+        match self.pad_button(bindings).as_str() {
+            "South" => Some(PadGlyph::Cross),
+            "East" => Some(PadGlyph::Circle),
+            "West" => Some(PadGlyph::Square),
+            "North" => Some(PadGlyph::Triangle),
+            _ => None,
         }
     }
 }
@@ -1140,8 +1247,20 @@ impl Hint<'_> {
     /// Width of the key: a circle for a face button, a keycap for a key name.
     fn cap_width(painter: &Painter, action: HintAction, device: Device) -> f32 {
         match device {
-            Device::Gamepad => size::HINT_CAP,
-            Device::Keyboard => (text::width(painter, ty::HINT_KEY, action.key())
+            Device::Gamepad => {
+                let bindings = nav_bindings::current();
+                if action.glyph_in(&bindings).is_some() {
+                    size::HINT_CAP
+                } else {
+                    let label = crate::screens::controllers::button_label(
+                        pad_info::family(),
+                        &action.pad_button(&bindings),
+                    );
+                    (text::width(painter, ty::HINT_KEY, label) + 2.0 * size::HINT_CAP_PADDING)
+                        .max(size::HINT_CAP)
+                }
+            }
+            Device::Keyboard => (text::width(painter, ty::HINT_KEY, &action.key())
                 + 2.0 * size::HINT_CAP_PADDING)
                 .max(size::HINT_CAP),
         }
@@ -1176,26 +1295,50 @@ impl Hint<'_> {
             );
             match device {
                 Device::Gamepad => {
-                    painter.circle_filled(cap.center(), size::HINT_CAP * 0.5, color::keycap());
-                    let glyph = self.action.glyph();
-                    match pad_info::family().face_letter(glyph.symbol()) {
-                        // A pad with letters on its buttons: the hint names the letter.
-                        Some(letter) => {
+                    let bindings = nav_bindings::current();
+                    match self.action.glyph_in(&bindings) {
+                        None => {
+                            // A bumper, a trigger or Menu: a cap with its name.
+                            painter.rect_filled(cap, corner(radius::KEYCAP), color::keycap());
+                            let label = crate::screens::controllers::button_label(
+                                pad_info::family(),
+                                &self.action.pad_button(&bindings),
+                            );
                             text::paint(
                                 &painter,
                                 cap.center(),
                                 Align2::CENTER_CENTER,
                                 ty::HINT_KEY,
-                                &letter.to_string(),
+                                label,
                                 color::text_hint_key(),
                             );
                         }
-                        None => glyph.paint(
-                            &painter,
-                            cap.center(),
-                            size::HINT_GLYPH,
-                            color::text_hint_key(),
-                        ),
+                        Some(glyph) => {
+                            painter.circle_filled(
+                                cap.center(),
+                                size::HINT_CAP * 0.5,
+                                color::keycap(),
+                            );
+                            match pad_info::family().face_letter(glyph.symbol()) {
+                                // A pad with letters on its buttons: the hint names the letter.
+                                Some(letter) => {
+                                    text::paint(
+                                        &painter,
+                                        cap.center(),
+                                        Align2::CENTER_CENTER,
+                                        ty::HINT_KEY,
+                                        &letter.to_string(),
+                                        color::text_hint_key(),
+                                    );
+                                }
+                                None => glyph.paint(
+                                    &painter,
+                                    cap.center(),
+                                    size::HINT_GLYPH,
+                                    color::text_hint_key(),
+                                ),
+                            }
+                        }
                     }
                 }
                 Device::Keyboard => {
@@ -1205,7 +1348,7 @@ impl Hint<'_> {
                         cap.center(),
                         Align2::CENTER_CENTER,
                         ty::HINT_KEY,
-                        self.action.key(),
+                        &self.action.key(),
                         color::text_hint_key(),
                     );
                 }
@@ -1251,11 +1394,13 @@ impl HintSet {
     }
 }
 
-fn hint_list(language: Language, set: HintSet) -> Vec<Hint<'static>> {
+/// `enter` is what Enter does where the focus makes it say more than "Select" (a field edits, a
+/// composer sends).
+fn hint_list(language: Language, set: HintSet, enter: Option<&'static str>) -> Vec<Hint<'static>> {
     let options = set.options;
     let mut hints = vec![Hint {
         action: HintAction::Select,
-        label: language.text(Key::HintSelect),
+        label: enter.unwrap_or_else(|| language.text(Key::HintSelect)),
     }];
     if set.back {
         hints.push(Hint {
@@ -1287,9 +1432,14 @@ pub fn hint_bar(ui: &mut Ui, language: Language, options: bool) {
 
 /// [`hint_bar`] for a [`HintSet`].
 pub fn hint_bar_set(ui: &mut Ui, language: Language, set: HintSet) {
+    hint_bar_enter(ui, language, set, None);
+}
+
+/// [`hint_bar_set`] with what Enter does on the focused thing (`None`: "Select").
+pub fn hint_bar_enter(ui: &mut Ui, language: Language, set: HintSet, enter: Option<&'static str>) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = size::HINT_BAR_GAP;
-        for hint in hint_list(language, set) {
+        for hint in hint_list(language, set, enter) {
             hint.show(ui);
         }
     });
@@ -1309,8 +1459,18 @@ pub fn hint_bar_size(painter: &Painter, language: Language, options: bool) -> (f
 
 /// Width and height of [`hint_bar_set`].
 pub fn hint_bar_set_size(painter: &Painter, language: Language, set: HintSet) -> (f32, f32) {
+    hint_bar_enter_size(painter, language, set, None)
+}
+
+/// Width and height of [`hint_bar_enter`].
+pub fn hint_bar_enter_size(
+    painter: &Painter,
+    language: Language,
+    set: HintSet,
+    enter: Option<&'static str>,
+) -> (f32, f32) {
     let device = input::device(painter.ctx());
-    let hints = hint_list(language, set);
+    let hints = hint_list(language, set, enter);
     let width = hints.iter().map(|h| h.width(painter, device)).sum::<f32>()
         + size::HINT_BAR_GAP * hints.len().saturating_sub(1) as f32;
     (width, size::HINT_CAP.max(ty::HINT_LABEL.line_height()))
@@ -1331,7 +1491,7 @@ pub fn key_cap(ui: &mut Ui, label: &str, keyboard: bool, _focus: f32) -> Respons
     let height = size::KEYCAP_MIN.1.max(galley.size().y);
     let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
     if ui.is_rect_visible(rect) {
-        let ink = Color32::WHITE;
+        let ink = crate::ui::theme::color::text();
         let fill = fade(ink, if keyboard { 0.12 } else { 0.06 });
         painter.rect_filled(rect, corner(radius::KEYCAP), fill);
         paint_hairline(&painter, rect, radius::KEYCAP, fade(ink, 0.18));
@@ -1343,4 +1503,35 @@ pub fn key_cap(ui: &mut Ui, label: &str, keyboard: bool, _focus: f32) -> Respons
 /// Convenience: fills `rect` with black alpha, used for scrims.
 pub fn paint_scrim(painter: &Painter, rect: Rect, alpha: f32) {
     painter.rect_filled(rect, 0.0, black(alpha));
+}
+
+#[cfg(test)]
+mod hint_tests {
+    use super::*;
+
+    #[test]
+    fn the_hints_show_the_default_buttons_and_keys() {
+        let b = Bindings::defaults();
+        assert_eq!(HintAction::Select.glyph_in(&b), Some(PadGlyph::Cross));
+        assert_eq!(HintAction::Back.glyph_in(&b), Some(PadGlyph::Circle));
+        assert_eq!(HintAction::Options.glyph_in(&b), Some(PadGlyph::Triangle));
+        assert_eq!(HintAction::Select.key_in(&b), "Enter");
+        assert_eq!(HintAction::Back.key_in(&b), "Esc");
+        assert_eq!(HintAction::Options.key_in(&b), "O");
+    }
+
+    #[test]
+    fn a_swapped_binding_changes_the_glyph_and_the_key() {
+        let mut b = Bindings::defaults();
+        // "Confirm with Circle".
+        b.assign_pad(NavRole::Select, "East").unwrap();
+        assert_eq!(HintAction::Select.glyph_in(&b), Some(PadGlyph::Circle));
+        assert_eq!(HintAction::Back.glyph_in(&b), Some(PadGlyph::Cross));
+        // A bumper has no face glyph: the hint names it on a cap.
+        b.assign_pad(NavRole::Options, "L1").unwrap();
+        assert_eq!(HintAction::Options.glyph_in(&b), None);
+        assert_eq!(HintAction::Options.pad_button(&b), "L1");
+        b.assign_key(NavRole::Select, egui::Key::E).unwrap();
+        assert_eq!(HintAction::Select.key_in(&b), "E");
+    }
 }

@@ -1,6 +1,6 @@
 //! Surfaces and compound widgets built from the components (docs/DESIGN.md section 5): the game
 //! tile base, info cards (the "facts" line of the hero), panel rows with all their controls, the
-//! side panel, full-screen panels, the toast and scroll-to-focus.
+//! full-screen panels, the toast and scroll-to-focus.
 
 use egui::text::LayoutJob;
 use egui::{
@@ -10,8 +10,8 @@ use egui::{
 
 use crate::ui::anim::{self, AnimExt, Motion, lerp};
 use crate::ui::components::{
-    self, Force, PRESS_SCALE, corner, key_cap, paint_capsule, paint_hairline, paint_progress,
-    paint_shadow, scale_rect,
+    self, ConsoleButton, ControlSize, Force, Hint, HintAction, PRESS_SCALE, corner, key_cap,
+    paint_capsule, paint_hairline, paint_progress, paint_shadow, scale_rect,
 };
 use crate::ui::glass::{GlassStyle, paint_glass};
 use crate::ui::i18n::{Key, Language};
@@ -19,7 +19,7 @@ use crate::ui::icons::Icon;
 use crate::ui::input;
 use crate::ui::text;
 use crate::ui::theme::{
-    self, TextStyle, Weight, black, color, fade, mix, radius, shadows, size, ty, white,
+    self, TextStyle, Weight, black, color, fade, mix, radius, shadows, size, space, ty, white,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -329,7 +329,7 @@ pub fn info_card(ui: &mut Ui, fact: &Fact<'_>, language: Language) -> Response {
             Align2::LEFT_TOP,
             ty::INFO_VALUE,
             &shown,
-            fact.value_color.unwrap_or(Color32::WHITE),
+            fact.value_color.unwrap_or(crate::ui::theme::color::text()),
         );
     }
     response
@@ -357,6 +357,26 @@ pub struct KeyCapSpec {
     pub keyboard: bool,
 }
 
+/// How the rail of a slider is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Track {
+    /// A rail that fills with ink up to the thumb.
+    Plain,
+    /// Every hue from 0 degrees at the left to this many at the right.
+    Hue(u16),
+    /// From black at the left to this colour at the right.
+    Ramp([u8; 3]),
+}
+
+/// What a slider asked for this frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Slide {
+    /// The pointer is down at this place on the rail, 0 (left) to 1 (right).
+    To(f32),
+    /// Page Up (+1) or Page Down (-1).
+    Page(i8),
+}
+
 /// The value control on the right of a row.
 pub enum RowControl<'a> {
     /// `<  value  >`: chevrons step, the row advances (wrapping).
@@ -374,6 +394,18 @@ pub enum RowControl<'a> {
         value: &'a str,
         can_decrement: bool,
         can_increment: bool,
+    },
+    /// `----o----  70%`: a rail with a thumb and the value after it. The pointer drags it, the
+    /// arrows and the pad step it (the row's model), Page Up and Page Down move it by two steps.
+    Slider {
+        value: &'a str,
+        /// 0 (minimum) to 1 (maximum).
+        fraction: f32,
+        track: Track,
+    },
+    /// One of a list of exclusive choices: a check at the trailing edge when chosen.
+    Pick {
+        chosen: bool,
     },
     /// Trailing chevron: the row opens a picker or a panel.
     Action,
@@ -401,6 +433,14 @@ pub enum RowControl<'a> {
     Buttons {
         labels: &'a [String],
         selected: usize,
+    },
+    /// A QR code of `data` on a white card, the row's detail beside it. Not focusable.
+    Qr {
+        data: &'a str,
+    },
+    /// An address in the mono face, in the room the title leaves, cut in the middle. Not focusable.
+    Link {
+        value: &'a str,
     },
 }
 
@@ -482,6 +522,12 @@ pub struct PanelRow<'a> {
     pub destructive: bool,
     /// Caution: a note or row that says something may not work (the amber ink). Never danger.
     pub warning: bool,
+    /// Announced to a screen reader as a status when it appears or its words change.
+    pub live: bool,
+    /// A text block that is what the page is about (a message in full): body size and ink.
+    pub body: bool,
+    /// A note that says what the player has to do: the detail ink instead of the quiet note ink.
+    pub step: bool,
     /// A controller face glyph painted before the title (`✕ Cross`).
     pub pad_glyph: Option<components::PadGlyph>,
     pub force: Option<Force>,
@@ -513,6 +559,77 @@ pub struct RowOutput {
     pub submitted: bool,
     /// One of a row's buttons was clicked: its index.
     pub pressed: Option<usize>,
+    /// A slider was dragged or paged.
+    pub slide: Option<Slide>,
+}
+
+/// A slider's rail and thumb. `held` (0 to 1) is how much the pointer holds the thumb.
+fn paint_slider(
+    painter: &Painter,
+    (x0, x1): (f32, f32),
+    (x, y): (f32, f32),
+    ink: Color32,
+    held: f32,
+    track: Track,
+) {
+    let rail =
+        |height: f32| Rect::from_min_max(pos2(x0, y - height * 0.5), pos2(x1, y + height * 0.5));
+    let mut core = ink;
+    match track {
+        Track::Plain => {
+            let height = size::SLIDER_RAIL;
+            paint_capsule(painter, rail(height), fade(ink, 0.34));
+            let filled = Rect::from_min_max(pos2(x0, y - height * 0.5), pos2(x, y + height * 0.5));
+            paint_capsule(painter, filled, fade(ink, 0.92));
+        }
+        Track::Hue(degrees) => {
+            let stops = |t: f32| {
+                let c = crate::ui::lightbar::from_hsv(t * f32::from(degrees), 1.0, 1.0);
+                Color32::from_rgb(c[0], c[1], c[2])
+            };
+            paint_gradient(painter, rail(size::SLIDER_RAIL_COLOUR), &stops);
+            let t = ((x - x0) / (x1 - x0)).clamp(0.0, 1.0);
+            core = stops(t);
+        }
+        Track::Ramp(rgb) => {
+            let top = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+            let stops = |t: f32| mix(Color32::BLACK, top, t);
+            paint_gradient(painter, rail(size::SLIDER_RAIL_COLOUR), &stops);
+            let t = ((x - x0) / (x1 - x0)).clamp(0.0, 1.0);
+            core = stops(t);
+        }
+    }
+    let thumb = pos2(x, y);
+    let radius = size::SLIDER_THUMB;
+    painter.circle_filled(thumb, radius + 5.0 * held, fade(ink, 0.16 * held));
+    painter.circle_filled(thumb + vec2(0.0, 1.0), radius + 0.5, black(0.35));
+    painter.circle_filled(thumb, radius, ink);
+    if !matches!(track, Track::Plain) {
+        painter.circle_filled(thumb, radius - 3.5, core);
+    }
+}
+
+/// A horizontal gradient: `colour_at(0)` at the left of `rect` to `colour_at(1)` at the right,
+/// with round ends.
+fn paint_gradient(painter: &Painter, rect: Rect, colour_at: &dyn Fn(f32) -> Color32) {
+    const SEGMENTS: usize = 36;
+    let mut mesh = egui::Mesh::default();
+    for i in 0..=SEGMENTS {
+        let t = i as f32 / SEGMENTS as f32;
+        let x = lerp(rect.min.x, rect.max.x, t);
+        let colour = colour_at(t);
+        mesh.colored_vertex(pos2(x, rect.min.y), colour);
+        mesh.colored_vertex(pos2(x, rect.max.y), colour);
+        if i > 0 {
+            let base = (i * 2) as u32;
+            mesh.add_triangle(base - 2, base - 1, base);
+            mesh.add_triangle(base - 1, base + 1, base);
+        }
+    }
+    painter.add(egui::Shape::mesh(mesh));
+    let end = rect.height() * 0.5;
+    painter.circle_filled(pos2(rect.min.x, rect.center().y), end, colour_at(0.0));
+    painter.circle_filled(pos2(rect.max.x, rect.center().y), end, colour_at(1.0));
 }
 
 /// The buttons at a row's end: 32 dp high, 12 dp apart, their text 14 dp in from the edge.
@@ -535,6 +652,9 @@ impl<'a> PanelRow<'a> {
             focused: false,
             destructive: false,
             warning: false,
+            live: false,
+            body: false,
+            step: false,
             pad_glyph: None,
             force: None,
             attached: false,
@@ -589,13 +709,68 @@ impl<'a> PanelRow<'a> {
         self.destructive = destructive;
         self
     }
+    pub fn live(mut self, live: bool) -> Self {
+        self.live = live;
+        self
+    }
     pub fn warning(mut self, warning: bool) -> Self {
         self.warning = warning;
         self
     }
+    pub fn body(mut self, body: bool) -> Self {
+        self.body = body;
+        self
+    }
+    pub fn step(mut self, step: bool) -> Self {
+        self.step = step;
+        self
+    }
 
     fn focusable(&self) -> bool {
-        !matches!(self.control, RowControl::Info { .. } | RowControl::Caption)
+        !matches!(
+            self.control,
+            RowControl::Info { .. }
+                | RowControl::Caption
+                | RowControl::Qr { .. }
+                | RowControl::Link { .. }
+        )
+    }
+
+    /// A QR code: the white card at the text edge of the panel, the detail beside it. No row
+    /// surface: it is a picture on the panel, like a note is text on it.
+    fn show_qr(self, ui: &mut Ui, data: &str) -> RowOutput {
+        let painter = ui.painter().clone();
+        let width = ui.available_width();
+        let side = size::QR_CARD;
+        let space = (6.0, 6.0);
+        let (rect, response) =
+            ui.allocate_exact_size(vec2(width, space.0 + side + space.1), Sense::hover());
+        response.widget_info(|| self.widget_info());
+        if ui.is_rect_visible(rect) {
+            let card = Rect::from_min_size(
+                pos2(rect.min.x + size::ROW_PADDING_X, rect.min.y + space.0),
+                Vec2::splat(side),
+            );
+            paint_qr(&painter, card, data);
+            if let Some(detail) = self.detail {
+                let left = card.max.x + QR_HINT_GAP;
+                let wrap = (rect.max.x - size::ROW_PADDING_X - left).min(QR_HINT_WIDTH);
+                if wrap > 0.0 {
+                    let galley = text::layout(&painter, ty::NOTE, detail, color::text_note(), wrap);
+                    let top = card.center().y - galley.size().y * 0.5;
+                    painter.galley(pos2(left, top), galley, color::text_note());
+                }
+            }
+        }
+        RowOutput {
+            response,
+            step: None,
+            toggled: false,
+            text_changed: false,
+            submitted: false,
+            pressed: None,
+            slide: None,
+        }
     }
 
     /// Notes and captions: bare text on the panel, no card, as high as their text needs.
@@ -606,6 +781,8 @@ impl<'a> PanelRow<'a> {
         let inner = width - 2.0 * size::ROW_PADDING_X;
         let (style, quiet, space) = if caption {
             (ty::SECTION_CAPTION, color::text_caption(), (14.0, 6.0))
+        } else if self.body {
+            (ty::BODY, color::text(), (8.0, 8.0))
         } else {
             (
                 ty::NOTE,
@@ -616,13 +793,39 @@ impl<'a> PanelRow<'a> {
         // A warning note has the ink of the warning line under Play on the home screen.
         let ink = if self.warning && !caption {
             color::warning_text()
+        } else if self.step && !caption {
+            color::text_detail()
         } else {
             quiet
         };
-        let galley = text::layout(&painter, style, self.title, ink, inner);
+        let galley = if self.body {
+            // What the page is about reads with room between the lines.
+            text::layout_font(
+                &painter,
+                style.font(),
+                style.px() * 1.45,
+                style.tracking,
+                self.title,
+                ink,
+                inner,
+            )
+        } else {
+            text::layout(&painter, style, self.title, ink, inner)
+        };
         let height = space.0 + galley.size().y + space.1;
         let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
-        response.widget_info(|| self.widget_info());
+        if self.live && !self.title.is_empty() {
+            // A node of its own per message, like a toast: it appears when the words change, and a
+            // screen reader says it once.
+            ui.interact(
+                rect,
+                ui.scope_id().with(("live-row", self.title)),
+                Sense::hover(),
+            )
+            .widget_info(|| WidgetInfo::labeled(Role::Status, true, self.title));
+        } else {
+            response.widget_info(|| self.widget_info());
+        }
         if ui.is_rect_visible(rect) {
             painter.galley(
                 pos2(rect.min.x + size::ROW_PADDING_X, rect.min.y + space.0),
@@ -637,6 +840,7 @@ impl<'a> PanelRow<'a> {
             text_changed: false,
             submitted: false,
             pressed: None,
+            slide: None,
         }
     }
 
@@ -663,6 +867,15 @@ impl<'a> PanelRow<'a> {
                 info.current_text_value = Some((*value).to_owned());
                 info
             }
+            RowControl::Slider {
+                value, fraction, ..
+            } => {
+                // The value as a percentage of the range for the numeric value, as shown for the text.
+                let mut info =
+                    WidgetInfo::slider(true, f64::from((*fraction * 100.0).round()), self.title);
+                info.current_text_value = Some((*value).to_owned());
+                info
+            }
             RowControl::Keys {
                 caps,
                 capturing,
@@ -686,6 +899,14 @@ impl<'a> PanelRow<'a> {
                 info.current_text_value = Some(labels.join(", "));
                 info
             }
+            // A picture with its name; what it encodes is the link row under it.
+            RowControl::Qr { .. } => WidgetInfo::labeled(Role::Image, true, self.title),
+            RowControl::Link { value } => {
+                WidgetInfo::labeled(Role::Label, true, format!("{}: {value}", self.title))
+            }
+            RowControl::Pick { chosen } => {
+                WidgetInfo::selected(Role::RadioButton, true, *chosen, self.title)
+            }
             RowControl::Action | RowControl::Command | RowControl::Text { .. } => {
                 // What the row says under its title is read after its name.
                 let mut info = WidgetInfo::labeled(Role::Button, true, self.title);
@@ -699,11 +920,15 @@ impl<'a> PanelRow<'a> {
     pub fn show(mut self, ui: &mut Ui) -> RowOutput {
         let painter = ui.painter().clone();
         let ctx = ui.ctx().clone();
-        if matches!(
-            self.control,
-            RowControl::Caption | RowControl::Info { value: None }
-        ) {
+        // A note is a block of text; a note with a picture or a second line is a quiet row.
+        let plain = self.avatar.is_none() && self.detail.is_none();
+        if matches!(self.control, RowControl::Caption)
+            || (plain && matches!(self.control, RowControl::Info { value: None }))
+        {
             return self.show_text_block(ui);
+        }
+        if let RowControl::Qr { data } = self.control {
+            return self.show_qr(ui, data);
         }
         let focusable = self.focusable();
         let width = ui.available_width();
@@ -780,12 +1005,25 @@ impl<'a> PanelRow<'a> {
         };
         let (rect, response) = ui.allocate_exact_size(vec2(width, height), sense);
         response.widget_info(|| self.widget_info());
+        if matches!(self.control, RowControl::Slider { .. }) {
+            // The range a screen reader gives the value: a percentage.
+            ctx.accesskit_node_builder(response.id, |node| {
+                node.set_min_numeric_value(0.0);
+                node.set_max_numeric_value(100.0);
+            });
+        }
         crate::ui::a11y::follow(
             &ctx,
             response.id,
             self.focused && focusable && sense == Sense::click(),
         );
-        let hovered = focusable && (input::hovered(&ctx, &response) || self.force.is_some());
+        // A row with buttons on it stays hovered while the pointer is on one of them.
+        let over = if matches!(self.control, RowControl::Buttons { .. }) {
+            input::hovered_within(&ctx, &response)
+        } else {
+            input::hovered(&ctx, &response)
+        };
+        let hovered = focusable && (over || self.force.is_some());
         if hovered {
             ctx.set_cursor_icon(CursorIcon::PointingHand);
         }
@@ -797,6 +1035,7 @@ impl<'a> PanelRow<'a> {
             text_changed: false,
             submitted: false,
             pressed: None,
+            slide: None,
         };
         if !ui.is_rect_visible(rect) {
             return out;
@@ -835,7 +1074,7 @@ impl<'a> PanelRow<'a> {
             size::FOCUS_RING,
         );
 
-        let fg = Color32::WHITE;
+        let fg = crate::ui::theme::color::text();
         let dim = |factor: f32| fade(fg, factor);
         if self.wide && matches!(self.control, RowControl::Text { .. }) {
             // A field that fills the row would pass for one more row: its outline says it takes text.
@@ -881,6 +1120,24 @@ impl<'a> PanelRow<'a> {
             x += icon_block;
         }
         let top = rect.center().y - text_height * 0.5;
+        // A line that ends in an ellipsis shows its words in full while the pointer or the focus
+        // is on the row.
+        let cut = title_galley.elided || detail_galley.as_ref().is_some_and(|d| d.elided);
+        if cut {
+            let said = match self.detail {
+                Some(detail) => format!("{}\n{detail}", self.title),
+                None => self.title.to_owned(),
+            };
+            crate::ui::reveal::full_text(
+                &ctx,
+                out.response.id,
+                rect,
+                &said,
+                input::hovered(&ctx, &out.response)
+                    || (self.focused && focusable && input::focus_visible(&ctx)),
+                true,
+            );
+        }
         let title_color = if destructive {
             color::destructive_text()
         } else if warning {
@@ -935,8 +1192,10 @@ impl<'a> PanelRow<'a> {
                 chevron * 2.0 + w + 24.0
             }
             RowControl::Stepper { .. } => chevron * 2.0 + size::STEPPER_VALUE_WIDTH + 24.0,
+            RowControl::Slider { .. } => size::SLIDER_TRACK_WIDTH + 12.0 + size::SLIDER_VALUE_WIDTH,
             RowControl::Toggle { .. } => size::SWITCH.0,
             RowControl::Action => 14.0,
+            RowControl::Pick { .. } => CHOICE_CHECK,
             RowControl::Caption | RowControl::Command => 0.0,
             RowControl::Buttons { labels, .. } => {
                 labels
@@ -949,6 +1208,26 @@ impl<'a> PanelRow<'a> {
             RowControl::Info { value } => value.map_or(0.0, |v| {
                 text::width(painter, ty::ROW_INFO, v).min(row_width * 0.4)
             }),
+            // The address takes what the title leaves, the title kept whole on one line.
+            RowControl::Link { value } => {
+                let icon = if self.icon.is_some() {
+                    size::ROW_ICON_BOX + 14.0
+                } else {
+                    0.0
+                };
+                let title = text::width(painter, ty::ROW_TITLE, self.title);
+                let room = row_width - 2.0 * size::ROW_PADDING_X - icon - title - 24.0;
+                let natural = painter
+                    .layout_no_wrap(
+                        (*value).to_owned(),
+                        theme::font_mono(size::LINK_MONO),
+                        Color32::WHITE,
+                    )
+                    .size()
+                    .x;
+                natural.min(room.max(80.0))
+            }
+            RowControl::Qr { .. } => size::QR_CARD,
             RowControl::Text { .. } if self.wide => {
                 // The field takes the whole row; the title is its hint while it is empty.
                 let icon = if self.icon.is_some() || self.pad_glyph.is_some() {
@@ -1149,6 +1428,63 @@ impl<'a> PanelRow<'a> {
                 );
                 out.step = a.or(b);
             }
+            RowControl::Slider {
+                value,
+                fraction,
+                track,
+            } => {
+                let (fraction, track) = (*fraction, *track);
+                let value_cell = Rect::from_min_max(
+                    pos2(rect.max.x - size::SLIDER_VALUE_WIDTH, rect.min.y),
+                    rect.max,
+                );
+                text::paint_tabular_aligned(
+                    &painter,
+                    value_cell,
+                    Align::Max,
+                    ty::CHOICE_VALUE,
+                    value,
+                    fg,
+                );
+                // The whole height of the row is the grip, so the target is far over 44 dp.
+                let area = Rect::from_min_max(rect.min, pos2(value_cell.min.x - 12.0, rect.max.y));
+                let grip = ui.interact(area, row_id.with("slider"), Sense::click_and_drag());
+                let radius = size::SLIDER_THUMB;
+                let (x0, x1) = (area.min.x + radius, area.max.x - radius);
+                let down = grip.is_pointer_button_down_on();
+                if down && let Some(at) = grip.interact_pointer_pos() {
+                    out.slide = Some(Slide::To(((at.x - x0) / (x1 - x0)).clamp(0.0, 1.0)));
+                }
+                if self.focused {
+                    let (up, lower) = ctx.input(|i| {
+                        (
+                            i.key_pressed(egui::Key::PageUp),
+                            i.key_pressed(egui::Key::PageDown),
+                        )
+                    });
+                    if up {
+                        out.slide = Some(Slide::Page(1));
+                    } else if lower {
+                        out.slide = Some(Slide::Page(-1));
+                    }
+                }
+                if down {
+                    ctx.set_cursor_icon(CursorIcon::Grabbing);
+                } else if input::hovered(ctx, &grip) {
+                    ctx.set_cursor_icon(CursorIcon::Grab);
+                }
+                // The thumb follows the value in a tenth of a second, so a step of the arrows or
+                // the pad slides instead of jumping and the drag keeps up with the pointer.
+                let shown = ctx.animate_to((row_id, "slider-at"), fraction, Motion::Press);
+                let held = ctx.animate_to(
+                    (row_id, "slider-held"),
+                    f32::from(down || self.force == Some(Force::Press)),
+                    Motion::Press,
+                );
+                let x = lerp(x0, x1, shown.clamp(0.0, 1.0));
+                let y = rect.center().y;
+                paint_slider(&painter, (x0, x1), (x, y), fg, held, track);
+            }
             RowControl::Toggle { on, accent } => {
                 let switch_rect = Rect::from_center_size(
                     pos2(rect.max.x - size::SWITCH.0 * 0.5, rect.center().y),
@@ -1208,6 +1544,19 @@ impl<'a> PanelRow<'a> {
                     }
                 }
             }
+            RowControl::Pick { chosen } => {
+                // The check shows the choice by shape, not by tone alone.
+                if *chosen {
+                    let icon = Icon::CHECK_CIRCLE;
+                    painter.text(
+                        pos2(rect.max.x - CHOICE_CHECK * 0.5, rect.center().y),
+                        Align2::CENTER_CENTER,
+                        icon.glyph(),
+                        icon.font(CHOICE_CHECK, true),
+                        color::text(),
+                    );
+                }
+            }
             RowControl::Action => {
                 painter.text(
                     pos2(rect.max.x - 7.0, rect.center().y),
@@ -1230,6 +1579,19 @@ impl<'a> PanelRow<'a> {
                     );
                 }
             }
+            RowControl::Link { value } => {
+                let font = theme::font_mono(size::LINK_MONO);
+                let shown = text::middle_truncate_font(&painter, &font, value, rect.width());
+                painter.text(
+                    pos2(rect.max.x, rect.center().y),
+                    Align2::RIGHT_CENTER,
+                    shown,
+                    font,
+                    color::text_path(),
+                );
+            }
+            // Drawn by `show_qr`.
+            RowControl::Qr { .. } => {}
             RowControl::Text { value } => {
                 let field = Rect::from_center_size(rect.center(), vec2(rect.width(), 30.0));
                 let (align, layout) = if wide {
@@ -1237,6 +1599,14 @@ impl<'a> PanelRow<'a> {
                 } else {
                     (Align2::RIGHT_CENTER, Layout::right_to_left(Align::Center))
                 };
+                // What the on-screen keyboard typed into this row since the last frame.
+                let edit_id = row_id.with("text-edit");
+                let keyboard = crate::ui::osk::take_output(ctx, edit_id);
+                if let Some((typed, _)) = &keyboard {
+                    value.clear();
+                    value.push_str(typed);
+                }
+                let typed_now = value.to_string();
                 let edit = TextEdit::singleline(*value)
                     .font(ty::CHOICE_VALUE.font())
                     .hint_text(
@@ -1252,17 +1622,25 @@ impl<'a> PanelRow<'a> {
                 // The hint takes the row's ink, a little dimmer, on the light focused row too.
                 child.visuals_mut().weak_text_color = Some(fade(fg, 0.62));
                 // A keyboard or pad "select" on the row asks for the caret (see `screens::rows`).
-                let edit_id = row_id.with("text-edit");
                 let want_focus = ctx
                     .data_mut(|d| d.remove_temp::<bool>(Id::unique("panel-text-focus")))
                     .unwrap_or(false);
-                if want_focus {
+                // A pad (or Gaming Mode) has no keys: the on-screen keyboard opens instead of
+                // the caret.
+                let keyboard_wanted = crate::ui::osk::wanted(ctx);
+                if want_focus && keyboard_wanted {
+                    crate::ui::osk::open(ctx, edit_id, title, &typed_now);
+                } else if want_focus {
                     ctx.memory_mut(|m| m.request_focus(edit_id));
                 }
                 let response = child.add(edit.id(edit_id));
-                out.text_changed = response.changed();
-                out.submitted =
-                    response.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter));
+                if keyboard_wanted && response.gained_focus() {
+                    ctx.memory_mut(|m| m.surrender_focus(edit_id));
+                    crate::ui::osk::open(ctx, edit_id, title, &typed_now);
+                }
+                out.text_changed = response.changed() || keyboard.is_some();
+                out.submitted = keyboard.is_some_and(|(_, done)| done)
+                    || (response.lost_focus() && ctx.input(|i| i.key_pressed(egui::Key::Enter)));
             }
             RowControl::Keys {
                 caps,
@@ -1306,6 +1684,74 @@ impl<'a> PanelRow<'a> {
     }
 }
 
+/// The hint beside a QR code: 24 dp from the card, at most a note's comfortable measure.
+const QR_HINT_GAP: f32 = 24.0;
+const QR_HINT_WIDTH: f32 = 340.0;
+
+/// The modules of `data` as a QR code (error correction M), or `None` when it is too long for
+/// one. Kept between frames: the link changes only with a new token.
+fn qr_modules(ctx: &Context, data: &str) -> Option<std::sync::Arc<(usize, Vec<bool>)>> {
+    let id = Id::unique(("qr-modules", data));
+    if let Some(code) = ctx.data(|d| d.get_temp::<std::sync::Arc<(usize, Vec<bool>)>>(id)) {
+        return Some(code);
+    }
+    let code = qrcodegen::QrCode::encode_text(data, qrcodegen::QrCodeEcc::Medium).ok()?;
+    let n = code.size() as usize;
+    let mut modules = Vec::with_capacity(n * n);
+    for y in 0..n as i32 {
+        for x in 0..n as i32 {
+            modules.push(code.get_module(x, y));
+        }
+    }
+    let code = std::sync::Arc::new((n, modules));
+    ctx.data_mut(|d| d.insert_temp(id, code.clone()));
+    Some(code)
+}
+
+/// A QR code of `data` filling `card`: the white card (radius 12), then the dark modules as one
+/// mesh without feathering, each module a whole number of physical pixels and the code centred,
+/// so no module blurs into its neighbour and the quiet zone is at least four modules. Empty `data`
+/// is the card alone, in the place of a code that is not there yet.
+pub fn paint_qr(painter: &Painter, card: Rect, data: &str) {
+    painter.rect_filled(card, corner(radius::QR_CARD), color::qr_card());
+    if data.is_empty() {
+        return;
+    }
+    let Some(code) = qr_modules(painter.ctx(), data) else {
+        return;
+    };
+    let (n, modules) = (&code.0, &code.1);
+    let ppp = painter.pixels_per_point();
+    let total = (*n + 2 * size::QR_QUIET) as f32;
+    let module = ((card.width() * ppp / total).floor() / ppp).max(1.0 / ppp);
+    let drawn = module * *n as f32;
+    let snap = |v: f32| (v * ppp).round() / ppp;
+    let origin = pos2(
+        snap(card.center().x - drawn * 0.5),
+        snap(card.center().y - drawn * 0.5),
+    );
+    let mut mesh = egui::Mesh::default();
+    let dark = color::qr_module();
+    for y in 0..*n {
+        let mut x = 0;
+        while x < *n {
+            if !modules[y * n + x] {
+                x += 1;
+                continue;
+            }
+            // One quad per horizontal run of dark modules.
+            let start = x;
+            while x < *n && modules[y * n + x] {
+                x += 1;
+            }
+            let min = origin + vec2(start as f32 * module, y as f32 * module);
+            let run = Rect::from_min_size(min, vec2((x - start) as f32 * module, module));
+            mesh.add_colored_rect(run, dark);
+        }
+    }
+    painter.add(egui::Shape::mesh(mesh));
+}
+
 /// Spring-animated scroll offset that keeps the focused row centred (`scrollTo(anchor: .center)`
 /// inside `Motion.focus`). Feed the result to `ScrollArea::vertical_scroll_offset`.
 pub fn centered_scroll_offset(
@@ -1324,147 +1770,6 @@ pub fn centered_scroll_offset(
 // ---------------------------------------------------------------------------------------------
 // Panels
 // ---------------------------------------------------------------------------------------------
-
-/// Result of drawing the side panel.
-pub struct SidePanelOutput {
-    /// The dimmed area left of the panel was clicked: close the panel.
-    pub scrim_clicked: bool,
-    /// Rect of the panel contents (inside the 36 dp padding).
-    pub content: Rect,
-}
-
-/// The game-settings family of panels: slides in from the trailing edge (spring `Motion::Overlay`
-/// on `open`), dims the rest with black 0.35 and shows the title (30 light, 2 lines) and an optional
-/// subtitle (15, white 0.6). `add_contents` receives the content `Ui` below the title.
-pub fn side_panel<R>(
-    ctx: &Context,
-    id: impl std::hash::Hash + std::fmt::Debug,
-    open: bool,
-    title: &str,
-    subtitle: Option<&str>,
-    question: bool,
-    add_contents: impl FnOnce(&mut Ui) -> R,
-) -> Option<(SidePanelOutput, R)> {
-    let id = Id::unique(id);
-    let v = ctx.animate_to((id, "open"), if open { 1.0 } else { 0.0 }, Motion::Overlay);
-    if v <= 0.001 && !open {
-        return None;
-    }
-    let screen = ctx.content_rect();
-    let width = size::SIDE_PANEL_WIDTH;
-    // Reduced motion: the panel fades where it stands instead of sliding in.
-    let reduced = ctx.reduced_motion();
-    let offset = if reduced { 0.0 } else { (1.0 - v) * width };
-    let panel = Rect::from_min_max(
-        pos2(screen.max.x - width + offset, screen.min.y),
-        pos2(screen.max.x + offset, screen.max.y),
-    );
-    let mut scrim_clicked = false;
-    let mut result = None;
-    Area::new(id.with("area"))
-        .order(Order::Foreground)
-        .fixed_pos(screen.min)
-        .interactable(true)
-        .show(ctx, |ui| {
-            // The area covers the screen, so egui finds it under the pointer: the list scrolls
-            // with the wheel and nothing behind the scrim reacts.
-            ui.expand_to_include_rect(screen);
-            let painter = ui.painter().clone();
-            // Scrim over the rest of the screen.
-            let scrim = Rect::from_min_max(screen.min, pos2(panel.min.x, screen.max.y));
-            painter.rect_filled(
-                screen,
-                0.0,
-                fade(color::scrim_side_panel(), v.clamp(0.0, 1.0)),
-            );
-            let scrim_response = ui.interact(scrim, id.with("scrim"), Sense::click());
-            scrim_clicked = scrim_response.clicked();
-            let mut glass = GlassStyle::side_panel();
-            if reduced {
-                glass.alpha = v.clamp(0.0, 1.0);
-            }
-            paint_glass(ctx, &painter, panel, glass);
-            let edge = Rect::from_min_size(
-                panel.min,
-                vec2(components::hairline_width(&painter), panel.height()),
-            );
-            painter.rect_filled(
-                components::snap_rect(&painter, edge),
-                0.0,
-                color::hairline_panel_edge(),
-            );
-            let pad = size::SIDE_PANEL_PADDING;
-            let inner = panel.shrink(pad);
-            let mut child = ui.new_child(
-                UiBuilder::new()
-                    .max_rect(inner)
-                    .layout(Layout::top_down(Align::Min)),
-            );
-            if reduced {
-                child.set_opacity(v.clamp(0.0, 1.0));
-            }
-            let title_galley = text::layout(
-                &painter,
-                ty::SIDE_PANEL_TITLE,
-                title,
-                Color32::WHITE,
-                inner.width(),
-            );
-            child.add_space(0.0);
-            let title_h = title_galley.size().y;
-            let top = child.cursor().min.y;
-            // Title and subtitle start on the edge of the row cards below them.
-            let edge = inner.min.x + size::LIST_INSET;
-            let ink = if reduced {
-                fade(Color32::WHITE, v)
-            } else {
-                Color32::WHITE
-            };
-            painter.galley(pos2(edge, top), title_galley, ink);
-            child.add_space(title_h + 8.0);
-            if let Some(subtitle) = subtitle {
-                let top = child.cursor().min.y;
-                // Wraps (the confirmation sentence is long, and longer in Turkish).
-                // A confirmation's question is what the player decides on: body size and ink, with
-                // room between the lines. Any other subtitle is a quiet line.
-                let (style, ink, leading) = if question {
-                    (ty::QUESTION, color::text_label(), 1.45)
-                } else {
-                    (
-                        theme::TextStyle::new(15.0, theme::Weight::Regular),
-                        color::text_detail(),
-                        1.2,
-                    )
-                };
-                let galley = text::layout_font_pretty(
-                    &painter,
-                    style.font(),
-                    style.size * leading,
-                    style.tracking,
-                    subtitle,
-                    ink,
-                    inner.width(),
-                );
-                let height = galley.size().y;
-                let shown = if reduced { fade(ink, v) } else { ink };
-                painter.galley(pos2(edge, top), galley, shown);
-                child.add_space(height + 8.0);
-            }
-            child.add_space(18.0);
-            let content = child.available_rect_before_wrap();
-            result = Some((
-                SidePanelOutput {
-                    scrim_clicked: false,
-                    content,
-                },
-                add_contents(&mut child),
-            ));
-        });
-    result.map(|(mut output, r)| {
-        output.scrim_clicked = scrim_clicked;
-        (output, r)
-    })
-}
 
 /// Full-screen overlay panels (settings, library, trophies, log): glass plus black, opacity and
 /// scale 1.03 -> 1 on `Motion::Overlay`. Returns the animated openness; draw contents with `add`.
@@ -1487,7 +1792,7 @@ pub fn fullscreen_panel<R>(
         .fixed_pos(screen.min)
         .interactable(true)
         .show(ctx, |ui| {
-            // Covers the screen so the panel's lists get the wheel (see the side panel).
+            // Covers the screen so the panel's lists get the wheel (see the game panels' frame).
             ui.expand_to_include_rect(screen);
             let painter = ui.painter().clone();
             let faded = GlassStyle {
@@ -1511,49 +1816,150 @@ pub fn fullscreen_panel<R>(
     result
 }
 
-/// The toast: a glass pill at the top centre. `v` is the openness from `Motion::Overlay`
-/// (spring in/out, offset -(1 - v) * 80); the caller keeps it up for 3.2 s.
+/// Toast geometry: text rows of a routine toast and of one that stays (it shows the longest message
+/// the launcher writes), the glyph, the widest pill, what the top bar keeps free on each side of the
+/// centre (its buttons are 430 wide, plus 12 of air), the slide of the entrance, the Close button's
+/// inset (concentric with the pill) and the leading from three rows on.
+const TOAST_ROWS: usize = 3;
+const TOAST_STAYING_ROWS: usize = 8;
+const TOAST_GLYPH: f32 = 17.0;
+/// The side of a game's icon in a toast: it sits on the glyph's place and reaches a little past it.
+const TOAST_ART: f32 = 32.0;
+const TOAST_MAX_WIDTH: f32 = 760.0;
+const TOAST_BAR_RESERVE: f32 = 442.0;
+const TOAST_TRAVEL: f32 = 80.0;
+const TOAST_CLOSE_INSET: f32 = space::M;
+const TOAST_LONG_LEADING: f32 = 1.4;
+
+/// The toast: a glass pill at the top centre. `v` is the openness from `Motion::Overlay`; the
+/// caller keeps a routine toast up for 3.2 s. A toast that stays until dismissed (a failure) gets
+/// `close`, the word of its Close button and of the Back hint beside it; the result says the
+/// button was pressed; `live` is false while the toast leaves, when the button does nothing.
+/// It never grows into the top bar's buttons and shows its whole message.
 pub fn toast(
     ctx: &Context,
     id: impl std::hash::Hash + std::fmt::Debug,
     icon: Icon,
     message: &str,
+    close: Option<&str>,
+    live: bool,
     v: f32,
-) {
+) -> bool {
+    toast_with_action(ctx, id, icon, message, close, None, live, v).0
+}
+
+/// A toast with one action beside Close ("Send Report" on a crash). With a pad or keys in use the
+/// action shows as a hint (Options); with the mouse it is a button. Returns whether Close and
+/// whether the action was pressed.
+#[allow(clippy::too_many_arguments)]
+pub fn toast_with_action(
+    ctx: &Context,
+    id: impl std::hash::Hash + std::fmt::Debug,
+    icon: Icon,
+    message: &str,
+    close: Option<&str>,
+    action: Option<&str>,
+    live: bool,
+    v: f32,
+) -> (bool, bool) {
+    const ROWS: usize = TOAST_ROWS;
+    const STAYING_ROWS: usize = TOAST_STAYING_ROWS;
+    const GLYPH: f32 = TOAST_GLYPH;
+    const PAD_X: f32 = space::XL;
+    const PAD_Y: f32 = space::M;
+    const GAP: f32 = space::M;
+    const CLOSE_INSET: f32 = TOAST_CLOSE_INSET;
     if v <= 0.001 {
-        return;
+        return (false, false);
     }
+    let mut pressed = false;
+    let mut acted = false;
     let screen = ctx.content_rect();
+    // A toast about a game shows the game's icon in place of the glyph (the app sets it).
+    let art = ctx
+        .data(|d| d.get_temp::<Option<TileImage>>(Id::unique("toast-art")))
+        .flatten();
     Area::new(Id::unique(id))
         .order(Order::Tooltip)
         .fixed_pos(screen.min)
-        .interactable(false)
+        .interactable(close.is_some())
         .show(ctx, |ui| {
             let painter = ui.painter().clone();
-            let max_text = (screen.width() * 0.6).min(760.0);
-            let galley = {
-                let mut job = LayoutJob::simple(
-                    message.to_owned(),
-                    ty::TOAST.font(),
-                    Color32::PLACEHOLDER,
-                    max_text,
-                );
-                job.wrap.max_rows = 2;
-                job.sections[0].format.line_height = Some(ty::TOAST.line_height());
-                painter.layout_job(job)
+            let size_close = ControlSize::Small.height();
+            // What follows the text: a Back hint (for keys and the pad) and the Close button, or
+            // the same padding as at the start.
+            let hint = close
+                .filter(|_| input::focus_visible(ctx))
+                .map(|label| Hint {
+                    action: HintAction::Back,
+                    label,
+                });
+            let hint_w = hint
+                .as_ref()
+                .map_or(0.0, |h| h.width(&painter, input::device(ctx)) + GAP);
+            // The action: a hint for keys and the pad, a button for the mouse.
+            let action_hint = action
+                .filter(|_| input::focus_visible(ctx))
+                .map(|label| Hint {
+                    action: HintAction::Options,
+                    label,
+                });
+            let action_w = match (action, &action_hint) {
+                (None, _) => 0.0,
+                (Some(_), Some(hint)) => hint.width(&painter, input::device(ctx)) + GAP,
+                (Some(label), None) => {
+                    ConsoleButton::new(label)
+                        .size(ControlSize::Small)
+                        .width(&painter)
+                        + GAP
+                }
             };
-            let glyph = 17.0;
-            let (pad_x, pad_y, gap) = (22.0, 14.0, 10.0);
-            let w = pad_x * 2.0 + glyph + gap + galley.size().x;
-            let h = (pad_y * 2.0 + galley.size().y).max(radius::TOAST * 2.0);
-            let travel = if ctx.reduced_motion() { 0.0 } else { 80.0 };
+            let tail = if close.is_some() {
+                action_w + hint_w + GAP + size_close + CLOSE_INSET
+            } else {
+                PAD_X
+            };
+            let max_width =
+                (screen.width() - 2.0 * TOAST_BAR_RESERVE).clamp(320.0, TOAST_MAX_WIDTH);
+            let max_text = max_width - PAD_X - GLYPH - GAP - tail;
+            let galley = {
+                let layout = |line_height: f32| {
+                    let mut job = LayoutJob::simple(
+                        message.to_owned(),
+                        ty::TOAST.font(),
+                        Color32::PLACEHOLDER,
+                        max_text,
+                    );
+                    job.wrap.max_rows = if close.is_some() { STAYING_ROWS } else { ROWS };
+                    job.sections[0].format.line_height = Some(line_height);
+                    painter.layout_job(job)
+                };
+                let one_line = layout(ty::TOAST.line_height());
+                // Three rows or more read at the open leading of running text.
+                if one_line.rows.len() >= 3 {
+                    layout(ty::TOAST.px() * TOAST_LONG_LEADING)
+                } else {
+                    one_line
+                }
+            };
+            let w = PAD_X + GLYPH + GAP + galley.size().x + tail;
+            let h = (PAD_Y * 2.0 + galley.size().y).max(radius::TOAST * 2.0);
+            let travel = if ctx.reduced_motion() {
+                0.0
+            } else {
+                TOAST_TRAVEL
+            };
             let top = size::TOAST_TOP - (1.0 - v) * travel;
             let rect = Rect::from_min_size(
                 pos2(screen.center().x - w * 0.5, screen.min.y + top),
                 vec2(w, h),
             );
             let a = v.clamp(0.0, 1.0);
-            let status = ui.interact(rect, Id::unique(("toast-status", message)), Sense::hover());
+            let status = ui.interact(
+                rect,
+                ui.scope_id().with(("toast-status", message)),
+                Sense::hover(),
+            );
             status.widget_info(|| WidgetInfo::labeled(Role::Status, true, message));
             paint_shadow(
                 &painter,
@@ -1568,22 +1974,104 @@ pub fn toast(
             let mut style = GlassStyle::toast();
             style.black *= a;
             paint_glass(ctx, &painter, rect, style);
-            painter.text(
-                pos2(rect.min.x + pad_x + glyph * 0.5, rect.center().y),
-                Align2::CENTER_CENTER,
-                icon.glyph(),
-                icon.font(glyph, true),
-                fade(Color32::WHITE, a),
-            );
+            let glyph_centre = pos2(rect.min.x + PAD_X + GLYPH * 0.5, rect.center().y);
+            if let Some(image) = art {
+                let mut tile = TileStyle::new(color::text());
+                tile.image = Some(image);
+                tile.opacity = a;
+                paint_tile(
+                    &painter,
+                    Rect::from_center_size(glyph_centre, vec2(TOAST_ART, TOAST_ART)),
+                    &tile,
+                );
+            } else {
+                painter.text(
+                    glyph_centre,
+                    Align2::CENTER_CENTER,
+                    icon.glyph(),
+                    icon.font(GLYPH, true),
+                    fade(color::text(), a),
+                );
+            }
+            let text_x = rect.min.x + PAD_X + GLYPH + GAP;
             painter.galley(
-                pos2(
-                    rect.min.x + pad_x + glyph + gap,
-                    rect.center().y - galley.size().y * 0.5,
-                ),
+                pos2(text_x, rect.center().y - galley.size().y * 0.5),
                 galley,
-                fade(Color32::WHITE, a),
+                fade(color::text(), a),
             );
+            if let Some(word) = close {
+                let button = Rect::from_center_size(
+                    pos2(rect.max.x - CLOSE_INSET - size_close * 0.5, rect.center().y),
+                    vec2(size_close, size_close),
+                );
+                let mut child = ui.new_child(
+                    UiBuilder::new()
+                        .max_rect(button)
+                        .layout(Layout::top_down(Align::Center)),
+                );
+                child.set_opacity(a);
+                // The status node above carries the message; the button is named by its word.
+                pressed = live
+                    && ConsoleButton::icon_only(Icon::X, word)
+                        .size(ControlSize::Small)
+                        .show(&mut child)
+                        .clicked();
+                if let Some(label) = action {
+                    let right = button.min.x - hint_w - GAP;
+                    if let Some(hint) = action_hint {
+                        let w = hint.width(&painter, input::device(ctx));
+                        let at = Rect::from_min_size(
+                            pos2(right - w, rect.center().y - size::HINT_CAP * 0.5),
+                            vec2(w, size::HINT_CAP),
+                        );
+                        let mut hint_ui = ui.new_child(
+                            UiBuilder::new()
+                                .max_rect(at)
+                                .layout(Layout::left_to_right(Align::Center)),
+                        );
+                        hint_ui.set_opacity(a);
+                        hint.show(&mut hint_ui);
+                        // The pad and the keys reach it through Options; no focus stop here.
+                    } else {
+                        let w = ConsoleButton::new(label)
+                            .size(ControlSize::Small)
+                            .width(&painter);
+                        let at = Rect::from_center_size(
+                            pos2(right - w * 0.5, rect.center().y),
+                            vec2(w, size_close),
+                        );
+                        let mut child = ui.new_child(
+                            UiBuilder::new()
+                                .max_rect(at)
+                                .layout(Layout::top_down(Align::Center)),
+                        );
+                        child.set_opacity(a);
+                        acted = live
+                            && ConsoleButton::new(label)
+                                .size(ControlSize::Small)
+                                .show(&mut child)
+                                .clicked();
+                    }
+                }
+                if let Some(hint) = hint {
+                    let at = Rect::from_min_size(
+                        pos2(
+                            button.min.x - GAP - (hint_w - GAP),
+                            rect.center().y - size::HINT_CAP * 0.5,
+                        ),
+                        vec2(hint_w - GAP, size::HINT_CAP),
+                    );
+                    let mut hint_ui = ui.new_child(
+                        UiBuilder::new()
+                            .max_rect(at)
+                            .layout(Layout::left_to_right(Align::Center)),
+                    );
+                    hint_ui.set_opacity(a);
+                    hint.show(&mut hint_ui);
+                }
+            }
         });
+    (pressed, acted)
 }
 
 /// A frosted card with a hairline, used by onboarding and diagnosis boxes: glass at `rect`.
@@ -1591,67 +2079,69 @@ pub fn glass_card(ctx: &Context, painter: &Painter, rect: Rect, style: GlassStyl
     paint_glass(ctx, painter, rect, style);
 }
 
-/// Language card of the onboarding (280 x 150, radius 20): `TR` / `EN` tag over the name.
-pub fn language_card(
+/// A card the player chooses among (the first start's languages and confirm buttons): a tinted
+/// surface with a hairline, `size` wide and tall. The chosen one is brighter and carries a check,
+/// so the choice never rests on tone alone; the ring shows only for keys and the pad. `active`
+/// false draws it without taking presses. Returns the response, the painted rectangle and how
+/// chosen it is (0..=1).
+pub fn choice_card(
     ui: &mut Ui,
-    language: Language,
+    size: Vec2,
+    chosen: bool,
     focused: bool,
-    force: Option<Force>,
-) -> Response {
-    let it = components::interact(
-        ui,
-        vec2(size::LANGUAGE_CARD.0, size::LANGUAGE_CARD.1),
-        focused,
-        true,
-        force,
-    );
-    let name = language.display_name();
+    active: bool,
+    name: &str,
+) -> (Response, Rect, f32) {
+    let it = components::interact(ui, size, focused && active, active, None);
     it.response
-        .widget_info(|| WidgetInfo::labeled(Role::Button, true, name));
-    if !ui.is_rect_visible(it.rect) {
-        return it.response;
-    }
+        .widget_info(|| WidgetInfo::selected(Role::RadioButton, true, chosen, name));
     let painter = ui.painter();
-    let s = 1.0;
-    let rect = it.painted(painter);
-    let r = radius::LANGUAGE_CARD;
+    let painted = it.painted(painter);
+    let t = ui.ctx().choice_t((it.response.id, "chosen"), chosen);
+    let r = radius::LARGE;
     components::paint_surface(
         painter,
-        rect,
+        painted,
         r,
-        color::surface(),
+        mix(color::surface_row(), color::surface_hover(), t),
         it.hover,
         it.focus,
         it.press,
-        size::FOCUS_RING_LARGE,
+        self::size::FOCUS_RING_LARGE,
     );
-    paint_hairline(painter, rect, r, color::hairline_card());
-    let ink = Color32::WHITE;
-    let pad = 26.0 * s;
-    let tag_style = theme::TextStyle::new(15.0, theme::Weight::Bold);
-    let name_style = text::scaled(ty::LANGUAGE_NAME, s);
-    let name_h = name_style.line_height();
-    text::paint(
+    paint_hairline(
         painter,
-        pos2(rect.min.x + pad, rect.max.y - pad - name_h - 20.0 * s),
-        Align2::LEFT_TOP,
-        text::scaled(tag_style, s),
-        language.tag(),
-        fade(ink, 0.6),
+        painted,
+        r,
+        mix(color::hairline_card(), color::hairline_hover(), t),
     );
-    text::paint(
-        painter,
-        pos2(rect.min.x + pad, rect.max.y - pad),
-        Align2::LEFT_BOTTOM,
-        name_style,
-        name,
-        ink,
-    );
-    it.response
+    if t > 0.01 {
+        let icon = Icon::CHECK_CIRCLE;
+        painter.text(
+            pos2(
+                painted.max.x - space::L - CHOICE_CHECK * 0.5,
+                painted.min.y + space::L + CHOICE_CHECK * 0.5,
+            ),
+            Align2::CENTER_CENTER,
+            icon.glyph(),
+            icon.font(CHOICE_CHECK, true),
+            fade(color::text(), t),
+        );
+    }
+    (it.response, painted, t)
 }
 
-/// Capsule dots of the onboarding: current 46 x 5, others 18 x 5; white 0.95 up to the current
-/// step, else 0.22; widths animate with `Motion::Layout`.
+/// The check of a chosen card.
+const CHOICE_CHECK: f32 = 20.0;
+
+/// The width of the dots at rest: the current one 46, the others 18, a gap of 10 between.
+pub fn onboarding_dots_width(steps: usize) -> f32 {
+    let others = steps.saturating_sub(1) as f32;
+    46.0 + others * (18.0 + 10.0)
+}
+
+/// Capsule dots of the onboarding: current 46 x 5, others 18 x 5; ink up to the current step,
+/// fainter after it; widths animate with `Motion::Layout`.
 pub fn onboarding_dots(ui: &mut Ui, steps: usize, current: usize) {
     let ctx = ui.ctx().clone();
     ui.horizontal(|ui| {
@@ -1664,9 +2154,9 @@ pub fn onboarding_dots(ui: &mut Ui, steps: usize, current: usize) {
             );
             let (rect, _) = ui.allocate_exact_size(vec2(w, 5.0), Sense::hover());
             let c = if step <= current {
-                white(0.95)
+                color::text()
             } else {
-                white(0.22)
+                color::surface_focus()
             };
             paint_capsule(ui.painter(), rect, c);
         }

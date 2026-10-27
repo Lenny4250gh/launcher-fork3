@@ -3,8 +3,7 @@
 
 use anyps5_core::online::api::{
     Account, AccountId, CompareSide, Count, Feed, FeedEvent, FeedItem, Grade, Profile, ProfileLink,
-    ProfilePage, Reaction, ReactionCounts, Tally, TitlePlaytime, Trophy, TrophyCompare,
-    TrophyLevel,
+    ProfilePage, ReactionCounts, Tally, TitlePlaytime, Trophy, TrophyCompare, TrophyLevel,
 };
 use anyps5_core::online::{self, CompareEntry, Failure, Online, ProfileEntry};
 use egui::{Color32, ColorImage, Context, TextureHandle, TextureOptions};
@@ -36,30 +35,14 @@ fn who(id: u64, handle: &str) -> Account {
     }
 }
 
-fn counts(nice: u32, gg: u32, wow: u32, same: u32) -> ReactionCounts {
-    ReactionCounts {
-        nice,
-        gg,
-        wow,
-        same,
-    }
-}
-
-fn item(
-    id: u64,
-    account: Account,
-    ago: u64,
-    event: FeedEvent,
-    reactions: ReactionCounts,
-    mine: Option<Reaction>,
-) -> FeedItem {
+fn item(id: u64, account: Account, ago: u64, event: FeedEvent) -> FeedItem {
     FeedItem {
         id,
         account,
         at: NOW - ago,
         event,
-        reactions,
-        mine,
+        reactions: ReactionCounts::default(),
+        mine: None,
     }
 }
 
@@ -83,8 +66,6 @@ fn raw_items() -> Vec<FeedItem> {
                 grade: Grade::Gold,
                 rarity: Some(2.3),
             },
-            counts(3, 1, 0, 0),
-            None,
         ),
         item(
             8,
@@ -93,8 +74,6 @@ fn raw_items() -> Vec<FeedItem> {
             FeedEvent::Friend {
                 with: who(9, "Nox"),
             },
-            counts(0, 0, 1, 0),
-            Some(Reaction::Wow),
         ),
         item(
             7,
@@ -103,8 +82,6 @@ fn raw_items() -> Vec<FeedItem> {
             FeedEvent::FirstPlayed {
                 title_id: title("GAME00003"),
             },
-            counts(2, 0, 0, 0),
-            None,
         ),
         item(
             6,
@@ -113,8 +90,6 @@ fn raw_items() -> Vec<FeedItem> {
             FeedEvent::Party {
                 members: vec![who(2, "Lumen"), who(9, "Nox"), who(4, "Kit")],
             },
-            counts(0, 4, 0, 1),
-            None,
         ),
         item(
             5,
@@ -126,8 +101,6 @@ fn raw_items() -> Vec<FeedItem> {
                 grade: Grade::Platinum,
                 rarity: Some(0.6),
             },
-            counts(0, 0, 0, 0),
-            None,
         ),
         item(
             4,
@@ -136,8 +109,6 @@ fn raw_items() -> Vec<FeedItem> {
             FeedEvent::FirstPlayed {
                 title_id: title("GAME00005"),
             },
-            counts(0, 0, 0, 2),
-            None,
         ),
         item(
             10,
@@ -146,8 +117,6 @@ fn raw_items() -> Vec<FeedItem> {
             FeedEvent::Friend {
                 with: who(11, "Sol"),
             },
-            counts(0, 0, 1, 0),
-            Some(Reaction::Nice),
         ),
         item(
             11,
@@ -156,8 +125,6 @@ fn raw_items() -> Vec<FeedItem> {
             FeedEvent::FirstPlayed {
                 title_id: title("GAME00002"),
             },
-            counts(1, 0, 0, 0),
-            None,
         ),
         item(
             3,
@@ -169,8 +136,6 @@ fn raw_items() -> Vec<FeedItem> {
                 grade: Grade::Silver,
                 rarity: Some(18.4),
             },
-            counts(1, 0, 0, 0),
-            None,
         ),
     ]
 }
@@ -199,7 +164,7 @@ pub fn sample(state: &mut Online, look: OnlineLook) {
     state.avatars.insert(AccountId(2), Some(LUMEN.into()));
     state.avatars.insert(AccountId(3), Some(JUNO.into()));
     match look {
-        L::Feed | L::FeedReaction => {
+        L::Feed => {
             state.feed.merge_newest(Feed {
                 items: items(),
                 next: Some(3),

@@ -12,9 +12,9 @@ use crate::app::textures::Textures;
 use crate::ui::Shell;
 use crate::ui::input::Command;
 
-/// The overlays of the original (`Overlay` in `AppModel.swift`). Settings, library, log, trophies,
-/// the profile and the friends are full-screen panels; the others slide in as the side panel
-/// family.
+/// The overlays of the original (`Overlay` in `AppModel.swift`). Every one is a full-screen area:
+/// settings, library, log, trophies, the profile and the friends, and the panels of a game, which
+/// share one frame (`screens::side`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Overlay {
     Settings,
@@ -24,38 +24,57 @@ pub enum Overlay {
     Captures,
     Log,
     ConfirmUninstall,
-    /// The backups of a game's saves (a side panel).
+    /// The backups of a game's saves (a panel of the game frame).
     Saves,
-    /// The question before a backup is put back (a side panel).
+    /// The question before a backup is put back (a panel of the game frame).
     ConfirmRestore,
     Controls,
     Trophies,
     Advanced,
-    /// What the catalogue recommends for the game (a side panel).
+    /// What the catalogue recommends for the game (a panel of the game frame).
     Recommended,
     /// The notes of a toolkit release (a full-screen panel).
     WhatsNew,
     /// Friends, party, messages, activity and the online settings of the AnyPlay network, and
     /// signing in to it (a full-screen panel).
     Friends,
+    /// What the launcher told the player on its own, newest first (a full-screen panel).
+    Notifications,
     /// A player's profile, the player's own or another's (a full-screen panel).
     Profile,
     /// The player's trophies in a game next to another player's (a full-screen panel).
     Compare,
+    /// Players who own the selected game and look for a group (a panel of the game frame).
+    FindPlayers,
+    /// The friend picker for a screenshot or clip of Captures (a panel of the game frame).
+    SendCapture,
+    /// One game's page: art, trophies, play time, captures, friends and more (a full-screen panel).
+    GameHub,
+    /// The trophies of all games together (a full-screen panel).
+    TrophyOverview,
     /// The release a game stays on is gone: download it again or follow the global toolkit
-    /// (a side panel).
+    /// (a panel of the game frame).
     ToolkitMissing,
-    /// The quick panel of the running game, opened by the Home button (a side panel).
+    /// Search of the library page (a panel of the game frame).
+    LibrarySearch,
+    /// The room the unlocked copies take, and their removal (a panel of the game frame).
+    Storage,
+    /// The question before an unlocked copy is removed (a panel of the game frame).
+    ConfirmRemoveCopy,
+    /// The quick panel of the running game, opened by the Home button (a panel of the game frame).
     InGame,
-    /// The question before the running game is closed (a side panel).
+    /// The question before the running game is closed (a panel of the game frame).
     ConfirmCloseGame,
     /// "Update required": this version is retired, so the update comes before the online area.
     /// Offline play stays open (a full-screen panel, docs/DESIGN.md 9.5.1).
     Required,
+    /// Settings, Controllers: the pads, their tests and the launcher's own buttons (a
+    /// full-screen panel, docs/DESIGN.md 6.10).
+    Controllers,
 }
 
 impl Overlay {
-    /// Rendered as the side panel (slides in from the right, the home screen stays visible).
+    /// Rendered on the game panels' frame (a full-screen area, `screens::side`).
     pub fn is_side_panel(self) -> bool {
         matches!(
             self,
@@ -69,12 +88,24 @@ impl Overlay {
                 | Overlay::ToolkitMissing
                 | Overlay::InGame
                 | Overlay::ConfirmCloseGame
+                | Overlay::FindPlayers
+                | Overlay::SendCapture
+                | Overlay::LibrarySearch
+                | Overlay::Storage
+                | Overlay::ConfirmRemoveCopy
         )
     }
 
     /// The overlays of the online area: closed while the launcher's update is required.
     pub fn is_online(self) -> bool {
-        matches!(self, Overlay::Friends | Overlay::Profile | Overlay::Compare)
+        matches!(
+            self,
+            Overlay::Friends
+                | Overlay::Profile
+                | Overlay::Compare
+                | Overlay::FindPlayers
+                | Overlay::SendCapture
+        )
     }
 
     /// Number of categories of a two-level panel (only settings has more than one).

@@ -84,6 +84,7 @@ pub enum Key {
     BackgroundVideo,
     ChooseFile,
     GameArtwork,
+    GlassWindow,
     Motion,
     MotionFull,
     MotionReduced,
@@ -222,7 +223,7 @@ pub enum Key {
 
 impl Key {
     /// All keys in declaration order.
-    pub const ALL: [Key; 212] = [
+    pub const ALL: [Key; 213] = [
         Key::Welcome,
         Key::WelcomeSubtitle,
         Key::ChooseLanguage,
@@ -301,6 +302,7 @@ impl Key {
         Key::BackgroundVideo,
         Key::ChooseFile,
         Key::GameArtwork,
+        Key::GlassWindow,
         Key::Motion,
         Key::MotionFull,
         Key::MotionReduced,
@@ -518,6 +520,7 @@ impl Key {
             Key::BackgroundVideo => "backgroundVideo",
             Key::ChooseFile => "chooseFile",
             Key::GameArtwork => "gameArtwork",
+            Key::GlassWindow => "glassWindow",
             Key::Motion => "motion",
             Key::MotionFull => "motionFull",
             Key::MotionReduced => "motionReduced",
@@ -729,9 +732,7 @@ impl Key {
             Key::OpenLog => "Open Log",
             Key::Uninstall => "Remove Installation",
             Key::ClearShaderCache => "Clear Shader Cache",
-            Key::UninstallConfirm => {
-                "Remove the installation? Your game files stay; the game shows as locked again."
-            }
+            Key::UninstallConfirm => "Your game files stay and the game shows as locked again.",
             Key::UninstallDone => "Installation removed",
             Key::CacheCleared => "Shader cache cleared",
             Key::Appearance => "Appearance",
@@ -743,6 +744,7 @@ impl Key {
             Key::BackgroundVideo => "My Video",
             Key::ChooseFile => "Choose File",
             Key::GameArtwork => "Show the Selected Game's Artwork",
+            Key::GlassWindow => "Glass Window",
             Key::Motion => "Animations",
             Key::MotionFull => "Full",
             Key::MotionReduced => "Reduced",
@@ -838,7 +840,7 @@ impl Key {
             Key::FontsNone => "None",
             Key::FontsReset => "Remove the Fonts Folder",
             Key::FontsHint => {
-                "F12 in a game saves a screenshot. Games that ask for the console's system fonts use the files in the fonts folder."
+                "Games that ask for the console's system fonts use the files in this folder."
             }
             Key::SectionSticks => "Controller Sticks",
             Key::LeftDeadzone => "Left Stick Deadzone",
@@ -974,9 +976,7 @@ impl Key {
             Key::OpenLog => "Günlüğü Aç",
             Key::Uninstall => "Kurulumu Kaldır",
             Key::ClearShaderCache => "Shader Önbelleğini Temizle",
-            Key::UninstallConfirm => {
-                "Kurulum kaldırılsın mı? Oyun dosyaların silinmez, oyun tekrar kilitli görünür."
-            }
+            Key::UninstallConfirm => "Oyun dosyaların silinmez, oyun tekrar kilitli görünür.",
             Key::UninstallDone => "Kurulum kaldırıldı",
             Key::CacheCleared => "Shader önbelleği temizlendi",
             Key::Appearance => "Görünüm",
@@ -988,6 +988,7 @@ impl Key {
             Key::BackgroundVideo => "Kendi Videom",
             Key::ChooseFile => "Dosya Seç",
             Key::GameArtwork => "Seçili Oyunun Görselini Göster",
+            Key::GlassWindow => "Cam Pencere",
             Key::Motion => "Animasyonlar",
             Key::MotionFull => "Tam",
             Key::MotionReduced => "Azaltılmış",
@@ -1085,7 +1086,7 @@ impl Key {
             Key::FontsNone => "Seçilmedi",
             Key::FontsReset => "Font Klasörünü Kaldır",
             Key::FontsHint => {
-                "Oyunda F12 bir ekran görüntüsü kaydeder. Konsolun sistem fontlarını isteyen oyunlar, font klasöründeki dosyaları kullanır."
+                "Konsolun sistem fontlarını isteyen oyunlar bu klasördeki dosyaları kullanır."
             }
             Key::SectionSticks => "Kumanda Çubukları",
             Key::LeftDeadzone => "Sol Çubuk Ölü Bölge",

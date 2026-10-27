@@ -130,6 +130,9 @@ impl Bezier {
     pub const EASE_IN: Bezier = Bezier(0.42, 0.0, 1.0, 1.0);
     /// SwiftUI `easeOut`.
     pub const EASE_OUT: Bezier = Bezier(0.0, 0.0, 0.58, 1.0);
+    /// A stronger ease-out for the short motions of the interface (hover, press, progress):
+    /// fast at the start, so the answer to a touch is seen at once (DESIGN.md 3.12).
+    pub const STRONG_OUT: Bezier = Bezier(0.23, 1.0, 0.32, 1.0);
     /// SwiftUI `easeInOut`.
     pub const EASE_IN_OUT: Bezier = Bezier(0.42, 0.0, 0.58, 1.0);
     pub const LINEAR: Bezier = Bezier(0.0, 0.0, 1.0, 1.0);
@@ -237,7 +240,7 @@ impl Motion {
     /// The curve for this motion, honouring "Animations: Reduced".
     pub fn curve(self, reduced: bool) -> Curve {
         let ease_out = |duration| Curve::Ease {
-            bezier: Bezier::EASE_OUT,
+            bezier: Bezier::STRONG_OUT,
             duration,
         };
         match (self, reduced) {
@@ -245,7 +248,11 @@ impl Motion {
             (Motion::Focus, true) => ease_out(0.12),
             (Motion::Hover, _) => ease_out(0.12),
             (Motion::Press, _) => ease_out(0.10),
-            (Motion::Exit, _) => ease_out(0.18),
+            // Tuned against the arriving spring (the hero pair test): the softer curve.
+            (Motion::Exit, _) => Curve::Ease {
+                bezier: Bezier::EASE_OUT,
+                duration: 0.18,
+            },
             (Motion::Layout, false) => Curve::Spring(Self::LAYOUT),
             (Motion::Layout, true) => ease_out(0.15),
             (Motion::Overlay, false) => Curve::Spring(Self::OVERLAY),
@@ -577,6 +584,13 @@ pub fn indeterminate_phase(time: f64) -> f32 {
     lerp(-0.4, 1.05, sweep(time, 1.3, Bezier::EASE_IN_OUT))
 }
 
+/// The loading signal under "Animations: Reduced": a calm opacity pulse, 1.2 s a cycle, between 0.45
+/// and 1, with no movement. Spinners and the indeterminate bar use it in place of turning and
+/// sweeping.
+pub fn loading_pulse(time: f64) -> f32 {
+    lerp(1.0, 0.45, ping_pong(time, 0.6, Bezier::EASE_IN_OUT))
+}
+
 /// The "Press a key..." pulse: opacity 1 <-> 0.45 with easeInOut 0.7 s each way.
 pub fn pulse_opacity(time: f64) -> f32 {
     lerp(1.0, 0.45, ping_pong(time, 0.7, Bezier::EASE_IN_OUT))
@@ -723,6 +737,7 @@ mod tests {
         for b in [
             Bezier::EASE_IN,
             Bezier::EASE_OUT,
+            Bezier::STRONG_OUT,
             Bezier::EASE_IN_OUT,
             Bezier::LINEAR,
         ] {
@@ -759,7 +774,7 @@ mod tests {
         assert_eq!(
             Motion::Focus.curve(true),
             Curve::Ease {
-                bezier: Bezier::EASE_OUT,
+                bezier: Bezier::STRONG_OUT,
                 duration: 0.12
             }
         );
@@ -869,10 +884,23 @@ mod tests {
     }
 
     #[test]
+    fn the_loading_pulse_stays_between_its_bounds_and_repeats() {
+        for i in 0..240 {
+            let t = f64::from(i) * 0.025;
+            let v = loading_pulse(t);
+            assert!((0.449..=1.001).contains(&v), "{v} at {t}");
+            assert!((v - loading_pulse(t + 1.2)).abs() < 1e-4, "period 1.2 s");
+        }
+    }
+
+    #[test]
     fn endless_animations_hit_their_extremes() {
         assert!((pulse_opacity(0.0) - 1.0).abs() < 1e-5);
         assert!((pulse_opacity(0.7) - 0.45).abs() < 1e-3);
         assert!((pulse_opacity(1.4) - 1.0).abs() < 1e-3);
+        assert!((loading_pulse(0.0) - 1.0).abs() < 1e-5);
+        assert!((loading_pulse(0.6) - 0.45).abs() < 1e-3);
+        assert!((loading_pulse(1.2) - 1.0).abs() < 1e-3);
         assert!((indeterminate_phase(0.0) + 0.4).abs() < 1e-5);
         assert!(indeterminate_phase(1.29) > 1.0);
         assert_eq!(drift(24.0, 24.0), 1.0);

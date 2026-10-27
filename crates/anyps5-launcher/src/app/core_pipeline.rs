@@ -89,6 +89,16 @@ fn failure_text(error: &UnlockError, language: Language) -> String {
     sentence.to_owned()
 }
 
+/// The sentence when the toolkit for a game could not be opened: a pinned release that is gone
+/// is chosen again under the game's Options, anything else is "try again" with the log.
+fn toolkit_failure_text(error: &toolkit::ToolkitError, language: Language) -> String {
+    use crate::screens::prepare_strings::{failure, pinned_toolkit_missing};
+    match error {
+        toolkit::ToolkitError::PinMissing(_) => pinned_toolkit_missing(language),
+        _ => failure(unlock::FailureKind::Other, language),
+    }
+}
+
 /// How often the idle gate looks at the machine.
 const GATE_PERIOD: Duration = Duration::from_secs(2);
 
@@ -338,9 +348,12 @@ impl CorePipeline {
                 return;
             }
             Err(error) => {
+                // The technical reason goes to the log; the game page says what to do.
+                tracing::warn!("no toolkit for {}: {error}", game.id.as_str());
+                let language = *self.language.lock().expect("language lock");
                 self.push(PipelineEvent::UnlockFinished {
                     game: game.id.clone(),
-                    result: Err(error.to_string()),
+                    result: Err(toolkit_failure_text(&error, language)),
                 });
                 return;
             }
@@ -357,6 +370,7 @@ impl CorePipeline {
             settings::CpuConversion::Intel => CpuConversion::Intel,
         };
         request.to_intel = HostCpu::detect().wants_intel_conversion(mode);
+        request.trace_imports = prefs.record_network;
         request.relink_flags = prefs.game_settings(&game.id).relink;
         request.resolution = prefs.game_settings(&game.id).resolution;
         // Unlocking again replaces the copy; its saves are backed up first.
@@ -415,10 +429,9 @@ impl CorePipeline {
             .is_none_or(|v| compat::supports(Feature::Screenshots, v))
             .then(|| prefs.screenshots_dir(&self.paths));
         let shader_cache = self.paths.shader_cache_dir(&game.title_id);
-        let launcher_language = match prefs.language {
-            settings::Language::Turkish => 19,
-            settings::Language::English => 1,
-        };
+        let launcher_language = prefs
+            .language
+            .console_language_for(&crate::ui::i18n::system_locale());
         let fonts = fonts::resolve(
             &self.paths,
             &crate::fonts::BUNDLE,
@@ -655,5 +668,24 @@ impl Pipeline for CorePipeline {
             .as_ref()
             .filter(|t| compat::supports(Feature::Patches, t.version()))
             .map(|t| t.patches().to_path_buf())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_gone_pin_is_chosen_under_the_game_and_other_errors_point_to_the_log() {
+        let gone = toolkit::ToolkitError::PinMissing("v1.2".into());
+        for language in Language::ALL {
+            let text = toolkit_failure_text(&gone, language);
+            assert!(!text.contains("%@"), "{text}");
+            assert!(text.contains(language.text(Key::Options)), "{text}");
+            assert_ne!(
+                text,
+                crate::screens::prepare_strings::failure(unlock::FailureKind::Other, language)
+            );
+        }
     }
 }

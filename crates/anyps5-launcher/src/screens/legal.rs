@@ -8,9 +8,11 @@ use egui::{
 };
 
 use crate::screens::about_strings::{AboutText, PRIVACY, TERMS};
+use crate::ui::anim::AnimExt;
+use crate::ui::components::paint_focus_stroke;
 use crate::ui::i18n::Language;
 use crate::ui::text;
-use crate::ui::theme::{color, ty};
+use crate::ui::theme::{color, radius, size, space, ty};
 
 /// One of the two pages. The launcher opens no other address for them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,24 +102,39 @@ fn words(language: Language) -> Vec<Word> {
     out
 }
 
+/// A link in the sentence: the words of one page on one line, one target for the pointer.
+struct Segment {
+    page: Legal,
+    row: usize,
+    x0: f32,
+    x1: f32,
+}
+
 /// Draws "By creating an account you agree to the Terms of Service and the Privacy Policy." with
-/// the two names as links, wrapped at `width` from `origin`. Returns the page that was clicked and
-/// the height the sentence takes.
+/// the two names as links, wrapped at `width` from `origin`. With `centre` each line is centred
+/// on `origin.x` instead of starting there. A link has one target per line it spans, 32 dp tall;
+/// `focus` is the link the pad or the keyboard stands on (it gets the focus ring). Returns the
+/// page that was clicked and the height the sentence takes.
 pub fn consent_line(
     ui: &mut Ui,
     origin: Pos2,
     width: f32,
     language: Language,
     active: bool,
+    centre: bool,
+    focus: Option<Legal>,
 ) -> (Option<Legal>, f32) {
     let painter = ui.painter().clone();
+    let ctx = ui.ctx().clone();
     let style = ty::DETAIL;
     let line = style.line_height();
     let space = text::width(&painter, style, " ") + 1.5;
-    let mut clicked = None;
-    let (mut x, mut y) = (0.0, 0.0);
     let words = words(language);
-    for (i, word) in words.iter().enumerate() {
+    // First pass: where each word goes (line, x) and how wide each line is.
+    let mut places = Vec::with_capacity(words.len());
+    let mut line_widths = vec![0.0_f32];
+    let (mut x, mut row) = (0.0_f32, 0_usize);
+    for word in &words {
         let w = text::width(&painter, style, &word.text);
         let tail = if word.tail.is_empty() {
             0.0
@@ -126,29 +143,80 @@ pub fn consent_line(
         };
         if x > 0.0 && x + w + tail > width {
             x = 0.0;
-            y += line;
+            row += 1;
+            line_widths.push(0.0);
         }
-        let at = pos2(origin.x + x, origin.y + y);
+        places.push((row, x, w, tail));
+        x += w + tail + space;
+        line_widths[row] = x - space;
+    }
+    let shift = |row: usize| {
+        if centre { -line_widths[row] * 0.5 } else { 0.0 }
+    };
+
+    // The words of one link on one line are one target.
+    let mut segments: Vec<Segment> = Vec::new();
+    let mut segment_of: Vec<Option<usize>> = vec![None; words.len()];
+    for (i, (word, &(row, x, w, _))) in words.iter().zip(&places).enumerate() {
+        let Some(page) = word.page else { continue };
+        let continues = i > 0
+            && segment_of[i - 1]
+                .is_some_and(|n| segments[n].page == page && segments[n].row == row);
+        if continues {
+            let n = segments.len() - 1;
+            segments[n].x1 = x + w;
+        } else {
+            segments.push(Segment {
+                page,
+                row,
+                x0: x,
+                x1: x + w,
+            });
+        }
+        segment_of[i] = Some(segments.len() - 1);
+    }
+    let mut clicked = None;
+    let mut lit = vec![false; segments.len()];
+    for (n, segment) in segments.iter().enumerate() {
+        let at = pos2(
+            origin.x + shift(segment.row) + segment.x0,
+            origin.y + segment.row as f32 * line,
+        );
+        let rect = Rect::from_min_size(at, vec2(segment.x1 - segment.x0, line));
+        // The words are 16 dp tall; the target is as tall as a small control.
+        let hit = rect.expand2(vec2(space::XS, (size::CONTROL_S - line).max(0.0) * 0.5));
+        let sense = if active {
+            Sense::click()
+        } else {
+            Sense::hover()
+        };
+        let response = ui.interact(hit, ui.scope_id().with(("legal", n)), sense);
+        let name = segment.page.name(language).to_owned();
+        response.widget_info(|| WidgetInfo::labeled(Role::Link, true, name.clone()));
+        let focused = active && focus == Some(segment.page);
+        crate::ui::a11y::follow(&ctx, response.id, focused);
+        let hot = active && response.hovered();
+        if hot {
+            ctx.set_cursor_icon(CursorIcon::PointingHand);
+        }
+        lit[n] = hot || focused;
+        let ring = ctx.focus_t(("legal-focus", n), focused);
+        if ring > 0.0 {
+            paint_focus_stroke(&painter, rect.expand(space::XS), radius::KEYCAP, 1.5, ring);
+        }
+        if active && response.clicked() {
+            clicked = Some(segment.page);
+        }
+    }
+
+    for (i, (word, (row, x, w, tail))) in words.iter().zip(places).enumerate() {
+        let at = pos2(origin.x + shift(row) + x, origin.y + row as f32 * line);
         match word.page {
             None => paint_word(&painter, at, &word.text, color::text_detail(), None),
             Some(page) => {
                 // The gap before the next word of the same link is underlined too.
                 let joined = words.get(i + 1).is_some_and(|n| n.page == Some(page));
-                let rect = Rect::from_min_size(at, vec2(w, line));
-                let sense = if active {
-                    Sense::click()
-                } else {
-                    Sense::hover()
-                };
-                let response = ui.interact(rect, ui.scope_id().with(("legal", i)), sense);
-                response.widget_info(|| {
-                    WidgetInfo::labeled(Role::Link, true, page.name(language).to_owned())
-                });
-                let hot = active && response.hovered();
-                if hot {
-                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                }
-                let ink = if hot {
+                let ink = if segment_of[i].is_some_and(|n| lit[n]) {
                     color::text()
                 } else {
                     color::text_label()
@@ -159,14 +227,10 @@ pub fn consent_line(
                     let after = pos2(at.x + w, at.y);
                     paint_word(&painter, after, &word.tail, color::text_detail(), None);
                 }
-                if active && response.clicked() {
-                    clicked = Some(page);
-                }
             }
         }
-        x += w + tail + space;
     }
-    (clicked, y + line)
+    (clicked, line_widths.len() as f32 * line)
 }
 
 fn paint_word(painter: &Painter, at: Pos2, word: &str, ink: Color32, underline: Option<f32>) {

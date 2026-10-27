@@ -9,6 +9,7 @@ use egui::{
 
 use crate::app::model::{GameState, Model};
 use crate::app::textures::Textures;
+use crate::screens::strings::Extra;
 use crate::ui::Shell;
 use crate::ui::i18n::{Key, Language};
 use crate::ui::icons::Icon;
@@ -46,6 +47,12 @@ pub fn place<R>(ui: &mut Ui, rect: Rect, add: impl FnOnce(&mut Ui) -> R) -> R {
     .inner
 }
 
+/// The plain, expected state: installed and current. It is not worth a line of its own where every
+/// game would repeat it (the hero, the library grid); the Play button and the tile already say it.
+pub fn is_plain_ready(state: &GameState) -> bool {
+    matches!(state, GameState::Installed { outdated: false })
+}
+
 /// Glyph, tint and text of a game's state (DESIGN.md 5.1), for the label beside the tile, the
 /// status card and the library grid.
 pub struct StateLabel {
@@ -80,6 +87,12 @@ pub fn state_label(state: &GameState, language: Language) -> StateLabel {
             true,
             color::text_active(),
             language.text(step.title_key()).to_owned(),
+        ),
+        GameState::Uninstalling { .. } => (
+            Icon::TRASH,
+            true,
+            color::text_active(),
+            Extra::Uninstalling.text(language).to_owned(),
         ),
         GameState::Preparing { paused, .. } => (
             Icon::ARROW_CIRCLE_DOWN,
@@ -146,7 +159,7 @@ pub fn paint_label(
     alpha: f32,
 ) -> Rect {
     let tint = crate::ui::theme::fade(label.tint, alpha);
-    let glyph = style.size;
+    let glyph = style.px();
     let galley = wrapped(
         painter,
         style,

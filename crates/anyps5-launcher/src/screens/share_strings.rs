@@ -92,10 +92,160 @@ impl Share {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            Share::LayoutCommunity => "Community: %@",
+            Share::LayoutExport => "Layout exportieren",
+            Share::LayoutImport => "Layout importieren",
+            Share::LayoutExported => "Layout gespeichert",
+            Share::LayoutNotSaved => "Das Layout konnte nicht gespeichert werden.",
+            Share::LayoutImported => "Layout importiert",
+            Share::LayoutImportFailed => "Layout nicht importiert. %@",
+            Share::LayoutUnreadable => "Die Datei kann nicht gelesen werden.",
+            Share::LayoutImportedPartly => {
+                "Layout importiert. Einige Aktionen werden in dieser Liste nicht angezeigt."
+            }
+            Share::Report => "Problem melden",
+            Share::ReportDetail => {
+                "Prüfe den Bericht, dann speichere ihn oder öffne ihn auf GitHub"
+            }
+            Share::ReportHint => {
+                "Das ist der Bericht. Speichere ihn als Datei oder öffne ihn mit ausgefülltem Formular auf GitHub. Nichts wird gesendet, bevor du es dort absendest."
+            }
+            Share::ReportPasteHint => {
+                "Das Protokoll ist für den Link zu lang. Öffnen auf GitHub kopiert den ganzen Bericht; füge ihn ins Formular ein."
+            }
+            Share::ReportOpen => "Auf GitHub öffnen",
+            Share::ReportOpenedPaste => "Bericht kopiert. Füge ihn ins GitHub-Formular ein.",
+            Share::ReportOpened => "Das Formular ist in deinem Browser geöffnet",
+            Share::ReportOpenFailed => {
+                "Der Browser konnte nicht geöffnet werden. Der Link wurde kopiert. Füge ihn in deinen Browser ein."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            Share::LayoutCommunity => "Comunidad: %@",
+            Share::LayoutExport => "Exportar diseño",
+            Share::LayoutImport => "Importar diseño",
+            Share::LayoutExported => "Diseño guardado",
+            Share::LayoutNotSaved => "No se pudo guardar el diseño.",
+            Share::LayoutImported => "Diseño importado",
+            Share::LayoutImportFailed => "Diseño no importado. %@",
+            Share::LayoutUnreadable => "No se puede leer el archivo.",
+            Share::LayoutImportedPartly => {
+                "Diseño importado. Algunas acciones no aparecen en esta lista."
+            }
+            Share::Report => "Informar de un problema",
+            Share::ReportDetail => "Revisa el informe y guárdalo o ábrelo en GitHub",
+            Share::ReportHint => {
+                "Este es el informe. Guárdalo como archivo o ábrelo en GitHub con el formulario rellenado. No se envía nada hasta que lo envíes allí."
+            }
+            Share::ReportPasteHint => {
+                "El registro es demasiado largo para el enlace. Abrir en GitHub copia el informe completo; pégalo en el formulario."
+            }
+            Share::ReportOpen => "Abrir en GitHub",
+            Share::ReportOpenedPaste => "Informe copiado. Pégalo en el formulario de GitHub.",
+            Share::ReportOpened => "El formulario está abierto en tu navegador",
+            Share::ReportOpenFailed => {
+                "No se pudo abrir el navegador. Se copió el enlace. Pégalo en tu navegador."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            Share::LayoutCommunity => "Communauté\u{a0}: %@",
+            Share::LayoutExport => "Exporter la disposition",
+            Share::LayoutImport => "Importer une disposition",
+            Share::LayoutExported => "Disposition enregistrée",
+            Share::LayoutNotSaved => "Impossible d’enregistrer la disposition.",
+            Share::LayoutImported => "Disposition importée",
+            Share::LayoutImportFailed => "Disposition non importée. %@",
+            Share::LayoutUnreadable => "Le fichier est illisible.",
+            Share::LayoutImportedPartly => {
+                "Disposition importée. Certaines actions ne figurent pas dans cette liste."
+            }
+            Share::Report => "Signaler un problème",
+            Share::ReportDetail => "Relis le rapport, puis enregistre-le ou ouvre-le sur GitHub",
+            Share::ReportHint => {
+                "Voici le rapport. Enregistre-le dans un fichier, ou ouvre-le sur GitHub avec le formulaire rempli. Rien n’est envoyé tant que tu ne l’envoies pas là-bas."
+            }
+            Share::ReportPasteHint => {
+                "Le journal est trop long pour le lien. Ouvrir sur GitHub copie le rapport complet\u{a0}; colle-le dans le formulaire."
+            }
+            Share::ReportOpen => "Ouvrir sur GitHub",
+            Share::ReportOpenedPaste => "Rapport copié. Colle-le dans le formulaire GitHub.",
+            Share::ReportOpened => "Le formulaire est ouvert dans ton navigateur",
+            Share::ReportOpenFailed => {
+                "Impossible d’ouvrir le navigateur. Le lien a été copié. Colle-le dans ton navigateur."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            Share::LayoutCommunity => "Comunidade: %@",
+            Share::LayoutExport => "Exportar layout",
+            Share::LayoutImport => "Importar layout",
+            Share::LayoutExported => "Layout salvo",
+            Share::LayoutNotSaved => "Não foi possível salvar o layout.",
+            Share::LayoutImported => "Layout importado",
+            Share::LayoutImportFailed => "Layout não importado. %@",
+            Share::LayoutUnreadable => "Não foi possível ler o arquivo.",
+            Share::LayoutImportedPartly => {
+                "Layout importado. Algumas ações não aparecem nesta lista."
+            }
+            Share::Report => "Informar um problema",
+            Share::ReportDetail => "Revise o relatório e salve-o ou abra-o no GitHub",
+            Share::ReportHint => {
+                "Este é o relatório. Salve-o como arquivo ou abra-o no GitHub com o formulário preenchido. Nada é enviado até você enviá-lo lá."
+            }
+            Share::ReportPasteHint => {
+                "O registro é longo demais para o link. Abrir no GitHub copia o relatório completo; cole-o no formulário."
+            }
+            Share::ReportOpen => "Abrir no GitHub",
+            Share::ReportOpenedPaste => "Relatório copiado. Cole-o no formulário do GitHub.",
+            Share::ReportOpened => "O formulário está aberto no seu navegador",
+            Share::ReportOpenFailed => {
+                "Não foi possível abrir o navegador. O link foi copiado. Cole-o no seu navegador."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 
@@ -134,11 +284,13 @@ mod tests {
             for language in Language::ALL {
                 assert!(!share.text(language).is_empty(), "{share:?} {language:?}");
             }
-            assert_eq!(
-                share.english().matches("%@").count(),
-                share.turkish().matches("%@").count(),
-                "{share:?}"
-            );
+            for language in Language::ALL {
+                assert_eq!(
+                    share.english().matches("%@").count(),
+                    share.text(language).matches("%@").count(),
+                    "{share:?} {language:?}"
+                );
+            }
         }
     }
 }

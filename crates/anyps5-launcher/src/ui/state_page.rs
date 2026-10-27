@@ -1,0 +1,240 @@
+//! The page that has no cards (docs/DESIGN.md 5.21): loading, offline, failed, private, hidden or
+//! empty. A quiet disc with a glyph (a spinner while it loads), the headline, a note that says
+//! what to do, and at most one primary button that does it. Profile, Compare and the feed share
+//! it, so a state looks and stands the same on every page: centred on the page (horizontally on
+//! the window, vertically in the room the caller leaves).
+
+use egui::{Align, Align2, Layout, Rect, Role, Sense, Ui, UiBuilder, WidgetInfo, pos2, vec2};
+
+use crate::ui::components::{ConsoleButton, paint_spinner_arc};
+use crate::ui::icons::Icon;
+use crate::ui::theme::{color, size, space, ty};
+
+/// The disc behind the glyph, and the glyph.
+const DISC: f32 = 56.0;
+const GLYPH: f32 = 24.0;
+/// The headline wraps at this width, the note at [`NOTE_WIDTH`].
+const TITLE_WIDTH: f32 = 520.0;
+const NOTE_WIDTH: f32 = 420.0;
+/// The block stands a little above the middle of the room.
+const LIFT: f32 = space::XL;
+
+/// What a state page says.
+pub struct StatePage<'a> {
+    pub icon: Icon,
+    pub title: &'a str,
+    pub note: Option<&'a str>,
+    /// A spinner in place of the glyph (a still glyph under reduced motion).
+    pub loading: bool,
+    /// The label of the one button, if the state has a way out.
+    pub action: Option<&'a str>,
+}
+
+/// The text of a page laid out, and the height of the block.
+struct Laid {
+    title: std::sync::Arc<egui::Galley>,
+    note: Option<std::sync::Arc<egui::Galley>>,
+    height: f32,
+}
+
+fn lay_out(painter: &egui::Painter, page: &StatePage<'_>) -> Laid {
+    let title = crate::screens::clamped(
+        painter,
+        ty::STATE_TITLE,
+        page.title,
+        egui::Color32::PLACEHOLDER,
+        TITLE_WIDTH,
+        1,
+    );
+    let note = page.note.filter(|n| !n.is_empty()).map(|note| {
+        let mut job = egui::text::LayoutJob::simple(
+            note.to_owned(),
+            ty::NOTE.font(),
+            egui::Color32::PLACEHOLDER,
+            NOTE_WIDTH,
+        );
+        job.halign = Align::Center;
+        job.sections[0].format.line_height = Some(1.45 * ty::NOTE.px());
+        painter.layout_job(job)
+    });
+    let height = DISC
+        + space::L
+        + title.size().y
+        + note.as_ref().map_or(0.0, |n| space::S + n.size().y)
+        + if page.action.is_some() {
+            space::XL + size::BUTTON_MIN_HEIGHT
+        } else {
+            0.0
+        };
+    Laid {
+        title,
+        note,
+        height,
+    }
+}
+
+/// How tall the block of a page is, for a screen that places it in a flow.
+pub fn height(painter: &egui::Painter, page: &StatePage<'_>) -> f32 {
+    lay_out(painter, page).height
+}
+
+/// Draws the page centred in `room`; `focused` is whether the button holds the focus. Returns
+/// whether the button was clicked.
+pub fn show(ui: &mut Ui, room: Rect, page: &StatePage<'_>, focused: bool) -> bool {
+    let ctx = ui.ctx().clone();
+    let painter = ui.painter().clone();
+    let Laid {
+        title,
+        note,
+        height,
+    } = lay_out(&painter, page);
+    let button = size::BUTTON_MIN_HEIGHT;
+    let top = room.min.y + ((room.height() - height) * 0.5 - LIFT).max(space::M);
+    // Centred on the page, not on the column the caller lays its list in: a state page stands in
+    // the middle of the window whatever rail or margin sits beside the room.
+    let centre = ctx.content_rect().center().x;
+
+    // The words of the page, for a screen reader: they are only painted.
+    let said = match page.note {
+        Some(note) if !note.is_empty() => format!("{}. {note}", page.title),
+        _ => page.title.to_owned(),
+    };
+    let block = Rect::from_center_size(pos2(centre, top + height * 0.5), vec2(TITLE_WIDTH, height));
+    // The id comes from the caller's ui: two overlays can show a state page in the same frame
+    // while one fades out and the other in, each on its own layer.
+    ui.interact(block, ui.scope_id().with("state-page"), Sense::hover())
+        .widget_info(|| WidgetInfo::labeled(Role::Label, true, said.as_str()));
+
+    let disc = Rect::from_center_size(pos2(centre, top + DISC * 0.5), vec2(DISC, DISC));
+    painter.circle_filled(disc.center(), DISC * 0.5, color::surface_row());
+    if page.loading {
+        paint_spinner_arc(
+            &painter,
+            disc.center(),
+            12.0,
+            ctx.input(|i| i.time),
+            2.5,
+            color::text_detail(),
+        );
+        ctx.request_repaint();
+    } else {
+        painter.text(
+            disc.center(),
+            Align2::CENTER_CENTER,
+            page.icon.glyph(),
+            page.icon.font(GLYPH, false),
+            color::text_detail(),
+        );
+    }
+    let mut y = disc.max.y + space::L;
+    let title_height = title.size().y;
+    painter.galley(pos2(centre - title.size().x * 0.5, y), title, color::text());
+    y += title_height;
+    if let Some(note) = note {
+        y += space::S;
+        let note_height = note.size().y;
+        painter.galley(pos2(centre, y), note, color::text_detail());
+        y += note_height;
+    }
+    let Some(label) = page.action else {
+        return false;
+    };
+    y += space::XL;
+    // A centred column: the button's own width (and its ring) puts it in the middle, whatever the
+    // label says.
+    let mut row = ui.new_child(
+        UiBuilder::new()
+            .max_rect(Rect::from_min_size(
+                pos2(centre - TITLE_WIDTH * 0.5, y),
+                vec2(TITLE_WIDTH, button + space::S),
+            ))
+            .layout(Layout::top_down(Align::Center)),
+    );
+    let response = ConsoleButton::new(label)
+        .prominent(true)
+        .focused(focused)
+        .show(&mut row);
+    // The ring's stop is the button: egui's focus (and so the pad's scrolling) follows it.
+    crate::ui::a11y::follow(&ctx, response.id, focused);
+    response.clicked()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::chrome;
+
+    /// Runs one frame in which two overlays (two layers) both draw `draw`. egui panics in debug
+    /// builds when a widget id moves from one layer to another during a frame, which is what
+    /// happens when an overlay fades out while another fades in and both use a shared widget with
+    /// a fixed id.
+    fn two_layers(draw: impl Fn(&mut Ui)) {
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            let output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0))),
+                    ..Default::default()
+                },
+                |ui| {
+                    let ctx = ui.ctx().clone();
+                    for name in ["closing overlay", "opening overlay"] {
+                        egui::Area::new(egui::Id::unique(name))
+                            .fixed_pos(pos2(0.0, 0.0))
+                            .show(&ctx, |ui| draw(ui));
+                    }
+                },
+            );
+            output.drop_without_applying_deltas();
+        }
+    }
+
+    #[test]
+    fn a_state_page_can_be_drawn_by_two_overlays_in_one_frame() {
+        two_layers(|ui| {
+            let room = ui.ctx().content_rect();
+            let page = StatePage {
+                icon: Icon::CLOUD,
+                title: "You are offline",
+                note: Some("Check your connection."),
+                loading: false,
+                action: Some("Try Again"),
+            };
+            show(ui, room, &page, true);
+        });
+    }
+
+    #[test]
+    fn the_same_toast_can_be_in_two_layers_in_one_frame() {
+        // A toast that is shown again while its first copy leaves: same words, two layers.
+        let ctx = egui::Context::default();
+        let output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0))),
+                ..Default::default()
+            },
+            |ui| {
+                let ctx = ui.ctx().clone();
+                chrome::toast(
+                    &ctx,
+                    "toast-leaving",
+                    Icon::CHECK,
+                    "Request sent",
+                    None,
+                    false,
+                    0.4,
+                );
+                chrome::toast(
+                    &ctx,
+                    "toast-arriving",
+                    Icon::CHECK,
+                    "Request sent",
+                    None,
+                    true,
+                    0.6,
+                );
+            },
+        );
+        output.drop_without_applying_deltas();
+    }
+}

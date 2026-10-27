@@ -7,9 +7,11 @@ mod app;
 mod fonts;
 mod instance;
 mod logging;
+mod macstyle;
 mod screens;
 mod startup;
 mod ui;
+mod watchdog;
 
 use instance::Join;
 
@@ -18,6 +20,11 @@ fn main() -> eframe::Result {
     logging::init();
     startup::mark("main");
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // The sign-in entry (Start with Windows) adds this flag; it changes nothing but the log.
+    if let Some(at) = args.iter().position(|a| a == anyps5_core::autostart::ARG) {
+        args.remove(at);
+        tracing::info!("started by the session (autostart)");
+    }
     instance::wait_after_update(&mut args);
     // A first argument that is no flag is a link or a folder (the URL scheme and the folder menu
     // pass one): it is never a preview flag, whatever follows it.

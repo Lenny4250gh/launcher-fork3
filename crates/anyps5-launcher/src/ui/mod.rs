@@ -35,6 +35,7 @@ pub mod components;
 mod contrast;
 pub mod focus;
 pub mod gallery;
+pub mod gamecolors;
 pub mod gamepad;
 pub mod glass;
 pub mod gpu;
@@ -45,12 +46,20 @@ pub mod icons;
 pub mod input;
 pub mod intro;
 pub mod latency;
+pub mod lightbar;
+pub mod nav_bindings;
 pub mod nudge;
+pub mod os_emoji;
+pub mod osk;
+pub mod pad_hub;
 pub mod pad_info;
 pub mod press;
 pub mod ps_button;
+pub mod reveal;
 pub mod shade;
 pub mod sound;
+pub mod state_page;
+pub mod talk;
 pub mod text;
 pub mod theme;
 
@@ -84,10 +93,14 @@ pub struct Shell {
     now: f64,
     /// A cue other than the hover tick played since the last [`Shell::finish_frame`].
     cue_played: bool,
+    /// Until when content may still glide under a resting pointer after a drag of a list.
+    glide_until: f64,
     pub backdrop: Backdrop,
     pub language: Language,
     /// The accent colour in use (the theme's default unless the user picked one).
     pub accent: Accent,
+    /// A colour that stands in for the accent: Game Colors takes it from the selected game.
+    pub accent_override: Option<egui::Color32>,
     scale: f32,
     /// The edge bump of the focus ring (see [`nudge`]).
     nudge: Nudge,
@@ -114,17 +127,20 @@ impl Shell {
     /// gamepad thread. Call from the eframe app creator.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::install(&cc.egui_ctx);
+        crate::startup::mark("shell: fonts and visuals");
         if let Some(render_state) = cc.wgpu_render_state.as_ref() {
             background::init(render_state);
         } else {
             tracing::warn!("no wgpu render state: backdrop and glass are unavailable");
         }
+        crate::startup::mark("shell: GPU pipelines");
         let home = Arc::new(HomeButton::new(&cc.egui_ctx));
         let pad = gamepad::spawn(cc.egui_ctx.clone(), home.clone());
         home_button::spawn_xinput(home.clone());
         ps_button::spawn(home.clone());
+        crate::startup::mark("shell: input threads");
         let language = Language::system();
-        Self {
+        let mut shell = Self {
             input: Input::new(Some(pad)),
             home,
             sounds: Sounds::new(),
@@ -132,16 +148,22 @@ impl Shell {
             alerts: AlertGate::default(),
             now: 0.0,
             cue_played: false,
+            glide_until: f64::NEG_INFINITY,
             haptics: Haptics::new(),
             had_pad: true,
             backdrop: Backdrop::new(Theme::Cosmic),
             language,
             accent: Theme::Cosmic.default_accent(),
+            accent_override: None,
             scale: 1.0,
             nudge: Nudge::default(),
             reduced: false,
             bumped_in_hold: false,
-        }
+        };
+        // Gaming Mode has no keyboard or mouse, and Console Mode puts the pad first: start with the
+        // pad's hints.
+        shell.input.pad_in_use = osk::gaming_mode() || osk::console_mode();
+        shell
     }
 
     /// A shell for tests and the gallery: no gamepad, silent.
@@ -165,11 +187,13 @@ impl Shell {
             alerts: AlertGate::default(),
             now: 0.0,
             cue_played: false,
+            glide_until: f64::NEG_INFINITY,
             haptics: Haptics::silent(),
             had_pad: true,
             backdrop: Backdrop::new(theme),
             language: Language::English,
             accent: theme.default_accent(),
+            accent_override: None,
             scale: 1.0,
             nudge: Nudge::default(),
             reduced: false,
@@ -197,6 +221,7 @@ impl Shell {
         if !self.nudge.is_settled() {
             ctx.request_repaint();
         }
+        osk::set_wanted(ctx, self.input.pad_in_use || osk::gaming_mode());
         let events = self.input.poll(ctx);
         // A select from a key or the pad presses the focused control in, like a click does.
         if events
@@ -294,6 +319,12 @@ impl Shell {
                         .any(|e| matches!(e, egui::Event::MouseWheel { .. })),
             )
         });
+        // A list let go of keeps gliding for a moment: nothing under it has "arrived".
+        let dragging = ctx.input(|i| i.pointer.is_decidedly_dragging());
+        if dragging {
+            self.glide_until = now + GLIDE_SECONDS;
+        }
+        let scrolling = scrolling || now < self.glide_until;
         let other_cue = std::mem::take(&mut self.cue_played);
         let allowed = allowed && self.sounds.enabled;
         if allowed {
@@ -320,9 +351,12 @@ impl Shell {
 
     /// The accent as a colour.
     pub fn accent_color(&self) -> egui::Color32 {
-        self.accent.color()
+        self.accent_override.unwrap_or_else(|| self.accent.color())
     }
 }
+
+/// How long the hover tick stays quiet after a drag of a list ends: the momentum of the content.
+const GLIDE_SECONDS: f64 = 0.8;
 
 /// The environment variable that picks the graphics API (`metal`, `dx12`, `vulkan` or `both`); the launcher
 /// sets it to `vulkan` itself when DirectX 12 has no usable GPU.
@@ -359,6 +393,14 @@ pub fn restrict_backends(options: &mut eframe::NativeOptions) {
         PowerPreference::HighPerformance
     };
     let no_software = can_fall_back_to_vulkan();
+    crate::startup::mark("GPU settings made");
+    // DirectX 12 creates a device on every GPU it lists, and that wakes a sleeping discrete GPU:
+    // about 3 s on a laptop, for a GPU the launcher then does not use. Ask DXGI (which creates
+    // nothing) which GPU is wanted and let wgpu see that one only.
+    #[cfg(windows)]
+    if create_new.instance_descriptor.backends == Backends::DX12 {
+        preselect_dx12_adapter(low_power);
+    }
     create_new.native_adapter_selector = Some(std::sync::Arc::new(move |adapters, surface| {
         let rank = |adapter: &Adapter| -> Option<u8> {
             if surface.is_some_and(|s| !adapter.is_surface_supported(s)) {
@@ -372,6 +414,9 @@ pub fn restrict_backends(options: &mut eframe::NativeOptions) {
                 _ => Some(2),
             }
         };
+        // The start-up log splits the wait for the GPU here: before this line the adapters were
+        // enumerated, after it the device and the surface are made.
+        crate::startup::mark(&format!("{} GPUs listed", adapters.len()));
         adapters
             .iter()
             .filter_map(|adapter| rank(adapter).map(|rank| (rank, adapter)))
@@ -379,6 +424,62 @@ pub fn restrict_backends(options: &mut eframe::NativeOptions) {
             .map(|(_, adapter)| adapter.clone())
             .ok_or_else(|| "no usable GPU".to_owned())
     }));
+}
+
+/// Set (to anything) to let DirectX 12 look at every GPU again, as before `preselect_dx12_adapter`.
+/// A start that fails with one GPU preselected is retried with it.
+pub const GPU_PROBE_ENV: &str = "ANYPS5_GPU_PROBE";
+
+/// Whether this start preselected one GPU, so that a failure is worth a retry with all of them.
+pub fn can_retry_with_all_gpus() -> bool {
+    cfg!(windows)
+        && std::env::var_os(GPU_PROBE_ENV).is_none()
+        && std::env::var_os(GPU_ENV).is_none()
+}
+
+/// Tells wgpu's DirectX 12 backend to expose only the GPU Windows would pick for this power
+/// preference: the first non-software one of `IDXGIFactory6::EnumAdapterByGpuPreference`. Without
+/// that GPU (old Windows, no DXGI 1.6, only a software renderer) nothing is filtered.
+#[cfg(windows)]
+fn preselect_dx12_adapter(low_power: bool) {
+    use egui_wgpu::wgpu::hal::dx12::set_only_adapter;
+    use windows::Win32::Graphics::Dxgi::{
+        CreateDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE, DXGI_GPU_PREFERENCE,
+        DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_GPU_PREFERENCE_MINIMUM_POWER, IDXGIAdapter1,
+        IDXGIFactory6,
+    };
+    if std::env::var_os(GPU_PROBE_ENV).is_some() {
+        return;
+    }
+    let preference: DXGI_GPU_PREFERENCE = if low_power {
+        DXGI_GPU_PREFERENCE_MINIMUM_POWER
+    } else {
+        DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE
+    };
+    let chosen = (|| {
+        let factory: IDXGIFactory6 = unsafe { CreateDXGIFactory1() }.ok()?;
+        (0..)
+            .map_while(|index| {
+                unsafe { factory.EnumAdapterByGpuPreference::<IDXGIAdapter1>(index, preference) }
+                    .ok()
+            })
+            .find_map(|adapter| {
+                let desc = unsafe { adapter.GetDesc1() }.ok()?;
+                (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 == 0).then(|| {
+                    let name = String::from_utf16_lossy(&desc.Description);
+                    (
+                        (desc.AdapterLuid.HighPart, desc.AdapterLuid.LowPart),
+                        name.trim_end_matches('\0').to_owned(),
+                    )
+                })
+            })
+    })();
+    if let Some((luid, name)) = chosen {
+        set_only_adapter(Some(luid));
+        crate::startup::mark(&format!("GPU preselected: {name}"));
+    } else {
+        crate::startup::mark("no GPU preselected");
+    }
 }
 
 /// Whether a failed start may be retried on Vulkan: on Windows, when DirectX 12 was the default.
@@ -400,11 +501,13 @@ impl Shell {
             alerts: AlertGate::default(),
             now: 0.0,
             cue_played: false,
+            glide_until: f64::NEG_INFINITY,
             haptics: Haptics::silent(),
             had_pad: true,
             backdrop: Backdrop::new(theme),
             language: Language::English,
             accent: theme.default_accent(),
+            accent_override: None,
             scale: 1.0,
             nudge: Nudge::default(),
             reduced: false,

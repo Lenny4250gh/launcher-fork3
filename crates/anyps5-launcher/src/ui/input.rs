@@ -3,7 +3,8 @@
 //! the returned [`InputEvent`]s and draw focus from their own model (see `ui::focus`).
 //!
 //! * Keyboard: arrows, Enter/Space/NumpadEnter = select, Esc/Backspace = back, `O` = options.
-//!   Keys with Ctrl or Alt held are ignored, except `Ctrl+,` (settings) and `F11` (fullscreen).
+//!   Keys with Ctrl or Alt held are ignored, except `Ctrl+,` (settings; `Cmd+,` on a Mac) and `F11`
+//!   (fullscreen).
 //! * Wheel: +-40 dp of accumulated scroll make one step (one classic wheel notch = one step).
 //! * Gamepad: D-pad and left stick (> 0.55) are directions; A/B/Y/Start are select/back/options/options.
 //! * A held direction, from the pad or from an arrow key, fires at once, repeats after 0.36 s every
@@ -46,7 +47,7 @@ pub enum InputEvent {
     /// `Tab` (`backwards` with Shift): the next or previous stop in reading order. Each screen
     /// decides what that is; text fields and a call on screen keep Tab for egui.
     Tab { backwards: bool },
-    /// `Ctrl+,`
+    /// `Ctrl+,`, `Cmd+,` on a Mac
     OpenSettings,
     /// `F11`
     ToggleFullscreen,
@@ -69,6 +70,8 @@ pub enum PadMessage {
     Button(Command),
     /// The Create (Share, View) button went down.
     Create,
+    /// A shoulder button went down: the previous or the next section (`ui::nav_bindings`).
+    Tab { backwards: bool },
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -85,16 +88,26 @@ pub fn command_for_key(key: Key, modifiers: Modifiers) -> Option<Command> {
         Key::ArrowRight => Some(Command::Right),
         Key::ArrowUp => Some(Command::Up),
         Key::ArrowDown => Some(Command::Down),
-        Key::Enter | Key::Space => Some(Command::Select),
-        Key::Escape | Key::Backspace => Some(Command::Back),
-        Key::O => Some(Command::Options),
-        _ => None,
+        // Select, Back and Options are the player's to move (ui::nav_bindings).
+        _ => crate::ui::nav_bindings::command_for_key(key),
     }
 }
 
 /// Tab or Shift+Tab; Ctrl, Alt and Command with Tab belong to the system.
 pub fn is_tab_press(modifiers: Modifiers) -> bool {
     !(modifiers.ctrl || modifiers.alt || modifiers.command || modifiers.mac_cmd)
+}
+
+/// Whether a key press is a step through the sections, and which way: Tab and Shift+Tab, or a key
+/// the player gave to a shoulder job (`ui::nav_bindings`).
+pub fn tab_press(key: Key, modifiers: Modifiers) -> Option<bool> {
+    if key == Key::Tab {
+        return is_tab_press(modifiers).then_some(modifiers.shift);
+    }
+    if modifiers.ctrl || modifiers.alt || modifiers.command || modifiers.mac_cmd {
+        return None;
+    }
+    crate::ui::nav_bindings::tab_for_key(key)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -284,6 +297,20 @@ pub fn hovered(ctx: &Context, response: &egui::Response) -> bool {
     hovered
 }
 
+/// Like [`hovered`], but also true while the pointer is over a widget laid on top of this one
+/// (a button inside a row). `response.hovered()` goes to the topmost widget only, so a row that
+/// reveals its buttons on hover would hide them the moment the pointer reached one, and show them
+/// again a frame later: the flicker. The pointer inside the row's rectangle is the row hovered.
+pub fn hovered_within(ctx: &Context, response: &egui::Response) -> bool {
+    let within =
+        response.hovered() || ctx.rect_contains_pointer(response.layer_id, response.interact_rect);
+    let hovered = within && pointer_in_use(ctx);
+    if hovered {
+        ctx.data_mut(|d| d.insert_temp(hovered_id(), response.id.value()));
+    }
+    hovered
+}
+
 fn hovered_id() -> egui::Id {
     egui::Id::unique("input-hovered-element")
 }
@@ -323,6 +350,9 @@ pub struct Input {
     /// True while a call is ringing: the card's buttons are reached with Tab through egui, so
     /// Tab is not taken for the focus ring.
     pub tab_for_egui: bool,
+    /// True while a Tab press is being routed as a direction, so the thread can tell it from an
+    /// arrow and walk the emoji glyph before its field in reading order.
+    pub via_tab: bool,
 }
 
 impl Input {
@@ -382,6 +412,12 @@ impl Input {
                         reveal_focus(ctx);
                         out.push(InputEvent::Create);
                     }
+                    PadMessage::Tab { backwards } => {
+                        crate::ui::latency::pad_event_seen();
+                        if !reveal_focus(ctx) {
+                            out.push(InputEvent::Tab { backwards });
+                        }
+                    }
                 }
             }
         }
@@ -400,7 +436,7 @@ impl Input {
             && (self.blocked
                 || self.capture_keys
                 || crate::ui::a11y::foreign_focus(ctx)
-                || ctx.input(|i| !i.key_down(key) || i.modifiers.ctrl || i.modifiers.alt))
+                || ctx.input(|i| !i.key_down(key) || i.modifiers.command || i.modifiers.alt))
         {
             self.held_key = None;
             self.key_repeater.set_direction(None, now);
@@ -458,7 +494,7 @@ impl Input {
                     let mut revealed = false;
                     if !in_text_field
                         && (command_for_key(key, modifiers).is_some()
-                            || (key == Key::Tab && is_tab_press(modifiers)))
+                            || tab_press(key, modifiers).is_some())
                     {
                         set_keys_steer(ctx, true);
                         revealed = reveal_focus(ctx);
@@ -481,14 +517,14 @@ impl Input {
                         }
                         continue;
                     }
-                    if key == Key::Tab && is_tab_press(modifiers) && !self.tab_for_egui {
-                        out.push(InputEvent::Tab {
-                            backwards: modifiers.shift,
-                        });
+                    if let Some(backwards) =
+                        tab_press(key, modifiers).filter(|_| !self.tab_for_egui)
+                    {
+                        out.push(InputEvent::Tab { backwards });
                         crate::ui::a11y::consume_tab(ctx);
                     } else if key == Key::F11 {
                         out.push(InputEvent::ToggleFullscreen);
-                    } else if key == Key::Comma && modifiers.ctrl && !modifiers.alt {
+                    } else if key == Key::Comma && modifiers.command && !modifiers.alt {
                         out.push(InputEvent::OpenSettings);
                     } else if let Some(command) = command_for_key(key, modifiers) {
                         // The OS repeat is ignored: a held arrow repeats on our clock, held action

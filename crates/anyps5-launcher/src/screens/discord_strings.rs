@@ -53,10 +53,104 @@ impl DiscordText {
         }
     }
 
+    /// The German text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn german(self) -> Option<&'static str> {
+        Some(match self {
+            DiscordText::Button => "Beitreten-Button auf Discord zeigen",
+            DiscordText::ButtonDetail => {
+                "Während du online spielst, können Leute, die deinen Discord-Status sehen, eine Einladung erhalten. Sie entscheiden selbst, ob sie beitreten."
+            }
+            DiscordText::SignIn => "Melde dich bei AnyPlay an, um diesen Beitrittslink zu nutzen.",
+            DiscordText::Gone => {
+                "Dieser Beitrittslink ist abgelaufen oder die Person hat das Spiel verlassen. Bitte um einen neuen."
+            }
+            DiscordText::Full => {
+                "Dieses Spiel oder diese Party ist voll. Versuche es später erneut."
+            }
+            DiscordText::Already => "Du bist schon dort oder in einer anderen Party.",
+            DiscordText::Own => "Das ist dein eigener Beitrittslink. Sende ihn an einen Freund.",
+            _ => return None,
+        })
+    }
+
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            DiscordText::Button => "Mostrar un botón para unirse en Discord",
+            DiscordText::ButtonDetail => {
+                "Mientras juegas en línea, quienes vean tu estado de Discord pueden recibir una invitación. Ellos deciden si se unen."
+            }
+            DiscordText::SignIn => "Inicia sesión en AnyPlay para usar este enlace de invitación.",
+            DiscordText::Gone => {
+                "Este enlace de invitación ha caducado o el jugador se ha ido. Pide uno nuevo."
+            }
+            DiscordText::Full => "No quedan plazas en ese juego o party. Inténtalo más tarde.",
+            DiscordText::Already => "Ya estás ahí o en otra party.",
+            DiscordText::Own => "Este es tu propio enlace de invitación. Envíaselo a un amigo.",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            DiscordText::Button => "Afficher un bouton Rejoindre sur Discord",
+            DiscordText::ButtonDetail => {
+                "Pendant que tu joues en ligne, les personnes qui voient ton statut Discord peuvent recevoir une invitation. Elles choisissent de te rejoindre ou non."
+            }
+            DiscordText::SignIn => "Connecte-toi à AnyPlay pour utiliser ce lien d’invitation.",
+            DiscordText::Gone => {
+                "Ce lien d’invitation a expiré, ou le joueur est parti. Demande-en un nouveau."
+            }
+            DiscordText::Full => {
+                "Il n’y a plus de place dans ce jeu ou cette party. Réessaie plus tard."
+            }
+            DiscordText::Already => "Tu y es déjà, ou tu es dans une autre party.",
+            DiscordText::Own => "C’est ton propre lien d’invitation. Envoie-le à un ami.",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            DiscordText::Button => "Mostrar um botão Participar no Discord",
+            DiscordText::ButtonDetail => {
+                "Enquanto você joga online, quem vê seu status do Discord pode receber um convite. Cada pessoa decide se quer participar."
+            }
+            DiscordText::SignIn => "Entre na AnyPlay para usar este link de convite.",
+            DiscordText::Gone => "Este link de convite expirou ou o jogador saiu. Peça um novo.",
+            DiscordText::Full => "Não há mais vagas nesse jogo ou party. Tente de novo mais tarde.",
+            DiscordText::Already => "Você já está lá ou em outra party.",
+            DiscordText::Own => "Este é o seu próprio link de convite. Envie para um amigo.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
+            Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
+                Some(text) => text,
+                None => self.english(),
+            },
         }
     }
 

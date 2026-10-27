@@ -10,6 +10,10 @@ pub fn language(value: core::Language) -> Language {
     match value {
         core::Language::Turkish => Language::Turkish,
         core::Language::English => Language::English,
+        core::Language::German => Language::German,
+        core::Language::Spanish => Language::Spanish,
+        core::Language::French => Language::French,
+        core::Language::Portuguese => Language::Portuguese,
     }
 }
 
@@ -17,6 +21,10 @@ pub fn language_to_core(value: Language) -> core::Language {
     match value {
         Language::Turkish => core::Language::Turkish,
         Language::English => core::Language::English,
+        Language::German => core::Language::German,
+        Language::Spanish => core::Language::Spanish,
+        Language::French => core::Language::French,
+        Language::Portuguese => core::Language::Portuguese,
     }
 }
 
@@ -53,6 +61,10 @@ pub fn theme(value: core::Theme) -> Theme {
         core::Theme::Cosmic => Theme::Cosmic,
         core::Theme::Aurora => Theme::Aurora,
         core::Theme::Sunset => Theme::Sunset,
+        core::Theme::GameColors => Theme::GameColors,
+        core::Theme::Ember => Theme::Ember,
+        core::Theme::Tide => Theme::Tide,
+        core::Theme::Daylight => Theme::Daylight,
     }
 }
 
@@ -61,6 +73,10 @@ pub fn theme_to_core(value: Theme) -> core::Theme {
         Theme::Cosmic => core::Theme::Cosmic,
         Theme::Aurora => core::Theme::Aurora,
         Theme::Sunset => core::Theme::Sunset,
+        Theme::GameColors => core::Theme::GameColors,
+        Theme::Ember => core::Theme::Ember,
+        Theme::Tide => core::Theme::Tide,
+        Theme::Daylight => core::Theme::Daylight,
     }
 }
 
@@ -110,7 +126,7 @@ mod tests {
 
     #[test]
     fn enums_round_trip() {
-        for t in Theme::ALL {
+        for t in Theme::CHOICES {
             assert_eq!(theme(theme_to_core(t)), t);
         }
         for a in Accent::ALL {

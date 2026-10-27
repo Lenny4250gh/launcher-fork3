@@ -11,9 +11,10 @@ use std::time::{Duration, Instant};
 
 use anyps5_core::events::Notifier;
 use anyps5_core::library::Game;
+use anyps5_core::notifications::{Act, Kind};
 use anyps5_core::online::api::{ErrorCode, FriendState, SessionKind};
 use anyps5_core::online::{
-    self as net, Command, Failure, Join, NetProcess, Notice, Purpose, Status,
+    self as net, Command, Failure, FriendRequestResult, Join, NetProcess, Notice, Purpose, Status,
 };
 use anyps5_core::paths::GameId;
 use anyps5_core::play_together::Blocker;
@@ -21,12 +22,13 @@ use anyps5_core::play_together::Blocker;
 use crate::app::model::{Effect, GameState, Model};
 use crate::app::overlay::Overlay;
 use crate::screens::discord_strings::redeem_failure;
+use crate::screens::lfg_strings::LfgText as LT;
 use crate::screens::online_call_strings::CallText as CT;
-use crate::screens::online_feed_strings::FeedText as FT;
 use crate::screens::online_restriction_strings as restriction_text;
 use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
 use crate::screens::online_voice_strings::VoiceText as VT;
+use crate::screens::send::media_label;
 use crate::screens::together_strings::TogetherText as TT;
 use crate::ui::focus::HomeFocus;
 use crate::ui::i18n::{Arg, Language};
@@ -128,7 +130,8 @@ impl OnlineService {
                         cloud,
                     },
                 );
-                tell_worker(model);
+                // A codec download that failed before is tried again with the service.
+                tell_worker(model, true);
             }
             Err(error) => {
                 tracing::warn!("the net service could not start: {error}");
@@ -177,7 +180,8 @@ impl OnlineService {
             }
             // Cisco's OpenH264 came or went: the worker is asked again what it can do.
             if anyps5_core::openh264::take_changed() {
-                tell_worker(model);
+                // Not after a failure: that would retry in a loop while the PC is offline.
+                tell_worker(model, false);
             }
             for line in process.drain() {
                 let ended = line == net::Line::Ended;
@@ -193,6 +197,7 @@ impl OnlineService {
             // Nothing to send to: commands fail at once instead of waiting forever.
             let _ = model.online.take_outbox();
         }
+        crate::ui::talk::shared().set_writer(self.process.as_ref().map(|p| p.writer()));
         let online = model.online.is_online();
         if online && !self.was_online {
             model.effects.push(Effect::SyncTrophies);
@@ -350,13 +355,20 @@ impl OnlineService {
             Notice::Answered(purpose, result) => self.answered(model, purpose, result, ready),
             Notice::Request(account) => {
                 let text = T::RequestArrived.format(language, &[Arg::Str(&account.handle)]);
-                model.toast_with(text, Icon::USER_PLUS, Cue::Notify);
+                model.announce(
+                    Kind::FriendRequest,
+                    Act::AcceptFriend(account.id.0),
+                    text,
+                    Icon::USER_PLUS,
+                    Cue::Notify,
+                );
             }
             // A Play Together invitation is the card's: "Mira is playing Minecraft. Join?".
             Notice::Invitation(invitation) if invitation.kind == SessionKind::Lan => {}
             Notice::SessionEnded { session, host, .. } => {
                 model.together.dismiss(&session);
                 let text = TT::ToastSessionEnded.format(language, &[Arg::Str(&host.handle)]);
+                model.note(Kind::Together, text.clone(), Act::None);
                 model.toast(text, Icon::USERS);
             }
             Notice::HostFailed(reason) => {
@@ -372,7 +384,21 @@ impl OnlineService {
                         Arg::Str(&invitation.title),
                     ],
                 );
-                model.toast_with(text, Icon::ENVELOPE_SIMPLE, Cue::Invite);
+                model.announce(
+                    Kind::Together,
+                    Act::JoinInvitation(invitation.id.clone()),
+                    text,
+                    Icon::ENVELOPE_SIMPLE,
+                    Cue::Invite,
+                );
+            }
+            Notice::LfgRequest { from, .. } => {
+                let text = LT::ToastRequest.format(language, &[Arg::Str(&from.handle)]);
+                model.toast_with(text, Icon::USER_PLUS, Cue::Notify);
+            }
+            Notice::LfgAccepted { by, .. } => {
+                let text = LT::ToastAcceptedBy.format(language, &[Arg::Str(&by.handle)]);
+                model.toast_with(text, Icon::USERS, Cue::Invite);
             }
             // A call rings on its own card; the window comes forward so it can be answered.
             Notice::PartyInvitation(invitation) if invitation.call => {
@@ -380,7 +406,7 @@ impl OnlineService {
             }
             Notice::MissedCall(call) => {
                 let text = CT::ToastMissed.format(language, &[Arg::Str(&call.from.handle)]);
-                model.toast_with(text, Icon::USERS, Cue::Notify);
+                model.announce(Kind::System, Act::None, text, Icon::USERS, Cue::Notify);
             }
             Notice::CallEnded(callee, reason) => {
                 let text = match reason {
@@ -397,7 +423,13 @@ impl OnlineService {
             Notice::PartyInvitation(invitation) => {
                 let text = S::PartyInvitationArrived
                     .format(language, &[Arg::Str(&invitation.from.handle)]);
-                model.toast_with(text, Icon::USERS, Cue::Invite);
+                model.announce(
+                    Kind::Invitation,
+                    Act::JoinParty(invitation.id.clone()),
+                    text,
+                    Icon::USERS,
+                    Cue::Invite,
+                );
             }
             // A message toast only tells what the open panel does not already show.
             Notice::Message { message, .. } if model.overlay != Some(Overlay::Friends) => {
@@ -405,10 +437,19 @@ impl OnlineService {
                     language,
                     &[
                         Arg::Str(&message.sender.handle),
-                        Arg::Str(&net::snippet(&message.text, MESSAGE_TOAST_CHARS)),
+                        Arg::Str(&message.media.as_ref().map_or_else(
+                            || net::snippet(&message.text, MESSAGE_TOAST_CHARS),
+                            |info| media_label(info, language),
+                        )),
                     ],
                 );
-                model.toast_with(text, Icon::ENVELOPE_SIMPLE, Cue::Message);
+                model.announce(
+                    Kind::Message,
+                    Act::OpenMessages(Some(message.conversation.clone())),
+                    text,
+                    Icon::ENVELOPE_SIMPLE,
+                    Cue::Message,
+                );
             }
             Notice::MessageRequest(request) if model.overlay != Some(Overlay::Friends) => {
                 let me = model.online.account.as_ref().map(|a| a.id);
@@ -417,7 +458,13 @@ impl OnlineService {
                     .map(|a| a.handle.clone())
                     .unwrap_or_default();
                 let text = S::MessageRequestArrived.format(language, &[Arg::Str(&from)]);
-                model.toast_with(text, Icon::ENVELOPE_SIMPLE, Cue::Message);
+                model.announce(
+                    Kind::Message,
+                    Act::OpenMessages(Some(request.id.clone())),
+                    text,
+                    Icon::ENVELOPE_SIMPLE,
+                    Cue::Message,
+                );
             }
             // The open panel shows it; the sound still says it arrived.
             Notice::Message { .. } | Notice::MessageRequest(_) => model.sound(Cue::Message),
@@ -437,6 +484,7 @@ impl OnlineService {
                 model.toast(text.text(language), Icon::MICROPHONE_SLASH);
             }
             Notice::Screen(notice) => super::online_screen::notice(model, notice),
+            Notice::SharePlay(notice) => super::online_share::notice(model, notice),
             Notice::Restricted(restriction) => {
                 // The panel shows it as a row; the toast is for a player who looks elsewhere.
                 let text = restriction_text::toast(&restriction, None, None, language);
@@ -575,13 +623,46 @@ impl OnlineService {
             (Purpose::AddFriend(handle), Ok(value)) => {
                 let friends = serde_json::from_value::<net::control::FriendAdded>(value)
                     .is_ok_and(|a| a.result == FriendState::Friends);
-                let text = if friends {
-                    T::NowFriends
+                // The page that asked says it where the field is; the toast is for a player who has
+                // left the page.
+                let result = if friends {
+                    FriendRequestResult::Friends
                 } else {
-                    T::RequestSent
+                    FriendRequestResult::Requested
+                };
+                model.online.record_friend_request(&handle, result);
+                if model.overlay != Some(Overlay::Friends) {
+                    let text = if friends {
+                        T::NowFriends
+                    } else {
+                        T::RequestSent
+                    }
+                    .format(language, &[Arg::Str(&handle)]);
+                    model.toast(text, Icon::USER_PLUS);
                 }
-                .format(language, &[Arg::Str(&handle)]);
-                model.toast(text, Icon::USER_PLUS);
+            }
+            (Purpose::AddFriend(handle), Err(failure)) => {
+                let what = model.online.blocked_by(&Purpose::AddFriend(handle.clone()));
+                let text = match &failure.restriction {
+                    Some(restriction) => restriction_text::toast(restriction, what, None, language),
+                    None if failure.is(ErrorCode::BadRequest) => {
+                        T::AddSelf.text(language).to_owned()
+                    }
+                    None if failure.is(ErrorCode::Forbidden) => {
+                        T::AddBlocked.text(language).to_owned()
+                    }
+                    None if failure.is(ErrorCode::Limit) => T::AddLimit.text(language).to_owned(),
+                    None => failure_text(&failure, language),
+                };
+                model
+                    .online
+                    .record_friend_request(&handle, FriendRequestResult::Failed(text.clone()));
+                if model.overlay != Some(Overlay::Friends) {
+                    model.toast(text, Icon::WARNING);
+                } else {
+                    // The page says why, beside the field.
+                    model.sound(Cue::Error);
+                }
             }
             (Purpose::Accept(id), Ok(_)) => {
                 let text = T::NowFriends.format(language, &[Arg::Str(&handle_of(model, id))]);
@@ -594,6 +675,57 @@ impl OnlineService {
             (Purpose::Report(_), Ok(_)) => {
                 let text = T::Reported.text(language).to_owned();
                 model.toast(text, Icon::FLAG);
+            }
+            (Purpose::LfgPost, Ok(_)) => {
+                model.toast(LT::ToastPosted.text(language), Icon::CHECK_CIRCLE);
+            }
+            (Purpose::LfgClose(_), Ok(_)) => {
+                model.toast(LT::ToastClosed.text(language), Icon::CHECK_CIRCLE);
+            }
+            (Purpose::LfgAsk(_), Ok(_)) => {
+                model.toast(LT::ToastAsked.text(language), Icon::PAPER_PLANE_RIGHT);
+            }
+            (Purpose::LfgAnswer { accept: true, .. }, Ok(_)) => {
+                model.toast(LT::ToastAccepted.text(language), Icon::USERS);
+            }
+            // The panel says it: a list that did not load, a post that was turned away.
+            (Purpose::Lfg { .. } | Purpose::LfgMine | Purpose::LfgPost, Err(failure)) => {
+                tracing::info!("net service: {}: {}", failure.code, failure.message);
+            }
+            (Purpose::SendMedia { conversation }, Ok(_)) => {
+                let me = model
+                    .online
+                    .account
+                    .as_ref()
+                    .map_or(net::api::AccountId(0), |a| a.id);
+                let handle = model
+                    .online
+                    .social
+                    .get(&conversation)
+                    .and_then(|c| net::others(c, me).first().map(|a| a.handle.clone()))
+                    .unwrap_or_default();
+                let text = LT::Sent.format(language, &[Arg::Str(&handle)]);
+                model.toast(text, Icon::CHECK_CIRCLE);
+            }
+            (Purpose::SendMedia { .. }, Err(failure)) => {
+                tracing::info!("net service: {}: {}", failure.code, failure.message);
+                let text = if failure.restriction.is_some() {
+                    LT::SendRestricted.text(language)
+                } else {
+                    crate::app::lfg::send_failure_text(&failure.code, language)
+                };
+                model.toast_failure(text);
+            }
+            (Purpose::FetchMedia { media }, Ok(_)) => {
+                if let Some(path) = model.online.media.open.remove(&media) {
+                    crate::app::panels::lfg::open_path(model, &path);
+                }
+            }
+            (Purpose::FetchMedia { media }, Err(failure)) => {
+                tracing::info!("net service: {}: {}", failure.code, failure.message);
+                if model.online.media.open.remove(&media).is_some() {
+                    model.toast_failure(LT::OpenFailed.text(language));
+                }
             }
             (Purpose::Invite | Purpose::Dialog, Ok(_)) => {}
             // The invitation a join link made arrives as the usual event; the panel's Home page
@@ -626,6 +758,7 @@ impl OnlineService {
                 | Purpose::Compare(_)
                 | Purpose::Secrets { .. }
                 | Purpose::Privacy
+                | Purpose::PublicProfile
                 | Purpose::Party
                 | Purpose::JoinCode
                 | Purpose::JoinCodeRevoke
@@ -663,16 +796,14 @@ impl OnlineService {
                 | Purpose::ScreenLeave,
                 Err(failure),
             ) => super::online_screen::failed(model, &failure),
-            // The count went back by itself; the player is told why it did.
-            (Purpose::React { .. }, Err(failure)) => {
-                tracing::info!("net service: {}: {}", failure.code, failure.message);
-                let text = if failure.is(ErrorCode::RateLimited) {
-                    failure_text(&failure, language)
-                } else {
-                    FT::ReactFailed.text(language).to_owned()
-                };
-                model.toast(text, Icon::WARNING);
-            }
+            (
+                Purpose::ShareStart
+                | Purpose::ShareAnswer { .. }
+                | Purpose::ShareMode
+                | Purpose::ShareRequest
+                | Purpose::ShareStop,
+                Err(failure),
+            ) => super::online_share::failed(model, &failure),
             (Purpose::SetPrivacy, Err(failure)) => {
                 // The choice the panel shows goes back to what the cloud keeps.
                 model.online.send(Purpose::Privacy, Command::Privacy);
@@ -827,23 +958,43 @@ pub fn share_worker_path(model: &Model) -> Option<std::path::PathBuf> {
     net::locate_worker().or_else(|| bundled_worker(&model.paths))
 }
 
+/// Whether Cisco's codec is fetched now: a missing one always; one whose last download failed
+/// only when `retry_failed` (the net service starts, the player opens Settings), never on the
+/// change that the failed download itself reports, which would retry in a loop while offline.
+fn codec_fetch_wanted(state: &anyps5_core::openh264::CodecState, retry_failed: bool) -> bool {
+    use anyps5_core::openh264::CodecState;
+    match state {
+        CodecState::Missing => true,
+        CodecState::Failed(_) => retry_failed,
+        CodecState::Downloading | CodecState::Ready => false,
+    }
+}
+
+/// On Linux, while the player keeps the codec on with share screen: fetches Cisco's OpenH264 when
+/// [`codec_fetch_wanted`] says so.
+pub(crate) fn fetch_codec(model: &Model, retry_failed: bool) {
+    if !(cfg!(target_os = "linux") && model.prefs.online_openh264 && share_screen_enabled(model)) {
+        return;
+    }
+    let source = anyps5_core::openh264::Source::default();
+    if codec_fetch_wanted(
+        &anyps5_core::openh264::state(&model.paths, &source),
+        retry_failed,
+    ) {
+        anyps5_core::openh264::install_in_background(&model.paths, source, None);
+    }
+}
+
 /// Tells the net service where the share worker is, when share screen is on and there is one.
 /// Without this the net service reports neither `can_share` nor `can_watch` and the launcher
 /// shows nothing of it.
-fn tell_worker(model: &mut Model) {
+fn tell_worker(model: &mut Model, retry_failed: bool) {
     if !share_screen_enabled(model) {
         return;
     }
     // On Linux the codec is Cisco's download: while the player keeps it on, a missing one is
     // fetched again, and the worker is told once it is there.
-    if cfg!(target_os = "linux") && model.prefs.online_openh264 {
-        let source = anyps5_core::openh264::Source::default();
-        if anyps5_core::openh264::state(&model.paths, &source)
-            == anyps5_core::openh264::CodecState::Missing
-        {
-            anyps5_core::openh264::install_in_background(&model.paths, source, None);
-        }
-    }
+    fetch_codec(model, retry_failed);
     let Some(path) = net::locate_worker().or_else(|| bundled_worker(&model.paths)) else {
         tracing::info!("share screen is on, but there is no share worker");
         return;
@@ -943,7 +1094,10 @@ pub fn failure_text(failure: &Failure, language: Language) -> String {
     } else if code(ErrorCode::Full) {
         T::Full
     } else {
-        return T::Failed.format(language, &[Arg::Str(&failure.message)]);
+        // The service's own sentence is English and unplanned: it goes to the log, the player gets
+        // a line in their language.
+        tracing::warn!("a request failed: {}", failure.message);
+        T::Failed
     };
     text.text(language).to_owned()
 }
@@ -1204,11 +1358,26 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_codec_download_is_tried_again_on_a_start_but_never_in_a_loop() {
+        use anyps5_core::openh264::CodecState;
+        let failed = CodecState::Failed("offline".into());
+        // The net service starting, or the player opening Settings: again.
+        assert!(codec_fetch_wanted(&failed, true));
+        // The failure's own change notice: not again, or an offline PC retries forever.
+        assert!(!codec_fetch_wanted(&failed, false));
+        for retry in [true, false] {
+            assert!(codec_fetch_wanted(&CodecState::Missing, retry));
+            assert!(!codec_fetch_wanted(&CodecState::Downloading, retry));
+            assert!(!codec_fetch_wanted(&CodecState::Ready, retry));
+        }
+    }
+
+    #[test]
     fn the_share_worker_is_only_handed_over_when_share_screen_is_on() {
         let mut model = signed_in_model();
         model.prefs.online_share_screen = false;
         // Off: nothing goes out, whatever worker there may be.
-        tell_worker(&mut model);
+        tell_worker(&mut model, true);
         assert!(model.online.take_outbox().is_empty());
         // On, with a worker: the net service is told where it is.
         model.prefs.online_share_screen = true;
@@ -1234,6 +1403,7 @@ mod tests {
             deleted: false,
             reactions: Vec::new(),
             rev: 0,
+            media: None,
         }
     }
 
@@ -1531,7 +1701,7 @@ mod tests {
                 &Failure::new("limit", "Too many friends."),
                 Language::English
             ),
-            "That did not work: Too many friends."
+            "Could not do that. Try again in a moment."
         );
     }
 
@@ -1821,7 +1991,7 @@ mod tests {
         };
         crate::app::together::apply(
             &mut model,
-            crate::app::together::Action::Dismiss { key, invitation },
+            crate::app::together::Action::Decline { key, invitation },
         );
         assert!(crate::app::together::card(&model).is_none());
         assert!(model.online.take_outbox()[0].contains("answer_invitation"));

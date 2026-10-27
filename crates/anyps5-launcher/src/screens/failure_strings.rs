@@ -29,10 +29,46 @@ impl FailureText {
         }
     }
 
+    pub const fn german(self) -> &'static str {
+        match self {
+            FailureText::UnlockStopped => {
+                "Das Freischalten wurde angehalten. Versuch es noch einmal. Wenn es wieder anhält, zeigt dir Optionen > Protokoll den Grund, und Problem melden schickt ihn an uns."
+            }
+        }
+    }
+
+    pub const fn spanish(self) -> &'static str {
+        match self {
+            FailureText::UnlockStopped => {
+                "Se detuvo el desbloqueo. Inténtalo de nuevo. Si vuelve a detenerse, Opciones > Registro muestra el motivo e Informar de un problema nos lo envía."
+            }
+        }
+    }
+
+    pub const fn french(self) -> &'static str {
+        match self {
+            FailureText::UnlockStopped => {
+                "Le déverrouillage s’est arrêté. Réessaie. S’il s’arrête encore, Options > Journal montre pourquoi, et Signaler un problème nous l’envoie."
+            }
+        }
+    }
+
+    pub const fn portuguese(self) -> &'static str {
+        match self {
+            FailureText::UnlockStopped => {
+                "O desbloqueio parou. Tente de novo. Se parar outra vez, Opções > Registro mostra o motivo, e Informar um problema envia para nós."
+            }
+        }
+    }
+
     pub fn text(self, language: Language) -> &'static str {
         match language {
             Language::English => self.english(),
             Language::Turkish => self.turkish(),
+            Language::German => self.german(),
+            Language::Spanish => self.spanish(),
+            Language::French => self.french(),
+            Language::Portuguese => self.portuguese(),
         }
     }
 }

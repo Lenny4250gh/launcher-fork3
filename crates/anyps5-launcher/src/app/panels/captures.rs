@@ -117,7 +117,7 @@ impl PanelHost {
                 captures: list,
                 sections: &secs,
                 any: !list.is_empty(),
-                clips_available: cfg!(windows),
+                clips_available: anyps5_core::clips::SUPPORTED,
                 language,
                 accent,
                 now,
@@ -142,7 +142,7 @@ impl PanelHost {
                 }
                 None => cx
                     .model
-                    .toast(CapturesText::CopyFailed.text(language), Icon::WARNING),
+                    .toast_failure(CapturesText::CopyFailed.text(language)),
             }
         }
         for (action, target) in actions.into_iter().zip(targets) {
@@ -166,16 +166,16 @@ impl PanelHost {
         match action {
             CapturesAction::Close => model.dismiss_overlay(),
             CapturesAction::Refresh => self.capture_service.refresh(folder),
-            CapturesAction::OpenClipsSettings => model.show_settings(Some(SettingsPage::Behavior)),
+            CapturesAction::OpenClipsSettings => model.show_settings(Some(SettingsPage::Captures)),
             CapturesAction::OpenFolderSettings => {
-                model.show_settings(Some(SettingsPage::Advanced));
+                model.show_settings(Some(SettingsPage::Captures));
             }
             CapturesAction::OpenInPlayer(_) => {
                 if let Some(c) = &target
                     && let Err(error) = platform::open_file(&c.path)
                 {
                     tracing::warn!("captures: {} did not open: {error}", c.path.display());
-                    model.toast(CapturesText::PlayerFailed.text(language), Icon::WARNING);
+                    model.toast_failure(CapturesText::PlayerFailed.text(language));
                 }
             }
             CapturesAction::ShowInFolder(_) => {
@@ -183,12 +183,27 @@ impl PanelHost {
                     && let Err(error) = platform::reveal(&c.path)
                 {
                     tracing::warn!("captures: {} was not shown: {error}", c.path.display());
-                    model.toast(CapturesText::FolderFailed.text(language), Icon::WARNING);
+                    model.toast_failure(CapturesText::FolderFailed.text(language));
                 }
             }
             CapturesAction::CopyImage(_) => {
                 if let Some(c) = &target {
                     self.capture_service.images.start_copy(c.path.clone());
+                }
+            }
+            CapturesAction::SendToFriend(_) => {
+                let Some(c) = &target else { return };
+                let duration = self
+                    .capture_service
+                    .images
+                    .duration(&c.path)
+                    .map(|d| d.as_millis() as u64);
+                match crate::app::lfg::prepare(&c.path, c.size, duration) {
+                    Ok(outgoing) => model.open_send_capture(outgoing),
+                    Err(refusal) => {
+                        let text = crate::app::lfg::refusal_text(refusal, language);
+                        model.toast_failure(text);
+                    }
                 }
             }
             CapturesAction::Delete(_) => {
@@ -204,7 +219,7 @@ impl PanelHost {
                     Err(error) => {
                         tracing::warn!("captures: {} was not deleted: {error}", c.path.display());
                         let text = CapturesText::DeleteFailed.format(language, &[Arg::Str(&name)]);
-                        model.toast(text, Icon::WARNING);
+                        model.toast_failure(text);
                     }
                 }
             }

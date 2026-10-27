@@ -1,0 +1,38 @@
+# Flatpak manifest of the AnyPlay Launcher. It compiles nothing: it installs the release binary that
+# the release workflow already built (the same one as in the AppImage). Build it with
+# tools/linux/flatpak.sh, which stages the files in ./stage beside this manifest.
+app-id: net.anyplay.Launcher
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: anyplay-launcher
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  # Game pads, uinput (the virtual controller) and the GPU (dri).
+  - --device=all
+  # Games live in the home folder, and the launcher starts them from there.
+  - --filesystem=home
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - name: anyplay-launcher
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 anyplay-launcher /app/bin/anyplay-launcher
+      # The release binary is not rebuilt, so the package says it is packaged: the launcher then never
+      # replaces its own files and tells the player to update with Flatpak (docs/UPDATES.md).
+      - printf 'Flatpak\n' > package-manager
+      - install -Dm644 package-manager /app/share/anyplay-launcher/package-manager
+      - sed 's/^Icon=.*/Icon=net.anyplay.Launcher/' anyplay-launcher.desktop > net.anyplay.Launcher.desktop
+      - install -Dm644 net.anyplay.Launcher.desktop /app/share/applications/net.anyplay.Launcher.desktop
+      # The icon is 64x64, so it goes in the 64x64 folder (a 256x256 folder would hold a scaled-up lie).
+      - install -Dm644 anyplay-launcher.png /app/share/icons/hicolor/64x64/apps/net.anyplay.Launcher.png
+      - install -Dm644 net.anyplay.Launcher.metainfo.xml /app/share/metainfo/net.anyplay.Launcher.metainfo.xml
+      - install -Dm644 LICENSE /app/share/licenses/net.anyplay.Launcher/LICENSE
+      - install -Dm644 THIRD-PARTY-LICENSES.txt /app/share/licenses/net.anyplay.Launcher/THIRD-PARTY-LICENSES.txt
+    sources:
+      - type: dir
+        path: stage

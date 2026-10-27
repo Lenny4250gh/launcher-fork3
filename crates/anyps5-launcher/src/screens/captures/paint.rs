@@ -11,16 +11,17 @@ use super::{
     ViewFocus, Zone, duration_text, filter_text,
 };
 use crate::screens::captures_strings::CapturesText;
+use crate::screens::dialog;
 use crate::screens::format;
+use crate::screens::rows::{ListEvent, Row};
 use crate::screens::scroll::Follow;
 use crate::screens::{clamped, right_aligned_hints};
 use crate::ui::anim::{AnimExt, Motion};
-use crate::ui::chrome::{TileImage, glass_card};
+use crate::ui::chrome::TileImage;
 use crate::ui::components::{
     self, ConsoleButton, ControlSize, corner, paint_focus_glow, paint_focus_stroke, paint_hairline,
     paint_spinner_arc,
 };
-use crate::ui::glass::GlassStyle;
 use crate::ui::i18n::{Arg, Language};
 use crate::ui::icons::Icon;
 use crate::ui::input;
@@ -135,8 +136,15 @@ pub(super) fn draw(
 ) {
     let area = ui.max_rect().shrink2(vec2(pad::LIBRARY.0, pad::LIBRARY.1));
     match screen.mode {
-        Mode::Browse => browse(ui, area, screen, data, flat, pressed),
-        Mode::View { place, focus } => view(ui, area, data, flat, place, Some(focus), pressed),
+        Mode::Browse => {
+            browse(ui, area, screen, data, flat, pressed);
+            dialog::close(ui.ctx(), CONFIRM_CARD);
+        }
+        Mode::View { place, focus } => {
+            view(ui, area, data, flat, place, Some(focus), pressed);
+            // The question has just been answered: its card leaves.
+            dialog::close(ui.ctx(), CONFIRM_CARD);
+        }
         Mode::Confirm { place, button } => {
             view(ui, area, data, flat, place, None, pressed);
             confirm(ui, data, flat, place, button, pressed);
@@ -175,26 +183,13 @@ fn header(
             color::text_count(),
         );
     }
-    let close = size::CONTROL_M;
-    let button = Rect::from_min_size(
-        pos2(row.max.x - close, row.center().y - close * 0.5),
-        vec2(close, close),
-    );
-    let mut child = ui.new_child(UiBuilder::new().max_rect(button));
-    let name = language.text(crate::ui::i18n::Key::HintBack);
-    if ConsoleButton::icon_only(Icon::X, name)
-        .size(ControlSize::Medium)
-        .show(&mut child)
-        .clicked()
-    {
+    let (edge, closed) = crate::screens::close_button(ui, row, language);
+    if closed {
         pressed.back = true;
     }
     right_aligned_hints(
         ui,
-        Rect::from_min_max(
-            row.min,
-            pos2(button.min.x - size::CONTROL_GAP * 2.0, row.max.y),
-        ),
+        Rect::from_min_max(row.min, pos2(edge - size::CONTROL_GAP * 2.0, row.max.y)),
         language,
     );
     row
@@ -285,6 +280,7 @@ fn grid(
     let (follow, scroll_to) =
         Follow::begin(&ctx, id, focused_place.and_then(|p| layout.band_of(p)));
     let mut scroll = egui::ScrollArea::vertical()
+        .scroll_source(crate::screens::scroll::drag_scroll())
         .id_salt(id)
         .auto_shrink([false, false])
         .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden);
@@ -563,7 +559,6 @@ fn status(
     state: State,
     pressed: &mut Pressed,
 ) {
-    let painter = ui.painter().clone();
     let language = data.language;
     let (icon, title, body): (Icon, CapturesText, Option<String>) = match state {
         State::Loading => (Icon::IMAGES, CapturesText::Loading, None),
@@ -604,80 +599,20 @@ fn status(
         }
         State::Items => return,
     };
-    let wrap = 520.0f32.min(rect.width() - 40.0);
-    let body_galley = body.as_ref().map(|b| centred_galley(&painter, b, wrap));
+    // The shared state page, like every other empty page: centred on the window.
     let button = button_for(data);
-    let body_h = body_galley.as_ref().map_or(0.0, |g| g.size().y + 14.0);
-    let button_h = if button.is_some() {
-        28.0 + size::CONTROL_L
-    } else {
-        0.0
+    let note = body;
+    let page = crate::ui::state_page::StatePage {
+        icon,
+        title: title.text(language),
+        note: note.as_deref(),
+        loading: state == State::Loading,
+        action: button.as_ref().map(|spec| spec.label.text(language)),
     };
-    let block = 44.0 + 18.0 + ty::EMPTY_TITLE.line_height() + body_h + button_h;
-    let mut y = (rect.center().y - block * 0.5 - 24.0).max(rect.min.y + 8.0);
-    let cx = rect.center().x;
-    if state == State::Loading {
-        let time = ui.ctx().clock();
-        paint_spinner_arc(&painter, pos2(cx, y + 22.0), 14.0, time, 3.0, white(0.7));
-        ui.ctx().request_repaint();
-    } else {
-        painter.text(
-            pos2(cx, y + 22.0),
-            Align2::CENTER_CENTER,
-            icon.glyph(),
-            icon.font(text::quantize_size(40.0), false),
-            white(0.5),
-        );
+    let focused = screen.zone == Zone::Button;
+    if crate::ui::state_page::show(ui, rect, &page, focused) {
+        pressed.button = true;
     }
-    y += 44.0 + 18.0;
-    text::paint(
-        &painter,
-        pos2(cx, y),
-        Align2::CENTER_TOP,
-        ty::EMPTY_TITLE,
-        title.text(language),
-        Color32::WHITE,
-    );
-    y += ty::EMPTY_TITLE.line_height();
-    if let Some(galley) = body_galley {
-        y += 14.0;
-        let at = pos2(cx - galley.rect.center().x, y);
-        let h = galley.size().y;
-        painter.galley(at, galley, color::text_empty());
-        y += h;
-    }
-    if let Some(spec) = button {
-        y += 28.0;
-        let area = Rect::from_min_size(pos2(rect.min.x, y), vec2(rect.width(), size::CONTROL_L));
-        let mut row = ui.new_child(
-            UiBuilder::new()
-                .max_rect(area)
-                .layout(UiLayout::top_down(Align::Center)),
-        );
-        let focused = screen.zone == Zone::Button;
-        let response = ConsoleButton::new(spec.label.text(language))
-            .prominent(true)
-            .focused(focused)
-            .show(&mut row);
-        crate::ui::a11y::follow(ui.ctx(), response.id, focused);
-        if response.clicked() {
-            pressed.button = true;
-        }
-    }
-}
-
-/// Centred text, wrapped to `width`, in the colour the host paints it with.
-fn centred_galley(
-    painter: &egui::Painter,
-    text_: &str,
-    width: f32,
-) -> std::sync::Arc<egui::Galley> {
-    let style = ty::QUESTION;
-    let mut job =
-        egui::text::LayoutJob::simple(text_.to_owned(), style.font(), Color32::WHITE, width);
-    job.halign = Align::Center;
-    job.sections[0].format.line_height = Some(style.line_height() + 4.0);
-    painter.layout_job(job)
 }
 
 // --- one capture -------------------------------------------------------------------------------
@@ -738,6 +673,7 @@ fn view(
             let (label, icon) = match action {
                 ViewAction::OpenInPlayer => (CapturesText::OpenInPlayer, Icon::PLAY),
                 ViewAction::CopyImage => (CapturesText::CopyImage, Icon::IMAGE),
+                ViewAction::SendToFriend => (CapturesText::SendToFriend, Icon::PAPER_PLANE_RIGHT),
                 ViewAction::ShowInFolder => (CapturesText::ShowInFolder, Icon::FOLDER_OPEN),
                 ViewAction::Delete => (CapturesText::Delete, Icon::TRASH),
             };
@@ -823,13 +759,21 @@ fn view(
             ui.make_persistent_id(("play", &capture.path)),
             Sense::click(),
         );
+        let focused = focus == Some(ViewFocus::Media);
+        crate::ui::a11y::follow(&ctx, hit.id, focused);
+        hit.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::Role::Button,
+                true,
+                CapturesText::OpenInPlayer.text(language),
+            )
+        });
         if input::hovered(&ctx, &hit) {
             ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
         }
         if hit.clicked() {
             pressed.play = true;
         }
-        let focused = focus == Some(ViewFocus::Media);
         let big = 84.0;
         if focused {
             paint_focus_stroke(
@@ -916,6 +860,11 @@ fn centred_row(ui: &mut Ui, rect: Rect, mut add: impl FnMut(&mut Ui)) {
     add(&mut row);
 }
 
+/// How much of the card's width the file name in the sentence may take.
+const FILE_NAME_SHARE: f32 = 0.8;
+/// The animation identity of the delete question's card.
+const CONFIRM_CARD: &str = "captures-confirm";
+
 // --- the question before a delete ---------------------------------------------------------------
 
 fn confirm(
@@ -930,22 +879,6 @@ fn confirm(
     let painter = ui.painter().clone();
     let language = data.language;
     let capture = &data.captures[flat[place]];
-    let screen = ui.max_rect();
-    // A click beside the card is Cancel.
-    let scrim = ui.interact(
-        screen,
-        ui.make_persistent_id("captures-scrim"),
-        Sense::click(),
-    );
-    if scrim.clicked() {
-        pressed.back = true;
-    }
-    let shown = ctx.animate_from_to("captures-confirm", 0.0, 1.0, Motion::Hover);
-    painter.rect_filled(screen, 0.0, theme::black(0.55 * shown));
-
-    let width = 560.0f32.min(screen.width() - 48.0);
-    let pad_x = 36.0;
-    let inner = width - 2.0 * pad_x;
     let (title, verb) = match capture.kind {
         Kind::Screenshot => (
             CapturesText::DeleteScreenshotTitle,
@@ -953,72 +886,30 @@ fn confirm(
         ),
         Kind::Clip => (CapturesText::DeleteClipTitle, CapturesText::DeleteClip),
     };
-    let name = text::middle_truncate(&painter, ty::QUESTION, &capture.file_name(), inner * 0.8);
-    let body = CapturesText::DeleteBody.format(language, &[Arg::Str(&name)]);
-    let body_galley = clamped(
+    let name = text::middle_truncate(
         &painter,
         ty::QUESTION,
-        &body,
-        color::text_subtitle(),
-        inner,
-        4,
+        &capture.file_name(),
+        dialog::inner_width(&ctx) * FILE_NAME_SHARE,
     );
-    let height = 32.0
-        + ty::TOP_BAR_TITLE.line_height()
-        + 14.0
-        + body_galley.size().y
-        + 28.0
-        + size::CONTROL_M
-        + 32.0;
-    let card = Rect::from_center_size(screen.center(), vec2(width, height));
-    glass_card(
-        &ctx,
-        &painter,
-        card,
-        GlassStyle::glass(theme::radius::CARD + 8.0, 0.62),
-    );
-    // Swallows the click, so the scrim behind does not take it.
-    ui.interact(card, ui.make_persistent_id("captures-card"), Sense::click());
-    let mut y = card.min.y + 32.0;
-    text::paint(
-        &painter,
-        pos2(card.min.x + pad_x, y),
-        Align2::LEFT_TOP,
-        ty::TOP_BAR_TITLE,
-        title.text(language),
-        Color32::WHITE,
-    );
-    y += ty::TOP_BAR_TITLE.line_height() + 14.0;
-    let h = body_galley.size().y;
-    painter.galley(
-        pos2(card.min.x + pad_x, y),
-        body_galley,
-        color::text_subtitle(),
-    );
-    y += h + 28.0;
-    let row = Rect::from_min_size(pos2(card.min.x + pad_x, y), vec2(inner, size::CONTROL_M));
-    let mut layout = ui.new_child(
-        UiBuilder::new()
-            .max_rect(row)
-            .layout(UiLayout::right_to_left(Align::Center)),
-    );
-    layout.spacing_mut().item_spacing.x = size::CONTROL_GAP;
-    // Right to left: Delete first, then Cancel to its left.
-    let delete = ConsoleButton::new(verb.text(language))
-        .size(ControlSize::Medium)
-        .destructive(true)
-        .focused(button == 1)
-        .show(&mut layout);
-    crate::ui::a11y::follow(&ctx, delete.id, button == 1);
-    if delete.clicked() {
-        pressed.confirm = Some(1);
-    }
-    let cancel = ConsoleButton::new(CapturesText::Cancel.text(language))
-        .size(ControlSize::Medium)
-        .focused(button == 0)
-        .show(&mut layout);
-    crate::ui::a11y::follow(&ctx, cancel.id, button == 0);
-    if cancel.clicked() {
-        pressed.confirm = Some(0);
+    let body = CapturesText::DeleteBody.format(language, &[Arg::Str(&name)]);
+    // The card of every question (screens::dialog): Delete first, Cancel last, the focus on the
+    // button the model holds (0 = Cancel, 1 = Delete).
+    let rows = vec![
+        Row::command("delete", verb.text(language)).destructive(),
+        Row::command("cancel", CapturesText::Cancel.text(language)).refusal(),
+    ];
+    let card = dialog::Card {
+        id: CONFIRM_CARD,
+        title: title.text(language),
+        message: Some(&body),
+        language,
+        focus: usize::from(button == 0),
+        force: None,
+    };
+    for event in dialog::draw(&ctx, true, &card, &rows).unwrap_or_default() {
+        if let ListEvent::Effect { row, .. } = event {
+            pressed.confirm = Some(usize::from(row == 0));
+        }
     }
 }
