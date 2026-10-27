@@ -1224,6 +1224,12 @@ impl Model {
         if !self.toolkit_ready(id) {
             return;
         }
+        if self.record_needs_new_copy(id) {
+            // The copy was made without `--trace-imports`: relink it, the engine cannot record its
+            // network calls otherwise. It shows its progress; Play starts it afterwards.
+            self.unlock_again(id);
+            return;
+        }
         self.diagnoses.remove(id);
         self.started_without_window = false;
         let stamp = clock::rfc3339_utc(clock::unix_seconds());
@@ -1235,6 +1241,18 @@ impl Model {
         self.starting = Some(id.clone());
         self.effects
             .push(Effect::Pipeline(PipelineCommand::Play(id.clone())));
+    }
+
+    /// The player records network calls, and the game's copy was relinked without `--trace-imports`.
+    fn record_needs_new_copy(&self, id: &GameId) -> bool {
+        if !self.prefs.record_network {
+            return false;
+        }
+        let (Some(root), Some(game)) = (self.store_root(), self.game(id)) else {
+            return false;
+        };
+        let copy = anyps5_core::paths::unlocked_copy_dir(&root, &game.title_id, &game.id);
+        anyps5_core::unlock::read_record(&copy).is_some_and(|record| !record.trace_imports)
     }
 
     /// Esc on the splash: the game is stopped before it ever shows.
