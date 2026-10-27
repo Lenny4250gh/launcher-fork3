@@ -36,7 +36,6 @@ pub mod model;
 pub mod online;
 pub mod online_local;
 pub mod online_screen;
-pub mod online_share;
 pub mod overlay;
 pub mod pad;
 pub mod panels;

@@ -224,9 +224,6 @@ pub fn ui_theme(theme: settings::Theme) -> Theme {
         settings::Theme::Aurora => Theme::Aurora,
         settings::Theme::Sunset => Theme::Sunset,
         settings::Theme::GameColors => Theme::GameColors,
-        settings::Theme::Ember => Theme::Ember,
-        settings::Theme::Tide => Theme::Tide,
-        settings::Theme::Daylight => Theme::Daylight,
     }
 }
 
@@ -236,9 +233,6 @@ pub fn core_theme(theme: Theme) -> settings::Theme {
         Theme::Aurora => settings::Theme::Aurora,
         Theme::Sunset => settings::Theme::Sunset,
         Theme::GameColors => settings::Theme::GameColors,
-        Theme::Ember => settings::Theme::Ember,
-        Theme::Tide => settings::Theme::Tide,
-        Theme::Daylight => settings::Theme::Daylight,
     }
 }
 
@@ -1206,9 +1200,8 @@ impl Model {
                 .push(Effect::Pipeline(PipelineCommand::Activate(game.id))),
             // Nothing to press: the button is greyed out while the copy is removed or the
             // cancelled unlock is stopped.
-            GameState::Starting
-            | GameState::Uninstalling { .. }
-            | GameState::Cancelling { .. } => {}
+            GameState::Starting | GameState::Uninstalling { .. } | GameState::Cancelling { .. } => {
+            }
             GameState::Unreadable => {
                 let text = self.text(Key::UnreadableDump);
                 self.toast(text, Icon::X_CIRCLE);
@@ -1259,9 +1252,7 @@ impl Model {
                 p.paused_unlocks.remove(&key);
             });
         }
-        if self.queue.contains(id)
-            || self.progress.contains_key(id)
-            || self.cancelling.contains(id)
+        if self.queue.contains(id) || self.progress.contains_key(id) || self.cancelling.contains(id)
         {
             return;
         }
@@ -1306,7 +1297,9 @@ impl Model {
             .progress
             .iter()
             .map(|(id, &(step, fraction))| {
-                let percent = (self.overall(step, fraction) * 100.0).round().clamp(0.0, 100.0);
+                let percent = (self.overall(step, fraction) * 100.0)
+                    .round()
+                    .clamp(0.0, 100.0);
                 (id.clone(), percent as u8)
             })
             .collect();

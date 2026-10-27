@@ -971,7 +971,10 @@ impl PanelHost {
             }
         }
         let (language, accent) = (cx.model.language(), cx.shell.accent_color());
-        for action in self.quit.show(cx.shell, cx.ctx, &events, kind, language, accent) {
+        for action in self
+            .quit
+            .show(cx.shell, cx.ctx, &events, kind, language, accent)
+        {
             let model = &mut *cx.model;
             match action {
                 QuitAction::Cancel => model.quit_answer(false),

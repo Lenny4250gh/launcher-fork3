@@ -502,7 +502,9 @@ impl Extra {
             Extra::Pause => "Pause",
             Extra::Pausing => "Pausing…",
             Extra::Resume => "Resume",
-            Extra::PausedNote => "Incomplete: progress was not kept. Resume starts again from the beginning.",
+            Extra::PausedNote => {
+                "Incomplete: progress was not kept. Resume starts again from the beginning."
+            }
             Extra::HeldNote => "Paused. Resume goes on from here.",
             Extra::SavesRestoreIncomplete => {
                 "The restore did not finish. The saves from before are in the newest backup, Before a restore."
@@ -970,7 +972,9 @@ impl Extra {
             Extra::Pause => "Pausieren",
             Extra::Pausing => "Wird pausiert…",
             Extra::Resume => "Fortsetzen",
-            Extra::PausedNote => "Unvollständig: Fortschritt nicht erhalten. Fortsetzen beginnt von vorn.",
+            Extra::PausedNote => {
+                "Unvollständig: Fortschritt nicht erhalten. Fortsetzen beginnt von vorn."
+            }
             Extra::HeldNote => "Pausiert. Fortsetzen macht hier weiter.",
             Extra::SavesRestoreIncomplete => {
                 "Die Wiederherstellung wurde nicht abgeschlossen. Die früheren Spielstände sind in der neuesten Sicherung, Vor einer Wiederherstellung."
@@ -1226,7 +1230,9 @@ impl Extra {
             Extra::Pause => "Pausar",
             Extra::Pausing => "Pausando…",
             Extra::Resume => "Reanudar",
-            Extra::PausedNote => "Incompleto: el progreso no se conservó. Reanudar empieza desde el principio.",
+            Extra::PausedNote => {
+                "Incompleto: el progreso no se conservó. Reanudar empieza desde el principio."
+            }
             Extra::HeldNote => "En pausa. Reanudar continúa desde aquí.",
             _ => return None,
         })
@@ -1473,7 +1479,9 @@ impl Extra {
             Extra::Pause => "Pause",
             Extra::Pausing => "Mise en pause…",
             Extra::Resume => "Reprendre",
-            Extra::PausedNote => "Incomplet : la progression n’a pas été conservée. Reprendre repart du début.",
+            Extra::PausedNote => {
+                "Incomplet : la progression n’a pas été conservée. Reprendre repart du début."
+            }
             Extra::HeldNote => "En pause. Reprendre continue à partir d’ici.",
             _ => return None,
         })
@@ -1716,7 +1724,9 @@ impl Extra {
             Extra::Pause => "Pausar",
             Extra::Pausing => "Pausando…",
             Extra::Resume => "Retomar",
-            Extra::PausedNote => "Incompleto: o progresso não foi mantido. Retomar recomeça do início.",
+            Extra::PausedNote => {
+                "Incompleto: o progresso não foi mantido. Retomar recomeça do início."
+            }
             Extra::HeldNote => "Em pausa. Retomar continua daqui.",
             _ => return None,
         })

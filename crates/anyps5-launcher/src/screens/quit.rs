@@ -187,20 +187,40 @@ impl QuitPanel {
                 )
                 .icon(Icon::X)
                 .destructive(),
-                Row::command("stay", pick(
+                Row::command(
+                    "stay",
+                    pick(
                         language,
-                        ["Go back", "Geri dön", "Zurück", "Volver", "Retour", "Voltar"],
-                    ))
-                    .icon(Icon::ARROW_LEFT)
-                    .refusal(),
+                        [
+                            "Go back",
+                            "Geri dön",
+                            "Zurück",
+                            "Volver",
+                            "Retour",
+                            "Voltar",
+                        ],
+                    ),
+                )
+                .icon(Icon::ARROW_LEFT)
+                .refusal(),
             ],
             QuitKind::Removing => vec![
-                Row::command("stay", pick(
+                Row::command(
+                    "stay",
+                    pick(
                         language,
-                        ["Go back", "Geri dön", "Zurück", "Volver", "Retour", "Voltar"],
-                    ))
-                    .icon(Icon::ARROW_LEFT)
-                    .refusal(),
+                        [
+                            "Go back",
+                            "Geri dön",
+                            "Zurück",
+                            "Volver",
+                            "Retour",
+                            "Voltar",
+                        ],
+                    ),
+                )
+                .icon(Icon::ARROW_LEFT)
+                .refusal(),
             ],
         };
         if self.side.is_open() {

@@ -1404,9 +1404,7 @@ fn paint_hero(
             // reports, and while it is removed it is greyed out.
             .prominent(!matches!(
                 state,
-                GameState::Starting
-                    | GameState::Uninstalling { .. }
-                    | GameState::Cancelling { .. }
+                GameState::Starting | GameState::Uninstalling { .. } | GameState::Cancelling { .. }
             ))
             .enabled(!matches!(
                 state,
