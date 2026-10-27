@@ -730,7 +730,7 @@ pub mod size {
     pub const KEYCAP_GAP: f32 = 6.0;
     pub const TROPHY_ICON: f32 = 68.0;
     pub const TROPHY_HEADER_ICON: f32 = 112.0;
-    pub const LANGUAGE_CARD: (f32, f32) = (280.0, 150.0);
+    pub const LANGUAGE_CARD: (f32, f32) = (312.0, 176.0);
     pub const THEME_CARD_PREVIEW: (f32, f32) = (330.0, 186.0);
     pub const PROGRESS_HEIGHT: f32 = 4.0;
     pub const HERO_PROGRESS_WIDTH: f32 = 260.0;
