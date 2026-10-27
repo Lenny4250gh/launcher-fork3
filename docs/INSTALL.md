@@ -35,7 +35,7 @@ Releases up to v0.1.3 were made under the old name and call their files `AnyPS5-
 
   It needs the Freedesktop runtime 26.08 from Flathub. The permissions it asks for, and why, are in [packaging/flatpak/README.md](../packaging/flatpak/README.md). Flatpak updates the launcher; see [Updates](#updates).
 
-  Bundles up to 0.3.3 had the app ID `net.anyplay.Launcher`. To keep your settings, remove that one and move its folder before the first start of the new one:
+  Bundles up to 0.3.5 had the app ID `net.anyplay.Launcher`. To keep your settings, remove that one and move its folder before the first start of the new one:
 
   ```sh
   flatpak uninstall --user net.anyplay.Launcher
