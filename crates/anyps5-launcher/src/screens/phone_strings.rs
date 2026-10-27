@@ -59,7 +59,7 @@ impl PhoneText {
             PhoneText::SwitchDetail => {
                 "Use your phone as a controller. Only phones on your home network can connect, and each one has to be paired first."
             }
-            PhoneText::RemoveToTurnOff => "Remove paired controllers before turning off.",
+            PhoneText::RemoveToTurnOff => "Remove paired phones to turn this off.",
             PhoneText::Status => "Status",
             PhoneText::Waiting => "Waiting for a phone",
             PhoneText::ConnectedTo => "Connected to %@",
@@ -119,7 +119,7 @@ impl PhoneText {
             PhoneText::SwitchDetail => {
                 "Telefonunu kumanda olarak kullan. Yalnızca ev ağındaki telefonlar bağlanabilir ve her biri önce eşleştirilmelidir."
             }
-            PhoneText::RemoveToTurnOff => "Kapatmadan önce eşleştirilmiş kumandaları kaldır.",
+            PhoneText::RemoveToTurnOff => "Kapatmak için eşleştirilmiş telefonları kaldır.",
             PhoneText::Status => "Durum",
             PhoneText::Waiting => "Bir telefon bekleniyor",
             PhoneText::ConnectedTo => "%@ bağlı",
@@ -183,7 +183,7 @@ impl PhoneText {
             PhoneText::SwitchDetail => {
                 "Nutze dein Telefon als Controller. Nur Telefone in deinem Heimnetz können sich verbinden, und jedes muss zuerst gekoppelt werden."
             }
-            PhoneText::RemoveToTurnOff => "Gekoppelte Controller vor dem Ausschalten entfernen.",
+            PhoneText::RemoveToTurnOff => "Entferne gekoppelte Telefone, um dies auszuschalten.",
             PhoneText::Status => "Status",
             PhoneText::Waiting => "Warten auf ein Telefon",
             PhoneText::ConnectedTo => "Verbunden mit %@",
@@ -250,7 +250,7 @@ impl PhoneText {
             PhoneText::SwitchDetail => {
                 "Usa tu teléfono como mando. Solo pueden conectarse teléfonos de tu red doméstica y cada uno debe emparejarse antes."
             }
-            PhoneText::RemoveToTurnOff => "Elimina los mandos emparejados antes de desactivar.",
+            PhoneText::RemoveToTurnOff => "Elimina los teléfonos emparejados para desactivarlo.",
             PhoneText::Status => "Estado",
             PhoneText::Waiting => "Esperando un teléfono",
             PhoneText::ConnectedTo => "Conectado a %@",
@@ -315,7 +315,7 @@ impl PhoneText {
             PhoneText::SwitchDetail => {
                 "Utilise ton téléphone comme manette. Seuls les téléphones de ton réseau domestique peuvent se connecter, et chacun doit d’abord être associé."
             }
-            PhoneText::RemoveToTurnOff => "Retirez les manettes associées avant de désactiver.",
+            PhoneText::RemoveToTurnOff => "Retire les téléphones associés pour le désactiver.",
             PhoneText::Status => "État",
             PhoneText::Waiting => "En attente d’un téléphone",
             PhoneText::ConnectedTo => "Connecté à %@",
@@ -382,7 +382,7 @@ impl PhoneText {
             PhoneText::SwitchDetail => {
                 "Use seu celular como controle. Só celulares da sua rede doméstica podem se conectar, e cada um precisa ser pareado antes."
             }
-            PhoneText::RemoveToTurnOff => "Remova os controles pareados antes de desativar.",
+            PhoneText::RemoveToTurnOff => "Remova os celulares pareados para desativar.",
             PhoneText::Status => "Status",
             PhoneText::Waiting => "Aguardando um celular",
             PhoneText::ConnectedTo => "Conectado a %@",
