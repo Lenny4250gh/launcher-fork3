@@ -6,7 +6,7 @@
 
 The home of your games on PC. The launcher finds the games you dumped from your own console, unlocks them for [AnyPS5](https://github.com/anyplaynet/AnyPS5) and starts them from a console-style home screen. It also connects you with friends for parties, voice and sharing your captures. It runs on Windows, Linux and macOS (Apple silicon), in English, Turkish, German, Spanish, French and Brazilian Portuguese.
 
-The latest release is [0.3.2](docs/releases/v0.3.2.md). [Download](#get-it) · [Discord](https://discord.gg/9zYqf8fEsh) · [anyplaynet.com](https://anyplaynet.com) · [Compatibility list](https://anyplaynet.com/compatibility)
+The latest release is [0.3.5](docs/releases/v0.3.5.md). [Download](#get-it) · [Discord](https://discord.gg/9zYqf8fEsh) · [anyplaynet.com](https://anyplaynet.com) · [Compatibility list](https://anyplaynet.com/compatibility)
 
 ## What it does
 
@@ -19,19 +19,23 @@ The latest release is [0.3.2](docs/releases/v0.3.2.md). [Download](#get-it) · [
 
 **Play together**
 - Friends with presence, messages, parties with voice and push to talk (also while a game is in front), and a Notification Center.
+- Played With Recently: the people you shared a party or game session with in the last 30 days, ready to add as friends. Only you see the list, and you can turn it off or clear it.
 - Find Players for a game, and join codes for people who are not your friends.
-- Captures and clips, which you can send to friends.
-- Share your screen with a party, or broadcast to Twitch, YouTube or an RTMP server (Windows).
+- Captures and clips, which you can send to friends. Clips are saved only into your Captures folder.
+- Share your screen with a party (Windows and Linux), or broadcast to Twitch, YouTube or an RTMP server (Windows).
 
 **Make it yours**
 - Controller Center: battery, button tests, vibration, dead zones, and remapping the launcher's buttons.
 - Your phone as a controller, through [LudusCtrl](https://github.com/parl0v/ludusctrl).
 - Per-game settings and controls, with recommended settings you apply in one click.
-- Themes, larger text, high contrast, sounds and volumes.
+- Six themes that move (Cosmic, Aurora, Sunset, Ember, Tide and the light Daylight) and Game Colors, which takes its colours from the selected game's artwork.
+- Larger text, high contrast, reduced motion, sounds and volumes.
+- Six languages, chosen from a plain list.
 
 **Everywhere you play**
 - Steam Deck Gaming Mode, and Add to Steam on Windows, Linux and the Mac.
 - Self-updating and signed, except where a package manager owns the files.
+- Toolkit channels: the latest AnyPS5 release, a pinned release, a local build, or the opt-in AnyPlay Engine, the nightly build of AnyPlay's fork (Windows and Linux).
 
 The online area needs an AnyPlay account on [anyplaynet.com](https://anyplaynet.com). No game plays together over the internet yet; that is the next big step of the [network](https://github.com/anyplaynet/network). What works and what does not: [docs/ONLINE.md](docs/ONLINE.md).
 

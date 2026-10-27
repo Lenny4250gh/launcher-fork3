@@ -30,6 +30,10 @@ _Avoid_: Library folder, root
 On macOS only, the launcher is dressed for the Mac: a see-through window with the system blur behind it, the Mac's window chrome and menu. It is the same launcher with the same screens (docs/DESIGN.md 19).
 _Avoid_: Mac version (the Mac has no different launcher), skin, theme (a theme is a background)
 
+**Theme**:
+The animated backdrop behind the launcher, chosen in Settings, Appearance: Cosmic, Aurora, Sunset, Ember, Tide, Daylight (the one light theme) or Game Colors, which takes its colours from the selected game's artwork. Release notes call them looks.
+_Avoid_: Skin
+
 **Glass Window**:
 The setting that turns the see-through window of Mac style on and off. The window is solid in full screen, while a game runs, and when the system asks for less transparency, whatever the setting says.
 _Avoid_: Transparency, blur, vibrancy (in visible text)
