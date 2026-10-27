@@ -1420,7 +1420,6 @@ fn paint_hero(
         }
         if cancellable {
             let cancel = ConsoleButton::icon_only(Icon::X, language.text(Key::Cancel))
-                .size(ControlSize::Small)
                 .focused(focused(cancel_index))
                 .show(ui);
             if cancel.clicked() {
