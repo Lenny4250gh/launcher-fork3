@@ -30,8 +30,12 @@ for attempt in 1 2 3; do
     echo "apt attempt $((attempt - 1)) failed or timed out: trying $mirror"
     sudo sed -i -E "s#$known#$mirror#" /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
   fi
+  # Only the download has a short limit: killing apt while it unpacks leaves dpkg half done and
+  # every later attempt then fails with "dpkg was interrupted". The install itself gets a long one.
+  sudo dpkg --configure -a >/dev/null 2>&1 || true
   if timeout -k 5 60 sudo apt-get "${opts[@]}" update \
-    && timeout -k 5 90 sudo apt-get "${opts[@]}" install -y --no-install-recommends "${missing[@]}"; then
+    && timeout -k 5 90 sudo apt-get "${opts[@]}" install -y --no-install-recommends --download-only "${missing[@]}" \
+    && timeout -k 5 300 sudo apt-get "${opts[@]}" install -y --no-install-recommends "${missing[@]}"; then
     exit 0
   fi
 done
