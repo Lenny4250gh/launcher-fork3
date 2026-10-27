@@ -200,7 +200,7 @@ Screen paddings:
 | Home tile row | top 34 below the top bar; leading 64 (92 from the second game on, see Tile row in 3.7) |
 | Home hero info | horizontal 72 |
 | Home hint bar | horizontal 64, vertical 28 |
-| Onboarding | horizontal 110, vertical 80 |
+| Onboarding | centred column, 960 wide at most; progress 48 from the top, footer level with the hint bar (5.15) |
 | Settings | horizontal 90, top 70, bottom 50 |
 | Library | horizontal 80, vertical 60 |
 | Trophies | horizontal 80, vertical 56 |
@@ -216,7 +216,7 @@ Components:
 | Unselected tile y offset | `(176 - 118) * 0.18` = 10.44 |
 | Library tile | 196, column gap 26, row gap 30, as many columns as fit the width (at least 3), grid padding 14 |
 | Splash tile | 200 |
-| Onboarding folder tiles | 84, gap 12, first 8 games |
+| Onboarding folder tiles | 80, gap 12, first 7 games (5.15) |
 | Console button | min height 54, horizontal padding 30 (18 when icon only), icon 17, gap 10, `Play` min width 210, onboarding buttons 220 / 180 |
 | Top-bar icon button | 44 circle, glyph 18 |
 | Avatar | 36 circle |
@@ -977,7 +977,7 @@ regular in `text_label` ink with 1.45 leading under the card's title, not the qu
 **Tab walks the ring.** Tab and Shift+Tab are the model's keys now (`InputEvent::Tab`; egui no longer sees them). On the home screen
 they step through the stops in reading order: the top bar from left to right, the tile row as one stop (the arrows choose the
 tile), the action row, the question line while it asks; they stop at the ends without wrapping. In a panel they are Down and Up (a
-panel is one column of rows), in the onboarding Right and Left (the choices sit side by side). The library, a grid, reads along the row (Tab is Right, Shift+Tab Left). A text field
+panel is one column of rows), in the onboarding along the grid of choices (Right, then the next row). The library, a grid, reads along the row (Tab is Right, Shift+Tab Left). A text field
 keeps Tab for itself, and while a call rings Tab stays with egui, which focuses the card's buttons (they are for the pointer and for
 Tab; the pad reaches a call through the Invitations row). The strip of a call in progress does not hold Tab: Mute, Deafen and Leave
 Call are rows of the Online panel.
@@ -1715,30 +1715,49 @@ for new trophy records; each new one raises a banner and refreshes the trophy se
 
 ### 5.15 Onboarding (first start)
 
-Three steps, four when there is a cloud to sign in to (release builds name AnyPlay’s); left-aligned column on a left-to-right black 0.55 -> 0.1 gradient over the (live) theme backdrop; padding 110 x 80.
-Top: one dot per step, and the same in words ("Step 2 of 4", `ty::DETAIL`, `text_note`) 16 right of the dots; the content starts `space::XXXL + space::L` below the dots on every step (one offset, so the title never jumps); (current 46 x 5, others 18 x 5; white 0.95 for steps up to the current one, else 0.22; gap 10; 54 below).
-Then the step (animation 18), flexible space, bottom row: `back` button (chevron-left glyph, unfocused, only from step 1) left,
-hint bar (no options) right. Title block: title 54 light, subtitle 19 white 0.7 (max 720 wide), gap 14; step gap 46.
+Redone for 0.3.3. The first start is a calm, centred setup over the live theme backdrop, like the first start of a console: one question per page, a footer that never moves, and nothing the player has to understand before Home. Four to six pages, each there because a new player needs it; a page that does not apply is not shown.
 
-| Step | Title / subtitle | Content |
-|---|---|---|
-| 0 | `welcome` / `welcomeSubtitle` (0.2.8: a prominent **Continue** button under the cards; a tap on a card only selects) | overline `chooseLanguage`; two cards 280 x 150 (radius 20, padding 26, bottom-left aligned): `TR` or `EN` (15 bold, 0.6) over the language's own name (28 medium). Focused: white fill, black text, scale 1.04, glow; else white 0.10 + 1 px white 0.14 |
-| 1 | `chooseTheme` / `chooseThemeSubtitle` (0.2.8: **Continue** under the cards; the theme's accent dot follows its name) | three theme cards (S-themes): live or still preview 330 x 186 (radius 18, focus ring) above a row: theme name (22) and a 12 dp dot in the theme's default accent; focused card scale 1.04 / opacity 1, others 0.97 / 0.72 |
-| 2 | `chooseFolder` / `chooseFolderSubtitle` | 0.2.8, the primary first: with no folder the prominent `pickFolder` and **Not Now** (goes on without a folder); with one the prominent **Continue** (`start` when no step follows) and `changeFolder`, all min 180, gap 12; a glass card (radius 16, padding 20, max 640) with a status glyph (magnifier while scanning, question-folder if empty, check in accent) + `scanning` / `noGamesFound` / `gamesFound` (18 medium) over the path (13, 0.5, middle truncated); the first 8 games as 84 tiles |
-| 3 | `Play together` / signing in (`OnboardingText`) | only with a cloud: one row of buttons, Sign In (prominent, sign-in glyph), Create Account (user-plus glyph) and Not Now (arrow glyph), min 180 each, gap 12; under them a detail line (13, 0.6): you can sign in any time from the top bar |
+**The pages** (`app::model::onboarding::Step`; the flow is `Model::onboarding_flow()`):
 
-Our own wording replaces the generated table’s for the welcome and folder subtitles, the empty library and the About text
-(`ui/i18n.rs` `ours`): they speak of the player’s games and game dumps, never of a platform’s name.
+| # | Page | Shown | Why it exists |
+|---|---|---|---|
+| 1 | **Language** (`Welcome`) | always | The first thing every later page is written in. Three cards (Türkçe, English, Deutsch) in `Language::ALL` order; the system language is preselected (`Preferences::first_run`) and the page re-renders in the card the focus is on |
+| 2 | **Look** | always | The one choice that changes what the launcher looks like at once: the theme (three live cards) and the accessibility switches (Larger Text, High Contrast, Reduce Motion), so a player who needs them has them before reading anything else. Nothing else is asked here; Accent, Backdrop and Game Colors stay in Settings |
+| 3 | **Controller** | only once a pad was seen (`pad_hub`), and then until the end (a pad that goes to sleep does not remove a dot); never in Gaming Mode (Steam Deck, gamescope), where Steam owns the buttons and the Home button | A pad is the console way to use the launcher, and its first question cannot wait: which face button confirms (Cross or Circle; the same toggle as Controllers > Confirm with), whether the Home button opens the launcher (the same switch as General), and a button check that lights the four face buttons while they are pressed. Without a pad nothing here applies, so the page is skipped; Done tells where Controllers is (and leaves that row out in Gaming Mode) |
+| 4 | **Games** | always | The launcher is empty without a folder. The page shows what was found (scanning, none, N games, the first eight as tiles) and "Prepare New Games Automatically" (the same switch as General), which only exists once there is a folder. Not Now goes on without one |
+| 5 | **Online** (`Play Together`) | only when a cloud is set (release builds name AnyPlay's) | Sign In, Create Account or Not Now, with the defaults in plain words before anyone signs in: private by default (ADR 0012: friends only), Appear Offline exists (ADR 0028), game files are never uploaded (ADR 0021), and the consent sentence with its two links |
+| 6 | **Done** (`You're All Set`) | always | Three things worth knowing: the Home button (with a pad) or Controllers (without), where Settings are, and your games (with a folder) or how to add them. After Sign In or Create Account a first row says the browser opens when Start is pressed: the wish is kept in `Onboarding::wants_sign_in` and only becomes `sign_in_after_onboarding` (and opens the online area) at Start |
 
-The **language and theme choices apply live** while moving the focus (left/right change `preferences.language` / `preferences.theme`
-immediately, so the page re-renders in that language and the backdrop switches theme); select confirms and advances (sound
-`select`); Back (Esc/B/button) returns (sound `back`). Step 2 focus (0.2.8): 0 = the primary (Choose Folder, or Continue/Start once a folder is set), 1 = Not Now without a folder, Change Folder
-with one; focus returns to the primary after picking; select on Continue goes on to the online step when there is a cloud, and otherwise finishes: sound `unlocked`, cross-fade
-(animation 19), focus on the tiles, rescan if empty. Step 3 focus: 0 Sign In, 1 Create Account, 2 Not Now. Under the three buttons one line of 13 dp text (`screens::legal`): "By creating an account you agree to the Terms of Service and the Privacy Policy." The two names are links (2026-10-26; underlined, brighter on hover, pointing hand; `https://anyplaynet.com/terms` and `/privacy`, the About pages' addresses in `about_strings.rs`), wrapped at 800 dp, the "You can sign in any time" line under it. The sentence is a template with `{terms}` and `{privacy}` so a language can put the names where its grammar wants them. The links are for the pointer; the pad reaches the same two pages as rows on the Friends screen's Start page. Every choice
-finishes the first start; Sign In and Create Account also open the online area, where the browser sign-in starts as soon as
-the net service has said hello (a missing service drops it). Mouse (0.2.8): tapping a language or a theme card only selects it (sound `move`; the page changes at once); the Continue button under the cards, or Enter and A, advance. Without a folder, Not Now on the folder step goes on, and Home shows its no-folder state.
+Not pages, with the reason: the **toolkit** (it is fetched in the background from the first frame, `PanelHost::tick`, and Home shows its state), **accent colour, volume, vibration, dead zone, light bar, fonts, glass window** (Settings, one level away and not needed before the first game), **privacy toggles** (the defaults are private; the facts are on Online and the switches live in the online area after signing in, ADR 0012 rejected asking every player at sign-up).
+
+**Layout** (every page, in dp. The window scale (section 1) makes 1280 x 720 and 1920 x 1080 both 1600 x 900 dp and 3840 x 2160 about 2650 x 1490 dp, so the composition is centred and never wider than 960):
+
+- Black scrim over the backdrop, 0.30 at the top to 0.52 at the bottom (`SCRIM`).
+- Progress at the top centre: one capsule per page (current 46 x 5, others 18 x 5, gap 10; ink up to the current page, `white 0.22` after), and "Step 2 of 5" under them (`ty::DETAIL`, `text_note`, 12 below). The dots animate with `Motion::Layout`; the label is one accessible node.
+- The content (title, sentence, choices) is centred horizontally. Every page starts at the same height, so the title never moves from page to page: the top is the band between the progress and the footer, less the tallest page (`TALLEST` 500 dp), at 0.42 of the free room (`CENTRE_BIAS`, a little above the middle). Title `ty::DISPLAY` (56 Light, wraps at 1100 to two lines), sentence `ty::CATEGORY` (19, `text_detail`, 680 wide, leading 1.4, at most three lines), `space::XXL` before the content. The Language page keeps room for two lines of sentence, because the sentence changes language (and length) while the focus moves, and nothing under it may move.
+- **The footer** stands level with the hint bar (centre line `HINT_Y` and half the bar's height above the bottom) and does not slide with the pages: Back at the leading edge (`pad::HOME_X` in, from page 2 on), the buttons of the page the player is on centred (the first is the one primary action, then the others, 12 apart, min width 180), the hint bar bottom right with Select only (Back is a button, so the bar leaves it out; the first page has nothing to go back to). Buttons: Continue (Language, Look, Controller); Games leads with what the page is for: Choose Folder + Not Now without a folder, Change Folder + Continue when the folder holds no games, Continue + Change Folder otherwise (and while it scans); Sign In + Create Account + Not Now (Online); Start (Done).
+- A page changes with `Motion::Layout`: the old one fades and moves 40 to the side, the new one comes from the other side (fades only under Reduced motion).
+
+**What each page draws**
+
+- *Language*: overline "Language", three choice cards 312 x 176 (`size::LANGUAGE_CARD`, `radius::LARGE`, `surface_row`, hairline; padding 24; 12 apart; `chrome::language_card` on `chrome::choice_card`, the card the Controller page's confirm choice uses too): the tag (`TR`, `EN`, `DE`, overline) top left, the language's own name (`ty::LANGUAGE_NAME`) bottom left. The chosen card is brighter (`surface_hover`, `hairline_hover`), its name goes from `text_label` to `text`, and a check-circle (20, fill) stands top right, so the choice never rests on tone alone. `choice_t` carries the chosen state, the ring (`paint_focus_stroke`, keys and pad only) the focus.
+- *Look*: three theme cards 312 x 176, 12 apart (the chosen one live, the others a still frame at 0.72; the ring is `paint_focus_stroke` only) with the name (22; `ITEM_TITLE` for the chosen one), a 12 dp dot in the theme's accent and a check-circle at the card's right edge. Under them, `space::XXL` lower, the overline "Accessibility" and three switch chips in the same columns (312 x 56, `radius::CARD`, label `ROW_TITLE`, `Switch` right). Larger Text and High Contrast apply to the page at once (they are the live preferences), Reduce Motion stops the slide and the live card.
+- *Controller*: the subtitle names the pad ("DualSense Wireless Controller is connected. Press any button and it lights up below."; "The controller is not connected right now..." when it went away); four 44 dp circles in the pad's own shapes (Square, Triangle, Circle, Cross; letters X, Y, B, A on an Xbox pad; Nintendo names its own) that fill with the ink while the button is down (`pad_hub::live`, `Motion::Press`); two choice cards 312 x 104, 12 apart, "Confirm with Cross / Circle goes back" and "Confirm with Circle / Cross goes back" with the face glyph in a ring; then, `space::XL` lower (it is another question), the Home button switch chip (label and detail as in General) as wide as the two cards (636). The page only opens `pad_hub::set_watched` while it is on screen.
+- *Games*: a glass status card 636 wide (24 glyph in ink: dashed folder with none or empty, magnifier while scanning, check-circle with games; line "No folder chosen yet", "Looking for games", "No games in this folder" or "N games found"; under it "You can choose one later in Settings." or the folder path, middle-truncated), the first seven games as 80 tiles centred (they fit the card's width), and the "Prepare New Games Automatically" switch chip with its detail (636 wide) once there is a folder.
+- *Online*: a glass card 636 wide with three rows (icon 22, `ROW_TITLE`, detail `NOTE` in `text_detail`, hairline between): Private by Default (profile, trophies and playtime are visible to friends only, ADR 0012), Appear Offline (friends see when you are online; it hides that from everyone, ADR 0028), Your Game Files Stay on This PC (nothing from the games folder is uploaded). Under it the consent sentence (`screens::legal::consent_line`, centred at 760, wraps without a lone word) whose two names are links: a target of 32 dp per line they span, and two focus stops of their own (the row above the buttons: Terms of Service, Privacy Policy, which open in the browser and do not go on), and "You can sign in any time from the top bar." in `text_note`.
+- *Done*: the same list card with the rows named above ("Next: Sign In" or "Next: Create Account" first when chosen; Home Button or Controllers; Settings; Your Games or Add Your Games).
+
+**Input.** The focus is a grid (`Model::onboarding_layout()`, rows top to bottom, targets left to right); Left and Right move along a row, Up and Down between rows, Tab and Shift+Tab walk it in reading order, Select acts on the target, Back goes one page back (Esc, B, the button; the button is the only place it is shown, so the hint bar leaves it out). Focus starts where the player most likely wants it: on the chosen card (Language, Look, Controller) or on the page's primary button (Games, Online, Done). On the Online page Up from the buttons reaches the two links. The language and theme cards apply while the focus moves; Select on one goes on to the next page (a tap, or a click, only selects it and plays `move`, the Continue button advances). On the Controller page Select on a confirm card applies it at once (the pad's Select changes to the new button immediately, and the card says so), a switch flips with `On` or `Off`. Every control has an accessible name and role (radio button for cards, switch for chips, button for buttons) and egui's focus follows the ring (`a11y::follow`).
+
+**One source of truth.** The pages write through the Settings pages' own writers: `settings::apply_value` for Larger Text, High Contrast, Animations (Reduced), the Home button and Prepare New Games Automatically; `controllers::set_confirm_circle` for the confirm button (the Controllers page calls the same function); `Model::edit_prefs` for language and theme. The model (`app::model::onboarding`) owns the steps and the focus; `screens::onboarding` only paints and reports taps.
+
+**Sound** (`launcher-sound-direction`: no new cues): focus moves `move`; a page change `select`; Back `back`; a switch `on` / `off`; a confirm card `select`; Start `unlocked` with the cross-fade (animation 19); a tap on a card `move`.
+
+**Sign-in.** Sign In and Create Account on the online page only record the wish and go on; Start on the last page opens the online area (`Overlay::Friends`) and the browser sign-in starts as soon as the net service has said hello (`online::poll_onboarding_sign_in`; a missing service drops it). Not Now leaves nothing pending.
 
 The sign-in page that waits for the browser (`Page::Browser`) shows a quiet spinner (2 dp arc, radius 7; a still arc under reduced motion) after the line "Continue in your browser".
+
+**Gallery scenes** (`--gallery=<scene>`, the states of 5.15): `onboarding-language`, `onboarding-look`, `onboarding-look-access`, `onboarding-controller`, `onboarding-controller-xbox`, `onboarding-controller-lost`, `onboarding-games`, `onboarding-games-none`, `onboarding-games-empty`, `onboarding-games-scanning`, `onboarding-online`, `onboarding-done`, `onboarding-done-signin`, `onboarding-done-bare`; with `--tr`, `--de` and `--pad` like every scene.
 
 ### 5.16 Icon mapping (SF Symbols -> Phosphor, MIT)
 
@@ -2957,7 +2976,7 @@ Everything the launcher tells the player on its own is kept in one list, so a to
   regression, with these states: `home-theme0..2` (artwork off), `home-artwork`, `home-actions` (focus on actions 0), `home-unlocking`
   (copy step, 40 %), `home-uninstalling` (removal, 40 %), `starting`, `game-settings` (row 1), `controls` (row 1), `controls-capture` (row 3 waiting, "Square"), `advanced`
   (row 4), `home-trophies` (focus on actions 1), `trophies` (index 1), `settings` (row 0) and `settings1..13` (each tab, in rail order), `library`
-  (index 1), `trophy-banner` (settled card over a backdrop picture), `onboarding0..2`. Theme stills are rendered at `time = 260` (full
+  (index 1), `trophy-banner` (settled card over a backdrop picture), the `onboarding-*` scenes (5.15). Theme stills are rendered at `time = 260` (full
   frame) and `time = 200` (660 x 372 cards); the selected game in previews is index 1.
 - **Checks against the original**: compare each preview with the matching screenshot from the table at the top: tile row x positions
   (64, 256, 556, 690, 824), the hero title near y 598 and info cards at y 727..823 (S-home-trophies, 1600 x 900), hint bar baseline near
