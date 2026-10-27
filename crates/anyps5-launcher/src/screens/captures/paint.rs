@@ -183,26 +183,13 @@ fn header(
             color::text_count(),
         );
     }
-    let close = size::CONTROL_M;
-    let button = Rect::from_min_size(
-        pos2(row.max.x - close, row.center().y - close * 0.5),
-        vec2(close, close),
-    );
-    let mut child = ui.new_child(UiBuilder::new().max_rect(button));
-    let name = language.text(crate::ui::i18n::Key::HintBack);
-    if ConsoleButton::icon_only(Icon::X, name)
-        .size(ControlSize::Medium)
-        .show(&mut child)
-        .clicked()
-    {
+    let (edge, closed) = crate::screens::close_button(ui, row, language);
+    if closed {
         pressed.back = true;
     }
     right_aligned_hints(
         ui,
-        Rect::from_min_max(
-            row.min,
-            pos2(button.min.x - size::CONTROL_GAP * 2.0, row.max.y),
-        ),
+        Rect::from_min_max(row.min, pos2(edge - size::CONTROL_GAP * 2.0, row.max.y)),
         language,
     );
     row
@@ -772,13 +759,21 @@ fn view(
             ui.make_persistent_id(("play", &capture.path)),
             Sense::click(),
         );
+        let focused = focus == Some(ViewFocus::Media);
+        crate::ui::a11y::follow(&ctx, hit.id, focused);
+        hit.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::Role::Button,
+                true,
+                CapturesText::OpenInPlayer.text(language),
+            )
+        });
         if input::hovered(&ctx, &hit) {
             ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
         }
         if hit.clicked() {
             pressed.play = true;
         }
-        let focused = focus == Some(ViewFocus::Media);
         let big = 84.0;
         if focused {
             paint_focus_stroke(

@@ -96,6 +96,9 @@ pub enum Scene {
     Notifications,
     /// The Notification Center with nothing in it.
     NotificationsEmpty,
+    /// The Notification Center with a message longer than two lines: the sentence is cut and the
+    /// chip reads it whole once the focus has rested on the entry.
+    NotificationsLong,
     /// Signed in, the session just ended: the question "How did it run?" below the facts.
     HomeAsk,
     /// Signed in, enough players reported: the Runs fact.
@@ -181,6 +184,7 @@ impl Scene {
             "home-notify-badge" => Scene::HomeNotifyBadge,
             "notifications" => Scene::Notifications,
             "notifications-empty" => Scene::NotificationsEmpty,
+            "notifications-long" => Scene::NotificationsLong,
             "home-ask" => Scene::HomeAsk,
             "home-runs" => Scene::HomeRuns,
             "home-friends-playing" => Scene::HomeFriendsPlaying,
@@ -212,7 +216,7 @@ impl Scene {
         })
     }
 
-    pub const ALL_NAMES: [&'static str; 53] = [
+    pub const ALL_NAMES: [&'static str; 54] = [
         "onboarding0",
         "onboarding1",
         "onboarding2",
@@ -248,6 +252,7 @@ impl Scene {
         "home-notify-badge",
         "notifications",
         "notifications-empty",
+        "notifications-long",
         "home-ask",
         "home-runs",
         "home-friends-playing",
@@ -825,6 +830,19 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
             m.switch_overlay(crate::app::overlay::Overlay::Notifications);
         }
         Scene::NotificationsEmpty => m.switch_overlay(crate::app::overlay::Overlay::Notifications),
+        Scene::NotificationsLong => {
+            use anyps5_core::notifications::{Act, Kind};
+            notify_sample(m, &ids[at(1)], 3);
+            let now = u64::try_from(crate::app::clock::unix_seconds()).unwrap_or(0);
+            m.notes.push(
+                Kind::Message,
+                "Mira: are you free tonight? We could finish the last chapter, then try the co-op mode and see which trophies are missing"
+                    .to_owned(),
+                Act::OpenMessages(Some("c1".into())),
+                now.saturating_sub(10),
+            );
+            m.switch_overlay(crate::app::overlay::Overlay::Notifications);
+        }
         Scene::HomeMessages => {
             use anyps5_core::online::api::{
                 Account, AccountId, Conversation, ConversationKind, Conversations,

@@ -353,10 +353,20 @@ impl OverviewScreen {
         );
         let block = name.size().y + 6.0 + latest.size().y;
         let height = ROW_ART.max(block) + 28.0;
-        let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
         if !ui.is_rect_visible(rect) {
             return rect;
         }
+        // A name or a line cut to the row is read in full while the pointer or the focus is on it.
+        crate::ui::reveal::full_text(
+            &ctx,
+            response.id,
+            rect,
+            &format!("{}\n{}", row.name, row.latest),
+            crate::ui::input::hovered(&ctx, &response)
+                || (focused && crate::ui::input::focus_visible(&ctx)),
+            name.elided || latest.elided,
+        );
         let t = ctx.focus_t(("overview-row-focus", index), focused);
         let under_pointer = ctx.pointer_hover_pos().is_some_and(|p| rect.contains(p));
         let hover_t = ctx.animate_to(

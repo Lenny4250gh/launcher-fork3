@@ -1123,6 +1123,33 @@ Two switches in Settings, Appearance, next to Animations.
   as a dark plate (black 0.82 to 0.94) with a clear edge instead of the blurred backdrop. The blur is not even made.
 - Both are read from process-wide switches that the shell sets from the preferences each frame.
 
+### 3.15 Accessibility and consistency pass (0.3.4)
+
+Found by rendering all 308 gallery scenes at 1920 x 1080 and reading the code (the findings are in the pull request). The rules that
+were missing:
+
+- **Every full-screen area has a way out for the pointer.** Back is Esc, the pad's Back and the mouse's side button, but a mouse
+  does not have to have a side button. Areas with a Back chip at the top left (Friends, Profile, Compare, the game panels, hub,
+  trophies) have that chip; the areas without one (Settings, Library, Notifications, Captures) have the X of `screens::close_button`
+  at the trailing end of the title row: an icon-only `ConsoleButton`, 44 dp, accessible name "Back". It is a pointer control, not a
+  stop of the ring. The hints of the row stand to its left, 24 dp clear of it.
+- **A hint is only said where it is true.** Select is shown where something can be selected (the live controller test has nothing, so
+  no bar); Options is shown where it does something (the Library, while the focus is on a tile: the Game Hub) and not where it only
+  leaves; the empty Home says Select for its one button and nothing while the scan runs. Settings shows the bar like every other area.
+- **A cut value is reachable, the same way everywhere.** Every text that ends in an ellipsis (`clamped`, `middle_truncate`,
+  `one_line`, a `max_rows` job) calls `ui::reveal::full_text` with its galley's `elided` flag, active while the pointer is on the
+  thing or the focus has rested on it (3.13). egui's `on_hover_text` is not used: it is pointer-only and looks like a different app.
+  Now also: notification entries, library tile names, overview rows, shelf captions, the phone pill and the failed-start sentence.
+- **The window's caption buttons have names** (Minimize, Maximize or Restore, Close) for a screen reader; they are drawn glyphs
+  (`screens::access_strings`). A control that is only a hit area over a picture (the play area of a clip) is named for its action
+  and follows the ring like any other stop.
+- **A field that fills its row has no detail**: its title is its hint, so a detail would draw over it. A count or a rule for the field
+  is the attached note under it (Post a Listing: "5 of 140 characters").
+- **A state page keeps its one action inside the block** (5.21), also on the Activity page of the online area (Try Again, Add a Friend).
+- **A scroll the page asks for on its first frame is asked again**: a scroll area has no content height before its first pass, so the
+  settings rail repeats "bring the selected tab into view" for three frames after every change (a deep link to Toolkit used to stand
+  half cut off). Gallery scenes: `notifications-long`, `toolkit`, `friends-activity-error`, `post-listing`.
+
 ## 4. Materials and blur on the GPU
 
 SwiftUI `.ultraThinMaterial` is a backdrop blur with a light tint and some saturation; it is used under every panel. egui has no
