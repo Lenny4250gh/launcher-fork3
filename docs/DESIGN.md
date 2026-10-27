@@ -1161,7 +1161,7 @@ Game Colors).
 |---|---|---|---|---|---|
 | Ember (4) | (0.030, 0.011, 0.006) | (0.250, 0.085, 0.030) | (1.000, 0.560, 0.170) | Gold | charcoal and copper, one low hearth, nothing pink |
 | Tide (5) | (0.004, 0.020, 0.036) | (0.010, 0.190, 0.300) | (0.480, 0.930, 1.000) | Violet | deep petrol water, light from the surface |
-| Daylight (6) | (0.640, 0.750, 0.890) | (0.830, 0.890, 0.950) | (1.000, 0.950, 0.820) | Blue | soft daylight, the one **light** look |
+| Daylight (6) | (0.480, 0.640, 0.910) | (0.790, 0.720, 0.950) | (1.000, 0.760, 0.580) | Blue | a morning sky, mid-light and coloured, the one **light** look |
 
 Names (`screens/theme_strings.rs`): Ember / Köz / Glut / Brasa / Braise / Brasa; Tide / Gelgit / Gezeiten / Marea / Marée / Maré;
 Daylight / Gün Işığı / Tageslicht / Luz del Día / Plein Jour / Luz do Dia (EN / TR / DE / ES / FR / PT).
@@ -1178,9 +1178,11 @@ of noise (±0.5/255) before the 8-bit output, so the smooth gradients do not ban
 - **Tide:** light water at the surface to deep below; a net of light threads (the caustic function after Dave Hoskins' public domain
   "Tileable Water Caustic", five steps with whole-turn phases) strong near the surface and gone in the deep; two faint slanted
   shafts; 17 plankton lights that sink slowly.
-- **Daylight:** cool sky high, warm horizon; the sun's bloom upper right (breathes by 6 %); luminous cloud and its soft shade
-  (two octaves of noise on a circle); two slanted bands of window light that drift to and fro; seven out-of-focus lights. No tone
-  map and a light vignette (7 %).
+- **Daylight:** a saturated morning sky, not a pale one: blue high up, lilac across the middle, apricot at the horizon (warmer on
+  the sun's side); the sun's bloom upper right is a gold that tints the sky instead of bleaching it (breathes by 6 %); cloud in
+  rose and cream and its soft shade in blue-violet (two octaves of noise on a circle); two slanted bands of peach window light that
+  drift to and fro; three layers of out-of-focus lights, each its own colour (apricot to rose, aqua to lilac, gold). No tone map and
+  a light vignette (12 %). Nothing on it is near white: the brightest tone is the apricot (0.66 relative luminance at most).
 
 **The light look.** Dark ink on a pale backdrop needs its own token set, and it is one switch, not a second set of pages.
 `theme::light_t()` (0 on the dark looks, 1 on Daylight, eased with the theme change over `Motion::Fade` by the backdrop, and 0 in
@@ -1191,8 +1193,8 @@ the Mac see-through window where the backdrop is dark) turns the building blocks
   and the order of strength stay.
 - `scrim(a)` replaces `black(a)` wherever a layer calms a backdrop behind ink (the shades of Home, the artwork scrims, the
   onboarding scrim, flat glass): `LIGHT_PAPER` (0.965, 0.960, 0.945) there. Shadows and the dark plate behind a picture's own white
-  glyph stay black. Glass panels are the backdrop veiled in paper at 1.1 times the black they replace (at most 0.94) instead of
-  darkened; High Contrast gets a paper plate.
+  glyph stay black. Glass panels are the backdrop veiled in paper at 1.1 times the black they replace (at most `LIGHT_VEIL_MAX` =
+  0.88, so the sky's colour shows through) instead of darkened; High Contrast gets a paper plate.
 - The primary button is ink with a paper label (`on_primary`), the switch knob is the ink, the toast card is paper, the window
   background is paper.
 - Status ink (error, destructive, warning, update) and the accents take deeper forms on the light look (`Accent::on_light`, the
@@ -1201,8 +1203,10 @@ the Mac see-through window where the backdrop is dark) turns the building blocks
 
 **Contrast.** `ui::contrast` measures Daylight like the others, with its ink and its own worst grounds: the deepest tone for the
 panels, a black picture (the worst under dark ink) in place of the white one, and the glass-window grounds with white ink, as the
-window is dark there. Every pair of every theme passes (the weakest on Daylight: focus ring 3.4:1 on its panel, a hint key 4.6:1
-in the glass window).
+window is dark there. Every pair of every theme passes (the weakest on Daylight: the Violet progress line 3.1:1 on the deep tone, an error 4.6:1 on a
+pressed row). Daylight also measures the trophy grades (earned and not, `Grade::dimmed`) and the dimmed trophy ink on its trophy rows;
+the focus ring is the lifted ink (`tx`), where the plain 0.5 ink gave 3.4:1. The dark looks' tables are as they were (their unearned
+grade labels are not measured; a follow-up).
 
 **First start.** The Look page is two rows of three cards (312 × 120 dp), the name in a dark chip on the card (white ink, 0.55
 black: it reads on Daylight too); the focus grid has two rows of cards, then the three switches, then Continue; the focus starts on
@@ -1215,6 +1219,24 @@ Reduced Motion stills), for each of the three. New preview flags: `--time=<secon
 `--reduced`, and `--sequence=<count>@<fps>` with `--screenshot=dir/f_%04d.png` (one picture per frame, the clock stepping by 1/fps;
 the presentation videos are made from them with ffmpeg).
 
+
+### 3.17 Online screens: states, names and words (0.3.6)
+
+A second pass over Friends, Messages, Party, Profile, Notifications and Sign In (findings: `night/launcher-online/findings.md`).
+
+- **A list that is unknown is not empty.** "No friends yet" is said only while the cloud answers; connecting or offline, the note and
+  Try Again above it speak. Played With Recently says "You are offline" with Try Again when the cloud is out, instead of loading for ever.
+- **Loading turns.** A state page whose icon is the refresh glyph shows the shared spinner (under Reduced Motion the arc stands still and pulses in opacity, `anim::loading_pulse`).
+- **A profile with nothing to show keeps its header** for a friend and for a request to answer (Accept lives there); a request that
+  is out is private, not empty.
+- **The session picker** says "None of your friends is online and free to invite." and shows "Pick a friend first" on Send until one is picked.
+- **Sign In without a cloud** takes the player to the Cloud page where the row says to set it up.
+- **No raw service text in a sentence.** A failure without its own wording reads "Could not do that. Try again in a moment."; the
+  service's message goes to the log.
+- **Notifications are said in words.** A new entry is announced as "New, ..."; the two buttons of a row carry the entry's text in their
+  name, so a list of "Dismiss" is not a list of the same name.
+- **On the light look** the fade under the party page and the plate behind a voice mark use `theme::scrim`, not black.
+- A thread that did not load is left to the next pass (a Try Again bar under it); this pass only fixes the states around it.
 
 ## 4. Materials and blur on the GPU
 
@@ -3033,6 +3055,14 @@ Everything the launcher tells the player on its own is kept in one list, so a to
 - **Friends' presence.** A friend who plays in a session of the network reads "Playing <game> · Online" (and "· You can join" when the session is open); a Play Together session reads "Playing <game> together · 2 of 4 players", with "· You can join" while the world has a free place (0.3.3). Presence and the games are the cloud's; no title is special.
 - **Discord.** "Show Game on Discord" stays off by default. A game Discord detects shows with Discord's own art; any other under AnyPlay's mark with the game's name on hover. The start time shows as elapsed time. No game art leaves the PC: an external picture would need a public source of art, which does not exist yet.
 
+### 9.13 Console Mode, start at sign-in and full screen
+
+Settings > General opens with three rows. **Console Mode** (`Preferences::console_mode`, off by default) makes the launcher the home of the PC: the window always fills the screen, the pad counts as the device in use from the first frame (as in Gaming Mode, 5.22) until a key or the pointer says otherwise, and switching it on also writes the sign-in entry and sets full screen. While it is on, the page shows only the switch and **Return to Desktop** right under it (it closes the launcher; the desktop is underneath, nothing is replaced), so the way out is one pad step from the gear on Home. Off, the two parts stand as rows of their own: **Start with Windows** (Linux and macOS: **Start at Login**) and **Open in Full Screen** (`Preferences::fullscreen`, which already defaults to on everywhere but the Mac). Turning Console Mode off leaves both as they were; the player switches them off by hand.
+
+The sign-in entry is `anyps5_core::autostart::Entry`, read from the system on every open of the page and never kept as a preference. Per user, no administrator rights: Windows `HKCU\...\Run` value `AnyPlayLauncher` (`"<exe>" --autostart`; switching on also lifts a Task Manager "disabled" mark), Linux `~/.config/autostart/anyplay-launcher.desktop`, macOS `~/Library/LaunchAgents/net.anyplay.launcher.plist`. An AppImage is started by its own file (`$APPIMAGE`), a Flatpak by `flatpak run net.anyplay.Launcher` through the real `~/.config/autostart` (the manifest already grants the home folder). A copy that runs from an AppImage mount without knowing the file has nothing to point at: the row is replaced by a note, and Console Mode says so. At every start an entry that points at another program is rewritten to this one. macOS uses a launchd agent, not `SMAppService`, which needs an app bundle and a signed build.
+
+Gallery scenes: `settings-console-off`, `settings-console-autostart`, `settings-console`, `settings-console-image`, `settings-console-unavailable`.
+
 ## 10. Asset list
 
 | Asset in the ARM repo | Reuse? | Notes |
@@ -3266,7 +3296,7 @@ Hints that explain a text field or a toggle stand under it with the normal 8 dp 
 
 **Public Profile** (0.3.3, cloud#82, control commands `public_profile` and `set_public_profile`). The page of a player at `/u/<handle>` on the account web is off until the player turns it on; this is the switch for it, a toggle row on the Account page right under Who Sees Your Trophies, in the same group of privacy choices: icon `user-circle`, title "Public Profile", detail "Anyone can open your page on the web", and a note under it, "Off until you turn it on. Even then, people who are not your friends see only the parts you share with Everyone." (the switch opens the page, the audience choices still decide which parts a stranger sees). The row describes the ON state like Appear Offline. `Online::public_profile` is `None` until the cloud has said: the row is not drawn on a guess, opening the Account page asks (`OnlineAction::PublicProfileRefresh`, `Online::request_public_profile`), and a press before the answer only asks. A press shows the choice at once and sends `set_public_profile`; the answer settles it, a refusal puts the old value back and toasts. The setting is read again after every sign-in and cleared at sign-out. Gallery scenes: `friends-settings` (off, below the trophies choice), `friends-settings-public` (on, the row focused).
 
-**Played With Recently** (network ADR 0038, control commands `played_with`, `clear_played_with` and `set_remember_played_with`). A page of the Friends section (`Page::PlayedWith`, reached from a row under Add a Friend on Home: icon `clock-counter-clockwise`, title "Played With Recently", detail "N people"; the row is drawn only while the cloud answers, and not for a player with no friends and an empty list, who sees the page that explains how to add one). Title "Played With Recently", subtitle "Only you see this list". One row per person, newest first: avatar (a monogram; a stranger has no picture here), handle, and a detail line of up to three parts joined by " · ": "Friend" or "Request sent", "Played <title>" (the title is shown as the cloud sent it, there is no title logic) and when (`ago_text`: "40 min ago", "Yesterday", "3 d ago", a date after a week). At the row's end the buttons that come up with the focus, like a friend's quick actions: **Add Friend** (first, so the primary action; only while the person is not a friend and no request is out), **View Profile** (the profile screen), **Block** (the ordinary confirmation, asked on this page; after it the list shows without them and is read again). Add Friend sends the request by handle; the row shows "Request sent" at once and "Friend" when the answer is `friends`. Below the people, apart: the toggle "Remember People I Play With" (detail "Adds people after a party or a game together", describes the ON state), a note "New people are not added. Everyone below stays until you clear the list." only while it is off, the note "Only you see this list, and the people on it are not told. It keeps up to 50 people for 30 days.", and **Clear the List** in the danger ink, which asks first (centred question card "Clear the list?", Cancel holds the focus). States, in the shape of the feed's state pages with the switch and note kept below where there is a list: loading, failed ("The list did not load", Try Again), and empty ("No one here yet" with what fills it; with recording off the switch stays to turn it on). The switch and Clear show their result at once; a refusal puts the old value or the people back (`Online::set_remember_played_with`, `clear_played_with`). The list is read when the page opens and, throttled to 30 s, when Home opens (`Online::request_played_with`); signing out forgets it and the page falls back to Start. Blocked people are left out by the cloud. Gallery scenes: `friends-played-with`, `friends-played-with-off`, `friends-played-with-empty`, `friends-played-with-off-empty`, `friends-played-with-loading`, `friends-played-with-failed`, `friends-played-with-clear` and `friends-played-with-signed-out` (asked for while signed out: the sign-in page shows).
+**Played With Recently** (network ADR 0038, control commands `played_with`, `clear_played_with` and `set_remember_played_with`). A page of the Friends section (`Page::PlayedWith`, reached from a row under Add a Friend on Home: icon `clock-counter-clockwise`, title "Played With Recently", detail "N people"; the row is drawn only while the cloud answers, and not for a player with no friends and an empty list, who sees the page that explains how to add one). Title "Played With Recently", subtitle "Only you see this list". One row per person, newest first: avatar (a monogram; a stranger has no picture here), handle, and a detail line of up to three parts joined by " · ": "Friend" or "Request sent", "Played <title>" (the title is shown as the cloud sent it, there is no title logic) and when (`ago_text`: "40 min ago", "Yesterday", "3 d ago", a date after a week). At the row's end the buttons that come up with the focus, like a friend's quick actions: **Add Friend** (first, so the primary action; only while the person is not a friend and no request is out), **View Profile** (the profile screen), **Block** (the ordinary confirmation, asked on this page; after it the list shows without them and is read again). Add Friend sends the request by handle; the row shows "Request sent" at once and "Friend" when the answer is `friends`. Below the people, apart: the toggle "Remember People I Play With" (detail "Adds people after a party or a game together", describes the ON state), a note "New people are not added. Everyone below stays until you clear the list." only while it is off, the note "Only you see this list, and the people on it are not told. It keeps up to 50 people for 30 days.", and **Clear the List** in the danger ink, which asks first (centred question card "Clear the list?", Cancel holds the focus). States, in the shape of the feed's state pages with the switch and note kept below where there is a list: loading, failed ("The list did not load", Try Again), and empty ("No one here yet" with what fills it; with recording off the switch stays to turn it on). The switch and Clear show their result at once; a refusal puts the old value or the people back (`Online::set_remember_played_with`, `clear_played_with`). The list is read when the page opens and, throttled to 30 s, when Home opens (`Online::request_played_with`); signing out forgets it and the page falls back to Start. Blocked people are left out by the cloud. Gallery scenes: `friends-played-with`, `friends-played-with-off`, `friends-played-with-empty`, `friends-played-with-off-empty`, `friends-played-with-loading`, `friends-played-with-offline` (the cloud is out: "You are offline" and Try Again, not Loading for ever), `friends-played-with-failed`, `friends-played-with-clear` and `friends-played-with-signed-out` (asked for while signed out: the sign-in page shows).
 
 **Appear Offline** (network ADR 0033, control command `set_appear_offline`, `account.appear_offline` of the `state` event). `Online::set_appear_offline` shows the choice at once, a refusal takes it back with a toast, and the `state` event settles it (also when another device changes it). Where it shows: the switch "Appear Offline" (detail "Friends see you as offline") on the Account page of the online panel; the button on the own profile; "Appearing offline" in the panel's subtitle, the profile's status line and, in quiet ink (white 72 %), after the name in the top bar's profile pill, whose accent dot becomes a ring while it is on (its accessible name says "Appearing offline" instead of "Online"). Offline from the cloud the player is simply offline: nothing is shown.
 

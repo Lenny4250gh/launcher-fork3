@@ -370,6 +370,7 @@ impl CorePipeline {
             settings::CpuConversion::Intel => CpuConversion::Intel,
         };
         request.to_intel = HostCpu::detect().wants_intel_conversion(mode);
+        request.trace_imports = prefs.record_network;
         request.relink_flags = prefs.game_settings(&game.id).relink;
         request.resolution = prefs.game_settings(&game.id).resolution;
         // Unlocking again replaces the copy; its saves are backed up first.

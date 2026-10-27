@@ -455,6 +455,12 @@ impl NotificationsScreen {
             language,
             &[Arg::Str(kind), Arg::Str(&item.text), Arg::Str(&when)],
         );
+        // A new entry says so in words too: the dot and the brighter ink are only for the eye.
+        let name = if fresh {
+            format!("{}, {name}", NT::EntryNew.text(language))
+        } else {
+            name
+        };
         response.widget_info(|| WidgetInfo::labeled(Role::Label, true, name.as_str()));
         crate::ui::a11y::follow(&ctx, response.id, focus.is_some());
 
@@ -539,7 +545,9 @@ impl NotificationsScreen {
         );
         buttons.spacing_mut().item_spacing.x = size::CONTROL_GAP;
         buttons.add_space(8.0);
+        // Every row has the same two buttons: the name says whose they are.
         if ConsoleButton::new(dismiss)
+            .accessible_name(format!("{dismiss}, {}", item.text))
             .size(ControlSize::Small)
             .focused(focus == Some(false))
             .show(&mut buttons)
@@ -555,6 +563,7 @@ impl NotificationsScreen {
         }
         if let Some(primary) = item.primary
             && ConsoleButton::new(primary.text(language))
+                .accessible_name(format!("{}, {}", primary.text(language), item.text))
                 .size(ControlSize::Small)
                 .focused(focus == Some(true))
                 .show(&mut buttons)

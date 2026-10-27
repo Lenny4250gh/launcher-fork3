@@ -42,6 +42,16 @@ pub struct GlassStyle {
 const MATERIAL_TINT: f32 = 0.06;
 const MATERIAL_SATURATION: f32 = 1.25;
 
+/// How much paper the light look lays over the backdrop where a panel replaces `black` of dark:
+/// 1.1 times the black, at most `LIGHT_VEIL_MAX`, so the sky's colour stays visible through the panel
+/// (`ui::contrast` measures the ink on it from this same function).
+pub fn light_veil(black: f32) -> f32 {
+    (black * 1.1).min(LIGHT_VEIL_MAX)
+}
+
+/// The most paper a panel of the light look is veiled in.
+pub const LIGHT_VEIL_MAX: f32 = 0.88;
+
 impl GlassStyle {
     /// `.glass(radius, opacity:)` of the original.
     pub const fn glass(radius: f32, black: f32) -> Self {
@@ -401,7 +411,7 @@ pub fn paint_glass_on(
     if light > 0.0 && style.overlay.a() == 0 {
         // The light look: a panel is the backdrop veiled in paper, not darkened by black. The
         // veil is a little stronger than the black it replaces, so the dark ink on it reads.
-        style.overlay = scrim((style.black * 1.1).min(0.94) * light);
+        style.overlay = scrim(light_veil(style.black) * light);
         style.black *= 1.0 - light;
     }
     if theme::high_contrast() {

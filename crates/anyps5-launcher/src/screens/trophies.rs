@@ -615,7 +615,7 @@ impl TrophyListPanel {
             0.0,
             size::FOCUS_RING,
         );
-        let ink = |alpha: f32| fade(crate::ui::theme::color::text(), alpha);
+        let ink = |alpha: f32| crate::ui::theme::color::ink_at(alpha);
 
         // Icon or the secret's lock tile.
         let icon_rect = Rect::from_center_size(
@@ -700,11 +700,10 @@ impl TrophyListPanel {
 
         // Grade and date, right aligned.
         let right = rect.max.x - 18.0;
-        let grade_color = grade.color();
         let grade_color = if earned {
-            grade_color
+            grade.color()
         } else {
-            fade(grade_color, 0.55)
+            grade.dimmed()
         };
         let rows_h = grade_style.line_height() + 6.0 + date_style.line_height();
         let gy = rect.center().y - rows_h * 0.5;

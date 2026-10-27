@@ -373,7 +373,9 @@ jobs:
         with:
           persist-credentials: false
           path: launcher
-          sparse-checkout: network.ref
+          sparse-checkout: |
+            network.ref
+            tools/apt-install.sh
           sparse-checkout-cone-mode: false
       # The anyplaynet/network revision whose net service the launcher carries: the input of a run by
       # hand, else the repository variable NETWORK_REF, else the commit in network.ref. A full commit
@@ -400,8 +402,7 @@ jobs:
         run: echo "commit=$(git -C "$GITHUB_WORKSPACE/network" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: System packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libpipewire-0.3-dev libudev-dev clang
+          launcher/tools/apt-install.sh pkg-config libpipewire-0.3-dev libudev-dev clang
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -471,8 +472,7 @@ jobs:
 
       - name: System packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          tools/apt-install.sh \
             pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1

@@ -62,7 +62,6 @@ pub enum ProfileText {
     PrivateTitle,
     /// `%@` = the handle.
     PrivateNote,
-    EmptyTitle,
     /// `%@` = the handle.
     EmptyNote,
     // The player's own empty sections
@@ -123,7 +122,6 @@ impl ProfileText {
             ProfileText::FailedNote => "Check your connection and try again.",
             ProfileText::PrivateTitle => "This profile is private",
             ProfileText::PrivateNote => "%@ shares their profile with friends only.",
-            ProfileText::EmptyTitle => "Nothing to show yet",
             ProfileText::EmptyNote => "%@ has not played or shared anything yet.",
             ProfileText::OwnGamesEmpty => "Games in your library show up here with your time.",
             ProfileText::OwnTrophiesEmpty => "Earn a trophy in a game and it shows up here.",
@@ -183,7 +181,6 @@ impl ProfileText {
             ProfileText::FailedNote => "Bağlantını kontrol edip tekrar dene.",
             ProfileText::PrivateTitle => "Bu profil gizli",
             ProfileText::PrivateNote => "%@ profilini yalnızca arkadaşlarıyla paylaşıyor.",
-            ProfileText::EmptyTitle => "Henüz gösterilecek bir şey yok",
             ProfileText::EmptyNote => "%@ henüz bir şey oynamadı veya paylaşmadı.",
             ProfileText::OwnGamesEmpty => "Kitaplığındaki oyunlar süreleriyle burada görünür.",
             ProfileText::OwnTrophiesEmpty => "Bir oyunda kupa kazan, burada görünsün.",
@@ -247,7 +244,6 @@ impl ProfileText {
             ProfileText::FailedNote => "Prüfe deine Verbindung und versuche es erneut.",
             ProfileText::PrivateTitle => "Dieses Profil ist privat",
             ProfileText::PrivateNote => "%@ teilt das Profil nur mit Freunden.",
-            ProfileText::EmptyTitle => "Noch nichts zu zeigen",
             ProfileText::EmptyNote => "%@ hat noch nichts gespielt oder geteilt.",
             ProfileText::OwnGamesEmpty => {
                 "Spiele aus deiner Bibliothek erscheinen hier mit deiner Spielzeit."
@@ -316,7 +312,6 @@ impl ProfileText {
             ProfileText::FailedNote => "Revisa tu conexión e inténtalo de nuevo.",
             ProfileText::PrivateTitle => "Este perfil es privado",
             ProfileText::PrivateNote => "%@ solo comparte su perfil con amigos.",
-            ProfileText::EmptyTitle => "Aún no hay nada que mostrar",
             ProfileText::EmptyNote => "%@ aún no ha jugado ni compartido nada.",
             ProfileText::OwnGamesEmpty => {
                 "Los juegos de tu biblioteca aparecen aquí con tu tiempo de juego."
@@ -383,7 +378,6 @@ impl ProfileText {
             ProfileText::FailedNote => "Vérifie ta connexion et réessaie.",
             ProfileText::PrivateTitle => "Ce profil est privé",
             ProfileText::PrivateNote => "%@ ne partage son profil qu’avec ses amis.",
-            ProfileText::EmptyTitle => "Rien à montrer pour l’instant",
             ProfileText::EmptyNote => "%@ n’a encore rien joué ni partagé.",
             ProfileText::OwnGamesEmpty => {
                 "Les jeux de ta bibliothèque apparaissent ici avec ton temps de jeu."
@@ -450,7 +444,6 @@ impl ProfileText {
             ProfileText::FailedNote => "Verifique sua conexão e tente de novo.",
             ProfileText::PrivateTitle => "Este perfil é privado",
             ProfileText::PrivateNote => "%@ compartilha o perfil apenas com amigos.",
-            ProfileText::EmptyTitle => "Ainda não há nada para mostrar",
             ProfileText::EmptyNote => "%@ ainda não jogou nem compartilhou nada.",
             ProfileText::OwnGamesEmpty => {
                 "Os jogos da sua biblioteca aparecem aqui com seu tempo de jogo."

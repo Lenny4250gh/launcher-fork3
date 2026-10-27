@@ -1148,6 +1148,22 @@ fn enter_fullscreen(ctx: &Context, fullscreen: bool) {
     }
 }
 
+/// An autostart entry that points at a program that moved (an AppImage the player put elsewhere, a
+/// reinstall) is rewritten to this one, so the sign-in start keeps working. Nothing is written
+/// when there is no entry; the player switches it on in the settings.
+fn keep_autostart_current() {
+    let Some(entry) = anyps5_core::autostart::Entry::current(&anyps5_core::platform::process_vars)
+    else {
+        return;
+    };
+    if entry.stale() {
+        match entry.enable() {
+            Ok(()) => tracing::info!("the autostart entry now starts this launcher"),
+            Err(error) => tracing::warn!("cannot refresh the autostart entry: {error}"),
+        }
+    }
+}
+
 /// Runs the launcher. `inbox` brings the arguments of later launches; `arguments` are the ones this
 /// launch got (a link or a folder).
 /// The app id on Linux: Wayland's app_id and X11's WM_CLASS. It must match the desktop entry's
@@ -1157,10 +1173,13 @@ const APP_ID: &str = "anyplay-launcher";
 
 pub fn run(inbox: Option<crate::instance::Inbox>, arguments: Vec<String>) -> eframe::Result {
     // Read before the window exists: it opens filling its screen unless the player chose a window.
-    let fullscreen = AppPaths::from_env()
-        .map(|paths| Preferences::load(&paths).fullscreen)
-        .unwrap_or(true)
-        // Gaming Mode shows one full-screen window, whatever was chosen before.
+    let prefs = AppPaths::from_env().map(|paths| Preferences::load(&paths));
+    let console = prefs.as_ref().is_some_and(|p| p.console_mode);
+    crate::ui::osk::set_console_mode(console);
+    keep_autostart_current();
+    let fullscreen = prefs.as_ref().is_none_or(|p| p.fullscreen)
+        // Console Mode and Gaming Mode show one full-screen window, whatever was chosen before.
+        || console
         || crate::ui::osk::gaming_mode();
     let viewport = egui::ViewportBuilder::default()
         .with_title("AnyPlay Launcher")

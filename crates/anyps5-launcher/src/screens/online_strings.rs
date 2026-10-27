@@ -291,7 +291,7 @@ impl OnlineText {
             OnlineText::NotFound => "No account has this name.",
             OnlineText::RateLimited => "Too many tries. Wait a moment and try again.",
             OnlineText::Banned => "This account is banned.",
-            OnlineText::Failed => "That did not work: %@",
+            OnlineText::Failed => "Could not do that. Try again in a moment.",
             OnlineText::NotOwned => "%@ is not in your library.",
             OnlineText::NotUnlocked => "Unlock %@ first, then join.",
             OnlineText::VersionMismatch => {
@@ -453,7 +453,7 @@ impl OnlineText {
             OnlineText::NotFound => "Bu adda bir hesap yok.",
             OnlineText::RateLimited => "Çok fazla deneme. Biraz bekleyip yeniden dene.",
             OnlineText::Banned => "Bu hesap engellendi.",
-            OnlineText::Failed => "Olmadı: %@",
+            OnlineText::Failed => "Bu yapılamadı. Biraz sonra yeniden dene.",
             OnlineText::NotOwned => "%@ kütüphanende yok.",
             OnlineText::NotUnlocked => "Önce %@ oyununun kilidini aç, sonra katıl.",
             OnlineText::VersionMismatch => {
@@ -626,7 +626,7 @@ impl OnlineText {
                 "Zu viele Versuche. Warte einen Moment und versuche es erneut."
             }
             OnlineText::Banned => "Dieses Konto ist gesperrt.",
-            OnlineText::Failed => "Das hat nicht geklappt: %@",
+            OnlineText::Failed => "Das ging nicht. Versuche es gleich noch einmal.",
             OnlineText::NotOwned => "%@ ist nicht in deiner Bibliothek.",
             OnlineText::NotUnlocked => "Schalte zuerst %@ frei, dann tritt bei.",
             OnlineText::VersionMismatch => {
@@ -804,7 +804,7 @@ impl OnlineText {
                 "Demasiados intentos. Espera un momento e inténtalo de nuevo."
             }
             OnlineText::Banned => "Esta cuenta está suspendida.",
-            OnlineText::Failed => "No funcionó: %@",
+            OnlineText::Failed => "No se pudo hacer. Inténtalo de nuevo en un momento.",
             OnlineText::NotOwned => "%@ no está en tu biblioteca.",
             OnlineText::NotUnlocked => "Desbloquea %@ primero y luego únete.",
             OnlineText::VersionMismatch => {
@@ -976,7 +976,7 @@ impl OnlineText {
             OnlineText::NotFound => "Aucun compte ne porte ce nom.",
             OnlineText::RateLimited => "Trop d’essais. Attends un instant et réessaie.",
             OnlineText::Banned => "Ce compte est banni.",
-            OnlineText::Failed => "Cela n’a pas fonctionné\u{a0}: %@",
+            OnlineText::Failed => "Impossible de le faire. Réessaie dans un instant.",
             OnlineText::NotOwned => "%@ n’est pas dans ta bibliothèque.",
             OnlineText::NotUnlocked => "Déverrouille d’abord %@, puis rejoins.",
             OnlineText::VersionMismatch => {
@@ -1148,7 +1148,7 @@ impl OnlineText {
             OnlineText::NotFound => "Nenhuma conta tem este nome.",
             OnlineText::RateLimited => "Muitas tentativas. Aguarde um momento e tente de novo.",
             OnlineText::Banned => "Esta conta está banida.",
-            OnlineText::Failed => "Não funcionou: %@",
+            OnlineText::Failed => "Não foi possível. Tenta de novo daqui a pouco.",
             OnlineText::NotOwned => "%@ não está na sua biblioteca.",
             OnlineText::NotUnlocked => "Desbloqueie %@ primeiro e depois entre.",
             OnlineText::VersionMismatch => {

@@ -475,11 +475,6 @@ fn paint_state_page(
             P::PrivateTitle.text(language).to_owned(),
             Some(P::PrivateNote.format(language, &[handle])),
         ),
-        Body::Empty => (
-            Icon::USER_CIRCLE,
-            P::EmptyTitle.text(language).to_owned(),
-            Some(P::EmptyNote.format(language, &[handle])),
-        ),
         Body::Ready(_) => return,
     };
     // The way out, if the state has one, is the first stop of the focus.
