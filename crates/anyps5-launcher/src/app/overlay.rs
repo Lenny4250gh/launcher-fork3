@@ -65,8 +65,8 @@ pub enum Overlay {
     InGame,
     /// The question before the running game is closed (a panel of the game frame).
     ConfirmCloseGame,
-    /// The question before the launcher closes in the middle of an unlock, install or removal
-    /// (a panel of the game frame).
+    /// The question before the window closes while games are unlocked or removed (a panel of the
+    /// game frame).
     ConfirmQuit,
     /// "Update required": this version is retired, so the update comes before the online area.
     /// Offline play stays open (a full-screen panel, docs/DESIGN.md 9.5.1).

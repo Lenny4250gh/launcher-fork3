@@ -131,6 +131,10 @@ pub enum PipelineCommand {
     Retry(GameId),
     /// Drop a queued unlock or stop the running one.
     Cancel(GameId),
+    /// Freeze the running unlock where it is (the player's Pause).
+    Pause(GameId),
+    /// Let a paused unlock go on from where it stood.
+    Resume(GameId),
     /// Start an unlocked game.
     Play(GameId),
     /// Kill the running game (also while it is still starting).
@@ -153,6 +157,8 @@ impl PipelineCommand {
             PipelineCommand::Unlock(g)
             | PipelineCommand::Retry(g)
             | PipelineCommand::Cancel(g)
+            | PipelineCommand::Pause(g)
+            | PipelineCommand::Resume(g)
             | PipelineCommand::Play(g)
             | PipelineCommand::Stop(g)
             | PipelineCommand::UnlockAgain(g)
@@ -360,7 +366,10 @@ impl Pipeline for SimPipeline {
                     diagnosis: None,
                 });
             }
-            PipelineCommand::Activate(_) | PipelineCommand::Promote(_) => {}
+            PipelineCommand::Activate(_)
+            | PipelineCommand::Promote(_)
+            | PipelineCommand::Pause(_)
+            | PipelineCommand::Resume(_) => {}
         }
     }
 

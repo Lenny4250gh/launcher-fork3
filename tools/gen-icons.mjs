@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 const css = readFileSync(process.argv[2], "utf8");
 // Phosphor names used by the launcher (docs/DESIGN.md 5.16).
 const names = `squares-four dots-nine gear-six game-controller lock lock-open warning clock arrow-circle-down
-check-circle arrows-clockwise arrow-clockwise hourglass play play-circle x trophy dots-three circle-dashed
+check-circle arrows-clockwise arrow-clockwise hourglass play play-circle pause x trophy dots-three circle-dashed
 hard-drive hash tag folder magnifying-glass stack caret-left caret-right caret-up caret-down minus plus
 stethoscope file-text paint-brush globe sliders-horizontal wrench info palette circle-half images image wind
 user-circle speaker-high music-notes discord-logo eye-slash power rectangle frame-corners app-window arrows-out-simple wave-sine keyboard

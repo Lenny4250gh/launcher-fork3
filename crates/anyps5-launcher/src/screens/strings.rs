@@ -262,10 +262,21 @@ pub enum Extra {
     /// Toast: the removal did not start.
     UninstallNeedsBackup,
     /// The state line and the greyed-out button while a game's copy is being removed.
+    Uninstalling,
     /// The state line, the greyed-out button and the bar's label while an unlock that was cancelled
     /// is still being stopped.
     Cancelling,
-    Uninstalling,
+    /// The button of an unlock under way: it stops where it is, Resume goes on.
+    Pause,
+    /// The state line, the greyed-out button and the bar's label while a paused unlock is still
+    /// being stopped.
+    Pausing,
+    /// The button of a game whose unlock was paused.
+    Resume,
+    /// The note beside the bar of such a game.
+    PausedNote,
+    /// The note beside the bar of an unlock the player paused: it goes on from where it stood.
+    HeldNote,
     /// Toast: the restore stopped part way.
     SavesRestoreIncomplete,
     /// Toast: the restore stopped part way, nothing had to be kept.
@@ -486,8 +497,13 @@ impl Extra {
             Extra::UninstallNeedsBackup => {
                 "Could not back up the saves, so the game was not removed. Check the free disk space and try again."
             }
-            Extra::Cancelling => "Cancelling…",
             Extra::Uninstalling => "Removing",
+            Extra::Cancelling => "Cancelling…",
+            Extra::Pause => "Pause",
+            Extra::Pausing => "Pausing…",
+            Extra::Resume => "Resume",
+            Extra::PausedNote => "Incomplete: progress was not kept. Resume starts again from the beginning.",
+            Extra::HeldNote => "Paused. Resume goes on from here.",
             Extra::SavesRestoreIncomplete => {
                 "The restore did not finish. The saves from before are in the newest backup, Before a restore."
             }
@@ -703,8 +719,13 @@ impl Extra {
             Extra::UninstallNeedsBackup => {
                 "Kayıtlar yedeklenemedi, bu yüzden oyun kaldırılmadı. Boş disk alanını kontrol edip yeniden dene."
             }
-            Extra::Cancelling => "İptal ediliyor…",
             Extra::Uninstalling => "Kaldırılıyor",
+            Extra::Cancelling => "İptal ediliyor…",
+            Extra::Pause => "Duraklat",
+            Extra::Pausing => "Duraklatılıyor…",
+            Extra::Resume => "Devam Et",
+            Extra::PausedNote => "Yarım kaldı: ilerleme korunmadı. Devam Et baştan başlar.",
+            Extra::HeldNote => "Duraklatıldı. Devam Et buradan sürdürür.",
             Extra::SavesRestoreIncomplete => {
                 "Geri yükleme tamamlanmadı. Önceki kayıtlar en yeni yedekte, \"Geri yüklemeden önce\"."
             }
@@ -944,8 +965,13 @@ impl Extra {
             Extra::UninstallNeedsBackup => {
                 "Die Spielstände konnten nicht gesichert werden, deshalb wurde das Spiel nicht entfernt. Prüfe den freien Speicherplatz und versuche es erneut."
             }
-            Extra::Cancelling => "Wird abgebrochen…",
             Extra::Uninstalling => "Wird entfernt",
+            Extra::Cancelling => "Wird abgebrochen…",
+            Extra::Pause => "Pausieren",
+            Extra::Pausing => "Wird pausiert…",
+            Extra::Resume => "Fortsetzen",
+            Extra::PausedNote => "Unvollständig: Fortschritt nicht erhalten. Fortsetzen beginnt von vorn.",
+            Extra::HeldNote => "Pausiert. Fortsetzen macht hier weiter.",
             Extra::SavesRestoreIncomplete => {
                 "Die Wiederherstellung wurde nicht abgeschlossen. Die früheren Spielstände sind in der neuesten Sicherung, Vor einer Wiederherstellung."
             }
@@ -1188,7 +1214,6 @@ impl Extra {
             Extra::UninstallNeedsBackup => {
                 "No se pudieron copiar las partidas guardadas, así que no se quitó el juego. Revisa el espacio libre en disco e inténtalo de nuevo."
             }
-            Extra::Cancelling => "Cancelando…",
             Extra::Uninstalling => "Quitando",
             Extra::SavesRestoreIncomplete => {
                 "La restauración no terminó. Las partidas anteriores están en la copia más reciente, Antes de restaurar."
@@ -1197,6 +1222,12 @@ impl Extra {
             Extra::SavesBusy => {
                 "Aún se están procesando las partidas guardadas. Inténtalo de nuevo en un momento."
             }
+            Extra::Cancelling => "Cancelando…",
+            Extra::Pause => "Pausar",
+            Extra::Pausing => "Pausando…",
+            Extra::Resume => "Reanudar",
+            Extra::PausedNote => "Incompleto: el progreso no se conservó. Reanudar empieza desde el principio.",
+            Extra::HeldNote => "En pausa. Reanudar continúa desde aquí.",
             _ => return None,
         })
     }
@@ -1430,7 +1461,6 @@ impl Extra {
             Extra::UninstallNeedsBackup => {
                 "Impossible de copier les sauvegardes, le jeu n’a donc pas été supprimé. Vérifie l’espace disque libre et réessaie."
             }
-            Extra::Cancelling => "Annulation…",
             Extra::Uninstalling => "Suppression",
             Extra::SavesRestoreIncomplete => {
                 "La restauration n’est pas terminée. Les sauvegardes d’avant sont dans la copie la plus récente, Avant une restauration."
@@ -1439,6 +1469,12 @@ impl Extra {
             Extra::SavesBusy => {
                 "Les sauvegardes sont encore en cours de traitement. Réessaie dans un instant."
             }
+            Extra::Cancelling => "Annulation…",
+            Extra::Pause => "Pause",
+            Extra::Pausing => "Mise en pause…",
+            Extra::Resume => "Reprendre",
+            Extra::PausedNote => "Incomplet : la progression n’a pas été conservée. Reprendre repart du début.",
+            Extra::HeldNote => "En pause. Reprendre continue à partir d’ici.",
             _ => return None,
         })
     }
@@ -1668,7 +1704,6 @@ impl Extra {
             Extra::UninstallNeedsBackup => {
                 "Não foi possível fazer backup dos jogos salvos, então o jogo não foi removido. Verifique o espaço livre em disco e tente de novo."
             }
-            Extra::Cancelling => "Cancelando…",
             Extra::Uninstalling => "Removendo",
             Extra::SavesRestoreIncomplete => {
                 "A restauração não terminou. Os jogos salvos de antes estão no backup mais recente, Antes de uma restauração."
@@ -1677,6 +1712,12 @@ impl Extra {
             Extra::SavesBusy => {
                 "Os jogos salvos ainda estão sendo processados. Tente de novo em instantes."
             }
+            Extra::Cancelling => "Cancelando…",
+            Extra::Pause => "Pausar",
+            Extra::Pausing => "Pausando…",
+            Extra::Resume => "Retomar",
+            Extra::PausedNote => "Incompleto: o progresso não foi mantido. Retomar recomeça do início.",
+            Extra::HeldNote => "Em pausa. Retomar continua daqui.",
             _ => return None,
         })
     }
@@ -1708,7 +1749,7 @@ impl Extra {
         substitute(self.text(language), args)
     }
 
-    pub const ALL: [Extra; 162] = [
+    pub const ALL: [Extra; 167] = [
         Extra::Toolkit,
         Extra::UpdateCheck,
         Extra::UpdateCheckDetail,
@@ -1866,8 +1907,13 @@ impl Extra {
         Extra::SavesRestoreTitle,
         Extra::UninstallBacksUp,
         Extra::UninstallNeedsBackup,
-        Extra::Cancelling,
         Extra::Uninstalling,
+        Extra::Cancelling,
+        Extra::Pause,
+        Extra::Pausing,
+        Extra::Resume,
+        Extra::PausedNote,
+        Extra::HeldNote,
         Extra::SavesRestoreIncomplete,
         Extra::SavesRestoreIncompleteNone,
         Extra::SavesBusy,

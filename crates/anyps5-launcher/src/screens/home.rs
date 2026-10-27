@@ -1044,12 +1044,16 @@ pub fn tile_overlay(state: &GameState, weights: &crate::app::pipeline::StepWeigh
         GameState::Installing { step, fraction } => {
             TileOverlay::Installing(weights.overall(*step, *fraction))
         }
-        GameState::Uninstalling { fraction } | GameState::Cancelling { fraction } => {
+        GameState::Uninstalling { fraction } | GameState::Cancelling { fraction, .. } => {
             TileOverlay::Installing(*fraction)
         }
         GameState::Preparing { progress, paused } => TileOverlay::Preparing {
             fraction: progress.map(|(step, fraction)| weights.overall(step, fraction)),
             paused: *paused,
+        },
+        GameState::Paused { fraction } => TileOverlay::Preparing {
+            fraction: Some(*fraction),
+            paused: true,
         },
         GameState::Failed(_) => TileOverlay::Failed,
         GameState::Installed { .. } => TileOverlay::None,
@@ -1381,7 +1385,11 @@ fn paint_hero(
         has_trophies.map(|set| format!("{}/{}", set.unlocked_count(), set.trophies.len()));
     // Play, then Play Together when the game can be played together, then trophies, then the Game Hub, then "...".
     let together = crate::app::together::hostable(cx.model).is_some();
-    let trophies_index = 1 + usize::from(together);
+    // The small cancel button sits right after the primary one while an unlock is under way.
+    let cancellable = cx.model.can_cancel(game);
+    let cancel_index = 1;
+    let together_index = 1 + usize::from(cancellable);
+    let trophies_index = together_index + usize::from(together);
     let hub_index = trophies_index + usize::from(trophy_text.is_some());
     let settings_index = hub_index + 1;
     let (primary_title, primary_icon, primary_fill) = primary_look(&state, language);
@@ -1410,13 +1418,22 @@ fn paint_hero(
         if primary.clicked() {
             pressed = Some(HomeFocus::Actions(0));
         }
+        if cancellable {
+            let cancel = ConsoleButton::icon_only(Icon::X, language.text(Key::Cancel))
+                .size(ControlSize::Small)
+                .focused(focused(cancel_index))
+                .show(ui);
+            if cancel.clicked() {
+                pressed = Some(HomeFocus::Actions(cancel_index));
+            }
+        }
         if together {
             let response = ConsoleButton::new(TogetherText::PlayTogether.text(language))
                 .icon(Icon::USERS)
-                .focused(focused(1))
+                .focused(focused(together_index))
                 .show(ui);
             if response.clicked() {
-                pressed = Some(HomeFocus::Actions(1));
+                pressed = Some(HomeFocus::Actions(together_index));
             }
         }
         if let Some(text) = &trophy_text {
@@ -1630,19 +1647,31 @@ pub fn primary_look(state: &GameState, language: Language) -> (&'static str, Ico
             (language.text(Key::Unlock), Icon::LOCK_OPEN, true)
         }
         GameState::Failed(_) => (language.text(Key::Retry), Icon::ARROW_CLOCKWISE, false),
-        GameState::Installing { .. } | GameState::Queued => {
-            (language.text(Key::Cancel), Icon::X, false)
-        }
-        // Removing a copy cannot be undone half way: the button only says what is going on.
-        // The unlock is being stopped: the button is greyed out and only says so.
-        GameState::Cancelling { .. } => (
-            crate::screens::strings::Extra::Cancelling.text(language),
-            Icon::HOURGLASS,
-            false,
+        GameState::Paused { .. } => (
+            crate::screens::strings::Extra::Resume.text(language),
+            Icon::PLAY,
+            true,
         ),
+        // Pause stops where it is; the small X beside it drops the unlock for good.
+        GameState::Installing { .. } | GameState::Queued => (
+            crate::screens::strings::Extra::Pause.text(language),
+            Icon::PAUSE,
+            true,
+        ),
+        // Removing a copy cannot be undone half way: the button only says what is going on.
         GameState::Uninstalling { .. } => (
             crate::screens::strings::Extra::Uninstalling.text(language),
             Icon::TRASH,
+            false,
+        ),
+        // The unlock is being stopped: the button is greyed out and only says so.
+        GameState::Cancelling { pausing, .. } => (
+            if *pausing {
+                crate::screens::strings::Extra::Pausing.text(language)
+            } else {
+                crate::screens::strings::Extra::Cancelling.text(language)
+            },
+            Icon::HOURGLASS,
             false,
         ),
         GameState::Starting => (language.text(Key::Starting), Icon::HOURGLASS, false),
@@ -1705,17 +1734,28 @@ fn action_row_status(
             paused: *paused,
         }),
         // Removing a copy has no steps: one bar from 0 to 100.
-        // Stopping has no end to measure: the bar sweeps until the work has stopped.
-        GameState::Cancelling { fraction } => Some(Running {
-            overall: *fraction,
-            label: crate::screens::strings::Extra::Cancelling.text(language),
-            indeterminate: true,
-            paused: false,
-        }),
         GameState::Uninstalling { fraction } => Some(Running {
             overall: *fraction,
             label: crate::screens::strings::Extra::Uninstalling.text(language),
             indeterminate: false,
+            paused: false,
+        }),
+        // Paused by closing the launcher: the bar stands where the unlock was.
+        GameState::Paused { fraction } => Some(Running {
+            overall: *fraction,
+            label: crate::screens::prepare_strings::state_label(true, language),
+            indeterminate: false,
+            paused: true,
+        }),
+        // Stopping has no end to measure: the bar sweeps until the work has stopped.
+        GameState::Cancelling { fraction, pausing } => Some(Running {
+            overall: *fraction,
+            label: if *pausing {
+                crate::screens::strings::Extra::Pausing.text(language)
+            } else {
+                crate::screens::strings::Extra::Cancelling.text(language)
+            },
+            indeterminate: true,
             paused: false,
         }),
         _ => None,
@@ -1744,7 +1784,15 @@ fn action_row_status(
                 color::text_label(),
             );
             // The time left, from the measured speed; nothing until there is enough to tell.
-            let note = if paused {
+            let note = if matches!(state, GameState::Paused { .. }) {
+                let held = cx.model.holding.contains(&game.id);
+                let note = if held {
+                    crate::screens::strings::Extra::HeldNote
+                } else {
+                    crate::screens::strings::Extra::PausedNote
+                };
+                Some(note.text(language).to_owned())
+            } else if paused {
                 Some(crate::screens::prepare_strings::paused_note(language).to_owned())
             } else {
                 cx.model

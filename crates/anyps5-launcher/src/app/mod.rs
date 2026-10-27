@@ -46,7 +46,6 @@ pub mod prepare;
 pub mod preview;
 pub mod profile;
 pub mod relocation;
-pub mod close_guard;
 pub mod run_question;
 pub mod selfupdate;
 pub mod services;
@@ -1303,16 +1302,6 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
         let glass_setting = self.app.model.prefs.glass_window;
         self.app.dress_window(&ctx, frame, glass_setting);
-        if ctx.input(|i| i.viewport().close_requested())
-            && !self.app.model.quit_confirmed
-            && self.app.model.busy_for_close().is_some()
-        {
-            // Busy: the launcher asks first, in its own panel.
-            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
-            if self.app.model.overlay != Some(Overlay::ConfirmQuit) {
-                self.app.model.switch_overlay(Overlay::ConfirmQuit);
-            }
-        }
         self.frames = self.frames.saturating_add(1);
         if self.frames <= 3 {
             crate::startup::mark(&format!("frame {} begins", self.frames));
@@ -1320,7 +1309,17 @@ impl eframe::App for App {
         if self.start_fullscreen && self.frames == 2 {
             ctx.send_viewport_cmd(ViewportCommand::Fullscreen(true));
         }
+        // Closing the window while games are unlocked or removed asks first.
+        if ctx.input(|i| i.viewport().close_requested()) && self.app.model.ask_before_quit() {
+            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+        }
         self.app.step(&ctx);
+        if self.app.model.quit_by.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        if self.app.model.quit_ready() {
+            ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
         self.app.paint(ui);
         self.app.broadcast.paint(&ctx, &self.app.model);
         self.app.finish_frame(&ctx);

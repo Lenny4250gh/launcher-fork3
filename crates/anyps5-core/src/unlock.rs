@@ -9,7 +9,7 @@
 //! Nothing here writes into the dump: its files are hard-linked (or copied) into `app0\` and the
 //! converted modules are laid over by replacing, never by writing through a link (D4).
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::ffi::OsString;
 use std::fs;
 use std::io;
@@ -1859,6 +1859,8 @@ struct QueueState {
     shutdown: bool,
     /// The PC is busy: background unlocks stand still until it is not.
     hold_background: bool,
+    /// Games the player paused by hand: they stand still until released, whatever else runs.
+    held: HashSet<GameId>,
 }
 
 struct Shared {
@@ -1889,6 +1891,7 @@ impl UnlockQueue {
                     running: Vec::new(),
                     shutdown: false,
                     hold_background: false,
+                    held: HashSet::new(),
                 }),
                 sink,
                 threads: Mutex::new(Vec::new()),
@@ -1943,6 +1946,20 @@ impl UnlockQueue {
         }
         pump(&self.shared, &mut state);
         changed
+    }
+
+    /// The player pauses an unlock by hand (`hold`) or lets it go on: the relinker is frozen and
+    /// the file work waits before its next file. Nothing is lost; going on continues from there.
+    pub fn hold(&self, game: &GameId, hold: bool) {
+        let mut state = self.shared.state.lock().expect("queue lock");
+        if hold {
+            if state.running.iter().any(|r| r.game == *game) {
+                state.held.insert(game.clone());
+            }
+        } else {
+            state.held.remove(game);
+        }
+        pump(&self.shared, &mut state);
     }
 
     /// Prepared games wait while the PC is busy (a game runs, the battery is in use, memory is
@@ -2024,6 +2041,10 @@ fn pump(shared: &Arc<Shared>, state: &mut QueueState) {
     if state.shutdown {
         return;
     }
+    // A hold only counts while its game runs: a finished or cancelled one must not hold the
+    // next unlock of the same game.
+    let running_games: Vec<GameId> = state.running.iter().map(|r| r.game.clone()).collect();
+    state.held.retain(|game| running_games.contains(game));
     let asked_running = state.running.iter().any(|r| !r.background);
     let asked_waiting = state.queue.iter().any(|r| !r.background);
     let make_way = asked_running || asked_waiting;
@@ -2032,11 +2053,12 @@ fn pump(shared: &Arc<Shared>, state: &mut QueueState) {
     // only for another asked-for game that started before it (a promoted game, for instance).
     let mut asked_before = false;
     for running in &state.running {
-        let still = if running.background {
+        let policy = if running.background {
             stand_still
         } else {
             std::mem::replace(&mut asked_before, true)
         };
+        let still = policy || state.held.contains(&running.game);
         if still && !running.control.is_paused() {
             running.control.pause();
             (shared.sink)(UnlockEvent::Paused {

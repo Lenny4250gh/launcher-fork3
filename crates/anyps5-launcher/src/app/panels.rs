@@ -74,6 +74,7 @@ use crate::screens::home::tile_overlay;
 use crate::screens::ingame::{CloseGamePanel, InGameAction, InGameData, InGamePanel};
 use crate::screens::library::{LibraryAction, LibraryData, LibraryEntry, LibraryGrid, StateText};
 use crate::screens::log::{LogAction, LogData, LogView, ReviewData};
+use crate::screens::quit::{QuitAction, QuitPanel};
 use crate::screens::recommended::{RecommendedAction, RecommendedData, RecommendedPanel};
 use crate::screens::rows::RowId;
 use crate::screens::saves::{
@@ -154,7 +155,7 @@ pub struct PanelHost {
     /// The quick panel of the running game and the question before it is closed.
     in_game: InGamePanel,
     close_game: CloseGamePanel,
-    quit: crate::app::close_guard::QuitPanel,
+    quit: QuitPanel,
     /// The tags of the releases on this PC, read when the game sheet opens and after a change.
     pin_installed: Option<Vec<String>>,
     controls: ControlsPanel,
@@ -278,7 +279,7 @@ impl PanelHost {
             toolkit_missing: MissingPanel::default(),
             in_game: InGamePanel::default(),
             close_game: CloseGamePanel::default(),
-            quit: Default::default(),
+            quit: QuitPanel::default(),
             pin_installed: None,
             controls: ControlsPanel::default(),
             controllers: ControllersPanel::default(),
@@ -950,15 +951,18 @@ impl PanelHost {
     }
 
     /// "Close Game" / "Keep Playing". Closing stops the game; the launcher stays in front.
-    /// The question before the launcher closes while it is busy.
+    /// The question before the window closes while games are unlocked or removed.
     fn quit_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
         let events = self.take_events(wanted);
+        let Some(kind) = cx.model.quit_ask else {
+            self.quit.close();
+            if wanted {
+                cx.model.dismiss_overlay();
+            }
+            return;
+        };
         if wanted && !self.quit.is_active() {
-            let busy = cx
-                .model
-                .busy_for_close()
-                .unwrap_or(crate::app::close_guard::Busy::Unlocking);
-            self.quit.open(busy);
+            self.quit.open();
         } else if !wanted && self.quit.is_active() {
             if cx.model.overlay.is_some_and(Overlay::is_side_panel) {
                 self.quit.dismiss();
@@ -967,14 +971,15 @@ impl PanelHost {
             }
         }
         let (language, accent) = (cx.model.language(), cx.shell.accent_color());
-        for action in self.quit.show(cx.shell, cx.ctx, &events, language, accent) {
+        for action in self.quit.show(cx.shell, cx.ctx, &events, kind, language, accent) {
+            let model = &mut *cx.model;
             match action {
-                crate::app::close_guard::QuitAction::Quit => {
-                    cx.model.quit_confirmed = true;
-                    cx.model.close_overlay();
-                    cx.ctx.send_viewport_cmd(ViewportCommand::Close);
+                QuitAction::Pause => model.quit_answer(true),
+                QuitAction::Cancel => model.quit_answer(false),
+                QuitAction::Stay => {
+                    model.quit_ask = None;
+                    model.dismiss_overlay();
                 }
-                crate::app::close_guard::QuitAction::Keep => cx.model.close_overlay(),
             }
         }
     }

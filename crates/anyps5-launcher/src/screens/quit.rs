@@ -77,12 +77,12 @@ fn ask(kind: QuitKind, language: Language) -> &'static str {
         QuitKind::Unlocking => pick(
             language,
             [
-                "A game is still being converted. Pause only works while the launcher is open: if you close it now, the progress cannot be saved and the conversion starts over.",
-                "Bir oyun hâlâ dönüştürülüyor. Duraklatma yalnızca başlatıcı açıkken çalışır: şimdi kapatırsan ilerleme kaydedilemez ve dönüştürme baştan başlar.",
-                "Ein Spiel wird noch umgewandelt. Pause funktioniert nur bei geöffnetem Launcher: Wenn du jetzt schließt, kann der Fortschritt nicht gespeichert werden und die Umwandlung beginnt von vorn.",
-                "Un juego aún se está convirtiendo. La pausa solo funciona con el launcher abierto: si lo cierras ahora, el progreso no se puede guardar y la conversión empezará de cero.",
-                "Un jeu est encore en cours de conversion. La pause ne fonctionne que lorsque le launcher est ouvert : si tu le fermes maintenant, la progression ne peut pas être enregistrée et la conversion repartira de zéro.",
-                "Um jogo ainda está sendo convertido. A pausa só funciona com o launcher aberto: se você fechar agora, o progresso não pode ser salvo e a conversão recomeça do zero.",
+                "A game is still being converted. If you pause and close, the progress cannot be kept: after reopening it is marked incomplete and starts again from the beginning.",
+                "Bir oyun hâlâ dönüştürülüyor. Duraklatıp kapatırsan ilerleme korunamaz: yeniden açınca yarım olarak görünür ve baştan başlar.",
+                "Ein Spiel wird noch umgewandelt. Wenn du pausierst und schließt, kann der Fortschritt nicht erhalten bleiben: Nach dem Neustart gilt es als unvollständig und beginnt von vorn.",
+                "Un juego aún se está convirtiendo. Si pausas y cierras, el progreso no se puede conservar: al reabrir aparece como incompleto y empieza desde el principio.",
+                "Un jeu est encore en cours de conversion. Si tu mets en pause et fermes, la progression ne peut pas être conservée : à la réouverture il est marqué incomplet et repart du début.",
+                "Um jogo ainda está sendo convertido. Se você pausar e fechar, o progresso não pode ser mantido: ao reabrir ele aparece como incompleto e recomeça do início.",
             ],
         ),
         QuitKind::Removing => pick(
@@ -99,14 +99,14 @@ fn ask(kind: QuitKind, language: Language) -> &'static str {
     }
 }
 
-/// "Pause and quit" / "Quit and lose progress" / "Go back".
+/// "Pause and quit" / "Cancel and quit" / "Go back".
 #[derive(Default)]
 pub struct QuitPanel {
     side: SideState,
 }
 
 impl QuitPanel {
-    /// Opens on "Go back", the first row: closing loses the progress.
+    /// Opens on the first row: pausing loses nothing.
     pub fn open(&mut self) {
         self.side.open_at(0);
     }
@@ -151,28 +151,43 @@ impl QuitPanel {
         }
         let build = || match kind {
             QuitKind::Unlocking => vec![
+                Row::command(
+                    "pause",
+                    pick(
+                        language,
+                        [
+                            "Pause and quit",
+                            "Duraklat ve çık",
+                            "Pausieren und beenden",
+                            "Pausar y salir",
+                            "Mettre en pause et quitter",
+                            "Pausar e sair",
+                        ],
+                    ),
+                )
+                .icon(Icon::HOURGLASS),
+                Row::command(
+                    "cancel",
+                    pick(
+                        language,
+                        [
+                            "Cancel and quit",
+                            "İptal et ve çık",
+                            "Abbrechen und beenden",
+                            "Cancelar y salir",
+                            "Annuler et quitter",
+                            "Cancelar e sair",
+                        ],
+                    ),
+                )
+                .icon(Icon::X)
+                .destructive(),
                 Row::command("stay", pick(
                         language,
                         ["Go back", "Geri dön", "Zurück", "Volver", "Retour", "Voltar"],
                     ))
                     .icon(Icon::ARROW_LEFT)
                     .refusal(),
-                Row::command(
-                    "cancel",
-                    pick(
-                        language,
-                        [
-                            "Quit and lose progress",
-                            "Çık ve ilerlemeyi kaybet",
-                            "Beenden und Fortschritt verlieren",
-                            "Salir y perder el progreso",
-                            "Quitter et perdre la progression",
-                            "Sair e perder o progresso",
-                        ],
-                    ),
-                )
-                .icon(Icon::X)
-                .destructive(),
             ],
             QuitKind::Removing => vec![
                 Row::command("stay", pick(

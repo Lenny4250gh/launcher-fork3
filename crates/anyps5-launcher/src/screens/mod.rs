@@ -90,6 +90,7 @@ pub mod phone_strings;
 pub mod prepare_strings;
 pub mod profile;
 pub mod profile_strings;
+pub mod quit;
 pub mod recommended;
 pub mod required;
 pub mod room_strings;

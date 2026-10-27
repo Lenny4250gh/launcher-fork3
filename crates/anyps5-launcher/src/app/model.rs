@@ -57,10 +57,18 @@ pub enum GameState {
     Uninstalling {
         fraction: f32,
     },
-    /// Cancel was pressed during an unlock and the work is still being stopped; `fraction` is the
-    /// overall progress it had reached, 0..=1. Nothing can be pressed until it has stopped.
+    /// The unlock was paused; `fraction` is how far it had come, 0..=1. Paused by hand while it
+    /// ran (`Model::holding`), Resume goes on from there; paused by closing the launcher, Resume
+    /// starts it again.
+    Paused {
+        fraction: f32,
+    },
+    /// Cancel or Pause was pressed during an unlock and the work is still being stopped;
+    /// `fraction` is the overall progress it had reached, 0..=1. `pausing`: it will stay as a
+    /// paused unlock (Resume) rather than be dropped. Nothing can be pressed until it has stopped.
     Cancelling {
         fraction: f32,
+        pausing: bool,
     },
     /// The launcher unlocks the game on its own while the PC is idle. `progress` is `None` until
     /// the work starts.
@@ -292,8 +300,14 @@ pub struct Model {
     pub uninstalling: HashMap<GameId, f32>,
     /// Games whose running unlock was cancelled and has not stopped yet.
     pub cancelling: HashSet<GameId>,
-    /// The player confirmed closing the launcher in the middle of work.
+    /// Games whose running unlock the player paused: frozen where it stands, Resume goes on.
+    pub holding: HashSet<GameId>,
+    /// What the question before the window closes is about, while it is open.
+    pub quit_ask: Option<crate::screens::quit::QuitKind>,
+    /// The window may close: the question was answered (or there was nothing to ask).
     pub quit_confirmed: bool,
+    /// The window closes by this UI-clock time, or as soon as the unlocks have stopped.
+    pub quit_by: Option<f64>,
     /// Games waiting for their unlock.
     pub queue: Vec<GameId>,
     /// Preparing in the background, and the time left of every unlock (`app/prepare.rs`).
@@ -435,7 +449,10 @@ impl Model {
             progress: HashMap::new(),
             uninstalling: HashMap::new(),
             cancelling: HashSet::new(),
+            holding: HashSet::new(),
+            quit_ask: None,
             quit_confirmed: false,
+            quit_by: None,
             queue: Vec::new(),
             prep: Default::default(),
             failures: HashMap::new(),
@@ -760,7 +777,15 @@ impl Model {
                 .progress
                 .get(id)
                 .map_or(0.0, |&(step, fraction)| self.overall(step, fraction));
-            return GameState::Cancelling { fraction };
+            let pausing = self.prefs.paused_unlocks.contains_key(id.as_str());
+            return GameState::Cancelling { fraction, pausing };
+        }
+        if self.holding.contains(id)
+            && let Some(&(step, fraction)) = self.progress.get(id)
+        {
+            return GameState::Paused {
+                fraction: self.overall(step, fraction),
+            };
         }
         if let Some(preparing) = self.preparing_state(id) {
             return preparing;
@@ -770,6 +795,11 @@ impl Model {
         }
         if self.queue.contains(id) {
             return GameState::Queued;
+        }
+        if self.prefs.paused_unlocks.contains_key(id.as_str()) {
+            // Closed while paused: the work folder is gone, so it counts as incomplete and
+            // starts again from the beginning.
+            return GameState::Paused { fraction: 0.0 };
         }
         if let Some(message) = self.failures.get(id) {
             return GameState::Failed(message.clone());
@@ -828,12 +858,23 @@ impl Model {
         self.home_context().action_count()
     }
 
+    /// The small cancel button beside Pause / Resume: an unlock is under way, waits, or is paused
+    /// in the middle.
+    pub fn can_cancel(&self, game: &Game) -> bool {
+        match self.state_of(game) {
+            GameState::Installing { .. } | GameState::Queued => true,
+            GameState::Paused { .. } => self.holding.contains(&game.id),
+            _ => false,
+        }
+    }
+
     fn home_context(&self) -> HomeContext {
         HomeContext {
             games: self.games.len(),
             selected: self.selected,
             has_trophies: self.has_trophies(),
             together: crate::app::together::hostable(self).is_some(),
+            cancellable: self.selected_game().is_some_and(|g| self.can_cancel(g)),
             asking: self.run_question().is_some(),
             notice: self.update_notice().map_or(0, |n| n.buttons),
             card: crate::app::together::card(self).map_or(0, |card| {
@@ -1019,6 +1060,13 @@ impl Model {
             }
             PipelineEvent::UnlockFinished { game, result } => {
                 self.cancelling.remove(&game);
+                self.holding.remove(&game);
+                if self.prefs.paused_unlocks.contains_key(game.as_str()) {
+                    let key = game.as_str().to_owned();
+                    self.edit_prefs(|p| {
+                        p.paused_unlocks.remove(&key);
+                    });
+                }
                 self.progress.remove(&game);
                 self.queue.retain(|q| q != &game);
                 let prepared = self.prep_ended(&game);
@@ -1048,6 +1096,7 @@ impl Model {
             }
             PipelineEvent::UnlockCancelled { game } => {
                 self.cancelling.remove(&game);
+                self.holding.remove(&game);
                 self.progress.remove(&game);
                 self.queue.retain(|q| q != &game);
                 self.prep_ended(&game);
@@ -1132,8 +1181,20 @@ impl Model {
             GameState::Installed { .. } => self.play(&game.id),
             GameState::Preparing { .. } => self.promote(&game.id),
             GameState::Locked => self.unlock(&game.id),
+            // Resume: the unlock starts again (the converter cannot go on from the middle).
+            GameState::Paused { .. } if self.holding.contains(&game.id) => {
+                self.resume_unlock(&game.id)
+            }
+            GameState::Paused { .. } => {
+                if game.unlocked_with.is_some() {
+                    self.unlock_again(&game.id);
+                } else {
+                    self.unlock(&game.id);
+                }
+            }
             GameState::Failed(_) => self.retry(&game.id),
-            GameState::Installing { .. } | GameState::Queued => self.cancel_unlock(&game.id),
+            // Pause: the unlock stops where it is and Resume starts it again.
+            GameState::Installing { .. } | GameState::Queued => self.pause_unlock(&game.id),
             GameState::Running => self
                 .effects
                 .push(Effect::Pipeline(PipelineCommand::Activate(game.id))),
@@ -1186,7 +1247,16 @@ impl Model {
             return;
         }
         self.failures.remove(id);
-        if self.queue.contains(id) || self.progress.contains_key(id) {
+        if self.prefs.paused_unlocks.contains_key(id.as_str()) {
+            let key = id.as_str().to_owned();
+            self.edit_prefs(|p| {
+                p.paused_unlocks.remove(&key);
+            });
+        }
+        if self.queue.contains(id)
+            || self.progress.contains_key(id)
+            || self.cancelling.contains(id)
+        {
             return;
         }
         self.queue.push(id.clone());
@@ -1199,11 +1269,110 @@ impl Model {
         self.uninstalling.insert(id.clone(), 0.0);
     }
 
+    /// The window is asked to close. With games being unlocked or removed the question comes
+    /// first. True when the window must stay open for now.
+    pub fn ask_before_quit(&mut self) -> bool {
+        if self.quit_confirmed {
+            return false;
+        }
+        if self.quit_by.is_some() {
+            // The unlocks are being stopped: the window closes when they have.
+            return true;
+        }
+        let kind = if !self.uninstalling.is_empty() {
+            crate::screens::quit::QuitKind::Removing
+        } else if !self.progress.is_empty() || !self.queue.is_empty() {
+            crate::screens::quit::QuitKind::Unlocking
+        } else {
+            return false;
+        };
+        self.quit_ask = Some(kind);
+        self.switch_overlay(Overlay::ConfirmQuit);
+        true
+    }
+
+    /// The answer to the question: stop every unlock (`pause` keeps where each one was, to resume
+    /// it) and close the window once they have stopped.
+    pub fn quit_answer(&mut self, pause: bool) {
+        let mut stopping: Vec<(GameId, u8)> = self
+            .progress
+            .iter()
+            .map(|(id, &(step, fraction))| {
+                let percent = (self.overall(step, fraction) * 100.0).round().clamp(0.0, 100.0);
+                (id.clone(), percent as u8)
+            })
+            .collect();
+        stopping.extend(
+            self.queue
+                .iter()
+                .filter(|id| !self.progress.contains_key(*id))
+                .map(|id| (id.clone(), 0)),
+        );
+        if pause {
+            self.edit_prefs(|p| {
+                for (id, percent) in &stopping {
+                    p.paused_unlocks.insert(id.as_str().to_owned(), *percent);
+                }
+            });
+        }
+        for (id, _) in &stopping {
+            self.cancel_unlock(id);
+        }
+        self.quit_ask = None;
+        self.quit_by = Some(self.now + 8.0);
+        self.dismiss_overlay();
+    }
+
+    /// Every frame: the window closes once the stopped unlocks are gone (or time is up).
+    pub fn quit_ready(&mut self) -> bool {
+        let Some(by) = self.quit_by else {
+            return false;
+        };
+        if (self.progress.is_empty() && self.queue.is_empty()) || self.now >= by {
+            self.quit_by = None;
+            self.quit_confirmed = true;
+            return true;
+        }
+        false
+    }
+
+    /// Pauses one unlock: a running one is frozen where it stands, a waiting one leaves the queue.
+    /// The game shows Resume.
+    pub fn pause_unlock(&mut self, id: &GameId) {
+        if self.cancelling.contains(id) {
+            return;
+        }
+        if self.progress.contains_key(id) {
+            // Running: the work is frozen where it stands and Resume goes on from there.
+            self.holding.insert(id.clone());
+            self.effects
+                .push(Effect::Pipeline(PipelineCommand::Pause(id.clone())));
+            self.sound(Cue::Back);
+        } else if self.queue.contains(id) {
+            // Waiting, nothing done yet: nothing is lost by taking it out of the queue.
+            let key = id.as_str().to_owned();
+            self.edit_prefs(|p| {
+                p.paused_unlocks.insert(key, 0);
+            });
+            self.cancel_unlock(id);
+        }
+    }
+
+    /// Lets an unlock the player paused go on from where it stood.
+    pub fn resume_unlock(&mut self, id: &GameId) {
+        if self.holding.remove(id) {
+            self.effects
+                .push(Effect::Pipeline(PipelineCommand::Resume(id.clone())));
+            self.sound(Cue::Select);
+        }
+    }
+
     pub fn cancel_unlock(&mut self, id: &GameId) {
         if self.cancelling.contains(id) {
             // Already being stopped: a second press changes nothing.
             return;
         }
+        self.holding.remove(id);
         if self.prep.background.remove(id) {
             // Held back or not yet started in the core: it still has to be told.
             self.effects
@@ -1501,6 +1670,11 @@ impl Model {
     pub fn apply_intent(&mut self, intent: HomeIntent) {
         match intent {
             HomeIntent::PrimaryAction => self.primary_action(),
+            HomeIntent::CancelUnlock => {
+                if let Some(id) = self.selected_game().map(|g| g.id.clone()) {
+                    self.cancel_unlock(&id);
+                }
+            }
             HomeIntent::AnswerRun(i) => self.answer_run(i),
             HomeIntent::UpdateAction(i) => self.update_action(i),
             HomeIntent::CardAction(i) => self.card_action(i),
@@ -1711,6 +1885,110 @@ mod tests {
         assert_eq!(m.state_of(&g), GameState::Running);
         m.starting = Some(id);
         assert_eq!(m.state_of(&g), GameState::Starting);
+    }
+
+    #[test]
+    fn closing_while_unlocking_asks_and_pausing_keeps_where_it_was() {
+        let g = game("a", None, ExecutableKind::Elf);
+        let id = g.id.clone();
+        let mut m = model_with(vec![g.clone()]);
+        assert!(!m.ask_before_quit(), "nothing under way: the window closes");
+        m.progress.insert(id.clone(), (UnlockStep::Copy, 0.5));
+        assert!(m.ask_before_quit());
+        assert_eq!(m.overlay, Some(Overlay::ConfirmQuit));
+        m.quit_answer(true);
+        assert!(m.prefs.paused_unlocks.contains_key(id.as_str()));
+        assert!(!m.quit_ready(), "the unlock is still being stopped");
+        m.on_pipeline(PipelineEvent::UnlockCancelled { game: id });
+        assert!(matches!(m.state_of(&g), GameState::Paused { .. }));
+        assert!(m.quit_ready());
+        assert!(!m.ask_before_quit(), "the question was answered");
+    }
+
+    #[test]
+    fn a_removal_cannot_be_paused_or_cancelled_by_closing() {
+        let g = game("a", Some("v1"), ExecutableKind::Elf);
+        let id = g.id.clone();
+        let mut m = model_with(vec![g]);
+        m.begin_uninstall(&id);
+        assert!(m.ask_before_quit());
+        assert_eq!(m.quit_ask, Some(crate::screens::quit::QuitKind::Removing));
+    }
+
+    #[test]
+    fn cancelling_a_running_unlock_greys_out_the_button_until_it_has_stopped() {
+        let g = game("a", None, ExecutableKind::Elf);
+        let id = g.id.clone();
+        let mut m = model_with(vec![g.clone()]);
+        m.progress.insert(id.clone(), (UnlockStep::Copy, 0.5));
+        m.selected = 0;
+        m.cancel_unlock(&id);
+        assert!(matches!(m.state_of(&g), GameState::Cancelling { .. }));
+        let cancels = |m: &Model| {
+            m.effects
+                .iter()
+                .filter(|e| matches!(e, Effect::Pipeline(PipelineCommand::Cancel(_))))
+                .count()
+        };
+        assert_eq!(cancels(&m), 1);
+        // A second press does not ask again.
+        m.cancel_unlock(&id);
+        assert_eq!(cancels(&m), 1);
+        // Progress that is still arriving does not bring the Cancel button back.
+        m.on_pipeline(PipelineEvent::Progress {
+            game: id.clone(),
+            step: UnlockStep::Copy,
+            fraction: 0.6,
+        });
+        assert!(matches!(m.state_of(&g), GameState::Cancelling { .. }));
+        m.on_pipeline(PipelineEvent::UnlockCancelled { game: id });
+        assert_eq!(m.state_of(&g), GameState::Locked);
+    }
+
+    #[test]
+    fn the_primary_button_freezes_a_running_unlock_and_resume_goes_on_from_there() {
+        let g = game("a", None, ExecutableKind::Elf);
+        let id = g.id.clone();
+        let mut m = model_with(vec![g.clone()]);
+        m.progress.insert(id.clone(), (UnlockStep::Copy, 0.5));
+        m.selected = 0;
+        m.primary_action();
+        // Frozen where it stands: still the same unlock, nothing is cancelled.
+        assert!(m.holding.contains(&id));
+        assert!(m.effects.iter().any(|e| matches!(
+            e,
+            Effect::Pipeline(PipelineCommand::Pause(game)) if *game == id
+        )));
+        assert!(matches!(m.state_of(&g), GameState::Paused { .. }));
+        assert!(m.home_context().cancellable);
+        m.effects.clear();
+        // Resume goes on from there: no new unlock is queued.
+        m.primary_action();
+        assert!(!m.holding.contains(&id));
+        assert_eq!(m.effects.len(), 1);
+        assert!(matches!(
+            &m.effects[0],
+            Effect::Pipeline(PipelineCommand::Resume(game)) if *game == id
+        ));
+        assert!(matches!(m.state_of(&g), GameState::Installing { .. }));
+    }
+
+    #[test]
+    fn the_small_cancel_button_drops_the_unlock_for_good() {
+        let g = game("a", None, ExecutableKind::Elf);
+        let id = g.id.clone();
+        let mut m = model_with(vec![g.clone()]);
+        m.progress.insert(id.clone(), (UnlockStep::Copy, 0.5));
+        m.selected = 0;
+        assert!(m.home_context().cancellable);
+        m.apply_intent(crate::ui::focus::HomeIntent::CancelUnlock);
+        assert!(!m.prefs.paused_unlocks.contains_key(id.as_str()));
+        assert!(matches!(
+            m.state_of(&g),
+            GameState::Cancelling { pausing: false, .. }
+        ));
+        m.on_pipeline(PipelineEvent::UnlockCancelled { game: id });
+        assert_eq!(m.state_of(&g), GameState::Locked);
     }
 
     #[test]
