@@ -10,7 +10,7 @@
 //! `onboarding-games` (folder found), `onboarding-games-none`, `onboarding-games-empty`,
 //! `onboarding-games-scanning`, `onboarding-online`, `onboarding-done`, `onboarding-done-signin`,
 //! `onboarding-done-bare` (no pad, no folder),
-//! `home`, `home-actions`, `home-trophies`, `home-locked`, `home-unlocking`, `home-relinking`,
+//! `settings-language` (Settings > Language), `home`, `home-actions`, `home-trophies`, `home-locked`, `home-unlocking`, `home-relinking`,
 //! `home-failed`, `home-queued`, `home-running`, `home-outdated`, `home-diagnosis`, `home-messages` (the
 //! profile button with unread messages), `home-friends` (signed in, three friends online),
 //! `home-appearing` (signed in, appearing offline), `home-friends-quiet` (nobody online), `home-phone` (a phone is connected), `home-ludus` (a phone and a LudusCtrl phone are connected), `home-browser` (a phone and a LudusCtrl browser client are connected), `home-friends-focus` and `home-signin-focus` (the top bar's
@@ -117,6 +117,8 @@ pub enum Scene {
     Onboarding(Ob),
     Home,
     HomeActions,
+    /// Settings > Language: the list of the languages' own names.
+    SettingsLanguage,
     HomeTrophies,
     HomeLocked,
     HomeUnlocking,
@@ -230,6 +232,7 @@ impl Scene {
             "onboarding-done-bare" => Scene::Onboarding(Ob::DoneBare),
             "home" => Scene::Home,
             "home-actions" => Scene::HomeActions,
+            "settings-language" => Scene::SettingsLanguage,
             "home-trophies" => Scene::HomeTrophies,
             "home-locked" => Scene::HomeLocked,
             "home-unlocking" => Scene::HomeUnlocking,
@@ -291,7 +294,7 @@ impl Scene {
         })
     }
 
-    pub const ALL_NAMES: [&'static str; 63] = [
+    pub const ALL_NAMES: [&'static str; 64] = [
         "onboarding-language",
         "onboarding-look",
         "onboarding-look-access",
@@ -308,6 +311,7 @@ impl Scene {
         "onboarding-done-bare",
         "home",
         "home-actions",
+        "settings-language",
         "home-trophies",
         "home-locked",
         "home-unlocking",
@@ -829,6 +833,9 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
         Scene::Onboarding(_) => {}
 
         Scene::HomeActions => m.focus = HomeFocus::Actions(0),
+        Scene::SettingsLanguage => {
+            m.show_settings(Some(anyps5_core::links::SettingsPage::Language));
+        }
         Scene::HomeTogether => {
             sign_in(m);
             let id = ids[at(1)].clone();

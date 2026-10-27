@@ -107,11 +107,11 @@ theme's default accent).
 | Primary text / icons | white 1.0 (title text), white 0.9 (secondary labels), white 0.85 (values), white 0.72 (hints) |
 | Secondary text | white 0.7 (subtitles), white 0.65 (empty text), white 0.6 (detail lines), white 0.55 (overlines, row detail on dark), white 0.5 (counts), white 0.45 (path), white 0.4 (inactive date) |
 | Text on a focused (white) surface | `#000000`; its detail text black 0.55 |
-| Surface, resting | white 0.10 (buttons, icon buttons, language cards), white 0.07 (settings rows, trophy-icon tile), white 0.05 (trophy row), white 0.08 (game tile placeholder) |
+| Surface, resting | white 0.10 (buttons, icon buttons), white 0.07 (settings rows, trophy-icon tile), white 0.05 (trophy row), white 0.08 (game tile placeholder) |
 | Surface, prominent button | white 0.20 |
 | Surface, hover (button) | white 0.16 |
 | Surface, focused | `#FFFFFF` (solid); trophy row instead white 0.13 + ring |
-| Hairline | white 0.12 (buttons), white 0.14 (language cards), white 0.09 (glass), white 0.08 (side panel edge, card gradient end) |
+| Hairline | white 0.12 (buttons), white 0.09 (glass), white 0.08 (side panel edge, card gradient end) |
 | Track (progress/indeterminate) | white 0.16 |
 | Keycap fill (hint) | white 0.16 |
 | Full-screen panel | black 0.74 over blurred backdrop (settings, library, trophies, and the panels of a game); black 0.65 for the log |
@@ -152,7 +152,6 @@ is invisible at these radii). An optional refinement is Figma "corner smoothing 
 | Info card, glass default | 16 |
 | Settings row, category row, trophy secret tile | 12 |
 | Trophy row | 16 |
-| Language card | 20 |
 | Theme card preview | 18 |
 | Hint keycap | 5 |
 | Key cap (controls) | 7 |
@@ -179,7 +178,6 @@ CSS and `epaint::Shadow` blur is about twice that) **(estimate; verify against t
 | Console button focused | white 0.28 | 18 | 0 |
 | Top-bar icon button focused | white 0.40 | 10 | 0 |
 | Settings row focused | white 0.22 | 12 | 0 |
-| Language card focused | white 0.30 | 20 | 0 |
 | Hero title text | black 0.35 | 12 | 0 |
 | Progress fill glow | accent 0.6 | 6 | 0 |
 | Running dot glow | accent 1.0 | 6 | 0 |
@@ -233,7 +231,7 @@ Components:
 | Trophy row | icon 68, gap 20, horizontal pad 18, vertical pad 14, row gap 10 |
 | Trophy header icon | 112 |
 | Trophy progress (header / row) | 260 x 4 / 180 x 4 |
-| Language card | 280 x 150, padding 26, gap 20 |
+| Language list (onboarding, 5.15) | 420 wide, rows 56, the lit shape inset 6 |
 | Theme card | 330 wide, preview 330 x 186, gap 26 |
 | Onboarding dots | 5 high; 46 wide current, 18 others; gap 10 |
 | Progress line | height 4 (tile: `max(3, size * 0.03)`) |
@@ -292,7 +290,7 @@ Type scale (size dp / weight; weight numbers: light 300, regular 400, medium 500
 | Tile-row game name | 22 / semibold | 2 lines, beside the large tile |
 | Theme card name | 22 / regular, semibold when focused | |
 | Percent (trophy header) | 22 / semibold tabular | |
-| Language card name | 28 / medium | |
+| Language list name | 22 / regular (`ty::THEME_CARD_NAME`) | |
 | Clock | 20 / medium tabular | white 0.92 |
 | Button label | 19 / semibold | glyph 17 semibold |
 | Category row | 19 / regular, semibold when selected | |
@@ -383,7 +381,7 @@ key..." pulse, the banner pop.
 | 10 | Button focus | scale 1.05, fill, ring-less glow white 0.28 r18, `Motion.focus` | spring focus |
 | 11 | Top-bar icon focus | scale 1.1, glow white 0.4 r10 | spring focus |
 | 12 | Settings row focus | scale 1.015, glow white 0.22 r12 | spring focus |
-| 13 | Language card focus | scale 1.04, glow white 0.3 r20 | spring focus |
+| 13 | Language row focus | the ring on the lit shape (keys and pad only) | spring focus |
 | 14 | Theme card focus | scale 0.97 -> 1.04, opacity 0.72 -> 1 | spring focus |
 | 15 | Switch | knob moves leading <-> trailing, track colour | spring focus on the knob x and the colour mix |
 | 16 | Progress bar | fill width `easeOut 0.35` | width eased with easeOut 0.35 per change |
@@ -963,9 +961,9 @@ for, with, at, by, from, as). What reads as a sentence is in sentence case: deta
 same rule: every word capital except `ve`, `ile`, `de`, `da`, `mi`, `için`, `veya`. The English and Turkish tables were swept once
 for it (about 70 strings changed, mostly Turkish buttons and captions); new text follows it and the review checks it.
 
-**German (0.3.0, `Language::German`, code `de`).** The third language, with the same fallback chain as the rest: the German text, then English. Every text enum has `german() -> Option<&str>` next to `english()` and `turkish()`; the core table keeps its German in `ui/i18n_german.rs`. German does **not** follow the Title Case rule above: German capitalises nouns and the first word of a sentence and nothing else, so a button reads "Spiel starten", a row "Neue Spiele automatisch vorbereiten", a caption "Freunde hinzufügen" (never "Spiel Starten"). The player is addressed as "du" like the Turkish "sen", in the imperative ("Wähle", "Starte"), calm and short, no exclamation marks. Real umlauts and ß. Product and platform names stay as they are (AnyPlay, AnyPS5, LudusCtrl, Play Together, Discord, Steam). Numbers use the decimal comma as in Turkish; dates read `26. Okt. 2026, 21:14`. The system language is picked up from the OS (`de`, `de-AT`, `de-CH`); the picker in Settings and the onboarding cards list `Language::ALL`. Another language is added in four places: the two `Language` enums, `Language::ALL`, and one `<lang>()` per text enum; the lookup falls back to English for anything not yet translated, and a test lists the keys still missing.
+**German (0.3.0, `Language::German`, code `de`).** The third language, with the same fallback chain as the rest: the German text, then English. Every text enum has `german() -> Option<&str>` next to `english()` and `turkish()`; the core table keeps its German in `ui/i18n_german.rs`. German does **not** follow the Title Case rule above: German capitalises nouns and the first word of a sentence and nothing else, so a button reads "Spiel starten", a row "Neue Spiele automatisch vorbereiten", a caption "Freunde hinzufügen" (never "Spiel Starten"). The player is addressed as "du" like the Turkish "sen", in the imperative ("Wähle", "Starte"), calm and short, no exclamation marks. Real umlauts and ß. Product and platform names stay as they are (AnyPlay, AnyPS5, LudusCtrl, Play Together, Discord, Steam). Numbers use the decimal comma as in Turkish; dates read `26. Okt. 2026, 21:14`. The system language is picked up from the OS (`de`, `de-AT`, `de-CH`); the lists in Settings and the onboarding show `Language::ALL`. Another language is added in four places: the two `Language` enums, `Language::ALL`, and one `<lang>()` per text enum; the lookup falls back to English for anything not yet translated, and a test lists the keys still missing.
 
-**Spanish, French and Brazilian Portuguese (0.3.4, `Language::Spanish` `es`, `Language::French` `fr`, `Language::Portuguese` `pt`).** Added the way German was: the two `Language` enums (core `settings::Language`, `ui::i18n::Language`), `Language::ALL` (so the picker in Settings and the onboarding cards list them), a `spanish()`, `french()` and `portuguese()` next to every `german()` (the core table in `ui/i18n_spanish.rs`, `i18n_french.rs`, `i18n_portuguese.rs`), the locale detection (`es`, `fr`, `pt` and their regions pick the language), the dates and numbers in `screens/format.rs` and `ui/i18n.rs::byte_text`, the console language numbers, the `--es`, `--fr` and `--pt` preview flags and `screens/language_coverage.rs`, which fails for any text without an arm in any language. Each language has a glossary in [i18n/](i18n/README.md) (address form, capitalisation, terms, plural rules); a new text follows it. Rules shared by the three: the player is addressed informally ("tú", "tu", "você") in the imperative, calm and short, no exclamation marks; **sentence case, never English Title Case**; names stay (AnyPlay, AnyPS5, LudusCtrl, Play Together, Toolkit, Party). Formats: decimal comma (`8,39 GB`; French `8,39 Go` with Ko/Mo/Go/To and "octets"); thousands `65.340` (Spanish, Portuguese) or `65 340` (French); dates `27 oct 2026, 14:32` (Spanish), `27 oct. 2026, 14:32` (French), `27 de out. de 2026, 14:32` (Portuguese) on a 24-hour clock; Hoy/Ayer, Aujourd'hui/Hier, Hoje/Ontem; percent `50 %` with a no-break space in Spanish and French, `50%` in Portuguese. French puts a no-break space (U+00A0) before `: ; ! ? %` and inside « ». Plurals: Spanish singular only for 1; French and Portuguese singular for 0 and 1. **Console language numbers** (what a game gets while its own setting follows the launcher, `Language::console_language_for`): Spanish 3 (Spain) or 20 (Latin America, when the system locale is `es-419` or a Latin American country), French 2, Portuguese 17 (pt-BR). The onboarding language step lays the six cards out three to a row, two rows. The longest texts were rendered with `--es`, `--fr` and `--pt` (the same scenes as `--de`) and shortened where they cut off. **Not reviewed by a native speaker**: Settings > Language and About carry a row *Improve a Translation* that opens the Texts section of CONTRIBUTING.md; a native speaker's pull request replaces a text and its glossary entry together.
+**Spanish, French and Brazilian Portuguese (0.3.4, `Language::Spanish` `es`, `Language::French` `fr`, `Language::Portuguese` `pt`).** Added the way German was: the two `Language` enums (core `settings::Language`, `ui::i18n::Language`), `Language::ALL` (so the lists in Settings and the onboarding show them), a `spanish()`, `french()` and `portuguese()` next to every `german()` (the core table in `ui/i18n_spanish.rs`, `i18n_french.rs`, `i18n_portuguese.rs`), the locale detection (`es`, `fr`, `pt` and their regions pick the language), the dates and numbers in `screens/format.rs` and `ui/i18n.rs::byte_text`, the console language numbers, the `--es`, `--fr` and `--pt` preview flags and `screens/language_coverage.rs`, which fails for any text without an arm in any language. Each language has a glossary in [i18n/](i18n/README.md) (address form, capitalisation, terms, plural rules); a new text follows it. Rules shared by the three: the player is addressed informally ("tú", "tu", "você") in the imperative, calm and short, no exclamation marks; **sentence case, never English Title Case**; names stay (AnyPlay, AnyPS5, LudusCtrl, Play Together, Toolkit, Party). Formats: decimal comma (`8,39 GB`; French `8,39 Go` with Ko/Mo/Go/To and "octets"); thousands `65.340` (Spanish, Portuguese) or `65 340` (French); dates `27 oct 2026, 14:32` (Spanish), `27 oct. 2026, 14:32` (French), `27 de out. de 2026, 14:32` (Portuguese) on a 24-hour clock; Hoy/Ayer, Aujourd'hui/Hier, Hoje/Ontem; percent `50 %` with a no-break space in Spanish and French, `50%` in Portuguese. French puts a no-break space (U+00A0) before `: ; ! ? %` and inside « ». Plurals: Spanish singular only for 1; French and Portuguese singular for 0 and 1. **Console language numbers** (what a game gets while its own setting follows the launcher, `Language::console_language_for`): Spanish 3 (Spain) or 20 (Latin America, when the system locale is `es-419` or a Latin American country), French 2, Portuguese 17 (pt-BR). The onboarding language step lists the six names in one column (5.15). The longest texts were rendered with `--es`, `--fr` and `--pt` (the same scenes as `--de`) and shortened where they cut off. **Not reviewed by a native speaker**: Settings > Language and About carry a row *Improve a Translation* that opens the Texts section of CONTRIBUTING.md; a native speaker's pull request replaces a text and its glossary entry together.
 
 **Warning is not danger.** `Row::destructive` is for a row that removes, ends or blocks something (Remove Installation, Close Game,
 Block): the danger ink. `Row::warning` is for an info row that says something may not work (the glibc note): the amber of the line
@@ -983,7 +981,7 @@ Tab; the pad reaches a call through the Invitations row). The strip of a call in
 Call are rows of the Online panel.
 
 **Screen readers follow the ring on more widgets.** `a11y::follow` is called by the switch (when it is a node of its own), by the
-cards of the theme step of the onboarding, by the rows of the profile page and by the lines of What's New. The language cards,
+cards of the theme step of the onboarding, by the rows of the profile page and by the lines of What's New. The language rows,
 rows, tiles, cells and buttons did already.
 
 **The glibc sentence has a next step.** It names the problem and what to do: "Games need glibc 2.38 or newer; this system has 2.35.
@@ -1040,7 +1038,6 @@ card, 0.32 under the pointer. Removed (unused): `hairline`, `selected_category`,
 | `TITLE` (`SCREEN_TITLE`) | 40 light | |
 | `HEADING` (`EMPTY_TITLE`, `SPLASH_TITLE`, `TROPHY_LIST_TITLE`) | 34 light | trophy list 36 |
 | `PANEL_TITLE` (`SIDE_PANEL_TITLE`, `LOG_TITLE`) | 28 light | 30 |
-| `LANGUAGE_NAME` | 28 medium | |
 | `ITEM_TITLE` (`TOP_BAR_TITLE`, `TILE_NAME`, `PERCENT`) | 22 semibold | top bar 24 |
 | `STATE_TITLE` (`LIBRARY_COUNT`) | 22 medium | |
 | `BUTTON`, `CATEGORY`, `CATEGORY_SELECTED`, `BANNER_NAME` | 19 | |
@@ -1052,7 +1049,7 @@ card, 0.32 under the pointer. Removed (unused): `hairline`, `selected_category`,
 | `MICRO` (`STATE_LABEL_SMALL`) | 12 medium | |
 
 **Radius: five values.** Keycap 7, row 12, card 16, large 20, capsule (and the toast, 28). `TROPHY_ROW` and `BOX` are 16 (the box was 14),
-`LANGUAGE_CARD`, `THEME_CARD` (was 18) and `BANNER` are 20. Removed: `CONSOLE_BUTTON`, `ICON_BUTTON`, `KEYCAP_HINT` (now 7, was 6).
+`THEME_CARD` (was 18) and `BANNER` are 20. Removed: `CONSOLE_BUTTON`, `ICON_BUTTON`, `KEYCAP_HINT` (now 7, was 6).
 
 **Spacing: `ui::theme::space`.** 4, 8, 12 (the control gap), 16, 24, 32, 48. Gaps of 6, 10, 14, 18, 20, 26 and 28 are off the grid and
 move to the nearest step when a page is touched.
@@ -1418,7 +1415,7 @@ talks to. Rules for rows:
 | Controllers (`controllers`) | game controller | `controllers` action (Controller Center), `vibration` choice (6.8), info `controllerHelp` (what to do when the pad does not react) |
 | Captures (`captures`) | camera | `screenshots` action `screenshotsFolder` (detail = path, `~` abbreviated; an info row naming the toolkit it needs while the toolkit is too old), `showScreenshots` command, info `screenshotHint` (F12). Windows, after a group gap: the Clips rows (9.8) |
 | Broadcast (`broadcast`) | play circle | `broadcastService` choice, `broadcastServer` text (custom service only), `broadcastKey` text (masked), `broadcastQuality` choice. Off Windows: info `broadcastNone` |
-| Language (`language`) | globe | `language` choice (Türkçe, English; shown in their own language). Caption **Fonts**: `fonts` action `fontsFolder` (detail = the picked path, else the built-in Noto set and whether Japanese, Chinese and Korean are included, not downloaded or downloading), `fontsReset` (only when a fonts folder is set), `fontsCjk` command (download the Japanese, Chinese and Korean fonts; only without a picked folder and while they are missing), info `fontsHint` |
+| Language (`language`) | globe | six `pick` rows, one per language, each showing only the language's own name (Deutsch, English, Español, Français, Português (Brasil), Türkçe; A to Z, no codes, no flags), the chosen one with a check at the trailing edge (`RowControl::Pick`, `Change::Run` on `language-de` ... `language-tr`; the same list as the onboarding's, 5.15). Caption **Fonts**: `fonts` action `fontsFolder` (detail = the picked path, else the built-in Noto set and whether Japanese, Chinese and Korean are included, not downloaded or downloading), `fontsReset` (only when a fonts folder is set), `fontsCjk` command (download the Japanese, Chinese and Korean fonts; only without a picked folder and while they are missing), info `fontsHint` |
 | Phone as Controller (`phone`) | phone | Windows and Linux addition, section 18. Sits after Captures. `phone` toggle `phoneRemote` with the phone server's rows, then, while it is on, `ludusctrl` toggle `phoneLudusctrl` (game controller glyph) with the LudusCtrl rows (18, "LudusCtrl"), which take in the browser client's (18, "LudusCtrl browser client": its QR code, link, Copy Link, status, notes, Other Addresses, New Link; it has no switch of its own and runs with LudusCtrl). |
 | Online (`online`) | wifi | `name` text field `profileName` (live edit), then, after a group gap, `discord` toggle (Show Game on Discord, 7.4) and its `discordJoin` toggle while the status is on. Account, privacy and voice rows go here |
 | Connected Apps (`apps`) | link | Windows `links` toggle (9.6), `addToSteam` and `addGamesToSteam` (9.9). On a system with none of these, the info row `appsNone` |
@@ -1748,7 +1745,7 @@ Redone for 0.3.3. The first start is a calm, centred setup over the live theme b
 
 | # | Page | Shown | Why it exists |
 |---|---|---|---|
-| 1 | **Language** (`Welcome`) | always | The first thing every later page is written in. Three cards (Türkçe, English, Deutsch) in `Language::ALL` order; the system language is preselected (`Preferences::first_run`) and the page re-renders in the card the focus is on |
+| 1 | **Language** (`Welcome`) | always | The first thing every later page is written in. A list of the six languages' own names, A to Z (`Language::ALL`); the system language is preselected (`Preferences::first_run`) and the page re-renders in the language the focus is on |
 | 2 | **Look** | always | The one choice that changes what the launcher looks like at once: the theme (three live cards) and the accessibility switches (Larger Text, High Contrast, Reduce Motion), so a player who needs them has them before reading anything else. Nothing else is asked here; Accent, Backdrop and Game Colors stay in Settings |
 | 3 | **Controller** | only once a pad was seen (`pad_hub`), and then until the end (a pad that goes to sleep does not remove a dot); never in Gaming Mode (Steam Deck, gamescope), where Steam owns the buttons and the Home button | A pad is the console way to use the launcher, and its first question cannot wait: which face button confirms (Cross or Circle; the same toggle as Controllers > Confirm with), whether the Home button opens the launcher (the same switch as General), and a button check that lights the four face buttons while they are pressed. Without a pad nothing here applies, so the page is skipped; Done tells where Controllers is (and leaves that row out in Gaming Mode) |
 | 4 | **Games** | always | The launcher is empty without a folder. The page shows what was found (scanning, none, N games, the first eight as tiles) and "Prepare New Games Automatically" (the same switch as General), which only exists once there is a folder. Not Now goes on without one |
@@ -1767,7 +1764,7 @@ Not pages, with the reason: the **toolkit** (it is fetched in the background fro
 
 **What each page draws**
 
-- *Language*: overline "Language", three choice cards 312 x 176 (`size::LANGUAGE_CARD`, `radius::LARGE`, `surface_row`, hairline; padding 24; 12 apart; `chrome::language_card` on `chrome::choice_card`, the card the Controller page's confirm choice uses too): the tag (`TR`, `EN`, `DE`, overline) top left, the language's own name (`ty::LANGUAGE_NAME`) bottom left. The chosen card is brighter (`surface_hover`, `hairline_hover`), its name goes from `text_label` to `text`, and a check-circle (20, fill) stands top right, so the choice never rests on tone alone. `choice_t` carries the chosen state, the ring (`paint_focus_stroke`, keys and pad only) the focus.
+- *Language*: one centred, single-column list, the languages' own names and nothing else (Deutsch, English, Español, Français, Português (Brasil), Türkçe: alphabetical by their own names, `Language::ALL`; no codes like `EN`, no flags, no subtitles; there is no caption either, the title and the list say it). One glass card 420 wide (`radius::CARD`, `GLASS_BLACK`), six rows of 56 dp with no gap, each a whole-row target (`language_row`, a radio button). A hairline (`hairline_glass`, inset 24) divides two rows and is left out beside the chosen one. The chosen row is lit: an inner shape inset 6 (concentric, `radius::CARD` less 6) in `surface_hover`, the name goes from `text_label` to `text` (22 regular, `ty::THEME_CARD_NAME`), and a check-circle (20, fill) stands at the trailing edge, so the choice never rests on tone alone. `choice_t` carries the chosen state; the ring (`paint_focus_stroke`, keys and pad only) the focus. The focus is a column: Up and Down move through the languages (each applies while the focus is on it) and on to Continue, Select goes on to the next page, a click only selects. The list is 336 dp tall and fits `TALLEST` at 1280 x 720. Settings > Language shows the same six names as a list of `pick` rows (`RowControl::Pick`: the same check, the same names).
 - *Look*: three theme cards 312 x 176, 12 apart (the chosen one live, the others a still frame at 0.72; the ring is `paint_focus_stroke` only) with the name (22; `ITEM_TITLE` for the chosen one), a 12 dp dot in the theme's accent and a check-circle at the card's right edge. Under them, `space::XXL` lower, the overline "Accessibility" and three switch chips in the same columns (312 x 56, `radius::CARD`, label `ROW_TITLE`, `Switch` right). Larger Text and High Contrast apply to the page at once (they are the live preferences), Reduce Motion stops the slide and the live card.
 - *Controller*: the subtitle names the pad ("DualSense Wireless Controller is connected. Press any button and it lights up below."; "The controller is not connected right now..." when it went away); four 44 dp circles in the pad's own shapes (Square, Triangle, Circle, Cross; letters X, Y, B, A on an Xbox pad; Nintendo names its own) that fill with the ink while the button is down (`pad_hub::live`, `Motion::Press`); two choice cards 312 x 104, 12 apart, "Confirm with Cross / Circle goes back" and "Confirm with Circle / Cross goes back" with the face glyph in a ring; then, `space::XL` lower (it is another question), the Home button switch chip (label and detail as in General) as wide as the two cards (636). The page only opens `pad_hub::set_watched` while it is on screen.
 - *Games*: a glass status card 636 wide (24 glyph in ink: dashed folder with none or empty, magnifier while scanning, check-circle with games; line "No folder chosen yet", "Looking for games", "No games in this folder" or "N games found"; under it "You can choose one later in Settings." or the folder path, middle-truncated), the first seven games as 80 tiles centred (they fit the card's width), and the "Prepare New Games Automatically" switch chip with its detail (636 wide) once there is a folder.
@@ -1784,7 +1781,7 @@ Not pages, with the reason: the **toolkit** (it is fetched in the background fro
 
 The sign-in page that waits for the browser (`Page::Browser`) shows a quiet spinner (2 dp arc, radius 7; a still arc under reduced motion) after the line "Continue in your browser".
 
-**Gallery scenes** (`--gallery=<scene>`, the states of 5.15): `onboarding-language`, `onboarding-look`, `onboarding-look-access`, `onboarding-controller`, `onboarding-controller-xbox`, `onboarding-controller-lost`, `onboarding-games`, `onboarding-games-none`, `onboarding-games-empty`, `onboarding-games-scanning`, `onboarding-online`, `onboarding-done`, `onboarding-done-signin`, `onboarding-done-bare`; with `--tr`, `--de` and `--pad` like every scene.
+**Gallery scenes** (`--gallery=<scene>`, the states of 5.15): `onboarding-language`, `onboarding-look`, `onboarding-look-access`, `onboarding-controller`, `onboarding-controller-xbox`, `onboarding-controller-lost`, `onboarding-games`, `onboarding-games-none`, `onboarding-games-empty`, `onboarding-games-scanning`, `onboarding-online`, `onboarding-done`, `onboarding-done-signin`, `onboarding-done-bare`; with `--tr`, `--de`, `--es`, `--fr`, `--pt` and `--pad` like every scene (`onboarding-language` in all six languages; `--script=down` shows the ring from a key). Settings > Language is `settings-language`.
 
 ### 5.16 Icon mapping (SF Symbols -> Phosphor, MIT)
 

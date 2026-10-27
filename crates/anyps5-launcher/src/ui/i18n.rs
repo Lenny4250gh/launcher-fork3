@@ -29,12 +29,12 @@ pub enum Language {
 
 impl Language {
     pub const ALL: [Language; 6] = [
-        Language::Turkish,
-        Language::English,
         Language::German,
+        Language::English,
         Language::Spanish,
         Language::French,
         Language::Portuguese,
+        Language::Turkish,
     ];
 
     /// Preference value (`"tr"`, `"en"`, `"de"`, `"es"`, `"fr"`, `"pt"`).
@@ -70,18 +70,6 @@ impl Language {
             Language::Spanish => "Español",
             Language::French => "Français",
             Language::Portuguese => "Português (Brasil)",
-        }
-    }
-
-    /// Two-letter tag shown on the onboarding language cards.
-    pub const fn tag(self) -> &'static str {
-        match self {
-            Language::Turkish => "TR",
-            Language::English => "EN",
-            Language::German => "DE",
-            Language::Spanish => "ES",
-            Language::French => "FR",
-            Language::Portuguese => "PT",
         }
     }
 

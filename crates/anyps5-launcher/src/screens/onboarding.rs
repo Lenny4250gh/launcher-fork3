@@ -62,6 +62,11 @@ const CONFIRM_CARD: (f32, f32) = (THEME_CARD.0, 104.0);
 const FACE_BUTTON: f32 = 44.0;
 const BUTTON_MIN: f32 = 180.0;
 const CHECK_GLYPH: f32 = 20.0;
+/// The language list: its width, a row's height (a comfortable target), and how far a row's lit
+/// shape stands in from the card, so the ring stays inside the card.
+const LANGUAGE_LIST_WIDTH: f32 = 420.0;
+const LANGUAGE_ROW: f32 = 56.0;
+const LANGUAGE_ROW_INSET: f32 = 6.0;
 const ACCENT_DOT: f32 = 6.0;
 const STATUS_GLYPH: f32 = 24.0;
 const ROW_GLYPH: f32 = 22.0;
@@ -628,31 +633,50 @@ fn list_card(
 fn language_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<Press>) {
     let painter = ui.painter().clone();
     let language = page.language;
-    let mut y = heading(
+    let y = heading(
         &painter,
         page,
         language.text(Key::Welcome),
         language.text(Key::WelcomeSubtitle),
         2,
     );
-    y = caption(&painter, page, y, language.text(Key::ChooseLanguage));
     let focus = cx.model.onboarding_target();
-    let (w, h) = size::LANGUAGE_CARD;
-    // Three cards a row, centred; six languages make two rows.
-    const PER_ROW: usize = 3;
-    let left = row_start(page, PER_ROW, w, CARD_GAP);
-    for (index, card_language) in Language::ALL.iter().enumerate() {
-        let (column, row) = (index % PER_ROW, index / PER_ROW);
-        let at = pos2(
-            left + column as f32 * (w + CARD_GAP),
-            y + row as f32 * (h + CARD_GAP),
+    // One calm list: the languages' own names, one to a row, in a single glass card.
+    let count = Language::ALL.len();
+    let card = Rect::from_min_size(
+        pos2(page.x - LANGUAGE_LIST_WIDTH * 0.5, y),
+        vec2(LANGUAGE_LIST_WIDTH, count as f32 * LANGUAGE_ROW),
+    );
+    paint_glass(
+        cx.ctx,
+        &painter,
+        card,
+        GlassStyle::glass(radius::CARD, GLASS_BLACK),
+    );
+    for (index, row_language) in Language::ALL.iter().enumerate() {
+        let rect = Rect::from_min_size(
+            pos2(card.min.x, card.min.y + index as f32 * LANGUAGE_ROW),
+            vec2(LANGUAGE_LIST_WIDTH, LANGUAGE_ROW),
         );
-        let rect = Rect::from_min_size(at, vec2(w, h));
+        // A hairline between two rows, left out beside the chosen one, whose lit shape is the edge.
+        let beside_chosen = *row_language == language
+            || index
+                .checked_sub(1)
+                .is_some_and(|i| Language::ALL[i] == language);
+        if index > 0 && !beside_chosen {
+            painter.line_segment(
+                [
+                    pos2(rect.min.x + space::XL, rect.min.y),
+                    pos2(rect.max.x - space::XL, rect.min.y),
+                ],
+                egui::Stroke::new(1.0, color::hairline_glass()),
+            );
+        }
         let response = place(ui, rect, |ui| {
-            chrome::language_card(
+            language_row(
                 ui,
-                *card_language,
-                *card_language == language,
+                *row_language,
+                *row_language == language,
                 focus == Target::Language(index),
                 page.active,
             )
@@ -661,6 +685,65 @@ fn language_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut V
             presses.push(Press::Tap(Target::Language(index)));
         }
     }
+}
+
+/// One row of the language list: the language's own name, and a check at the trailing edge when
+/// it is the chosen one. The chosen row is lit (`surface_hover`, name in full ink) so the choice
+/// never rests on tone alone; the ring shows only for keys and the pad.
+pub(crate) fn language_row(
+    ui: &mut Ui,
+    language: Language,
+    chosen: bool,
+    focused: bool,
+    active: bool,
+) -> egui::Response {
+    let name = language.display_name();
+    let it = interact(
+        ui,
+        vec2(LANGUAGE_LIST_WIDTH, LANGUAGE_ROW),
+        focused && active,
+        active,
+        None,
+    );
+    it.response
+        .widget_info(|| WidgetInfo::selected(Role::RadioButton, true, chosen, name));
+    let painter = ui.painter();
+    let t = ui.ctx().choice_t((it.response.id, "chosen"), chosen);
+    // Concentric with the card: its radius less the inset.
+    let lit = it.painted(painter).shrink(LANGUAGE_ROW_INSET);
+    paint_surface(
+        painter,
+        lit,
+        radius::CARD - LANGUAGE_ROW_INSET,
+        fade(color::surface_hover(), t),
+        it.hover,
+        it.focus,
+        it.press,
+        size::FOCUS_RING,
+    );
+    let ink = mix(color::text_label(), color::text(), t);
+    text::paint(
+        painter,
+        pos2(lit.min.x + space::XL - LANGUAGE_ROW_INSET, lit.center().y),
+        Align2::LEFT_CENTER,
+        ty::THEME_CARD_NAME,
+        name,
+        ink,
+    );
+    if t > 0.01 {
+        let icon = Icon::CHECK_CIRCLE;
+        painter.text(
+            pos2(
+                lit.max.x - space::XL + LANGUAGE_ROW_INSET - CHECK_GLYPH * 0.5,
+                lit.center().y,
+            ),
+            Align2::CENTER_CENTER,
+            icon.glyph(),
+            icon.font(CHECK_GLYPH, true),
+            fade(color::text(), t),
+        );
+    }
+    it.response
 }
 
 fn look_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<Press>) {

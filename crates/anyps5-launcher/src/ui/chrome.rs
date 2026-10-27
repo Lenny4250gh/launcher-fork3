@@ -403,6 +403,10 @@ pub enum RowControl<'a> {
         fraction: f32,
         track: Track,
     },
+    /// One of a list of exclusive choices: a check at the trailing edge when chosen.
+    Pick {
+        chosen: bool,
+    },
     /// Trailing chevron: the row opens a picker or a panel.
     Action,
     /// No control: the row runs at once.
@@ -900,6 +904,9 @@ impl<'a> PanelRow<'a> {
             RowControl::Link { value } => {
                 WidgetInfo::labeled(Role::Label, true, format!("{}: {value}", self.title))
             }
+            RowControl::Pick { chosen } => {
+                WidgetInfo::selected(Role::RadioButton, true, *chosen, self.title)
+            }
             RowControl::Action | RowControl::Command | RowControl::Text { .. } => {
                 // What the row says under its title is read after its name.
                 let mut info = WidgetInfo::labeled(Role::Button, true, self.title);
@@ -1188,6 +1195,7 @@ impl<'a> PanelRow<'a> {
             RowControl::Slider { .. } => size::SLIDER_TRACK_WIDTH + 12.0 + size::SLIDER_VALUE_WIDTH,
             RowControl::Toggle { .. } => size::SWITCH.0,
             RowControl::Action => 14.0,
+            RowControl::Pick { .. } => CHOICE_CHECK,
             RowControl::Caption | RowControl::Command => 0.0,
             RowControl::Buttons { labels, .. } => {
                 labels
@@ -1534,6 +1542,19 @@ impl<'a> PanelRow<'a> {
                     if r.clicked() {
                         out.pressed = Some(index);
                     }
+                }
+            }
+            RowControl::Pick { chosen } => {
+                // The check shows the choice by shape, not by tone alone.
+                if *chosen {
+                    let icon = Icon::CHECK_CIRCLE;
+                    painter.text(
+                        pos2(rect.max.x - CHOICE_CHECK * 0.5, rect.center().y),
+                        Align2::CENTER_CENTER,
+                        icon.glyph(),
+                        icon.font(CHOICE_CHECK, true),
+                        color::text(),
+                    );
                 }
             }
             RowControl::Action => {
@@ -2112,45 +2133,6 @@ pub fn choice_card(
 
 /// The check of a chosen card.
 const CHOICE_CHECK: f32 = 20.0;
-
-/// Language card of the first start (280 x 150): the tag (`TR`, `EN`, `DE`) over the language's
-/// own name, on a [`choice_card`].
-pub fn language_card(
-    ui: &mut Ui,
-    language: Language,
-    chosen: bool,
-    focused: bool,
-    active: bool,
-) -> Response {
-    let name = language.display_name();
-    let (response, rect, t) = choice_card(
-        ui,
-        vec2(size::LANGUAGE_CARD.0, size::LANGUAGE_CARD.1),
-        chosen,
-        focused,
-        active,
-        name,
-    );
-    let painter = ui.painter();
-    let inset = space::XL;
-    text::paint(
-        painter,
-        pos2(rect.min.x + inset, rect.min.y + inset),
-        Align2::LEFT_TOP,
-        ty::OVERLINE,
-        language.tag(),
-        color::text_detail(),
-    );
-    text::paint(
-        painter,
-        pos2(rect.min.x + inset, rect.max.y - inset),
-        Align2::LEFT_BOTTOM,
-        ty::LANGUAGE_NAME,
-        name,
-        mix(color::text_label(), color::text(), t),
-    );
-    response
-}
 
 /// The width of the dots at rest: the current one 46, the others 18, a gap of 10 between.
 pub fn onboarding_dots_width(steps: usize) -> f32 {
