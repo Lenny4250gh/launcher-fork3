@@ -464,6 +464,12 @@ pub enum Theme {
     Sunset,
     /// The colours of the selected game's art (0.3.0).
     GameColors,
+    /// Slow embers rising from a low warm glow (stored as 4).
+    Ember,
+    /// Deep water with light moving through it (stored as 5).
+    Tide,
+    /// Soft daylight, the one light look (stored as 6).
+    Daylight,
 }
 
 impl Serialize for Theme {
@@ -473,6 +479,9 @@ impl Serialize for Theme {
             Theme::Aurora => 1,
             Theme::Sunset => 2,
             Theme::GameColors => 3,
+            Theme::Ember => 4,
+            Theme::Tide => 5,
+            Theme::Daylight => 6,
         })
     }
 }
@@ -483,6 +492,9 @@ impl<'de> Deserialize<'de> for Theme {
             1 => Theme::Aurora,
             2 => Theme::Sunset,
             3 => Theme::GameColors,
+            4 => Theme::Ember,
+            5 => Theme::Tide,
+            6 => Theme::Daylight,
             _ => Theme::Cosmic,
         })
     }
@@ -1645,6 +1657,21 @@ mod tests {
         assert_eq!(shared.settings.toolkit, None);
         assert!(shared.settings.fullscreen);
         assert!(!shared.to_json().contains("toolkit"));
+    }
+
+    #[test]
+    fn the_three_newer_looks_are_stored_as_four_five_and_six() {
+        for (look, number) in [
+            (Theme::Cosmic, 0),
+            (Theme::GameColors, 3),
+            (Theme::Ember, 4),
+            (Theme::Tide, 5),
+            (Theme::Daylight, 6),
+        ] {
+            let text = serde_json::to_string(&look).unwrap();
+            assert_eq!(text, number.to_string());
+            assert_eq!(serde_json::from_str::<Theme>(&text).unwrap(), look);
+        }
     }
 
     #[test]
