@@ -123,6 +123,16 @@ pub enum Scene {
     HomeLocked,
     HomeUnlocking,
     HomeUninstalling,
+    /// An unlock the player paused by hand: Resume and the small Cancel beside it.
+    HomePaused,
+    /// Cancel or Pause pressed: the work is still being stopped, the button is greyed out.
+    HomeCancelling,
+    /// The question before the window closes while a game is being unlocked.
+    HomeQuit,
+    /// ... while a game is paused by hand.
+    HomeQuitPaused,
+    /// ... while a copy is being removed.
+    HomeQuitRemoving,
     /// The launcher prepares the selected game on its own: progress, time left, the quiet tile band.
     HomePreparing,
     /// ... and it stands still because the PC is busy.
@@ -237,6 +247,11 @@ impl Scene {
             "home-locked" => Scene::HomeLocked,
             "home-unlocking" => Scene::HomeUnlocking,
             "home-uninstalling" => Scene::HomeUninstalling,
+            "home-paused" => Scene::HomePaused,
+            "home-cancelling" => Scene::HomeCancelling,
+            "home-quit" => Scene::HomeQuit,
+            "home-quit-paused" => Scene::HomeQuitPaused,
+            "home-quit-removing" => Scene::HomeQuitRemoving,
             "home-preparing" => Scene::HomePreparing,
             "home-preparing-paused" => Scene::HomePreparingPaused,
             "home-preparing-waiting" => Scene::HomePreparingWaiting,
@@ -884,6 +899,38 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
             m.selected = at(2);
             m.uninstalling.insert(ids[at(2)].clone(), 0.4);
             m.focus = HomeFocus::Actions(0);
+        }
+        Scene::HomePaused | Scene::HomeCancelling => {
+            m.selected = at(2);
+            let id = ids[at(2)].clone();
+            m.progress.insert(id.clone(), (UnlockStep::Copy, 0.4));
+            if scene == Scene::HomePaused {
+                m.holding.insert(id);
+            } else {
+                m.cancelling.insert(id);
+            }
+            m.focus = HomeFocus::Actions(0);
+        }
+        Scene::HomeQuit | Scene::HomeQuitPaused | Scene::HomeQuitRemoving => {
+            m.selected = at(2);
+            let id = ids[at(2)].clone();
+            let kind = match scene {
+                Scene::HomeQuitRemoving => {
+                    m.uninstalling.insert(id, 0.4);
+                    crate::screens::quit::QuitKind::Removing
+                }
+                Scene::HomeQuitPaused => {
+                    m.progress.insert(id.clone(), (UnlockStep::Copy, 0.4));
+                    m.holding.insert(id);
+                    crate::screens::quit::QuitKind::Paused
+                }
+                _ => {
+                    m.progress.insert(id, (UnlockStep::Copy, 0.4));
+                    crate::screens::quit::QuitKind::Unlocking
+                }
+            };
+            m.quit_ask = Some(kind);
+            m.switch_overlay(crate::app::overlay::Overlay::ConfirmQuit);
         }
         Scene::HomePreparing | Scene::HomePreparingPaused | Scene::HomePreparingWaiting => {
             m.selected = at(2);
