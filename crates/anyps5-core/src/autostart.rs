@@ -38,7 +38,7 @@ const NAME: &str = "AnyPlayLauncher";
 const FILE_STEM: &str = "anyplay-launcher";
 const LABEL: &str = "net.anyplay.launcher";
 /// Where the Flatpak build says its id.
-const FLATPAK_ID: &str = "net.anyplay.Launcher";
+const FLATPAK_ID: &str = "com.anyplaynet.Launcher";
 
 #[cfg(windows)]
 const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -549,10 +549,10 @@ mod tests {
             Os::Linux,
             &[
                 ("HOME", "/home/x"),
-                ("FLATPAK_ID", "net.anyplay.Launcher"),
+                ("FLATPAK_ID", "com.anyplaynet.Launcher"),
                 (
                     "XDG_CONFIG_HOME",
-                    "/home/x/.var/app/net.anyplay.Launcher/config",
+                    "/home/x/.var/app/com.anyplaynet.Launcher/config",
                 ),
             ],
             "/app/bin/anyplay-launcher",
@@ -560,11 +560,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             file_of(&e),
-            Path::new("/home/x/.config/autostart/net.anyplay.Launcher.desktop")
+            Path::new("/home/x/.config/autostart/com.anyplaynet.Launcher.desktop")
         );
         assert!(
             e.rendered()
-                .contains("Exec=flatpak run net.anyplay.Launcher --autostart\n")
+                .contains("Exec=flatpak run com.anyplaynet.Launcher --autostart\n")
         );
     }
 
