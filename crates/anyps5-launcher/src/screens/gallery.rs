@@ -8,7 +8,7 @@
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
 //!                           game-hub|game-hub-running|game-hub-empty|trophies-all|
 //!                           find-players|find-players-mine|find-players-empty|post-listing|send-to-friend|
-//!                           about-update|behavior-links|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
+//!                           about-update|behavior-links|settings-console-off|settings-console-autostart|settings-console|settings-console-image|settings-console-unavailable|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
 //!                           update-required|update-required-downloading|update-required-failed|
@@ -97,6 +97,35 @@ pub enum HubLook {
     Running,
     /// Nothing to show yet: no trophies, no captures, nobody playing.
     Empty,
+}
+
+/// General with Console Mode and the start at sign-in in one state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConsoleLook {
+    /// Everything off, on Windows: the rows of their own.
+    Off,
+    /// Start with Windows on, Console Mode off.
+    Autostart,
+    /// Console Mode on: the way out under the switch.
+    On,
+    /// Linux, the entry starts an AppImage file.
+    Image,
+    /// This copy has nothing to point an entry at.
+    Unavailable,
+}
+
+impl ConsoleLook {
+    fn env(self) -> crate::screens::settings::AutostartEnv {
+        use crate::screens::settings::{AutostartEnv, AutostartState};
+        use anyps5_core::platform::Os;
+        let (state, os) = match self {
+            ConsoleLook::Off => (AutostartState::Off, Os::Windows),
+            ConsoleLook::Autostart | ConsoleLook::On => (AutostartState::On, Os::Windows),
+            ConsoleLook::Image => (AutostartState::OnAppImage, Os::Linux),
+            ConsoleLook::Unavailable => (AutostartState::Unavailable, Os::Linux),
+        };
+        AutostartEnv { state, os }
+    }
 }
 
 /// The OpenH264 row in each of its states (Linux), for the longest texts: a failed download shows
@@ -206,6 +235,8 @@ pub enum ScreenPage {
     WhatsNewLauncher,
     /// "Update required" in one of its states.
     Required(RequiredLook),
+    /// General with Console Mode and the start at sign-in.
+    SettingsConsole(ConsoleLook),
     /// Behavior with the AnyPlay links registered to this launcher.
     BehaviourLinks,
     /// Advanced on Linux with share screen on: the OpenH264 row turned on (and downloaded), or off.
@@ -917,6 +948,11 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "update-required-packaged-long" => ScreenPage::Required(RequiredLook::PackagedLong),
         "update-required-offline" => ScreenPage::Required(RequiredLook::OnlineClosed),
         "behavior-links" => ScreenPage::BehaviourLinks,
+        "settings-console-off" => ScreenPage::SettingsConsole(ConsoleLook::Off),
+        "settings-console-autostart" => ScreenPage::SettingsConsole(ConsoleLook::Autostart),
+        "settings-console" => ScreenPage::SettingsConsole(ConsoleLook::On),
+        "settings-console-image" => ScreenPage::SettingsConsole(ConsoleLook::Image),
+        "settings-console-unavailable" => ScreenPage::SettingsConsole(ConsoleLook::Unavailable),
         "settings-codec" => ScreenPage::SettingsCodec(CodecLook::Ready),
         "settings-codec-off" => ScreenPage::SettingsCodec(CodecLook::Off),
         "settings-codec-downloading" => ScreenPage::SettingsCodec(CodecLook::Downloading),
@@ -3089,6 +3125,10 @@ impl ScreenGallery {
                 ScreenPage::AboutUpdate(UpdateLook::Ready | UpdateLook::Holding)
             ),
             default_screenshots: std::path::Path::new("C:\\Users\\mira\\Pictures\\AnyPS5"),
+            autostart: match self.page {
+                ScreenPage::SettingsConsole(look) => look.env(),
+                _ => ConsoleLook::Off.env(),
+            },
             links: if matches!(self.page, ScreenPage::BehaviourLinks) {
                 anyps5_core::linkreg::Handler::ThisExe
             } else {
@@ -3747,6 +3787,16 @@ impl ScreenGallery {
             }
             ScreenPage::WhatsNewLauncher => {
                 self.whats_new.open_showcase();
+            }
+            ScreenPage::SettingsConsole(look) => {
+                self.prefs.console_mode = look == ConsoleLook::On;
+                self.settings.open_at(Category::General.index(), true);
+                self.settings.focus_row_id(match look {
+                    ConsoleLook::On => "desktop",
+                    ConsoleLook::Unavailable => "console",
+                    ConsoleLook::Off => "console",
+                    _ => "autostart",
+                });
             }
             ScreenPage::BehaviourLinks => {
                 self.settings.open_at(Category::ConnectedApps.index(), true);

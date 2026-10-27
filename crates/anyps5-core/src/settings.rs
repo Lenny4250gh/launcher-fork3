@@ -680,6 +680,11 @@ pub struct Preferences {
     /// Mac it starts as a window instead: the glass needs the desktop behind it.
     #[serde(default = "fills_screen")]
     pub fullscreen: bool,
+    /// Console Mode: the launcher is the home of the PC, like a console. It opens by itself when
+    /// the player signs in (the autostart entry is the system's, see [`crate::autostart`]), always
+    /// fills the screen and starts with the controller first. Off until the player turns it on.
+    #[serde(default)]
+    pub console_mode: bool,
     /// Mac style: the window is see-through, with the system blur behind it ("Glass Window").
     /// Only the Mac has the setting; the file keeps it everywhere.
     #[serde(default = "yes")]
@@ -833,6 +838,7 @@ impl Default for Preferences {
             lightbar: None,
             show_hidden_trophies: false,
             fullscreen: fills_screen(),
+            console_mode: false,
             glass_window: true,
             profile_name: default_profile_name(),
             games_folder: None,
