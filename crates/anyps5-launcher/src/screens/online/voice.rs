@@ -276,6 +276,15 @@ impl OnlinePanel {
             noise = noise.group_start();
         }
         rows.push(noise);
+        rows.push(
+            Row::toggle(
+                "voiceEcho",
+                t(V::EchoCancellation),
+                voice.prefs().echo_cancellation,
+            )
+            .icon(Icon::SPEAKER_HIGH)
+            .detail(t(V::EchoNote)),
+        );
         let default = t(V::SystemDefault);
         let selected = |name: Option<&str>| name.map_or_else(|| default.to_owned(), str::to_owned);
         rows.push(
@@ -425,6 +434,10 @@ impl OnlinePanel {
                 row: "voiceNoise",
                 on,
             } => actions.push(OnlineAction::VoiceNoise(*on)),
+            Change::Toggle {
+                row: "voiceEcho",
+                on,
+            } => actions.push(OnlineAction::VoiceEcho(*on)),
             Change::Stepper {
                 row: "peerVolume",
                 value,

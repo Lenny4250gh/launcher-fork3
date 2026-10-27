@@ -203,6 +203,8 @@ pub enum OnlineAction {
     VoicePad(Option<String>),
     /// "Reduce Background Noise".
     VoiceNoise(bool),
+    /// "Echo Cancellation".
+    VoiceEcho(bool),
     /// A microphone or speakers by name; `None` is the system's default.
     VoiceDevice(DeviceKind, Option<String>),
     RefreshVoiceDevices,
