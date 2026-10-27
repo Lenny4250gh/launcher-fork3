@@ -1,11 +1,17 @@
 //! Closing the window while the launcher is converting (unlocking), installing or uninstalling:
-//! the player is asked first. An unlock can be stopped, so the question offers to go back; a
+//! the player is asked first, in the launcher's own panel (never an OS dialog). An unlock can be stopped, so the question offers to go back; a
 //! removal cannot be stopped once it started, and the message says so.
 
-use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
+use egui::{Color32, Context};
 
 use crate::app::model::Model;
+use crate::screens::dialog;
+use crate::screens::rows::{self, Change, Row};
+use crate::screens::side::{self, SideState, SideView};
 use crate::ui::i18n::Language;
+use crate::ui::icons::Icon;
+use crate::ui::input::InputEvent;
+use crate::ui::Shell;
 
 /// What is going on that closing would interrupt.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -51,18 +57,108 @@ fn texts(
     }
 }
 
-/// Asks, blocking, and returns whether the window may close.
-pub fn confirm_close(busy: Busy, language: Language) -> bool {
-    let (title, text, yes, back) = texts(busy, language);
-    let result = MessageDialog::new()
-        .set_level(MessageLevel::Warning)
-        .set_title(title)
-        .set_description(text)
-        .set_buttons(MessageButtons::OkCancelCustom(
-            yes.to_owned(),
-            back.to_owned(),
-        ))
-        .show();
-    matches!(result, MessageDialogResult::Custom(ref c) if c == yes)
-        || matches!(result, MessageDialogResult::Ok)
+/// What the player answered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QuitAction {
+    /// Close the launcher anyway.
+    Quit,
+    /// Back to the launcher.
+    Keep,
+}
+
+/// The question before the launcher closes in the middle of work: "Yes, I'm sure" / "Go back".
+#[derive(Default)]
+pub struct QuitPanel {
+    side: SideState,
+    busy: Option<Busy>,
+}
+
+impl QuitPanel {
+    /// Opens on "Go back": Enter must never interrupt the work by accident.
+    pub fn open(&mut self, busy: Busy) {
+        self.busy = Some(busy);
+        self.side.open_at(1);
+    }
+
+    pub fn close(&mut self) {
+        self.side.close();
+    }
+
+    pub fn dismiss(&mut self) {
+        self.side.dismiss();
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.side.is_active()
+    }
+
+    fn handle(&mut self, change: &Change, actions: &mut Vec<QuitAction>) {
+        if let Change::Run { row } = change {
+            self.side.close();
+            actions.push(if *row == "quit" {
+                QuitAction::Quit
+            } else {
+                QuitAction::Keep
+            });
+        }
+    }
+
+    pub fn show(
+        &mut self,
+        shell: &mut Shell,
+        ctx: &Context,
+        events: &[InputEvent],
+        language: Language,
+        accent: Color32,
+    ) -> Vec<QuitAction> {
+        let mut actions = Vec::new();
+        if !self.side.is_active() {
+            return actions;
+        }
+        let (title, text, yes, back) = texts(self.busy.unwrap_or(Busy::Unlocking), language);
+        let build = || {
+            vec![
+                Row::command("quit", yes).icon(Icon::POWER).destructive(),
+                Row::command("keep", back).icon(Icon::PLAY).refusal(),
+            ]
+        };
+        if self.side.is_open() {
+            let rows = build();
+            let driven = dialog::drive(shell, &mut self.side.nav, &rows, &side::commands(events));
+            for change in &driven.changes {
+                self.handle(change, &mut actions);
+            }
+            if driven.close {
+                self.side.close();
+                actions.push(QuitAction::Keep);
+            }
+        }
+        let mut rows = build();
+        let view = SideView {
+            title,
+            subtitle: Some(text),
+            question: true,
+            list_id: "quit-rows",
+            nav: &self.side.nav,
+            accent,
+            language,
+            force: None,
+        };
+        match side::draw(ctx, self.side.is_open(), &view, &mut rows) {
+            Some(drawn) if self.side.is_open() => {
+                let (changes, _) =
+                    rows::apply_mouse(shell, &mut self.side.nav, &rows, drawn.events);
+                for change in &changes {
+                    self.handle(change, &mut actions);
+                }
+                if drawn.back_clicked {
+                    self.side.close();
+                    actions.push(QuitAction::Keep);
+                }
+            }
+            Some(_) => {}
+            None => self.side.finished(),
+        }
+        actions
+    }
 }

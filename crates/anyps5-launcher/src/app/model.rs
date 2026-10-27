@@ -292,6 +292,8 @@ pub struct Model {
     pub uninstalling: HashMap<GameId, f32>,
     /// Games whose running unlock was cancelled and has not stopped yet.
     pub cancelling: HashSet<GameId>,
+    /// The player confirmed closing the launcher in the middle of work.
+    pub quit_confirmed: bool,
     /// Games waiting for their unlock.
     pub queue: Vec<GameId>,
     /// Preparing in the background, and the time left of every unlock (`app/prepare.rs`).
@@ -433,6 +435,7 @@ impl Model {
             progress: HashMap::new(),
             uninstalling: HashMap::new(),
             cancelling: HashSet::new(),
+            quit_confirmed: false,
             queue: Vec::new(),
             prep: Default::default(),
             failures: HashMap::new(),
