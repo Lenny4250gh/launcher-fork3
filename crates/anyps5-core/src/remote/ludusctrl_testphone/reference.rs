@@ -52,7 +52,6 @@ impl ReferencePc {
     /// 127.0.0.1 and the socket is handed to the harness.
     pub fn start(beacon: Option<UdpSocket>, auto_allow: bool, quirk: Quirk) -> io::Result<Self> {
         let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
-        socket.set_read_timeout(Some(Duration::from_millis(20)))?;
         let addr = socket.local_addr()?;
         let beacon_to = match &beacon {
             Some(s) => Some(SocketAddr::from((
@@ -89,7 +88,9 @@ impl ReferencePc {
             thread::spawn(move || {
                 let mut buf = [0; 2048];
                 while !stop.load(Ordering::Relaxed) {
-                    if let Ok((n, from)) = receiver.socket.recv_from(&mut buf) {
+                    if let Ok(Some((n, from))) =
+                        recv_within(&receiver.socket, &mut buf, Duration::from_millis(20))
+                    {
                         receiver.handle(&buf[..n], from);
                     }
                     receiver.tick();
