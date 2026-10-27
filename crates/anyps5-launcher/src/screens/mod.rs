@@ -81,6 +81,7 @@ pub mod online_confirm_strings;
 pub mod online_feed_strings;
 pub mod online_restriction_strings;
 pub mod online_screen_strings;
+pub mod online_share_strings;
 pub mod online_social_strings;
 pub mod online_strings;
 pub mod online_voice_strings;

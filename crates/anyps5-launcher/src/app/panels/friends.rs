@@ -165,6 +165,7 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
             model.effects.push(Effect::ScreenStart);
         }
         OnlineAction::Screen(command) => online.screen_send(command),
+        OnlineAction::SharePlay(command) => online.share_play_send(command),
         OnlineAction::BrowserSignIn { create } => {
             online.send(
                 Purpose::BrowserSignIn { create },

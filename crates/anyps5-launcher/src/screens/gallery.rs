@@ -499,6 +499,18 @@ pub enum OnlineLook {
     ScreenStalled,
     /// Home while a stream is on offer.
     ScreenHome,
+    /// Share play, party page: a game runs and the player may invite a member.
+    ShareReady,
+    /// The player invited Lumen and waits.
+    ShareWaiting,
+    /// The player shares with Lumen, who plays with their pad and asks for a second pad.
+    ShareHosting,
+    /// Lumen invites the player to play with their pad.
+    ShareInvited,
+    /// The player watches Lumen's game and may ask for a pad.
+    ShareGuest,
+    /// Home while an invitation waits.
+    ShareHome,
     /// Home while a moderator's mute runs.
     Muted,
     /// The page of that mute: what, why, until when, how to appeal.
@@ -1000,6 +1012,12 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-screen-watching" => ScreenPage::Online(OnlineLook::ScreenWatching),
         "friends-screen-stalled" => ScreenPage::Online(OnlineLook::ScreenStalled),
         "friends-screen-home" => ScreenPage::Online(OnlineLook::ScreenHome),
+        "friends-share-ready" => ScreenPage::Online(OnlineLook::ShareReady),
+        "friends-share-waiting" => ScreenPage::Online(OnlineLook::ShareWaiting),
+        "friends-share-hosting" => ScreenPage::Online(OnlineLook::ShareHosting),
+        "friends-share-invited" => ScreenPage::Online(OnlineLook::ShareInvited),
+        "friends-share-guest" => ScreenPage::Online(OnlineLook::ShareGuest),
+        "friends-share-home" => ScreenPage::Online(OnlineLook::ShareHome),
         "friends-muted" => ScreenPage::Online(OnlineLook::Muted),
         "friends-restriction" => ScreenPage::Online(OnlineLook::Restriction),
         "friends-paused" => ScreenPage::Online(OnlineLook::Paused),
@@ -1367,6 +1385,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
     }
     sample_voice(&mut state, look);
     sample_screen(&mut state, look);
+    sample_share_play(&mut state, look);
     sample_calls(&mut state, look);
     if matches!(
         look,
@@ -1572,6 +1591,85 @@ fn sample_voice(state: &mut anyps5_core::online::Online, look: OnlineLook) {
             link: Some(anyps5_core::online::Link::Relay),
         },
     ];
+}
+
+/// Share play over the invented party: Lumen is the other side of every share here.
+fn sample_share_play(state: &mut anyps5_core::online::Online, look: OnlineLook) {
+    use anyps5_core::online::api::{Account, AccountId, ShareInvitation, ShareMode};
+    use anyps5_core::online::control::{Event, Link, SharePhase, ShareRole, ShareStats, ShareView};
+    let lumen = Account {
+        id: AccountId(2),
+        handle: "Lumen".into(),
+    };
+    let view = |role, mode, phase, requested| ShareView {
+        id: "s1".into(),
+        role,
+        peer: lumen.clone(),
+        title: NAMES[1].into(),
+        mode,
+        phase,
+        link: Some(Link::Direct),
+        codec: Some("h264".into()),
+        stats: ShareStats {
+            width: 1920,
+            height: 1080,
+            fps: 60,
+            kbps: 8000,
+            rtt_ms: Some(24),
+            loss_percent: 0,
+        },
+        requested,
+    };
+    let (can_start, share) = match look {
+        OnlineLook::ShareReady => (true, None),
+        OnlineLook::ShareWaiting => (
+            false,
+            Some(view(
+                ShareRole::Host,
+                ShareMode::Watch,
+                SharePhase::Invited,
+                None,
+            )),
+        ),
+        OnlineLook::ShareHosting => (
+            false,
+            Some(view(
+                ShareRole::Host,
+                ShareMode::HandOver,
+                SharePhase::Live,
+                Some(ShareMode::Together),
+            )),
+        ),
+        OnlineLook::ShareGuest => (
+            false,
+            Some(view(
+                ShareRole::Guest,
+                ShareMode::Watch,
+                SharePhase::Live,
+                None,
+            )),
+        ),
+        OnlineLook::ShareInvited | OnlineLook::ShareHome => {
+            state.apply(anyps5_core::online::Line::Output(
+                anyps5_core::online::Output::Event(Event::ShareInvitation {
+                    invitation: ShareInvitation {
+                        id: "i1".into(),
+                        from: lumen,
+                        share: "s1".into(),
+                        title_id: "GAME00001".into(),
+                        title: NAMES[1].into(),
+                        mode: ShareMode::HandOver,
+                        expires: 0,
+                    },
+                }),
+            ));
+            return;
+        }
+        _ => return,
+    };
+    state.apply(anyps5_core::online::Line::Output(
+        anyps5_core::online::Output::Event(Event::Share { can_start, share }),
+    ));
 }
 
 /// Share screen over the invented party: Lumen and Kit are the other two members.
@@ -3345,7 +3443,12 @@ impl ScreenGallery {
                     | OnlineLook::ScreenOffer
                     | OnlineLook::ScreenCannot
                     | OnlineLook::ScreenWatching
-                    | OnlineLook::ScreenStalled => self.friends.show_page(Page::Party, &data),
+                    | OnlineLook::ScreenStalled
+                    | OnlineLook::ShareReady
+                    | OnlineLook::ShareWaiting
+                    | OnlineLook::ShareHosting
+                    | OnlineLook::ShareInvited
+                    | OnlineLook::ShareGuest => self.friends.show_page(Page::Party, &data),
                     OnlineLook::PartyMember => self.friends.show_page(
                         Page::PartyMember(anyps5_core::online::api::AccountId(2)),
                         &data,
