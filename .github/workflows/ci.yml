@@ -145,8 +145,7 @@ jobs:
       # Wayland input. rfd uses the XDG portal over D-Bus and needs no GTK.
       - name: System packages
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          tools/apt-install.sh \
             pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -176,7 +175,7 @@ jobs:
       - name: Smoke packages
         if: env.FULL_CI == 'true'
         run: |
-          sudo apt-get install -y --no-install-recommends \
+          tools/apt-install.sh \
             xvfb mesa-vulkan-drivers libvulkan1 libx11-6 libxcursor1 libxi6 libxrandr2 \
             libxkbcommon-x11-0 libgl1
       - name: Smoke screenshots
