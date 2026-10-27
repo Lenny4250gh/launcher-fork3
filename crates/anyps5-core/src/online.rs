@@ -21,6 +21,7 @@ mod feed;
 mod join;
 pub mod lfg;
 pub mod media;
+pub mod played_with;
 mod profile;
 mod restrictions;
 mod runs;
@@ -417,6 +418,17 @@ pub enum Purpose {
         on: bool,
         before: bool,
     },
+    /// The people the player played with recently.
+    PlayedWith,
+    /// The list emptied; `before` is what it held, to put back on a refusal.
+    ClearPlayedWith {
+        before: Vec<api::PlayedWith>,
+    },
+    /// Recording the people played with on or off; `before` is what it was.
+    SetRememberPlayedWith {
+        on: bool,
+        before: bool,
+    },
     /// A page of the feed: the newest, or the one that starts before an item.
     Feed {
         before: Option<u64>,
@@ -685,6 +697,8 @@ pub struct Online {
     pub privacy: Option<api::Privacy>,
     /// Whether the page at `/u/<handle>` is shown to everyone; `None` until the cloud said.
     pub public_profile: Option<bool>,
+    /// Played with recently: the private list of people from shared parties and sessions.
+    pub played_with: played_with::PlayedWithState,
     /// What players found per title (run reports).
     pub runs: Runs,
     /// The join code behind the Join button on Discord.
@@ -865,6 +879,11 @@ impl Online {
                 entry.hidden = failure.is(api::ErrorCode::NotFound);
                 entry.failed = !entry.hidden && entry.data.is_none();
             }
+            Purpose::PlayedWith => self.played_with.fetch_failed(),
+            Purpose::ClearPlayedWith { before } => self.played_with.restore_people(before.clone()),
+            Purpose::SetRememberPlayedWith { before, .. } => {
+                self.played_with.set_remember(*before);
+            }
             Purpose::SetPublicProfile { before, .. } => {
                 // The same: the switch showed the choice at once.
                 self.public_profile = Some(*before);
@@ -1022,6 +1041,26 @@ impl Online {
                 if let Ok(now) = serde_json::from_value::<api::PublicProfile>(value.clone()) {
                     self.public_profile = Some(now.public_profile);
                 }
+            }
+            Purpose::PlayedWith => {
+                if let Ok(list) = serde_json::from_value::<api::PlayedWithList>(value.clone()) {
+                    self.played_with.keep(list);
+                }
+            }
+            Purpose::SetRememberPlayedWith { .. } => {
+                if let Ok(now) = serde_json::from_value::<api::RememberPlayedWith>(value.clone()) {
+                    self.played_with.set_remember(now.remember_played_with);
+                }
+            }
+            Purpose::AddFriend(handle) => {
+                if let Ok(added) = serde_json::from_value::<control::FriendAdded>(value.clone()) {
+                    let friends = added.result == api::FriendState::Friends;
+                    self.played_with.request_sent(handle, friends);
+                }
+            }
+            Purpose::Block(account) => {
+                self.played_with.blocked(*account);
+                self.request_played_with(true);
             }
             Purpose::Privacy | Purpose::SetPrivacy => {
                 if let Ok(privacy) = serde_json::from_value(value.clone()) {
@@ -1912,6 +1951,56 @@ impl Online {
         );
     }
 
+    /// Asks the cloud for the people the player played with recently. `force` asks even when the
+    /// list was fetched a moment ago (the page was opened); without it a list stays for
+    /// [`played_with::REFRESH_SECS`]. One question at a time.
+    pub fn request_played_with(&mut self, force: bool) {
+        let now = unix_now();
+        if !self.is_online()
+            || self.is_waiting(|p| matches!(p, Purpose::PlayedWith))
+            || !(force || self.played_with.due(now))
+        {
+            return;
+        }
+        self.played_with.asked_at = now;
+        self.send(Purpose::PlayedWith, Command::PlayedWith);
+    }
+
+    /// Empties the list. It shows empty at once; a refusal puts the people back.
+    pub fn clear_played_with(&mut self) {
+        if !self.is_signed_in()
+            || self.played_with.count() == 0
+            || self.is_waiting(|p| matches!(p, Purpose::ClearPlayedWith { .. }))
+        {
+            return;
+        }
+        let before = self.played_with.take_people();
+        self.send(
+            Purpose::ClearPlayedWith { before },
+            Command::ClearPlayedWith,
+        );
+    }
+
+    /// Turns the recording of new people on or off. The choice shows at once, the cloud's answer
+    /// settles it and a refusal takes it back. Before the list is known there is nothing to flip.
+    pub fn set_remember_played_with(&mut self, on: bool) {
+        if !self.is_signed_in() {
+            return;
+        }
+        let Some(before) = self.played_with.list.as_ref().map(|l| l.remember) else {
+            self.request_played_with(true);
+            return;
+        };
+        if before == on || self.is_waiting(|p| matches!(p, Purpose::SetRememberPlayedWith { .. })) {
+            return;
+        }
+        self.played_with.set_remember(on);
+        self.send(
+            Purpose::SetRememberPlayedWith { on, before },
+            Command::SetRememberPlayedWith { on },
+        );
+    }
+
     /// Asks the cloud whether the player's page at `/u/<handle>` is public, unless it is known.
     pub fn request_public_profile(&mut self) {
         if self.is_signed_in()
@@ -1992,6 +2081,7 @@ impl Online {
                     self.compares.clear();
                     self.privacy = None;
                     self.public_profile = None;
+                    self.played_with.reset();
                     self.uploaded.clear();
                     self.secrets_sent.clear();
                     self.revealed_sent.clear();
@@ -2202,7 +2292,7 @@ impl Online {
             .find(|f| f.account.id == account)
     }
 
-    /// The account behind an incoming request, an outgoing one or a block.
+    /// The account behind a friend, a request, a block or a person played with recently.
     pub fn known(&self, account: AccountId) -> Option<&Account> {
         self.friends
             .friends
@@ -2211,6 +2301,12 @@ impl Online {
             .chain(self.friends.incoming.iter().map(|r| &r.account))
             .chain(self.friends.outgoing.iter().map(|r| &r.account))
             .chain(self.friends.blocked.iter())
+            .chain(
+                self.played_with
+                    .list
+                    .iter()
+                    .flat_map(|l| l.people.iter().map(|p| &p.account)),
+            )
             .find(|a| a.id == account)
     }
 }
@@ -3553,6 +3649,239 @@ mod tests {
             online.public_profile,
             Some(false),
             "refused: back to what it was"
+        );
+    }
+
+    fn met(id: u64, handle: &str, friend: bool) -> api::PlayedWith {
+        api::PlayedWith {
+            account: Account {
+                id: AccountId(id),
+                handle: handle.into(),
+            },
+            last: 1_000 + id,
+            title_id: None,
+            title: None,
+            friend,
+        }
+    }
+
+    /// Signed in with a list of three people the cloud answered.
+    fn with_played_with(remember: bool) -> Online {
+        let mut online = Online::default();
+        signed_in(&mut online);
+        online.take_outbox();
+        online.request_played_with(true);
+        let lines = online.take_outbox();
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::PlayedWith
+        );
+        let id = online.next;
+        answer(
+            &mut online,
+            id,
+            api::PlayedWithList {
+                remember,
+                people: vec![
+                    met(2, "Lumen", false),
+                    met(3, "Nova", true),
+                    met(4, "Ash", false),
+                ],
+            },
+        );
+        online
+    }
+
+    #[test]
+    fn the_played_with_list_loads_once_at_a_time_and_goes_with_the_sign_out() {
+        let mut online = Online::default();
+        // Signed out: nothing is asked.
+        online.request_played_with(true);
+        assert!(online.take_outbox().is_empty());
+        let mut online = with_played_with(true);
+        assert_eq!(online.played_with.count(), 3);
+        assert!(online.played_with.remember());
+        // Fresh: a plain refresh waits, a forced one asks, and not twice at once.
+        online.request_played_with(false);
+        assert!(online.take_outbox().is_empty());
+        online.request_played_with(true);
+        online.request_played_with(true);
+        assert_eq!(online.take_outbox().len(), 1);
+        // The people are known by name for the actions on them.
+        assert_eq!(online.known(AccountId(2)).unwrap().handle, "Lumen");
+        online.apply(event(Event::State {
+            cloud: Cloud::Online,
+            account: None,
+            pending: None,
+        }));
+        assert!(online.played_with.list.is_none());
+    }
+
+    #[test]
+    fn a_failed_first_fetch_shows_as_failed_and_a_later_one_keeps_the_list() {
+        let mut online = Online::default();
+        signed_in(&mut online);
+        online.take_outbox();
+        online.request_played_with(true);
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert!(online.played_with.failed);
+        let mut online = with_played_with(true);
+        online.request_played_with(true);
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert!(!online.played_with.failed);
+        assert_eq!(online.played_with.count(), 3);
+    }
+
+    #[test]
+    fn clearing_the_played_with_list_shows_at_once_and_a_refusal_puts_it_back() {
+        let mut online = with_played_with(true);
+        online.take_outbox();
+        online.clear_played_with();
+        assert_eq!(online.played_with.count(), 0, "empty at once");
+        let lines = online.take_outbox();
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::ClearPlayedWith
+        );
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert_eq!(
+            online.played_with.count(),
+            3,
+            "refused: the people are back"
+        );
+        // Cleared and answered: it stays empty, and an empty list sends nothing.
+        online.clear_played_with();
+        let id = online.next;
+        answer(&mut online, id, control::Done {});
+        assert_eq!(online.played_with.count(), 0);
+        online.take_outbox();
+        online.clear_played_with();
+        assert!(online.take_outbox().is_empty());
+    }
+
+    #[test]
+    fn the_remember_switch_shows_at_once_and_a_refusal_takes_it_back() {
+        let mut online = Online::default();
+        signed_in(&mut online);
+        online.take_outbox();
+        // Not known yet: pressing asks for the list and sends no change.
+        online.set_remember_played_with(false);
+        let lines = online.take_outbox();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::PlayedWith
+        );
+        let mut online = with_played_with(true);
+        online.take_outbox();
+        online.set_remember_played_with(false);
+        assert!(!online.played_with.remember(), "the choice shows at once");
+        let lines = online.take_outbox();
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::SetRememberPlayedWith { on: false }
+        );
+        // A second press while the first waits sends nothing.
+        online.set_remember_played_with(true);
+        assert!(online.take_outbox().is_empty());
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert!(
+            online.played_with.remember(),
+            "refused: back to what it was"
+        );
+        // The answer settles it, and turning it off keeps the people.
+        online.set_remember_played_with(false);
+        let id = online.next;
+        answer(
+            &mut online,
+            id,
+            api::RememberPlayedWith {
+                remember_played_with: false,
+            },
+        );
+        assert!(!online.played_with.remember());
+        assert_eq!(online.played_with.count(), 3);
+    }
+
+    #[test]
+    fn a_request_from_the_list_marks_the_person_and_a_block_hides_them() {
+        use super::played_with::Standing;
+        let mut online = with_played_with(true);
+        online.take_outbox();
+        let standing = |online: &Online, id: u64| {
+            let person = online
+                .played_with
+                .people()
+                .find(|p| p.account.id == AccountId(id))
+                .unwrap();
+            online.played_with.standing(person, false, false)
+        };
+        assert_eq!(standing(&online, 2), Standing::Open);
+        assert_eq!(standing(&online, 3), Standing::Friend, "the cloud said so");
+        online.send(
+            Purpose::AddFriend("lumen".into()),
+            Command::AddFriend {
+                handle: "lumen".into(),
+            },
+        );
+        let id = online.next;
+        answer(
+            &mut online,
+            id,
+            control::FriendAdded {
+                result: api::FriendState::Requested,
+            },
+        );
+        assert_eq!(standing(&online, 2), Standing::Requested);
+        online.send(
+            Purpose::AddFriend("Ash".into()),
+            Command::AddFriend {
+                handle: "Ash".into(),
+            },
+        );
+        let id = online.next;
+        answer(
+            &mut online,
+            id,
+            control::FriendAdded {
+                result: api::FriendState::Friends,
+            },
+        );
+        assert_eq!(standing(&online, 4), Standing::Friend);
+        // Blocking leaves the person out at once (the cloud leaves them out of the next answer),
+        // asks the list again, and the name is still there for the toast.
+        online.take_outbox();
+        online.send(
+            Purpose::Block(AccountId(2)),
+            Command::Block {
+                account: AccountId(2),
+            },
+        );
+        online.take_outbox();
+        let id = online.next;
+        answer(&mut online, id, control::Done {});
+        assert_eq!(online.played_with.count(), 2);
+        assert!(
+            online
+                .played_with
+                .people()
+                .all(|p| p.account.id != AccountId(2))
+        );
+        assert_eq!(online.known(AccountId(2)).unwrap().handle, "Lumen");
+        let lines = online.take_outbox();
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::PlayedWith
+        );
+        // Open requests in the friend lists count too.
+        let person = met(9, "Zed", false);
+        assert_eq!(
+            online.played_with.standing(&person, false, true),
+            Standing::Requested
+        );
+        assert_eq!(
+            online.played_with.standing(&person, true, false),
+            Standing::Friend
         );
     }
 

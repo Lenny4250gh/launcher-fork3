@@ -6,6 +6,7 @@ mod chat;
 mod confirm;
 mod feed;
 mod local;
+mod played_with;
 mod profile;
 mod restriction;
 mod room;
@@ -35,6 +36,7 @@ use crate::screens::online_call_strings::{self as call_text, CallText as CT};
 use crate::screens::online_feed_strings::FeedText as F;
 use crate::screens::online_strings::OnlineText as T;
 use crate::screens::online_voice_strings::VoiceText as V;
+use crate::screens::played_with_strings::PlayedWithText as PW;
 use crate::screens::rows::{self, Change, Row, RowId};
 use crate::screens::side::{self, SideState};
 use crate::ui::Shell;
@@ -165,6 +167,12 @@ pub enum OnlineAction {
     PublicProfileRefresh,
     /// Who sees the player's trophies.
     TrophyAudience(Audience),
+    /// Played With Recently opened or asks again: read the list (`true` even when it is fresh).
+    PlayedWithRefresh(bool),
+    /// Empty the list.
+    PlayedWithClear,
+    /// Record the people played with, or stop.
+    PlayedWithRemember(bool),
     /// The Feed page opened or asks again: read its newest items.
     FeedRefresh,
     /// Read the next older items of the feed.
@@ -219,6 +227,8 @@ pub enum Page {
     Friend(AccountId),
     /// Every friend request that waits, each with its answers.
     Requests,
+    /// The people the player shared a party or a session with lately.
+    PlayedWith,
     Request(AccountId),
     Outgoing(AccountId),
     Blocked(AccountId),
@@ -296,6 +306,7 @@ impl Page {
             Page::Home
             | Page::Friend(_)
             | Page::Requests
+            | Page::PlayedWith
             | Page::Request(_)
             | Page::Outgoing(_)
             | Page::Invitation(_)
@@ -392,6 +403,8 @@ pub struct OnlinePanel {
     request_answer: usize,
     /// Which quick action of a friend's row the keys would press.
     friend_action: Option<usize>,
+    /// The same for the rows of Played With Recently.
+    played_action: Option<usize>,
     /// The page the player came from.
     previous: Option<Page>,
     /// Where Back from the report page leads, when it did not open from a friend.
@@ -705,6 +718,8 @@ impl OnlinePanel {
                 }
             }
             Page::Account => self.queued.push(OnlineAction::PublicProfileRefresh),
+            Page::PlayedWith => self.queued.push(OnlineAction::PlayedWithRefresh(true)),
+            Page::Home => self.queued.push(OnlineAction::PlayedWithRefresh(false)),
             _ => {}
         }
         // A message and its chat are one place: going between them is no step away from where
@@ -969,6 +984,11 @@ impl OnlinePanel {
                     self.feed_draw(ui, data, open && focused, &mut actions);
                     Vec::new()
                 }
+                Page::PlayedWith if self.played_state(data).is_some() => {
+                    rows::list_with_header(ui, list_id, &mut rows, &opts, |ui| {
+                        self.played_header(ui, data);
+                    })
+                }
                 Page::Feed => {
                     let (icon, title, note) = self.feed_state(data);
                     let language = data.language;
@@ -1087,7 +1107,10 @@ impl OnlinePanel {
         actions: &mut Vec<OnlineAction>,
     ) {
         let online = data.online;
-        if self.voice_change(change, actions) || self.share_play_change(change, actions) {
+        if self.voice_change(change, actions)
+            || self.share_play_change(change, actions)
+            || self.played_change(change, data, actions)
+        {
             return;
         }
         match change {
@@ -1199,6 +1222,7 @@ impl OnlinePanel {
         let online = data.online;
         if self.profile_feed_run(row, actions)
             || self.confirm_run(row, data, actions)
+            || self.played_run(row, data, actions)
             || self.social_run(row, data, actions)
             || self.restriction_run(row, data, actions)
             || self.voice_run(row, data, actions)
@@ -1417,6 +1441,14 @@ impl OnlinePanel {
             Page::Home => {
                 self.home_rows(data, &mut rows);
                 (t(T::Friends).to_owned(), None)
+            }
+            Page::PlayedWith => {
+                self.played_rows(data, &mut rows);
+                let (title, subtitle) = (
+                    PW::Title.text(language).to_owned(),
+                    PW::Subtitle.text(language).to_owned(),
+                );
+                (title, Some(subtitle))
             }
             Page::Requests => {
                 self.request_rows(data, &mut rows, None);
@@ -1906,6 +1938,7 @@ impl OnlinePanel {
             add.group_start = !rows.is_empty() && !friends.is_empty();
             rows.push(add);
         }
+        rows.extend(self.played_home_row(data));
         let mut group = None;
         for friend in friends {
             let rank = friend_group(friend);
@@ -2421,12 +2454,13 @@ mod tests {
                 "requestsCaption",
                 "requestRow",
                 "addFriend",
+                "playedWith",
                 "friendsCaption",
                 "friendRow",
             ]
         );
         assert_eq!(
-            rows[4].detail.as_deref(),
+            rows[5].detail.as_deref(),
             Some("Playing Test Game · Online · You can join")
         );
         // The first row that takes focus, not a caption.
@@ -2523,6 +2557,9 @@ mod tests {
         );
         // View Profile opens the profile screen and leaves the page where it is.
         assert!(press(&mut panel, 3).is_empty());
+        panel
+            .queued
+            .retain(|a| !matches!(a, OnlineAction::PlayedWithRefresh(_)));
         assert_eq!(panel.queued, [OnlineAction::OpenProfile(AccountId(2))]);
         // Options, and the row's body, are the friend's page.
         assert!(press(&mut panel, 4).is_empty());
@@ -2552,7 +2589,7 @@ mod tests {
         panel.open(&data(&online));
         let rows = panel.rows(&data(&online)).2;
         assert_eq!(
-            &ids(&rows)[3..],
+            &ids(&rows)[4..],
             [
                 "friendsCaption",
                 "friendRow",
@@ -3109,6 +3146,226 @@ mod tests {
         assert_eq!(actions, [OnlineAction::PublicProfile(true)]);
     }
 
+    fn met(id: u64, handle: &str, title: Option<&str>, friend: bool) -> online::api::PlayedWith {
+        online::api::PlayedWith {
+            account: account(id, handle),
+            last: 1_792_670_400 - 3 * 86_400,
+            title_id: title.map(|_| "TEST00001".into()),
+            title: title.map(Into::into),
+            friend,
+        }
+    }
+
+    /// Signed in, with Pip (open), Lumen (a friend of the launcher's list) and Nova (a friend by
+    /// the cloud's word) on the list.
+    fn with_played_with(remember: bool) -> Online {
+        let mut online = signed_in();
+        online.played_with.keep(online::api::PlayedWithList {
+            remember,
+            people: vec![
+                met(20, "Pip", Some("Test Game"), false),
+                met(2, "Lumen", None, false),
+                met(21, "Nova", None, true),
+            ],
+        });
+        online
+    }
+
+    #[test]
+    fn played_with_recently_lists_each_person_with_the_actions_that_fit() {
+        use crate::screens::rows::Control;
+        let online = with_played_with(true);
+        let mut panel = OnlinePanel::default();
+        panel.open(&data(&online));
+        // The Friends page leads to it, with the count.
+        let home = panel.rows(&data(&online)).2;
+        let entry = home.iter().find(|r| r.id == "playedWith").unwrap();
+        assert_eq!(entry.title, "Played With Recently");
+        assert_eq!(entry.detail.as_deref(), Some("3 people"));
+        panel.go(Page::PlayedWith, &data(&online));
+        // Opening the page asks again.
+        assert!(
+            panel
+                .queued
+                .contains(&OnlineAction::PlayedWithRefresh(true))
+        );
+        let (title, subtitle, rows) = panel.rows(&data(&online));
+        assert_eq!(title, "Played With Recently");
+        assert_eq!(subtitle.as_deref(), Some("Only you see this list"));
+        assert_eq!(
+            ids(&rows),
+            [
+                "playedRow",
+                "playedRow",
+                "playedRow",
+                "rememberPlayed",
+                "playedPrivate",
+                "clearPlayed"
+            ]
+        );
+        let labels = |row: &Row| match &row.control {
+            Control::Buttons { labels, .. } => labels.clone(),
+            other => panic!("{other:?}"),
+        };
+        // Pip can be added; Lumen and Nova are friends, so only the other two actions remain.
+        assert_eq!(labels(&rows[0]), ["Add Friend", "View Profile", "Block"]);
+        assert_eq!(labels(&rows[1]), ["View Profile", "Block"]);
+        assert_eq!(labels(&rows[2]), ["View Profile", "Block"]);
+        assert_eq!(
+            rows[0].detail.as_deref(),
+            Some("Played Test Game · 3 d ago")
+        );
+        assert_eq!(rows[1].detail.as_deref(), Some("Friend · 3 d ago"));
+        assert_eq!(rows[2].detail.as_deref(), Some("Friend · 3 d ago"));
+        assert_eq!(rows[3].control, Control::Toggle(true));
+        assert!(rows[5].destructive);
+    }
+
+    #[test]
+    fn the_actions_of_a_played_with_row_use_the_ordinary_online_actions() {
+        let online = with_played_with(true);
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::PlayedWith, &data(&online));
+        let press = |panel: &mut OnlinePanel, index: usize| {
+            let mut actions = Vec::new();
+            panel.handle(
+                &Context::default(),
+                &Change::Press {
+                    row: "playedRow",
+                    index,
+                },
+                &data(&online),
+                &mut actions,
+            );
+            actions
+        };
+        // The first row is Pip, focused first: Add Friend sends a request by handle.
+        panel.side.nav.row = 0;
+        assert_eq!(
+            press(&mut panel, 0),
+            [OnlineAction::AddFriend("Pip".into())]
+        );
+        // View Profile opens the profile screen on the account.
+        press(&mut panel, 1);
+        assert!(
+            panel
+                .queued
+                .contains(&OnlineAction::OpenProfile(AccountId(20)))
+        );
+        // Block asks first, on the list's own page; nothing is blocked before the answer.
+        assert!(press(&mut panel, 2).is_empty());
+        assert_eq!(
+            panel.page,
+            Page::Confirm(Ask::Block(AccountId(20)), Box::new(Page::PlayedWith))
+        );
+        // Lumen is a friend: the first action is the profile.
+        panel.go(Page::PlayedWith, &data(&online));
+        panel.side.nav.row = 1;
+        press(&mut panel, 0);
+        assert!(
+            panel
+                .queued
+                .contains(&OnlineAction::OpenProfile(AccountId(2)))
+        );
+        // After the question, the player lands on the list again.
+        panel.go(
+            Page::Confirm(Ask::Block(AccountId(20)), Box::new(Page::PlayedWith)),
+            &data(&online),
+        );
+        let mut actions = Vec::new();
+        panel.run("confirmYes", &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::Block(AccountId(20))]);
+        assert_eq!(panel.page, Page::PlayedWith);
+    }
+
+    #[test]
+    fn the_switch_and_clearing_ask_before_they_empty_the_list() {
+        let online = with_played_with(true);
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::PlayedWith, &data(&online));
+        let mut actions = Vec::new();
+        panel.handle(
+            &Context::default(),
+            &Change::Toggle {
+                row: "rememberPlayed",
+                on: false,
+            },
+            &data(&online),
+            &mut actions,
+        );
+        assert_eq!(actions, [OnlineAction::PlayedWithRemember(false)]);
+        // Clear the List opens the question with Cancel focused; only the answer clears.
+        actions.clear();
+        panel.run("clearPlayed", &data(&online), &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(
+            panel.page,
+            Page::Confirm(Ask::ClearPlayedWith, Box::new(Page::PlayedWith))
+        );
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(ids(&rows), ["confirmYes", "confirmCancel"]);
+        assert_eq!(panel.side.nav.row, 1, "the safe answer holds the focus");
+        panel.run("confirmCancel", &data(&online), &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(panel.page, Page::PlayedWith);
+        panel.run("clearPlayed", &data(&online), &mut actions);
+        panel.run("confirmYes", &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::PlayedWithClear]);
+        assert_eq!(panel.page, Page::PlayedWith);
+    }
+
+    #[test]
+    fn the_states_of_played_with_recently_keep_what_the_player_can_still_do() {
+        let mut online = with_played_with(false);
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::PlayedWith, &data(&online));
+        // Recording off: a line says so, the people stay.
+        let rows = panel.rows(&data(&online)).2;
+        assert!(ids(&rows).contains(&"rememberOff"));
+        assert_eq!(ids(&rows).iter().filter(|i| **i == "playedRow").count(), 3);
+        // Nobody, recording off: the switch stays so it can be turned on again, and nothing can be
+        // cleared.
+        online.played_with.take_people();
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(
+            ids(&rows),
+            ["rememberPlayed", "rememberOff", "playedPrivate"]
+        );
+        assert!(panel.played_state(&data(&online)).is_some());
+        // Not loaded: a state, no switch; failed: a way to try again.
+        online.played_with.reset();
+        assert!(panel.rows(&data(&online)).2.is_empty());
+        online.played_with.fetch_failed();
+        assert_eq!(ids(&panel.rows(&data(&online)).2), ["playedRetry"]);
+        // Nobody on the list and no friends: the Friends page shows no row for it.
+        online.friends = FriendLists::default();
+        panel.go(Page::Home, &data(&online));
+        assert!(
+            panel
+                .rows(&data(&online))
+                .2
+                .iter()
+                .all(|r| r.id != "playedWith")
+        );
+    }
+
+    #[test]
+    fn played_with_recently_is_not_reachable_signed_out() {
+        let mut online = with_played_with(true);
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::PlayedWith, &data(&online));
+        online.account = None;
+        panel.follow(&data(&online));
+        assert_eq!(panel.page, Page::Start);
+        assert!(
+            panel
+                .rows(&data(&online))
+                .2
+                .iter()
+                .all(|r| r.id != "playedWith")
+        );
+    }
+
     #[test]
     fn the_account_page_turns_relay_only_on() {
         let online = signed_in();
@@ -3212,6 +3469,9 @@ mod tests {
         panel.open(&data(&online));
         panel.go(Section::Activity.root(), &data(&online));
         assert_eq!(panel.page, Page::Feed);
+        panel
+            .queued
+            .retain(|a| !matches!(a, OnlineAction::PlayedWithRefresh(_)));
         assert_eq!(
             panel.queued[..2],
             [
@@ -3232,6 +3492,9 @@ mod tests {
         let mut actions = Vec::new();
         panel.run("viewProfile", &data(&online), &mut actions);
         assert_eq!(panel.page, Page::Friend(AccountId(2)));
+        panel
+            .queued
+            .retain(|a| !matches!(a, OnlineAction::PlayedWithRefresh(_)));
         assert_eq!(panel.queued, [OnlineAction::OpenProfile(AccountId(2))]);
     }
 
@@ -3297,6 +3560,9 @@ mod tests {
         panel.queued.clear();
         panel.feed_press(focus(0), &data(&online), &mut actions);
         assert_eq!(panel.page, Page::Feed);
+        panel
+            .queued
+            .retain(|a| !matches!(a, OnlineAction::PlayedWithRefresh(_)));
         assert_eq!(panel.queued, [OnlineAction::OpenProfile(AccountId(2))]);
     }
 }
