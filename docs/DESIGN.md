@@ -1222,7 +1222,7 @@ A second pass over Friends, Messages, Party, Profile, Notifications and Sign In 
 
 - **A list that is unknown is not empty.** "No friends yet" is said only while the cloud answers; connecting or offline, the note and
   Try Again above it speak. Played With Recently says "You are offline" with Try Again when the cloud is out, instead of loading for ever.
-- **Loading turns.** A state page whose icon is the refresh glyph shows the spinner (a still arc under Reduced Motion).
+- **Loading turns.** A state page whose icon is the refresh glyph shows the shared spinner (under Reduced Motion the arc stands still and pulses in opacity, `anim::loading_pulse`).
 - **A profile with nothing to show keeps its header** for a friend and for a request to answer (Accept lives there); a request that
   is out is private, not empty.
 - **The session picker** says "None of your friends is online and free to invite." and shows "Pick a friend first" on Send until one is picked.
