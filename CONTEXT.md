@@ -158,9 +158,17 @@ _Avoid_: Loading screen
 The player's choices for one game that become environment variables and an input file when the game starts: window, sync, overlay, language, controls, tuning, shader cache.
 _Avoid_: Config, options
 
+**Recommended setting**:
+A setting known to help a game, listed in `data/recommended-settings.v1.json` with proof (`required`, `recommended`, or `avoid`). The launcher shows them under "Recommended for This Game" and applies them with one click.
+_Avoid_: Default, preset, tweak
+
 **Controls**:
 The keyboard and mouse layout of one game: the launcher's default layout with the keys the player moved.
 _Avoid_: Keybinds, mapping (the file format is the engine's)
+
+**Community layout**:
+A key layout for one game that players share in `community/layouts/`, listed in the Controls panel as "Community: <name>".
+_Avoid_: Config, custom binds, preset
 
 **Pad action**:
 A console controller input a key or mouse button can press, named as the engine names it (`Cross`, `LeftStickUp`, ...).
