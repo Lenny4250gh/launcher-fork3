@@ -1,5 +1,5 @@
-//! Texts of share play in the online area (docs/DESIGN.md 17, "Share play"). English, Turkish and
-//! German like the rest; Spanish, French and Portuguese follow with the languages pull request.
+//! Texts of share play in the online area (docs/DESIGN.md 17, "Share play"). All six
+//! languages like the rest (glossaries in docs/i18n).
 //! The Turkish was written for this change and has not been read by a native speaker yet. Row
 //! titles are in title case, notes and toasts in sentence case. What a mode lets the guest do is
 //! said in plain words, never as a protocol's name.
@@ -290,11 +290,233 @@ impl ShareText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            ShareText::SharePlay => "Share Play",
+            ShareText::ShareWith => "Compartir con %@",
+            ShareText::ShareWithDetail => "Primero solo mira. Tú decides cuándo juega.",
+            ShareText::WaitingFor => "Esperando a %@",
+            ShareText::InvitationSent => "Invitación enviada",
+            ShareText::CancelInvitation => "Cancelar invitación",
+            ShareText::SeesYourGame => "%@ ve tu juego",
+            ShareText::PhaseConnecting => "Conectando…",
+            ShareText::PhaseLive => "En directo",
+            ShareText::PhaseStalled => "La imagen se ha detenido",
+            ShareText::Mode => "Modo",
+            ShareText::ModeWatch => "Ver",
+            ShareText::ModeHandOver => "Controlar",
+            ShareText::ModeTogether => "Juntos",
+            ShareText::NoteWatch => "Ve y oye tu juego.",
+            ShareText::NoteHandOver => {
+                "Juega con tu mando. Mantén pulsados Select y Start durante un segundo para recuperarlo."
+            }
+            ShareText::NoteTogether => {
+                "Juega como segundo jugador. No todos los juegos tienen sitio para uno."
+            }
+            ShareText::AsksWatch => "%@ quiere solo mirar",
+            ShareText::AsksHandOver => "%@ quiere jugar con tu mando",
+            ShareText::AsksTogether => "%@ quiere jugar a tu lado",
+            ShareText::AsksDetail => "Elige un modo abajo para aceptar.",
+            ShareText::StopSharePlay => "Dejar de compartir",
+            ShareText::InvitedWatch => "%@ te invita a ver %@",
+            ShareText::InvitedHandOver => "%@ te invita a jugar a %@ con su mando",
+            ShareText::InvitedTogether => "%@ te invita a jugar a %@ a su lado",
+            ShareText::Ask => "Pedir",
+            ShareText::Switch => "Cambiar",
+            ShareText::Invite => "Invitar",
+            ShareText::Accept => "Aceptar",
+            ShareText::Decline => "Rechazar",
+            ShareText::GuestOf => "%@ comparte %@",
+            ShareText::YourPart => "Tú",
+            ShareText::PartWatching => "Ver",
+            ShareText::PartHandOver => "Jugar con su mando",
+            ShareText::PartTogether => "Jugar como segundo jugador",
+            ShareText::AskHandOver => "Pedir el control",
+            ShareText::AskTogether => "Pedir jugar juntos",
+            ShareText::AskDetail => "Decide quien comparte.",
+            ShareText::WindowNote => "La imagen se abre en su propia ventana.",
+            ShareText::LeaveSharePlay => "Salir",
+            ShareText::DirectMs => "Directo, %@ ms",
+            ShareText::RelayMs => "Mediante un relé, %@ ms",
+            ShareText::ToastInvited => "%@ te invita a Share Play",
+            ShareText::ToastAsked => "%@ quiere otro modo.",
+            ShareText::ToastNowWatch => "Ahora solo puedes mirar.",
+            ShareText::ToastNowHandOver => "Ahora juegas con el mando de quien comparte.",
+            ShareText::ToastNowTogether => "Ahora eres el segundo jugador.",
+            ShareText::ToastEnded => "Share Play ha terminado.",
+            ShareText::ErrorNoGame => "Inicia primero un juego y luego compártelo.",
+            ShareText::ErrorNotInParty => "Share Play va dirigido a alguien de tu party.",
+            ShareText::ErrorBusy => "Ya estás en una sesión compartida.",
+            ShareText::ErrorNoEncoder => "Este PC aún no puede compartir un juego.",
+            ShareText::ErrorNoDecoder => "Este PC aún no puede mostrar un juego compartido.",
+            ShareText::ErrorNotFound => "Esa invitación ya no existe.",
+            ShareText::ErrorNotAllowed => "Esta nube no ofrece Share Play.",
+            ShareText::SomeoneUnknown => "Alguien",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            ShareText::SharePlay => "Share Play",
+            ShareText::ShareWith => "Partager avec %@",
+            ShareText::ShareWithDetail => {
+                "La personne regarde d’abord. Tu décides quand elle joue."
+            }
+            ShareText::WaitingFor => "En attente de %@",
+            ShareText::InvitationSent => "Invitation envoyée",
+            ShareText::CancelInvitation => "Annuler l’invitation",
+            ShareText::SeesYourGame => "%@ voit ton jeu",
+            ShareText::PhaseConnecting => "Connexion…",
+            ShareText::PhaseLive => "En direct",
+            ShareText::PhaseStalled => "L’image s’est arrêtée",
+            ShareText::Mode => "Mode",
+            ShareText::ModeWatch => "Regarder",
+            ShareText::ModeHandOver => "Contrôler",
+            ShareText::ModeTogether => "Ensemble",
+            ShareText::NoteWatch => "La personne voit et entend ton jeu.",
+            ShareText::NoteHandOver => {
+                "La personne joue avec ta manette. Maintiens Select et Start pendant une seconde pour la reprendre."
+            }
+            ShareText::NoteTogether => {
+                "La personne joue en second. Tous les jeux n’ont pas de place pour un deuxième joueur."
+            }
+            ShareText::AsksWatch => "%@ voudrait seulement regarder",
+            ShareText::AsksHandOver => "%@ voudrait jouer avec ta manette",
+            ShareText::AsksTogether => "%@ voudrait jouer à tes côtés",
+            ShareText::AsksDetail => "Choisis un mode ci-dessous pour accepter.",
+            ShareText::StopSharePlay => "Arrêter le partage",
+            ShareText::InvitedWatch => "%@ t’invite à regarder %@",
+            ShareText::InvitedHandOver => "%@ t’invite à jouer à %@ avec sa manette",
+            ShareText::InvitedTogether => "%@ t’invite à jouer à %@ à ses côtés",
+            ShareText::Ask => "Demander",
+            ShareText::Switch => "Changer",
+            ShareText::Invite => "Inviter",
+            ShareText::Accept => "Accepter",
+            ShareText::Decline => "Refuser",
+            ShareText::GuestOf => "%@ partage %@",
+            ShareText::YourPart => "Toi",
+            ShareText::PartWatching => "Regarder",
+            ShareText::PartHandOver => "Jouer avec sa manette",
+            ShareText::PartTogether => "Jouer en tant que deuxième joueur",
+            ShareText::AskHandOver => "Demander le contrôle",
+            ShareText::AskTogether => "Demander à jouer ensemble",
+            ShareText::AskDetail => "C’est la personne qui partage qui décide.",
+            ShareText::WindowNote => "L’image s’ouvre dans sa propre fenêtre.",
+            ShareText::LeaveSharePlay => "Quitter",
+            ShareText::DirectMs => "Direct, %@\u{a0}ms",
+            ShareText::RelayMs => "Via un relais, %@\u{a0}ms",
+            ShareText::ToastInvited => "%@ t’invite à Share Play",
+            ShareText::ToastAsked => "%@ voudrait un autre mode.",
+            ShareText::ToastNowWatch => "Tu ne peux plus que regarder.",
+            ShareText::ToastNowHandOver => "Tu joues maintenant avec la manette de l’hôte.",
+            ShareText::ToastNowTogether => "Tu es maintenant le deuxième joueur.",
+            ShareText::ToastEnded => "Share Play est terminé.",
+            ShareText::ErrorNoGame => "Lance d’abord un jeu, puis partage-le.",
+            ShareText::ErrorNotInParty => "Share Play s’adresse à quelqu’un de ta party.",
+            ShareText::ErrorBusy => "Tu es déjà dans un partage.",
+            ShareText::ErrorNoEncoder => "Cet ordinateur ne peut pas encore partager un jeu.",
+            ShareText::ErrorNoDecoder => {
+                "Cet ordinateur ne peut pas encore afficher un jeu partagé."
+            }
+            ShareText::ErrorNotFound => "Cette invitation n’existe plus.",
+            ShareText::ErrorNotAllowed => "Ce cloud ne propose pas Share Play.",
+            ShareText::SomeoneUnknown => "Quelqu’un",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            ShareText::SharePlay => "Share Play",
+            ShareText::ShareWith => "Compartilhar com %@",
+            ShareText::ShareWithDetail => "A pessoa assiste primeiro. Você decide quando ela joga.",
+            ShareText::WaitingFor => "Aguardando %@",
+            ShareText::InvitationSent => "Convite enviado",
+            ShareText::CancelInvitation => "Cancelar convite",
+            ShareText::SeesYourGame => "%@ está vendo o seu jogo",
+            ShareText::PhaseConnecting => "Conectando…",
+            ShareText::PhaseLive => "Ao vivo",
+            ShareText::PhaseStalled => "A imagem parou",
+            ShareText::Mode => "Modo",
+            ShareText::ModeWatch => "Assistir",
+            ShareText::ModeHandOver => "Controlar",
+            ShareText::ModeTogether => "Juntos",
+            ShareText::NoteWatch => "A pessoa vê e ouve o seu jogo.",
+            ShareText::NoteHandOver => {
+                "A pessoa joga com o seu controle. Segure Select e Start por um segundo para retomá-lo."
+            }
+            ShareText::NoteTogether => {
+                "A pessoa joga como segundo jogador. Nem todo jogo tem espaço para um."
+            }
+            ShareText::AsksWatch => "%@ quer apenas assistir",
+            ShareText::AsksHandOver => "%@ quer jogar com o seu controle",
+            ShareText::AsksTogether => "%@ quer jogar ao seu lado",
+            ShareText::AsksDetail => "Escolha um modo abaixo para aceitar.",
+            ShareText::StopSharePlay => "Parar de compartilhar",
+            ShareText::InvitedWatch => "%@ convida você para assistir a %@",
+            ShareText::InvitedHandOver => "%@ convida você para jogar %@ com o controle dela",
+            ShareText::InvitedTogether => "%@ convida você para jogar %@ ao lado dela",
+            ShareText::Ask => "Pedir",
+            ShareText::Switch => "Trocar",
+            ShareText::Invite => "Convidar",
+            ShareText::Accept => "Aceitar",
+            ShareText::Decline => "Recusar",
+            ShareText::GuestOf => "%@ compartilha %@",
+            ShareText::YourPart => "Você",
+            ShareText::PartWatching => "Assistir",
+            ShareText::PartHandOver => "Jogar com o controle dela",
+            ShareText::PartTogether => "Jogar como segundo jogador",
+            ShareText::AskHandOver => "Pedir o controle",
+            ShareText::AskTogether => "Pedir para jogar juntos",
+            ShareText::AskDetail => "Quem compartilha decide.",
+            ShareText::WindowNote => "A imagem abre em uma janela própria.",
+            ShareText::LeaveSharePlay => "Sair",
+            ShareText::DirectMs => "Direto, %@ ms",
+            ShareText::RelayMs => "Por retransmissão, %@ ms",
+            ShareText::ToastInvited => "%@ convida você para o Share Play",
+            ShareText::ToastAsked => "%@ quer outro modo.",
+            ShareText::ToastNowWatch => "Agora você só pode assistir.",
+            ShareText::ToastNowHandOver => "Agora você joga com o controle de quem compartilha.",
+            ShareText::ToastNowTogether => "Agora você é o segundo jogador.",
+            ShareText::ToastEnded => "O Share Play terminou.",
+            ShareText::ErrorNoGame => "Inicie um jogo primeiro e depois compartilhe.",
+            ShareText::ErrorNotInParty => "O Share Play vai para alguém da sua party.",
+            ShareText::ErrorBusy => "Você já está em um compartilhamento.",
+            ShareText::ErrorNoEncoder => "Este PC ainda não consegue compartilhar um jogo.",
+            ShareText::ErrorNoDecoder => {
+                "Este PC ainda não consegue mostrar um jogo compartilhado."
+            }
+            ShareText::ErrorNotFound => "Esse convite não existe mais.",
+            ShareText::ErrorNotAllowed => "Esta nuvem não oferece o Share Play.",
+            ShareText::SomeoneUnknown => "Alguém",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },
@@ -333,12 +555,12 @@ mod tests {
     fn placeholders_match_between_languages() {
         let count = |s: &str| s.matches("%@").count();
         for text in ONE_ARGUMENT {
-            for language in [Language::English, Language::Turkish, Language::German] {
+            for language in Language::ALL {
                 assert_eq!(count(text.text(language)), 1, "{text:?} {language:?}");
             }
         }
         for text in TWO_ARGUMENTS {
-            for language in [Language::English, Language::Turkish, Language::German] {
+            for language in Language::ALL {
                 assert_eq!(count(text.text(language)), 2, "{text:?} {language:?}");
             }
         }
@@ -370,7 +592,7 @@ mod tests {
             ShareText::ModeHandOver,
             ShareText::ModeTogether,
         ];
-        for language in [Language::English, Language::Turkish, Language::German] {
+        for language in Language::ALL {
             let texts: Vec<&str> = labels.iter().map(|l| l.text(language)).collect();
             assert!(texts[0] != texts[1] && texts[1] != texts[2] && texts[0] != texts[2]);
             assert!(texts.iter().all(|t| t.chars().count() <= 12), "{texts:?}");
