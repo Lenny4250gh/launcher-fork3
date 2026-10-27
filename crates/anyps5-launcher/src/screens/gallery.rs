@@ -8,7 +8,7 @@
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
 //!                           game-hub|game-hub-running|game-hub-empty|trophies-all|
 //!                           find-players|find-players-mine|find-players-empty|post-listing|send-to-friend|
-//!                           about-update|behavior-links|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
+//!                           about-update|behavior-links|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-clips-linux|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
 //!                           update-required|update-required-downloading|update-required-failed|
@@ -216,6 +216,9 @@ pub enum ScreenPage {
     BehaviourClipsOff,
     BehaviourClips,
     BehaviourClipsKey,
+    /// Behavior with Clips on at 30 seconds as it reads on Linux: the desktop's window dialog
+    /// and no clip key.
+    BehaviourClipsLinux,
     /// Behavior scrolled to the Add to Steam rows.
     BehaviourSteam,
     Recommended,
@@ -902,6 +905,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "behavior-clips-off" => ScreenPage::BehaviourClipsOff,
         "behavior-clips" => ScreenPage::BehaviourClips,
         "behavior-clips-key" => ScreenPage::BehaviourClipsKey,
+        "behavior-clips-linux" => ScreenPage::BehaviourClipsLinux,
         "behavior-steam" => ScreenPage::BehaviourSteam,
         "phone-off" => ScreenPage::Phone(PhoneLook::Off),
         "phone-waiting" => ScreenPage::Phone(PhoneLook::Waiting),
@@ -2932,10 +2936,13 @@ impl ScreenGallery {
                 _ => None,
             },
             windows_rows: true,
+            clips_rows: true,
             clips: crate::screens::settings::ClipsEnv {
                 count: if self.prefs.clips_seconds > 0 { 3 } else { 0 },
                 capturing: matches!(self.page, ScreenPage::BehaviourClipsKey),
                 broadcast_key: false,
+                portal: matches!(self.page, ScreenPage::BehaviourClipsLinux),
+                no_key: matches!(self.page, ScreenPage::BehaviourClipsLinux),
             },
             location: match self.page {
                 ScreenPage::UnlockedLocation(look) => look.env(),
@@ -3582,7 +3589,9 @@ impl ScreenGallery {
                 self.settings.open_at(Category::Captures.index(), true);
                 self.settings.focus_row_id("clips");
             }
-            ScreenPage::BehaviourClips | ScreenPage::BehaviourClipsKey => {
+            ScreenPage::BehaviourClips
+            | ScreenPage::BehaviourClipsKey
+            | ScreenPage::BehaviourClipsLinux => {
                 self.prefs.clips_seconds = 30;
                 self.settings.open_at(Category::Captures.index(), true);
                 self.settings

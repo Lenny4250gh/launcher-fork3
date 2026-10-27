@@ -102,6 +102,11 @@ impl ClipsService {
         ) {
             Ok(recorder) => {
                 tracing::info!("clips: recording {seconds} s of {title}");
+                if clips::PORTAL_PICKER {
+                    // The desktop's own dialog opens now and asks for the game's window.
+                    let text = ClipsText::PickWindow.text(model.language());
+                    model.toast(text, Icon::CAMERA);
+                }
                 self.active = Some(Active {
                     game: game.clone(),
                     seconds,
@@ -199,7 +204,7 @@ impl ClipsService {
     fn ended(&mut self, model: &mut Model, reason: &str) {
         let game = self.active.take().map(|a| a.game);
         tracing::info!("clips: the recorder ended: {reason}");
-        let Some(text) = reason_text(reason) else {
+        let Some(text) = reason_text(reason, clips::PORTAL_PICKER) else {
             return;
         };
         if reason == clips::NO_PERMISSION {
@@ -209,7 +214,12 @@ impl ClipsService {
             }
         }
         self.gave_up = game;
-        model.toast_failure(text.text(model.language()));
+        if text == ClipsText::NoPick {
+            // The player turned the dialog down: not a fault, so the notice fades.
+            model.toast(text.text(model.language()), Icon::CAMERA);
+        } else {
+            model.toast_failure(text.text(model.language()));
+        }
     }
 
     /// The hotkey, the controller's Create button or the phone's: save the last seconds.
@@ -241,9 +251,13 @@ impl ClipsService {
 }
 
 /// What to tell the player when the recorder ended for `reason`; none for a quit.
-fn reason_text(reason: &str) -> Option<ClipsText> {
+/// With the desktop's window dialog (`picker`, Linux) a missing window is the player cancelling it
+/// or closing it unanswered: the worker's reason is `no_window` for every way the dialog ends
+/// without a window.
+fn reason_text(reason: &str, picker: bool) -> Option<ClipsText> {
     match reason {
         "no_encoder" => Some(ClipsText::NoEncoder),
+        "no_window" if picker => Some(ClipsText::NoPick),
         "no_window" => Some(ClipsText::NoWindow),
         r if r == clips::NO_PERMISSION => Some(ClipsText::NoPermission),
         "quit" => None,
@@ -264,11 +278,27 @@ mod tests {
 
     #[test]
     fn every_reason_the_worker_gives_has_its_words() {
-        assert_eq!(reason_text("no_permission"), Some(ClipsText::NoPermission));
-        assert_eq!(reason_text("no_encoder"), Some(ClipsText::NoEncoder));
-        assert_eq!(reason_text("no_window"), Some(ClipsText::NoWindow));
-        assert_eq!(reason_text("quit"), None);
-        assert_eq!(reason_text("encoder_failed: x"), Some(ClipsText::Stopped));
+        for picker in [false, true] {
+            assert_eq!(
+                reason_text("no_permission", picker),
+                Some(ClipsText::NoPermission)
+            );
+            assert_eq!(
+                reason_text("no_encoder", picker),
+                Some(ClipsText::NoEncoder)
+            );
+            assert_eq!(reason_text("quit", picker), None);
+            assert_eq!(
+                reason_text("encoder_failed: x", picker),
+                Some(ClipsText::Stopped)
+            );
+        }
+        assert_eq!(reason_text("no_window", false), Some(ClipsText::NoWindow));
+    }
+
+    #[test]
+    fn a_cancelled_window_dialog_is_told_calmly_not_as_a_missing_window() {
+        assert_eq!(reason_text("no_window", true), Some(ClipsText::NoPick));
     }
 
     #[test]

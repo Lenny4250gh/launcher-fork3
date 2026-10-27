@@ -38,6 +38,14 @@ pub enum ClipsText {
     NoWindow,
     /// Toast (macOS): Screen Recording is not switched on for AnyPlay.
     NoPermission,
+    /// Settings detail under Clips (Linux): the desktop asks for the game's window each time.
+    DetailPicker,
+    /// Settings row (macOS, Linux): there is no clip key, Create saves.
+    NoKey,
+    /// Notice (Linux): the desktop's window dialog opens now.
+    PickWindow,
+    /// Notice (Linux): no window was chosen, so the recorder is off for this game.
+    NoPick,
     /// Toast: the recorder stopped in the middle of a game.
     Stopped,
     NoWorker,
@@ -71,6 +79,18 @@ impl ClipsText {
             ClipsText::NoPermission => {
                 "Clips need Screen Recording. Turn on AnyPlay in System Settings, then reopen AnyPlay."
             }
+            ClipsText::DetailPicker => {
+                "Keeps the last seconds of a running game, without sound. Your desktop asks you to choose the game's window each time a game starts"
+            }
+            ClipsText::NoKey => {
+                "Press Create on your controller to save a clip. This system has no clip key yet"
+            }
+            ClipsText::PickWindow => {
+                "Choose the game's window in the dialog so Clips can record it."
+            }
+            ClipsText::NoPick => {
+                "No window was chosen, so Clips are off for this game. Start the game again to choose one."
+            }
             ClipsText::Stopped => "Clips stopped. Start the game again to record.",
             ClipsText::NoWorker => "Clips are not part of this build.",
             ClipsText::KeyTaken => "Another program uses %@. Choose another clip key.",
@@ -103,6 +123,18 @@ impl ClipsText {
             ClipsText::NoWindow => "Klipler oyunun penceresini bulamadı.",
             ClipsText::NoPermission => {
                 "Klipler için Ekran Kaydı gerekir. Sistem Ayarları'nda AnyPlay'i aç, sonra AnyPlay'i yeniden aç."
+            }
+            ClipsText::DetailPicker => {
+                "Çalışan oyunun son saniyelerini sessiz olarak tutar. Masaüstün, oyun her başladığında oyunun penceresini seçmeni ister"
+            }
+            ClipsText::NoKey => {
+                "Klip kaydetmek için kumandada Create'e bas. Bu sistemde henüz klip tuşu yok"
+            }
+            ClipsText::PickWindow => {
+                "Klipler kaydedebilsin diye açılan pencerede oyunun penceresini seç."
+            }
+            ClipsText::NoPick => {
+                "Pencere seçilmedi, bu yüzden bu oyun için Klipler kapalı. Seçmek için oyunu yeniden başlat."
             }
             ClipsText::Stopped => "Klipler durdu. Kayıt için oyunu yeniden başlat.",
             ClipsText::NoWorker => "Klipler bu sürümde yok.",
@@ -142,6 +174,18 @@ impl ClipsText {
             ClipsText::NoWindow => "Clips konnten das Spielfenster nicht finden.",
             ClipsText::NoPermission => {
                 "Clips brauchen Bildschirmaufnahme. Schalte AnyPlay in den Systemeinstellungen ein und öffne AnyPlay dann neu."
+            }
+            ClipsText::DetailPicker => {
+                "Behält die letzten Sekunden eines laufenden Spiels, ohne Ton. Dein Desktop fragt bei jedem Spielstart nach dem Spielfenster"
+            }
+            ClipsText::NoKey => {
+                "Drücke Create am Controller, um einen Clip zu speichern. Eine Clip-Taste gibt es auf diesem System noch nicht"
+            }
+            ClipsText::PickWindow => {
+                "Wähle im Dialog das Spielfenster, damit Clips es aufnehmen können."
+            }
+            ClipsText::NoPick => {
+                "Es wurde kein Fenster gewählt, daher sind Clips für dieses Spiel aus. Starte das Spiel neu, um eines zu wählen."
             }
             ClipsText::Stopped => "Clips wurden gestoppt. Starte das Spiel neu, um aufzunehmen.",
             ClipsText::NoWorker => "Clips sind nicht Teil dieser Version.",
@@ -295,7 +339,7 @@ impl ClipsText {
         substitute(self.text(language), args)
     }
 
-    pub const ALL: [ClipsText; 24] = [
+    pub const ALL: [ClipsText; 28] = [
         ClipsText::Title,
         ClipsText::Detail,
         ClipsText::Off,
@@ -317,6 +361,10 @@ impl ClipsText {
         ClipsText::NoEncoder,
         ClipsText::NoWindow,
         ClipsText::NoPermission,
+        ClipsText::DetailPicker,
+        ClipsText::NoKey,
+        ClipsText::PickWindow,
+        ClipsText::NoPick,
         ClipsText::Stopped,
         ClipsText::NoWorker,
         ClipsText::KeyTaken,

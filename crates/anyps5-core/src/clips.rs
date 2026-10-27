@@ -14,13 +14,18 @@ use serde::Deserialize;
 /// The lengths the player can choose, in seconds; 0 is Off.
 pub const LENGTHS: [u32; 5] = [0, 15, 30, 60, 120];
 
-/// Clips run on this system: Windows, and macOS through ScreenCaptureKit and VideoToolbox (network
-/// ADR 0036).
-pub const SUPPORTED: bool = cfg!(any(windows, target_os = "macos"));
+/// Clips run on this system: Windows, macOS through ScreenCaptureKit and VideoToolbox, and Linux
+/// through the desktop portal and the GPU's NVENC or VA-API (network ADR 0036).
+pub const SUPPORTED: bool = cfg!(any(windows, target_os = "macos", target_os = "linux"));
 
 /// The system has a global hotkey the launcher can take (Windows). Elsewhere the Create button
-/// saves a clip.
+/// saves a clip: no key grab works in a game on every X11 and Wayland desktop without root
+/// (Wayland has none, and the GlobalShortcuts portal is not on every desktop).
 pub const HOTKEY_AVAILABLE: bool = cfg!(windows);
+
+/// The player picks the game's window in the desktop portal's own dialog each time the recorder
+/// starts (Linux); the worker cannot name the window for the portal.
+pub const PORTAL_PICKER: bool = cfg!(target_os = "linux");
 
 /// The reason the worker ends with when macOS has not been told to allow Screen Recording.
 pub const NO_PERMISSION: &str = "no_permission";

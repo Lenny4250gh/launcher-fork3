@@ -1,4 +1,4 @@
-# AnyPlay Launcher: UI design specification
+ After a group gap: the Clips rows (9.8) |# AnyPlay Launcher: UI design specification
 
 Source of truth for the launcher's interface on Windows, Linux and macOS. It began as a specification of the macOS launcher of
 [utkuhalis/AnyPS5-ARM](https://github.com/utkuhalis/AnyPS5-ARM) (GPL-2.0, commit `cb20fd80c9f7a044c62d51da3cdd0475100b5554`,
@@ -1407,7 +1407,7 @@ talks to. Rules for rows:
   what happens, in one sentence.
 - Red (danger ink) is for something that loses data. Quit and removing a toolkit release are ink; the game's
   "Remove Installation" confirmation is the red one.
-- The Windows-only rows (clips, links from websites) are built from `SettingsEnv::windows_rows`; the gallery shows them on every system.
+- The Windows-only rows (links from websites, Broadcast) are built from `SettingsEnv::windows_rows` and the Clips rows from `SettingsEnv::clips_rows`; the gallery shows them on every system.
 
 | Category (key) | Glyph | Groups and rows (id, kind, key, notes) |
 |---|---|---|
@@ -2898,15 +2898,16 @@ Up to v0.1.3 the launcher was called AnyPS5 Launcher. It is AnyPlay Launcher now
 
 ### 9.8 Clips
 
-While a game runs, the launcher can keep its last seconds and save them as a video. It is Windows only for now: the recorder is the share worker (the network repository's `spec/clips.md` and ADR 0028), which captures the game's window with Windows Graphics Capture and encodes with the GPU's H.264 encoder.
+While a game runs, the launcher can keep its last seconds and save them as a video. It runs on Windows, macOS and Linux (`anyps5_core::clips::SUPPORTED`): the recorder is the share worker (the network repository's `spec/clips.md` and ADRs 0028 and 0036), which captures the game's window (Windows Graphics Capture, ScreenCaptureKit on macOS, the desktop portal's PipeWire screencast on Linux) and encodes with the GPU's H.264 encoder (Media Foundation, VideoToolbox, NVENC or VA-API).
 
 - **Setting.** Settings > Behavior > Clips: Off (the default), 15 seconds, 30 seconds, 1 minute or 2 minutes (`clips_seconds`). Below it, while Clips is on, the row **Clip Key** (`clips_hotkey`, default `Alt+F12`, a key row like the talk key: choose it, press the keys, Esc keeps the old ones; a letter or digit alone is refused so that it cannot be taken from the game, a function key may stand alone) and **Show Clips**, which opens the screenshots folder and says how many clips it holds. With Clips off the Show Clips row stays only while there are clips. The row says that a clip has no sound.
 - **When it runs.** Nothing runs with Clips off or without a game: no worker, no hotkey. With Clips on, the launcher starts the worker when the game has a process (`--clips SECONDS`, the window and processes as for share screen) and ends it when the game ends or Clips is switched off. A worker that ends (no hardware video encoder, no window, a failed encoder) is told once in a toast and not started again for that game.
 - **Saving.** Three triggers, one effect (`Effect::SaveClip`): the global hotkey (`RegisterHotKey`, so the game does not also see it), the controller's Create button (the `Select` button of the pad backend: Create on a DualSense, View or Back on an Xbox pad) and the phone's `create` message. The worker writes `<game name> <date> <time>.mp4` to the screenshots folder under a temporary name and renames it when whole. A clip is at least the chosen length and up to 2 seconds longer, starts on a key frame and is 1280 by 720 at 30 pictures a second.
 - **Feedback.** A toast "Clip saved" (camera icon) and the unlock cue. A launcher hidden by "Hide Launcher While Playing" shows no toast, so the cue is the confirmation then. Create with Clips off in a running game says how to turn it on.
 - **Cost.** A hardware encoder only, 6 Mbit/s, at most 160 MiB of memory in the worker; a PC without one gets the toast "Clips need a graphics card with a video encoder" and no software encoding.
-- **Not yet.** The game's sound (process loopback capture, the same open task as share screen's sound), Linux, an in-game confirmation, playback inside the launcher (the folder opens in the system's file manager and a player).
-- **Gallery.** `--gallery=behavior-clips-off|behavior-clips|behavior-clips-key`.
+- **Not yet.** The game's sound (process loopback capture, the same open task as share screen's sound), an in-game confirmation, playback inside the launcher (the folder opens in the system's file manager and a player), a clip key on macOS and Linux.
+- **Linux.** The portal cannot be told which window is the game's, so the player picks it in the desktop's own dialog each time a game starts with Clips on. The Clips row's detail says so (`DetailPicker`), and a notice (camera icon, fades) when the recorder starts says "Choose the game's window in the dialog so Clips can record it." If the player cancels the dialog, closes it unanswered, or picks a screen, the worker ends with `no_window`; with the picker that reads as the fading notice "No window was chosen, so Clips are off for this game. Start the game again to choose one." (`NoPick`), not the staying "could not find the game's window", and the recorder is not started again for that game (no retry loop). There is no clip key: no key grab works in a game on every X11 and Wayland desktop without root (Wayland has none, the GlobalShortcuts portal is not on every desktop). Where the Clip Key row would be, an attached note says "Press Create on your controller to save a clip. This system has no clip key yet" (`clipsNoKey`, `ClipsEnv::no_key`; macOS has the same note). The Clips rows are built from `SettingsEnv::clips_rows` (`clips::SUPPORTED`), not from `windows_rows`.
+- **Gallery.** `--gallery=behavior-clips-off|behavior-clips|behavior-clips-key|behavior-clips-linux`.|behavior-clips|behavior-clips-key`.
 
 ### 9.9 Add to Steam
 

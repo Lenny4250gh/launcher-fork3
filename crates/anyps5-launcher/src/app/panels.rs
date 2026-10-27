@@ -440,9 +440,12 @@ impl PanelHost {
                 count: clips_count,
                 capturing: self.settings.clips_capturing(),
                 broadcast_key: cx.model.broadcast_key_set,
+                portal: anyps5_core::clips::PORTAL_PICKER,
+                no_key: !anyps5_core::clips::HOTKEY_AVAILABLE,
             },
             location: cx.model.location_env(),
             windows_rows: cfg!(windows),
+            clips_rows: anyps5_core::clips::SUPPORTED,
         };
         // Theme, accent, language, motion and sounds reach the shell inside the panel
         // (`apply_preferences`), so the backdrop cross-fades while the choice is made.
