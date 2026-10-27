@@ -378,7 +378,7 @@ fn draw(
         &painter,
         ty::SPLASH_TITLE,
         U::RequiredTitle.text(language),
-        Color32::WHITE,
+        crate::ui::theme::color::text(),
         width,
         2,
     );
@@ -460,7 +460,7 @@ fn draw(
         egui::Role::Heading,
         U::RequiredTitle.text(language),
     );
-    painter.galley(pos2(cx, y), title.clone(), Color32::WHITE);
+    painter.galley(pos2(cx, y), title.clone(), crate::ui::theme::color::text());
     y += title.size().y + space::M;
 
     announce(

@@ -372,7 +372,11 @@ impl TrophyListPanel {
             1,
         );
         let title_y = top + overline.line_height() + 12.0;
-        painter.galley(pos2(x, title_y), title_galley, Color32::WHITE);
+        painter.galley(
+            pos2(x, title_y),
+            title_galley,
+            crate::ui::theme::color::text(),
+        );
 
         let row_y = title_y + title_style.line_height() + 12.0;
         let percent = set.percent();
@@ -384,7 +388,7 @@ impl TrophyListPanel {
             pos2(cx, row_y),
             ty::PERCENT,
             &percent_text,
-            Color32::WHITE,
+            crate::ui::theme::color::text(),
         );
         cx += w + 16.0;
         let bar = Rect::from_center_size(pos2(cx + 130.0, row_y + row_h * 0.5), vec2(260.0, 4.0));
@@ -413,7 +417,7 @@ impl TrophyListPanel {
                 pos2(cx, mid - count_style.line_height() * 0.5),
                 count_style,
                 &label,
-                fade(Color32::WHITE, 0.85),
+                fade(crate::ui::theme::color::text(), 0.85),
             );
             cx += w + 16.0;
         }
@@ -611,7 +615,7 @@ impl TrophyListPanel {
             0.0,
             size::FOCUS_RING,
         );
-        let ink = |alpha: f32| fade(Color32::WHITE, alpha);
+        let ink = |alpha: f32| fade(crate::ui::theme::color::text(), alpha);
 
         // Icon or the secret's lock tile.
         let icon_rect = Rect::from_center_size(
@@ -752,7 +756,7 @@ impl TrophyListPanel {
                 Align2::CENTER_CENTER,
                 show_style,
                 show_label,
-                fade(Color32::WHITE, t),
+                fade(crate::ui::theme::color::text(), t),
             );
             // Only a focused row can be asked to show; a fading pill is not a target yet.
             pill = focused.then_some(area);

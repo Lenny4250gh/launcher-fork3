@@ -80,7 +80,7 @@ conversion, so they behave as display-referred (sRGB-encoded) values; hex = valu
 | Aurora (index 1) | (0.006, 0.030, 0.045) `#02080B` | (0.020, 0.300, 0.300) `#054D4D` | (0.560, 1.000, 0.780) `#8FFFC7` | Mint |
 | Sunset (index 2) | (0.060, 0.010, 0.040) `#0F030A` | (0.520, 0.110, 0.220) `#851C38` | (1.000, 0.640, 0.330) `#FFA354` | Coral |
 
-Theme titles: Cosmic / Aurora / Sunset (TR: Kozmik / Aurora / Gün Batımı). `Theme.gradient` (middle to deep, top to bottom) exists
+Theme titles: Cosmic / Aurora / Sunset (TR: Kozmik / Aurora / Gün Batımı). Ember, Tide and Daylight (4 to 6) are in 3.16. `Theme.gradient` (middle to deep, top to bottom) exists
 in the source but is not used anywhere; it is the documented fallback if the GPU shader is unavailable (use it for that).
 
 #### Accent colours (user setting, default per theme)
@@ -107,11 +107,11 @@ theme's default accent).
 | Primary text / icons | white 1.0 (title text), white 0.9 (secondary labels), white 0.85 (values), white 0.72 (hints) |
 | Secondary text | white 0.7 (subtitles), white 0.65 (empty text), white 0.6 (detail lines), white 0.55 (overlines, row detail on dark), white 0.5 (counts), white 0.45 (path), white 0.4 (inactive date) |
 | Text on a focused (white) surface | `#000000`; its detail text black 0.55 |
-| Surface, resting | white 0.10 (buttons, icon buttons, language cards), white 0.07 (settings rows, trophy-icon tile), white 0.05 (trophy row), white 0.08 (game tile placeholder) |
+| Surface, resting | white 0.10 (buttons, icon buttons), white 0.07 (settings rows, trophy-icon tile), white 0.05 (trophy row), white 0.08 (game tile placeholder) |
 | Surface, prominent button | white 0.20 |
 | Surface, hover (button) | white 0.16 |
 | Surface, focused | `#FFFFFF` (solid); trophy row instead white 0.13 + ring |
-| Hairline | white 0.12 (buttons), white 0.14 (language cards), white 0.09 (glass), white 0.08 (side panel edge, card gradient end) |
+| Hairline | white 0.12 (buttons), white 0.09 (glass), white 0.08 (side panel edge, card gradient end) |
 | Track (progress/indeterminate) | white 0.16 |
 | Keycap fill (hint) | white 0.16 |
 | Full-screen panel | black 0.74 over blurred backdrop (settings, library, trophies, and the panels of a game); black 0.65 for the log |
@@ -152,7 +152,6 @@ is invisible at these radii). An optional refinement is Figma "corner smoothing 
 | Info card, glass default | 16 |
 | Settings row, category row, trophy secret tile | 12 |
 | Trophy row | 16 |
-| Language card | 20 |
 | Theme card preview | 18 |
 | Hint keycap | 5 |
 | Key cap (controls) | 7 |
@@ -179,7 +178,6 @@ CSS and `epaint::Shadow` blur is about twice that) **(estimate; verify against t
 | Console button focused | white 0.28 | 18 | 0 |
 | Top-bar icon button focused | white 0.40 | 10 | 0 |
 | Settings row focused | white 0.22 | 12 | 0 |
-| Language card focused | white 0.30 | 20 | 0 |
 | Hero title text | black 0.35 | 12 | 0 |
 | Progress fill glow | accent 0.6 | 6 | 0 |
 | Running dot glow | accent 1.0 | 6 | 0 |
@@ -233,7 +231,7 @@ Components:
 | Trophy row | icon 68, gap 20, horizontal pad 18, vertical pad 14, row gap 10 |
 | Trophy header icon | 112 |
 | Trophy progress (header / row) | 260 x 4 / 180 x 4 |
-| Language card | 280 x 150, padding 26, gap 20 |
+| Language list (onboarding, 5.15) | 420 wide, rows 56, the lit shape inset 6 |
 | Theme card | 330 wide, preview 330 x 186, gap 26 |
 | Onboarding dots | 5 high; 46 wide current, 18 others; gap 10 |
 | Progress line | height 4 (tile: `max(3, size * 0.03)`) |
@@ -292,7 +290,7 @@ Type scale (size dp / weight; weight numbers: light 300, regular 400, medium 500
 | Tile-row game name | 22 / semibold | 2 lines, beside the large tile |
 | Theme card name | 22 / regular, semibold when focused | |
 | Percent (trophy header) | 22 / semibold tabular | |
-| Language card name | 28 / medium | |
+| Language list name | 22 / regular (`ty::THEME_CARD_NAME`) | |
 | Clock | 20 / medium tabular | white 0.92 |
 | Button label | 19 / semibold | glyph 17 semibold |
 | Category row | 19 / regular, semibold when selected | |
@@ -364,8 +362,10 @@ SwiftUI's named curves are the standard cubic Beziers; implement one `cubic_bezi
 0.15 s easeInOut; banner slide -> easeOut 0.25 s. Also (2026-10-25): a panel does not slide, a full-screen panel does not grow from 1.03 and the toast does not travel; each fades in
 place (opacity only), because movement is what reduced motion removes and opacity is what it keeps. The edge bump (6.7) leans nothing.
 Also: the theme background is paused (one still frame is drawn), artwork drift
-and splash breathing are off, the user picture does not drift. **Not** affected: the indeterminate progress sweep, the "Press a
+and splash breathing are off, the user picture does not drift. **Not** affected: the "Press a
 key..." pulse, the banner pop.
+
+**Loading indicators (0.3.5).** Nothing rotates or sweeps under "Animations: Reduced", but the signal that something is loading stays: a calm opacity pulse (`anim::loading_pulse`: 1.2 s a cycle, easeInOut, opacity 1 <-> 0.45, no transform). It is done in two places, so every surface follows the setting: `components::paint_spinner_arc` (every spinner: the Home scan, the starting tile, the loading state page, Captures thumbnails, the sign-in wait) draws the same three-quarter arc standing still at 12 o'clock and pulses it; `components::paint_indeterminate` (the starting screen, the relink step) fills the whole capsule with the accent and pulses it instead of the 35 % band. The static cue each surface already has stays beside it (the "Starting..." label and timer, the headline of the state page, the step name). Gallery scene `--gallery=motion-reduced`.
 
 ### 2.4 Every animation, with its port form
 
@@ -383,11 +383,11 @@ key..." pulse, the banner pop.
 | 10 | Button focus | scale 1.05, fill, ring-less glow white 0.28 r18, `Motion.focus` | spring focus |
 | 11 | Top-bar icon focus | scale 1.1, glow white 0.4 r10 | spring focus |
 | 12 | Settings row focus | scale 1.015, glow white 0.22 r12 | spring focus |
-| 13 | Language card focus | scale 1.04, glow white 0.3 r20 | spring focus |
+| 13 | Language row focus | the ring on the lit shape (keys and pad only) | spring focus |
 | 14 | Theme card focus | scale 0.97 -> 1.04, opacity 0.72 -> 1 | spring focus |
 | 15 | Switch | knob moves leading <-> trailing, track colour | spring focus on the knob x and the colour mix |
 | 16 | Progress bar | fill width `easeOut 0.35` | width eased with easeOut 0.35 per change |
-| 17 | Indeterminate sweep | a 35 %-wide gradient (clear, accent, clear, left to right) slides from x = -0.4 w to +1.05 w, `easeInOut 1.3 s`, repeat forever **no** autoreverse, clipped to the capsule | `phase = easeInOut(fract(t / 1.3))`, `x = lerp(-0.4, 1.05, phase) * w` |
+| 17 | Indeterminate sweep (reduced: a whole-bar opacity pulse, see 2.3) | a 35 %-wide gradient (clear, accent, clear, left to right) slides from x = -0.4 w to +1.05 w, `easeInOut 1.3 s`, repeat forever **no** autoreverse, clipped to the capsule | `phase = easeInOut(fract(t / 1.3))`, `x = lerp(-0.4, 1.05, phase) * w` |
 | 17b | "Press a key..." | opacity 1 <-> 0.45, `easeInOut 0.7 s`, repeat autoreverse | triangle wave, easeInOut 0.7 each way |
 | 18 | Onboarding step change | `Motion.layout`: old step opacity + x -40, new step opacity + x +40 | spring layout cross-slide; dots widths animate 18 <-> 46 with the same spring |
 | 19 | Onboarding finished | `easeInOut 0.7` flips `onboarded` | cross-fade onboarding -> home over 0.7 s |
@@ -448,7 +448,7 @@ When paused the original stops redrawing; draw one frame when pausing so the pic
 struct Uniforms { deep: vec4<f32>, middle: vec4<f32>, bright: vec4<f32>, size: vec2<f32>, time: f32, theme: u32 }
 ```
 
-`deep/middle/bright` = palette rgb with a = 1; `size` = offscreen pixel size; `theme` 0 = Cosmic, 1 = Aurora, 2 = Sunset.
+`deep/middle/bright` = palette rgb with a = 1; `size` = offscreen pixel size; `theme` 0 = Cosmic, 1 = Aurora, 2 = Sunset (4 = Ember, 5 = Tide, 6 = Daylight, 3.16).
 
 ### 3.4 WGSL port (complete)
 
@@ -906,7 +906,7 @@ middle (two dots on the digits' cap height), so the minute ticking over moves no
   artwork layer as the app, with the focus hidden as under a panel). New flags: `--theme=aurora|sunset|cosmic` (components,
   panels, home scenes), `--bright` (a pale picture as the selected game's artwork), `--frames=N` (gallery pages, so the real
   home's pictures have loaded), `--hover=X,Y` with `--pad` rests the pointer without taking the device back from the pad.
-  New page `--gallery=states`: destructive buttons, the switch and rows in every state.
+  New page `--gallery=states`: destructive buttons, the switch and rows in every state. `--gallery=motion-reduced`: spinners and the indeterminate bar under "Animations: Reduced".
 
 ### 3.10 Round 3: contrast measured, one case rule, Tab (2026-10-25)
 
@@ -963,9 +963,9 @@ for, with, at, by, from, as). What reads as a sentence is in sentence case: deta
 same rule: every word capital except `ve`, `ile`, `de`, `da`, `mi`, `için`, `veya`. The English and Turkish tables were swept once
 for it (about 70 strings changed, mostly Turkish buttons and captions); new text follows it and the review checks it.
 
-**German (0.3.0, `Language::German`, code `de`).** The third language, with the same fallback chain as the rest: the German text, then English. Every text enum has `german() -> Option<&str>` next to `english()` and `turkish()`; the core table keeps its German in `ui/i18n_german.rs`. German does **not** follow the Title Case rule above: German capitalises nouns and the first word of a sentence and nothing else, so a button reads "Spiel starten", a row "Neue Spiele automatisch vorbereiten", a caption "Freunde hinzufügen" (never "Spiel Starten"). The player is addressed as "du" like the Turkish "sen", in the imperative ("Wähle", "Starte"), calm and short, no exclamation marks. Real umlauts and ß. Product and platform names stay as they are (AnyPlay, AnyPS5, LudusCtrl, Play Together, Discord, Steam). Numbers use the decimal comma as in Turkish; dates read `26. Okt. 2026, 21:14`. The system language is picked up from the OS (`de`, `de-AT`, `de-CH`); the picker in Settings and the onboarding cards list `Language::ALL`. Another language is added in four places: the two `Language` enums, `Language::ALL`, and one `<lang>()` per text enum; the lookup falls back to English for anything not yet translated, and a test lists the keys still missing.
+**German (0.3.0, `Language::German`, code `de`).** The third language, with the same fallback chain as the rest: the German text, then English. Every text enum has `german() -> Option<&str>` next to `english()` and `turkish()`; the core table keeps its German in `ui/i18n_german.rs`. German does **not** follow the Title Case rule above: German capitalises nouns and the first word of a sentence and nothing else, so a button reads "Spiel starten", a row "Neue Spiele automatisch vorbereiten", a caption "Freunde hinzufügen" (never "Spiel Starten"). The player is addressed as "du" like the Turkish "sen", in the imperative ("Wähle", "Starte"), calm and short, no exclamation marks. Real umlauts and ß. Product and platform names stay as they are (AnyPlay, AnyPS5, LudusCtrl, Play Together, Discord, Steam). Numbers use the decimal comma as in Turkish; dates read `26. Okt. 2026, 21:14`. The system language is picked up from the OS (`de`, `de-AT`, `de-CH`); the lists in Settings and the onboarding show `Language::ALL`. Another language is added in four places: the two `Language` enums, `Language::ALL`, and one `<lang>()` per text enum; the lookup falls back to English for anything not yet translated, and a test lists the keys still missing.
 
-**Spanish, French and Brazilian Portuguese (0.3.4, `Language::Spanish` `es`, `Language::French` `fr`, `Language::Portuguese` `pt`).** Added the way German was: the two `Language` enums (core `settings::Language`, `ui::i18n::Language`), `Language::ALL` (so the picker in Settings and the onboarding cards list them), a `spanish()`, `french()` and `portuguese()` next to every `german()` (the core table in `ui/i18n_spanish.rs`, `i18n_french.rs`, `i18n_portuguese.rs`), the locale detection (`es`, `fr`, `pt` and their regions pick the language), the dates and numbers in `screens/format.rs` and `ui/i18n.rs::byte_text`, the console language numbers, the `--es`, `--fr` and `--pt` preview flags and `screens/language_coverage.rs`, which fails for any text without an arm in any language. Each language has a glossary in [i18n/](i18n/README.md) (address form, capitalisation, terms, plural rules); a new text follows it. Rules shared by the three: the player is addressed informally ("tú", "tu", "você") in the imperative, calm and short, no exclamation marks; **sentence case, never English Title Case**; names stay (AnyPlay, AnyPS5, LudusCtrl, Play Together, Toolkit, Party). Formats: decimal comma (`8,39 GB`; French `8,39 Go` with Ko/Mo/Go/To and "octets"); thousands `65.340` (Spanish, Portuguese) or `65 340` (French); dates `27 oct 2026, 14:32` (Spanish), `27 oct. 2026, 14:32` (French), `27 de out. de 2026, 14:32` (Portuguese) on a 24-hour clock; Hoy/Ayer, Aujourd'hui/Hier, Hoje/Ontem; percent `50 %` with a no-break space in Spanish and French, `50%` in Portuguese. French puts a no-break space (U+00A0) before `: ; ! ? %` and inside « ». Plurals: Spanish singular only for 1; French and Portuguese singular for 0 and 1. **Console language numbers** (what a game gets while its own setting follows the launcher, `Language::console_language_for`): Spanish 3 (Spain) or 20 (Latin America, when the system locale is `es-419` or a Latin American country), French 2, Portuguese 17 (pt-BR). The onboarding language step lays the six cards out three to a row, two rows. The longest texts were rendered with `--es`, `--fr` and `--pt` (the same scenes as `--de`) and shortened where they cut off. **Not reviewed by a native speaker**: Settings > Language and About carry a row *Improve a Translation* that opens the Texts section of CONTRIBUTING.md; a native speaker's pull request replaces a text and its glossary entry together.
+**Spanish, French and Brazilian Portuguese (0.3.4, `Language::Spanish` `es`, `Language::French` `fr`, `Language::Portuguese` `pt`).** Added the way German was: the two `Language` enums (core `settings::Language`, `ui::i18n::Language`), `Language::ALL` (so the lists in Settings and the onboarding show them), a `spanish()`, `french()` and `portuguese()` next to every `german()` (the core table in `ui/i18n_spanish.rs`, `i18n_french.rs`, `i18n_portuguese.rs`), the locale detection (`es`, `fr`, `pt` and their regions pick the language), the dates and numbers in `screens/format.rs` and `ui/i18n.rs::byte_text`, the console language numbers, the `--es`, `--fr` and `--pt` preview flags and `screens/language_coverage.rs`, which fails for any text without an arm in any language. Each language has a glossary in [i18n/](i18n/README.md) (address form, capitalisation, terms, plural rules); a new text follows it. Rules shared by the three: the player is addressed informally ("tú", "tu", "você") in the imperative, calm and short, no exclamation marks; **sentence case, never English Title Case**; names stay (AnyPlay, AnyPS5, LudusCtrl, Play Together, Toolkit, Party). Formats: decimal comma (`8,39 GB`; French `8,39 Go` with Ko/Mo/Go/To and "octets"); thousands `65.340` (Spanish, Portuguese) or `65 340` (French); dates `27 oct 2026, 14:32` (Spanish), `27 oct. 2026, 14:32` (French), `27 de out. de 2026, 14:32` (Portuguese) on a 24-hour clock; Hoy/Ayer, Aujourd'hui/Hier, Hoje/Ontem; percent `50 %` with a no-break space in Spanish and French, `50%` in Portuguese. French puts a no-break space (U+00A0) before `: ; ! ? %` and inside « ». Plurals: Spanish singular only for 1; French and Portuguese singular for 0 and 1. **Console language numbers** (what a game gets while its own setting follows the launcher, `Language::console_language_for`): Spanish 3 (Spain) or 20 (Latin America, when the system locale is `es-419` or a Latin American country), French 2, Portuguese 17 (pt-BR). The onboarding language step lists the six names in one column (5.15). The longest texts were rendered with `--es`, `--fr` and `--pt` (the same scenes as `--de`) and shortened where they cut off. **Not reviewed by a native speaker**: Settings > Language and About carry a row *Improve a Translation* that opens the Texts section of CONTRIBUTING.md; a native speaker's pull request replaces a text and its glossary entry together.
 
 **Warning is not danger.** `Row::destructive` is for a row that removes, ends or blocks something (Remove Installation, Close Game,
 Block): the danger ink. `Row::warning` is for an info row that says something may not work (the glibc note): the amber of the line
@@ -983,7 +983,7 @@ Tab; the pad reaches a call through the Invitations row). The strip of a call in
 Call are rows of the Online panel.
 
 **Screen readers follow the ring on more widgets.** `a11y::follow` is called by the switch (when it is a node of its own), by the
-cards of the theme step of the onboarding, by the rows of the profile page and by the lines of What's New. The language cards,
+cards of the theme step of the onboarding, by the rows of the profile page and by the lines of What's New. The language rows,
 rows, tiles, cells and buttons did already.
 
 **The glibc sentence has a next step.** It names the problem and what to do: "Games need glibc 2.38 or newer; this system has 2.35.
@@ -1040,7 +1040,6 @@ card, 0.32 under the pointer. Removed (unused): `hairline`, `selected_category`,
 | `TITLE` (`SCREEN_TITLE`) | 40 light | |
 | `HEADING` (`EMPTY_TITLE`, `SPLASH_TITLE`, `TROPHY_LIST_TITLE`) | 34 light | trophy list 36 |
 | `PANEL_TITLE` (`SIDE_PANEL_TITLE`, `LOG_TITLE`) | 28 light | 30 |
-| `LANGUAGE_NAME` | 28 medium | |
 | `ITEM_TITLE` (`TOP_BAR_TITLE`, `TILE_NAME`, `PERCENT`) | 22 semibold | top bar 24 |
 | `STATE_TITLE` (`LIBRARY_COUNT`) | 22 medium | |
 | `BUTTON`, `CATEGORY`, `CATEGORY_SELECTED`, `BANNER_NAME` | 19 | |
@@ -1052,7 +1051,7 @@ card, 0.32 under the pointer. Removed (unused): `hairline`, `selected_category`,
 | `MICRO` (`STATE_LABEL_SMALL`) | 12 medium | |
 
 **Radius: five values.** Keycap 7, row 12, card 16, large 20, capsule (and the toast, 28). `TROPHY_ROW` and `BOX` are 16 (the box was 14),
-`LANGUAGE_CARD`, `THEME_CARD` (was 18) and `BANNER` are 20. Removed: `CONSOLE_BUTTON`, `ICON_BUTTON`, `KEYCAP_HINT` (now 7, was 6).
+`THEME_CARD` (was 18) and `BANNER` are 20. Removed: `CONSOLE_BUTTON`, `ICON_BUTTON`, `KEYCAP_HINT` (now 7, was 6).
 
 **Spacing: `ui::theme::space`.** 4, 8, 12 (the control gap), 16, 24, 32, 48. Gaps of 6, 10, 14, 18, 20, 26 and 28 are off the grid and
 move to the nearest step when a page is touched.
@@ -1151,6 +1150,71 @@ were missing:
 - **A scroll the page asks for on its first frame is asked again**: a scroll area has no content height before its first pass, so the
   settings rail repeats "bring the selected tab into view" for three frames after every change (a deep link to Toolkit used to stand
   half cut off). Gallery scenes: `notifications-long`, `toolkit`, `friends-activity-error`, `post-listing`.
+
+### 3.16 Ember, Tide and Daylight (0.3.5)
+
+Three more looks, each with a backdrop of its own (not a recolour), stored as themes 4, 5 and 6 (Game Colors stays 3). The
+Look page of the first start shows the six as two rows of three; Settings, Appearance, Theme steps through the seven (the six, then
+Game Colors).
+
+| Theme | deep | middle | bright | default accent | idea |
+|---|---|---|---|---|---|
+| Ember (4) | (0.030, 0.011, 0.006) | (0.250, 0.085, 0.030) | (1.000, 0.560, 0.170) | Gold | charcoal and copper, one low hearth, nothing pink |
+| Tide (5) | (0.004, 0.020, 0.036) | (0.010, 0.190, 0.300) | (0.480, 0.930, 1.000) | Violet | deep petrol water, light from the surface |
+| Daylight (6) | (0.640, 0.750, 0.890) | (0.830, 0.890, 0.950) | (1.000, 0.950, 0.820) | Blue | soft daylight, the one **light** look |
+
+Names (`screens/theme_strings.rs`): Ember / Köz / Glut / Brasa / Braise / Brasa; Tide / Gelgit / Gezeiten / Marea / Marée / Maré;
+Daylight / Gün Işığı / Tageslicht / Luz del Día / Plein Jour / Luz do Dia (EN / TR / DE / ES / FR / PT).
+
+**Motion.** All three repeat exactly every `LOOP` = 10 s (`background.wgsl`): each moving part is a sine of whole turns per loop, a
+light that lives one loop (born at one edge, faded out at the other, so the wrap is never seen), or a noise field carried round a
+circle. So a presentation can loop one period without a seam, and any clock value is a good still (Reduced Motion freezes the
+clock where it is). Speeds are the calm ones of the older looks: embers climb 0.55 to 1 screen height in 10 s, the caustic net
+moves at about 0.6 rad/s, the clouds of Daylight orbit by 0.3 noise cells. Pausing (window not focused, minimised, a game
+running), Reduced Motion and the see-through Mac window are the same as for the other backdrops (3.1). The newer looks add one pixel
+of noise (±0.5/255) before the 8-bit output, so the smooth gradients do not band.
+- **Ember:** charcoal above, copper below; one hearth glow (bright tone, 0.55) that breathes by 10 % once per loop; warm smoke from
+  two octaves of noise; 52 embers in three depths (30 small and slow, 16 mid, 6 large and soft), amber when young, deep red when old.
+- **Tide:** light water at the surface to deep below; a net of light threads (the caustic function after Dave Hoskins' public domain
+  "Tileable Water Caustic", five steps with whole-turn phases) strong near the surface and gone in the deep; two faint slanted
+  shafts; 17 plankton lights that sink slowly.
+- **Daylight:** cool sky high, warm horizon; the sun's bloom upper right (breathes by 6 %); luminous cloud and its soft shade
+  (two octaves of noise on a circle); two slanted bands of window light that drift to and fro; seven out-of-focus lights. No tone
+  map and a light vignette (7 %).
+
+**The light look.** Dark ink on a pale backdrop needs its own token set, and it is one switch, not a second set of pages.
+`theme::light_t()` (0 on the dark looks, 1 on Daylight, eased with the theme change over `Motion::Fade` by the backdrop, and 0 in
+the Mac see-through window where the backdrop is dark) turns the building blocks over:
+- `white(a)` is the ink `LIGHT_INK` (0.055, 0.075, 0.130) at the same alpha: every text, surface, hairline and ring token follows, so
+  rows, cards, the focus fill and hover steps go from a white veil to a dark one with the same steps (0.07 / 0.10 / 0.16 / 0.20 / 0.26).
+- Text ink lifts a third of the way toward full strength (`tx`): note 0.55 becomes 0.70, detail 0.78 becomes 0.85. Four levels
+  and the order of strength stay.
+- `scrim(a)` replaces `black(a)` wherever a layer calms a backdrop behind ink (the shades of Home, the artwork scrims, the
+  onboarding scrim, flat glass): `LIGHT_PAPER` (0.965, 0.960, 0.945) there. Shadows and the dark plate behind a picture's own white
+  glyph stay black. Glass panels are the backdrop veiled in paper at 1.1 times the black they replace (at most 0.94) instead of
+  darkened; High Contrast gets a paper plate.
+- The primary button is ink with a paper label (`on_primary`), the switch knob is the ink, the toast card is paper, the window
+  background is paper.
+- Status ink (error, destructive, warning, update) and the accents take deeper forms on the light look (`Accent::on_light`, the
+  `status` pairs, the trophy grades) so they reach 3:1 or 4.5:1 on a pale panel; a state is still never carried by colour alone.
+- Where a page wrote `Color32::WHITE` for ink it now asks `color::text()`; white remains on pictures, accent fills and dark chips.
+
+**Contrast.** `ui::contrast` measures Daylight like the others, with its ink and its own worst grounds: the deepest tone for the
+panels, a black picture (the worst under dark ink) in place of the white one, and the glass-window grounds with white ink, as the
+window is dark there. Every pair of every theme passes (the weakest on Daylight: focus ring 3.4:1 on its panel, a hint key 4.6:1
+in the glass window).
+
+**First start.** The Look page is two rows of three cards (312 × 120 dp), the name in a dark chip on the card (white ink, 0.55
+black: it reads on Daylight too); the focus grid has two rows of cards, then the three switches, then Continue; the focus starts on
+the row of the look that is on. `TALLEST` of the onboarding pages grows from 500 to 540 dp for it.
+
+**Gallery.** `--gallery=ember|tide|daylight` (also `bg4`, `bg5`, `bg6`) are the plain backdrops; the scenes `home-ember`,
+`home-tide` and `home-daylight` show Home over the backdrop alone (no artwork); `tools/gallery-sweep.sh` also renders
+`home-noartwork`, `library`, `settings` and `onboarding-look` with `--theme=<look>`, and `home-noartwork` with `--reduced` (the
+Reduced Motion stills), for each of the three. New preview flags: `--time=<seconds>` (the backdrop's clock),
+`--reduced`, and `--sequence=<count>@<fps>` with `--screenshot=dir/f_%04d.png` (one picture per frame, the clock stepping by 1/fps;
+the presentation videos are made from them with ffmpeg).
+
 
 ## 4. Materials and blur on the GPU
 
@@ -1418,7 +1482,7 @@ talks to. Rules for rows:
 | Controllers (`controllers`) | game controller | `controllers` action (Controller Center), `vibration` choice (6.8), info `controllerHelp` (what to do when the pad does not react) |
 | Captures (`captures`) | camera | `screenshots` action `screenshotsFolder` (detail = path, `~` abbreviated; an info row naming the toolkit it needs while the toolkit is too old), `showScreenshots` command, info `screenshotHint` (F12). Windows, after a group gap: the Clips rows (9.8) |
 | Broadcast (`broadcast`) | play circle | `broadcastService` choice, `broadcastServer` text (custom service only), `broadcastKey` text (masked), `broadcastQuality` choice. Off Windows: info `broadcastNone` |
-| Language (`language`) | globe | `language` choice (Türkçe, English; shown in their own language). Caption **Fonts**: `fonts` action `fontsFolder` (detail = the picked path, else the built-in Noto set and whether Japanese, Chinese and Korean are included, not downloaded or downloading), `fontsReset` (only when a fonts folder is set), `fontsCjk` command (download the Japanese, Chinese and Korean fonts; only without a picked folder and while they are missing), info `fontsHint` |
+| Language (`language`) | globe | six `pick` rows, one per language, each showing only the language's own name (Deutsch, English, Español, Français, Português (Brasil), Türkçe; A to Z, no codes, no flags), the chosen one with a check at the trailing edge (`RowControl::Pick`, `Change::Run` on `language-de` ... `language-tr`; the same list as the onboarding's, 5.15). Caption **Fonts**: `fonts` action `fontsFolder` (detail = the picked path, else the built-in Noto set and whether Japanese, Chinese and Korean are included, not downloaded or downloading), `fontsReset` (only when a fonts folder is set), `fontsCjk` command (download the Japanese, Chinese and Korean fonts; only without a picked folder and while they are missing), info `fontsHint` |
 | Phone as Controller (`phone`) | phone | Windows and Linux addition, section 18. Sits after Captures. `phone` toggle `phoneRemote` with the phone server's rows, then, while it is on, `ludusctrl` toggle `phoneLudusctrl` (game controller glyph) with the LudusCtrl rows (18, "LudusCtrl"), which take in the browser client's (18, "LudusCtrl browser client": its QR code, link, Copy Link, status, notes, Other Addresses, New Link; it has no switch of its own and runs with LudusCtrl). |
 | Online (`online`) | wifi | `name` text field `profileName` (live edit), then, after a group gap, `discord` toggle (Show Game on Discord, 7.4) and its `discordJoin` toggle while the status is on. Account, privacy and voice rows go here |
 | Connected Apps (`apps`) | link | Windows `links` toggle (9.6), `addToSteam` and `addGamesToSteam` (9.9). On a system with none of these, the info row `appsNone` |
@@ -1748,7 +1812,7 @@ Redone for 0.3.3. The first start is a calm, centred setup over the live theme b
 
 | # | Page | Shown | Why it exists |
 |---|---|---|---|
-| 1 | **Language** (`Welcome`) | always | The first thing every later page is written in. Three cards (Türkçe, English, Deutsch) in `Language::ALL` order; the system language is preselected (`Preferences::first_run`) and the page re-renders in the card the focus is on |
+| 1 | **Language** (`Welcome`) | always | The first thing every later page is written in. A list of the six languages' own names, A to Z (`Language::ALL`); the system language is preselected (`Preferences::first_run`) and the page re-renders in the language the focus is on |
 | 2 | **Look** | always | The one choice that changes what the launcher looks like at once: the theme (three live cards) and the accessibility switches (Larger Text, High Contrast, Reduce Motion), so a player who needs them has them before reading anything else. Nothing else is asked here; Accent, Backdrop and Game Colors stay in Settings |
 | 3 | **Controller** | only once a pad was seen (`pad_hub`), and then until the end (a pad that goes to sleep does not remove a dot); never in Gaming Mode (Steam Deck, gamescope), where Steam owns the buttons and the Home button | A pad is the console way to use the launcher, and its first question cannot wait: which face button confirms (Cross or Circle; the same toggle as Controllers > Confirm with), whether the Home button opens the launcher (the same switch as General), and a button check that lights the four face buttons while they are pressed. Without a pad nothing here applies, so the page is skipped; Done tells where Controllers is (and leaves that row out in Gaming Mode) |
 | 4 | **Games** | always | The launcher is empty without a folder. The page shows what was found (scanning, none, N games, the first eight as tiles) and "Prepare New Games Automatically" (the same switch as General), which only exists once there is a folder. Not Now goes on without one |
@@ -1767,7 +1831,7 @@ Not pages, with the reason: the **toolkit** (it is fetched in the background fro
 
 **What each page draws**
 
-- *Language*: overline "Language", three choice cards 312 x 176 (`size::LANGUAGE_CARD`, `radius::LARGE`, `surface_row`, hairline; padding 24; 12 apart; `chrome::language_card` on `chrome::choice_card`, the card the Controller page's confirm choice uses too): the tag (`TR`, `EN`, `DE`, overline) top left, the language's own name (`ty::LANGUAGE_NAME`) bottom left. The chosen card is brighter (`surface_hover`, `hairline_hover`), its name goes from `text_label` to `text`, and a check-circle (20, fill) stands top right, so the choice never rests on tone alone. `choice_t` carries the chosen state, the ring (`paint_focus_stroke`, keys and pad only) the focus.
+- *Language*: one centred, single-column list, the languages' own names and nothing else (Deutsch, English, Español, Français, Português (Brasil), Türkçe: alphabetical by their own names, `Language::ALL`; no codes like `EN`, no flags, no subtitles; there is no caption either, the title and the list say it). One glass card 420 wide (`radius::CARD`, `GLASS_BLACK`), six rows of 56 dp with no gap, each a whole-row target (`language_row`, a radio button). A hairline (`hairline_glass`, inset 24) divides two rows and is left out beside the chosen one. The chosen row is lit: an inner shape inset 6 (concentric, `radius::CARD` less 6) in `surface_hover`, the name goes from `text_label` to `text` (22 regular, `ty::THEME_CARD_NAME`), and a check-circle (20, fill) stands at the trailing edge, so the choice never rests on tone alone. `choice_t` carries the chosen state; the ring (`paint_focus_stroke`, keys and pad only) the focus. The focus is a column: Up and Down move through the languages (each applies while the focus is on it) and on to Continue, Select goes on to the next page, a click only selects. The list is 336 dp tall and fits `TALLEST` at 1280 x 720. Settings > Language shows the same six names as a list of `pick` rows (`RowControl::Pick`: the same check, the same names).
 - *Look*: three theme cards 312 x 176, 12 apart (the chosen one live, the others a still frame at 0.72; the ring is `paint_focus_stroke` only) with the name (22; `ITEM_TITLE` for the chosen one), a 12 dp dot in the theme's accent and a check-circle at the card's right edge. Under them, `space::XXL` lower, the overline "Accessibility" and three switch chips in the same columns (312 x 56, `radius::CARD`, label `ROW_TITLE`, `Switch` right). Larger Text and High Contrast apply to the page at once (they are the live preferences), Reduce Motion stops the slide and the live card.
 - *Controller*: the subtitle names the pad ("DualSense Wireless Controller is connected. Press any button and it lights up below."; "The controller is not connected right now..." when it went away); four 44 dp circles in the pad's own shapes (Square, Triangle, Circle, Cross; letters X, Y, B, A on an Xbox pad; Nintendo names its own) that fill with the ink while the button is down (`pad_hub::live`, `Motion::Press`); two choice cards 312 x 104, 12 apart, "Confirm with Cross / Circle goes back" and "Confirm with Circle / Cross goes back" with the face glyph in a ring; then, `space::XL` lower (it is another question), the Home button switch chip (label and detail as in General) as wide as the two cards (636). The page only opens `pad_hub::set_watched` while it is on screen.
 - *Games*: a glass status card 636 wide (24 glyph in ink: dashed folder with none or empty, magnifier while scanning, check-circle with games; line "No folder chosen yet", "Looking for games", "No games in this folder" or "N games found"; under it "You can choose one later in Settings." or the folder path, middle-truncated), the first seven games as 80 tiles centred (they fit the card's width), and the "Prepare New Games Automatically" switch chip with its detail (636 wide) once there is a folder.
@@ -1782,9 +1846,9 @@ Not pages, with the reason: the **toolkit** (it is fetched in the background fro
 
 **Sign-in.** Sign In and Create Account on the online page only record the wish and go on; Start on the last page opens the online area (`Overlay::Friends`) and the browser sign-in starts as soon as the net service has said hello (`online::poll_onboarding_sign_in`; a missing service drops it). Not Now leaves nothing pending.
 
-The sign-in page that waits for the browser (`Page::Browser`) shows a quiet spinner (2 dp arc, radius 7; a still arc under reduced motion) after the line "Continue in your browser".
+The sign-in page that waits for the browser (`Page::Browser`) shows a quiet spinner (2 dp arc, radius 7; a still arc that pulses under reduced motion) after the line "Continue in your browser".
 
-**Gallery scenes** (`--gallery=<scene>`, the states of 5.15): `onboarding-language`, `onboarding-look`, `onboarding-look-access`, `onboarding-controller`, `onboarding-controller-xbox`, `onboarding-controller-lost`, `onboarding-games`, `onboarding-games-none`, `onboarding-games-empty`, `onboarding-games-scanning`, `onboarding-online`, `onboarding-done`, `onboarding-done-signin`, `onboarding-done-bare`; with `--tr`, `--de` and `--pad` like every scene.
+**Gallery scenes** (`--gallery=<scene>`, the states of 5.15): `onboarding-language`, `onboarding-look`, `onboarding-look-access`, `onboarding-controller`, `onboarding-controller-xbox`, `onboarding-controller-lost`, `onboarding-games`, `onboarding-games-none`, `onboarding-games-empty`, `onboarding-games-scanning`, `onboarding-online`, `onboarding-done`, `onboarding-done-signin`, `onboarding-done-bare`; with `--tr`, `--de`, `--es`, `--fr`, `--pt` and `--pad` like every scene (`onboarding-language` in all six languages; `--script=down` shows the ring from a key). Settings > Language is `settings-language`.
 
 ### 5.16 Icon mapping (SF Symbols -> Phosphor, MIT)
 
@@ -1954,7 +2018,7 @@ Original: `Input.swift`, `AppModel.handle`, `panelCommand`, `onboardingCommand`.
 
 ### 5.21 The state page (0.2.8, `ui::state_page`)
 
-The page that has no cards: loading, offline, failed, private, hidden, empty. A 56 dp disc (`surface_row`) with a 24 dp glyph (a 2.5 dp spinner arc while loading, a still glyph under reduced motion), 16 under it the headline (`ty::STATE_TITLE`, one line, 520 wide), 8 under that the note (`ty::NOTE`, centred, 420 wide, leading 1.45, `text_detail`), and, when the state has a way out, 24 under the note one primary button (Try Again after a failure, Add Friend on a private profile). The block stands centred on the page (0.3.1: horizontally on the window, whatever column or rail the caller lays its list in; vertically in the caller's room, 24 dp above the middle), the button centred under the note by its own width. Notifications, the trophy list of a game without trophies, Captures (empty, missing, failed, filtered, loading), Friends, Messages and Party all stand this way. Profile, Compare and the feed use it, so the same state looks the same everywhere; the screen reader hears headline and note as one label. Profile and compare put the button in the focus (it is the only stop).
+The page that has no cards: loading, offline, failed, private, hidden, empty. A 56 dp disc (`surface_row`) with a 24 dp glyph (a 2.5 dp spinner arc while loading, pulsing in place under reduced motion), 16 under it the headline (`ty::STATE_TITLE`, one line, 520 wide), 8 under that the note (`ty::NOTE`, centred, 420 wide, leading 1.45, `text_detail`), and, when the state has a way out, 24 under the note one primary button (Try Again after a failure, Add Friend on a private profile). The block stands centred on the page (0.3.1: horizontally on the window, whatever column or rail the caller lays its list in; vertically in the caller's room, 24 dp above the middle), the button centred under the note by its own width. Notifications, the trophy list of a game without trophies, Captures (empty, missing, failed, filtered, loading), Friends, Messages and Party all stand this way. Profile, Compare and the feed use it, so the same state looks the same everywhere; the screen reader hears headline and note as one label. Profile and compare put the button in the focus (it is the only stop).
 
 Profile 0.2.8: a private profile of a stranger offers Add Friend while the player is online (`ProfileView::state_action`). A new player's own profile shows one line under the header ("Play a game and your hours, trophies and activity show up here.") in place of three empty sections. The figures: the level shows its points and a 120 x 6 track (`paint_progress`), the trophies their grade counts (`paint_grade_counts`, a cup in the grade's colour and the count in ink). 
 
@@ -3202,6 +3266,8 @@ Hints that explain a text field or a toggle stand under it with the normal 8 dp 
 
 **Public Profile** (0.3.3, cloud#82, control commands `public_profile` and `set_public_profile`). The page of a player at `/u/<handle>` on the account web is off until the player turns it on; this is the switch for it, a toggle row on the Account page right under Who Sees Your Trophies, in the same group of privacy choices: icon `user-circle`, title "Public Profile", detail "Anyone can open your page on the web", and a note under it, "Off until you turn it on. Even then, people who are not your friends see only the parts you share with Everyone." (the switch opens the page, the audience choices still decide which parts a stranger sees). The row describes the ON state like Appear Offline. `Online::public_profile` is `None` until the cloud has said: the row is not drawn on a guess, opening the Account page asks (`OnlineAction::PublicProfileRefresh`, `Online::request_public_profile`), and a press before the answer only asks. A press shows the choice at once and sends `set_public_profile`; the answer settles it, a refusal puts the old value back and toasts. The setting is read again after every sign-in and cleared at sign-out. Gallery scenes: `friends-settings` (off, below the trophies choice), `friends-settings-public` (on, the row focused).
 
+**Played With Recently** (network ADR 0038, control commands `played_with`, `clear_played_with` and `set_remember_played_with`). A page of the Friends section (`Page::PlayedWith`, reached from a row under Add a Friend on Home: icon `clock-counter-clockwise`, title "Played With Recently", detail "N people"; the row is drawn only while the cloud answers, and not for a player with no friends and an empty list, who sees the page that explains how to add one). Title "Played With Recently", subtitle "Only you see this list". One row per person, newest first: avatar (a monogram; a stranger has no picture here), handle, and a detail line of up to three parts joined by " · ": "Friend" or "Request sent", "Played <title>" (the title is shown as the cloud sent it, there is no title logic) and when (`ago_text`: "40 min ago", "Yesterday", "3 d ago", a date after a week). At the row's end the buttons that come up with the focus, like a friend's quick actions: **Add Friend** (first, so the primary action; only while the person is not a friend and no request is out), **View Profile** (the profile screen), **Block** (the ordinary confirmation, asked on this page; after it the list shows without them and is read again). Add Friend sends the request by handle; the row shows "Request sent" at once and "Friend" when the answer is `friends`. Below the people, apart: the toggle "Remember People I Play With" (detail "Adds people after a party or a game together", describes the ON state), a note "New people are not added. Everyone below stays until you clear the list." only while it is off, the note "Only you see this list, and the people on it are not told. It keeps up to 50 people for 30 days.", and **Clear the List** in the danger ink, which asks first (centred question card "Clear the list?", Cancel holds the focus). States, in the shape of the feed's state pages with the switch and note kept below where there is a list: loading, failed ("The list did not load", Try Again), and empty ("No one here yet" with what fills it; with recording off the switch stays to turn it on). The switch and Clear show their result at once; a refusal puts the old value or the people back (`Online::set_remember_played_with`, `clear_played_with`). The list is read when the page opens and, throttled to 30 s, when Home opens (`Online::request_played_with`); signing out forgets it and the page falls back to Start. Blocked people are left out by the cloud. Gallery scenes: `friends-played-with`, `friends-played-with-off`, `friends-played-with-empty`, `friends-played-with-off-empty`, `friends-played-with-loading`, `friends-played-with-failed`, `friends-played-with-clear` and `friends-played-with-signed-out` (asked for while signed out: the sign-in page shows).
+
 **Appear Offline** (network ADR 0033, control command `set_appear_offline`, `account.appear_offline` of the `state` event). `Online::set_appear_offline` shows the choice at once, a refusal takes it back with a toast, and the `state` event settles it (also when another device changes it). Where it shows: the switch "Appear Offline" (detail "Friends see you as offline") on the Account page of the online panel; the button on the own profile; "Appearing offline" in the panel's subtitle, the profile's status line and, in quiet ink (white 72 %), after the name in the top bar's profile pill, whose accent dot becomes a ring while it is on (its accessible name says "Appearing offline" instead of "Online"). Offline from the cloud the player is simply offline: nothing is shown.
 
 **Secret trophies.** The launcher tells the cloud which hidden trophies of a game the player has not earned (`secret_trophies`, once per title and sign-in, whenever the trophy file is read). An earned trophy is never secret: the hidden ones the player has earned are revealed (`reveal_trophies`) as soon as the trophy file shows them earned, as consoles do. The player reveals an unearned one by showing it on the trophy list or the compare screen.
@@ -3288,6 +3354,15 @@ Gallery scenes: `friends-signin`, `friends-browser`, `friends`, `friends-friend`
   - *Not here.* The picture, its size, the codec and the numbers of the stream (frame rate, bit rate) stay with the worker's window. Keyboard and pad reach the buttons like every row; the info rows are read as text.
 
 Gallery scenes: `friends-screen-ready`, `friends-screen-hosting`, `friends-screen-offer`, `friends-screen-cannot`, `friends-screen-watching`, `friends-screen-stalled`, `friends-screen-home`.
+
+**Share play** (network `spec/share-play.md`, "Control protocol additions"). The invited, one-to-one stream with a pad coming back: the host's game goes to one member of the party, who watches, plays with the host's pad, or plays as the second player. Rows like the neighbours', no new chrome, in one group on the party page under the caption "Share Play", after the Screen group; Home gets one row "Share Play" (icon, detail "Lumen sees your game", "Lumen shares Astro Bot" or the invitation's sentence) that leads to the party page. The group shows one thing at a time and nothing while there is nothing to say (`can_start` is false until a game runs through AnyPlay in a party, the worker can encode and the cloud offers share play).
+  - *Starting.* One command row per other party member, "Share with Lumen", detail "They watch first. You decide when they play." A share always starts with watching: the guest gets a pad only when the host moves the Mode row.
+  - *The host.* While the invitation waits: "Waiting for Lumen" (value "Invitation sent") and Cancel Invitation. Then "Lumen sees your game" (value Connecting… / Live / The picture has stopped, detail the game and the path), the Mode row (Watch, Take over, Together; one choice row, the note under it says what the mode means, and that Select and Start held for a second take the pad back), and Stop Sharing. A guest's request shows as a sentence ("Lumen would like to play with your pad", "Choose a mode below to agree.") and changes nothing.
+  - *The guest.* An invitation is a sentence ("Lumen invites you to play Astro Bot with their pad") with Accept (the first row, the primary action) and Decline. In a share: "Lumen shares Astro Bot" (phase, path; the picture opens in its own window), "You" with what the mode lets them do, Ask to Take Over and Ask to Play Together for the modes they do not have ("The host decides."), and Leave.
+  - *Toasts.* An invitation, a request, a change of what the guest may do, and the end, each one plain sentence; a refused command toasts one plain sentence (`no_game`, `not_in_party`, `busy`, `no_encoder`, `no_decoder`, `not_found`, `not_allowed`). Strings are in English, Turkish and German; Spanish, French and Portuguese follow with the languages pull request.
+  - *Not here.* The picture, the codec and the numbers stay with the worker's window. Stream and input delay are not reported by the net service yet.
+
+Gallery scenes: `friends-share-ready`, `friends-share-waiting`, `friends-share-hosting`, `friends-share-invited`, `friends-share-guest`, `friends-share-home`.
 Gallery scenes: `friends-muted` (Home with a mute), `friends-restriction` (the mute's page), `friends-paused` (a conversation while muted), `friends-banned` (the Start page after a ban), `friends-signin`, `friends-browser`, `friends`, `friends-friend`, `friends-settings`, `friends-picker`, `friends-party`, `friends-party-picker`, `friends-messages`, `friends-conversation`, `friends-message`, `friends-request`, and `home-messages` (the profile button with unread messages).
 Gallery scenes: `friends-activity` (a card focused), `friends-activity-empty`, `friends-activity-loading` and `friends-activity-error`; `friends-muted` (Home with a mute), `friends-restriction` (the mute's page), `friends-paused` (a conversation while muted), `friends-banned` (the Start page after a ban), `friends-signin`, `friends-browser`, `friends`, `friends-friend`, `friends-settings`, `friends-picker`, `friends-party`, `friends-party-picker`, `friends-messages`, `friends-conversation`, `friends-message`, `friends-request`, and `home-messages` (the profile button with unread messages).
 Gallery scenes of the Friends screen itself (1600 x 900): `friends-add`, `friends-add-link` (a name from a friend link, the focus on Send Request), `friends-add-sent`, `friends-add-missing`, `friends` (the default page, the focus on the first request), `friends-busy` (five requests, friends playing), `friends-empty` (no friends yet), `friends-focus` (a friend's row with its quick actions up), `friends-rail` (the focus on the rail), `friends-offline` (the note and Try Again), `friends-connecting`, `friends-party-none` (the Party section without a party), `friends-signin` and `friends-browser` (no rail), `friends-banned`; every page of the table has a `friends-` scene of its own.

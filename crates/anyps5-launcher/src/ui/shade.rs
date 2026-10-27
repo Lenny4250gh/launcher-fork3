@@ -10,7 +10,7 @@
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
 use egui::{Painter, Pos2, Rect, Shape, Vec2, pos2, vec2};
 
-use crate::ui::theme::black;
+use crate::ui::theme::scrim;
 
 /// Darkness of the band under the top bar at its top edge; it ends 150 dp lower.
 pub const SHADE_TOP: f32 = 0.45;
@@ -106,7 +106,7 @@ pub fn paint(painter: &Painter, screen: Rect, with_hero: bool) {
             mesh.vertices.push(Vertex {
                 pos: pos2(x, screen.min.y + y),
                 uv: WHITE_UV,
-                color: black(a),
+                color: scrim(a),
             });
         }
     }
@@ -150,7 +150,7 @@ fn paint_patch(painter: &Painter, screen: Rect, patch: Patch) {
             mesh.vertices.push(Vertex {
                 pos: pos2(x, y),
                 uv: WHITE_UV,
-                color: black(patch.alpha(pos2(x, y))),
+                color: scrim(patch.alpha(pos2(x, y))),
             });
         }
     }

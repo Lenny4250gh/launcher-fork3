@@ -408,6 +408,7 @@ impl Broadcaster {
         wake: impl Fn() + Send + 'static,
     ) -> std::io::Result<Broadcaster> {
         let mut command = Command::new(worker);
+        crate::clips::apply_hwenc_default(&mut command);
         command
             .args(worker_args(quality, window, pids, title))
             .stdin(Stdio::piped())

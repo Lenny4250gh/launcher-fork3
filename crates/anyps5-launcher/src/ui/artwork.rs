@@ -11,7 +11,7 @@ use egui::epaint::{Mesh, Vertex, WHITE_UV};
 use egui::{Color32, Painter, Rect, Shape, TextureId, pos2};
 
 use crate::ui::anim::{self, lerp};
-use crate::ui::theme::black;
+use crate::ui::theme::scrim;
 
 /// Scale at the start and end of the drift.
 pub const DRIFT_SCALE: (f32, f32) = (1.01, 1.07);
@@ -128,7 +128,7 @@ pub fn scrim_alpha(u: f32, v: f32) -> f32 {
 fn gradient(rect: Rect, stops: &[(f32, f32)], along_x: bool, alpha: f32) -> Mesh {
     let mut mesh = Mesh::default();
     for &(t, a) in stops {
-        let colour = black(a * alpha);
+        let colour = scrim(a * alpha);
         let (p0, p1) = if along_x {
             let x = lerp(rect.min.x, rect.max.x, t);
             (pos2(x, rect.min.y), pos2(x, rect.max.y))

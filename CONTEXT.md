@@ -297,6 +297,9 @@ One entry of the Friends screen's rail with a first page of its own. Every page 
 **Quick actions**:
 The buttons at the end of a friend's row (Join, Message, Invite to Party, View Profile, Options). They rest hidden and come up with the focus or the pointer; select presses the chosen one and a click on the row's body opens Options, the friend's own page.
 
+**Played With Recently**:
+The page of the Friends section that lists the people the player shared a party or a game session with for at least 2 minutes in the last 30 days (at most 50). The cloud keeps the list and only the player sees it; the launcher shows it, reached by a row under Add a Friend on the Friends page. Each person is a row with Add Friend (until they are a friend or a request is out), View Profile and Block at its end, like quick actions; the page ends with the switch that stops recording new people and Clear the List. Defined in the network's glossary as _Played with recently_.
+
 **Play Together**:
 Starting a game that finds others on a local network so that friends can join it. The player presses Play Together on the game's page or in the party; a friend presses Join on an invitation, a friend's page or the prompt card. Only games in the LAN title table have the button. Defined in the network's glossary; the launcher only adds what it shows.
 _Avoid_: Multiplayer (alone), hosting a server, LAN party

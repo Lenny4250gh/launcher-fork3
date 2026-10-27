@@ -49,6 +49,24 @@ use crate::ui::i18n::{Arg, Key, Language};
 use crate::ui::icons::Icon;
 use crate::ui::input::{self, InputEvent};
 use crate::ui::sound::Cue;
+
+/// The rows of the language list, in `Language::ALL` order (the languages' own names, A to Z).
+const LANGUAGE_ROWS: [(&str, Language); 6] = [
+    ("language-de", Language::German),
+    ("language-en", Language::English),
+    ("language-es", Language::Spanish),
+    ("language-fr", Language::French),
+    ("language-pt", Language::Portuguese),
+    ("language-tr", Language::Turkish),
+];
+
+/// The language a row of the list stands for.
+fn language_of_row(row: &str) -> Option<Language> {
+    LANGUAGE_ROWS
+        .iter()
+        .find(|(id, _)| *id == row)
+        .map(|(_, l)| *l)
+}
 use crate::ui::text;
 use crate::ui::theme::{Accent, Theme, color, pad, radius, size, space, ty};
 
@@ -689,21 +707,12 @@ pub fn build_categories(
     library.extend(location_rows(prefs, &env.location, language));
 
     // Language: the language, then the fonts games use. The fonts are text, and text is language.
-    let mut languages = vec![
-        Row::choice(
-            "language",
-            t(Key::Language),
-            Language::ALL
-                .iter()
-                .map(|l| l.display_name().to_owned())
-                .collect(),
-            Language::ALL
-                .iter()
-                .position(|l| *l == convert::language(prefs.language))
-                .unwrap_or(0),
-        )
-        .icon(Icon::GLOBE),
-    ];
+    // A clean list of the languages' own names, the chosen one with a check (DESIGN.md 5.15).
+    let current = convert::language(prefs.language);
+    let mut languages: Vec<Row> = LANGUAGE_ROWS
+        .iter()
+        .map(|(id, l)| Row::pick(id, l.display_name(), *l == current))
+        .collect();
     {
         use crate::screens::about_strings::AboutText as A;
         languages.push(
@@ -1669,12 +1678,9 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             row: "motion",
             index,
         } => prefs.reduced_motion = *index == 1,
-        Change::Choice {
-            row: "language",
-            index,
-        } => {
-            if let Some(language) = Language::ALL.get(*index) {
-                prefs.language = convert::language_to_core(*language);
+        Change::Run { row } if language_of_row(row).is_some() => {
+            if let Some(language) = language_of_row(row) {
+                prefs.language = convert::language_to_core(language);
             }
         }
         Change::Toggle { row: "sounds", on } => prefs.sounds = *on,
@@ -3067,13 +3073,7 @@ mod tests {
             }
         ));
         assert!(prefs.reduced_motion);
-        assert!(apply_value(
-            &mut prefs,
-            &Change::Choice {
-                row: "language",
-                index: 0
-            }
-        ));
+        assert!(apply_value(&mut prefs, &Change::Run { row: "language-tr" }));
         assert_eq!(prefs.language, anyps5_core::settings::Language::Turkish);
         assert!(apply_value(
             &mut prefs,

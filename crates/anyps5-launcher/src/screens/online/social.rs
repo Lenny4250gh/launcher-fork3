@@ -257,6 +257,7 @@ impl OnlinePanel {
                     );
                 }
                 super::screen::rows(data, rows);
+                super::share_play::rows(data, rows);
                 rows.push(Row::caption("membersCaption", t(S::PartyMembers)).group_start());
                 let voice = &online.voice;
                 let voice_on = voice.enabled();

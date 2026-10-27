@@ -251,11 +251,7 @@ pub fn page_title(
         painter.galley(line.min, note, color::text_detail());
         if waiting {
             let ctx = ui.ctx().clone();
-            let time = if ctx.reduced_motion() {
-                0.0
-            } else {
-                ctx.input(|i| i.time)
-            };
+            let time = ctx.input(|i| i.time);
             crate::ui::components::paint_spinner_arc(
                 &painter,
                 pos2(line.max.x + space::L, line.center().y),
@@ -264,9 +260,7 @@ pub fn page_title(
                 2.0,
                 color::text_detail(),
             );
-            if !ctx.reduced_motion() {
-                ctx.request_repaint();
-            }
+            ctx.request_repaint();
         }
         height += note_h;
     }
