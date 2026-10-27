@@ -1334,7 +1334,7 @@ Row sketch (S-home):
 **Hero info** (horizontal padding 72, stack spacing 22, transitions animation 4):
 
 1. Title: game name, 58 light white, max 2 lines, shrinks to 60 %.
-2. Action row (gap 16): primary button (`Play`/`Unlock`/`Retry`/`Cancel`/...: prominent = white 0.20 fill, min width 210, symbol
+2. Action row (gap 16): primary button (`Play`/`Unlock`/`Retry`/`Pause`/`Resume`/...: prominent = white 0.20 fill, min width 210, symbol
    and text as in 5.1); the **trophy chip** if the game has a trophy list (`"unlocked/total"` with the trophy glyph, as high as the Play button (54 dp, 0.3.1: one line with Play and the round buttons), 14 medium tabular; it opens the trophies, and it is the only place the count is shown, the
    game settings carry no trophies row); the "..." button (glyph: three dots, icon only), which opens game settings. To the right, depending on state:
    - installing: a 340-wide block (leading pad 10): row with step title (15 medium, white 0.85) and `"NN%"` (15 semibold, tabular)
@@ -1422,6 +1422,8 @@ the log view. (Screenshot S-unlocking shows step "Converting for Mac", 39 %.)
 
 - Tile: a band at its foot with "Preparing… 40%" (12 medium) and the progress line; paused "Paused · 40%". The selected game's state line says Preparing or Paused; the hero shows the bar, the percentage and the time left, or one sentence while the work has not started.
 - Play or Unlock on a game being prepared moves it to the front (its relinker leaves the idle class, the others stand still) and from then on it shows as an ordinary unlock. Cancel on it stops the preparation for good.
+- Pause / Resume / Cancel: while an unlock runs, the primary button is Pause (it freezes the work where it stands; Resume goes on from there). A small secondary Cancel follows it while the unlock runs, waits or is paused by hand, and drops it for good. Cancel or Pause leave the button greyed out with "Cancelling…" / "Pausing…" until the work has stopped. A pause made by closing the launcher is kept; the game shows Resume, which starts again from the beginning, with a note saying the progress was not kept.
+- Closing the window while games are unlocked or removed asks first (`Overlay::ConfirmQuit`, a side panel like the question before a running game is closed): pause and go on later, cancel, or stay. For a removal it only says that it can be neither paused nor cancelled. Gallery scenes: `home-paused`, `home-cancelling`, `home-quit`, `home-quit-paused`, `home-quit-removing`.
 - Starting a game freezes a preparation at once (the relinker is suspended, not killed); it goes on after the game ends.
 - Failure sentences say what to do: toolkit missing, drive full, file held by another program, unusable dump, converter stopped; the technical message goes to the log.
 
