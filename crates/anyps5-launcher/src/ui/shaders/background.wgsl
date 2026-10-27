@@ -219,28 +219,35 @@ fn orbit(ph: f32, radius: f32, offset: f32) -> vec2<f32> {
 }
 
 // Soft lights that live one loop each: born at one edge, drift across, fade out at the other, so
-// the wrap is never seen. `rise` is +1 upwards, -1 downwards; `spread` is the share of the width
-// they are born over; `sway` is the sideways swing in uv units.
-fn drift_layer(p: vec2<f32>, aspect: f32, ph: f32, count: i32, seed: u32, size: f32, travel: f32,
-               sway: f32, rise: f32, spread: f32, young: vec3<f32>, old: vec3<f32>) -> vec3<f32> {
+// the wrap is never seen. They are sorted into `cols` columns over `spread` of the width, `slots` to a
+// column, so a pixel only asks the three columns it touches (a light's glow is narrower than one
+// column). `rise` is +1 upwards, -1 downwards; `sway` is the sideways swing in uv units.
+fn drift_layer(p: vec2<f32>, aspect: f32, ph: f32, cols: i32, slots: i32, seed: u32, size: f32,
+               travel: f32, sway: f32, rise: f32, spread: f32, young: vec3<f32>, old: vec3<f32>) -> vec3<f32> {
     var light = vec3<f32>(0.0);
-    for (var i = 0; i < count; i++) {
-        let id = vec2<f32>(f32(i), 3.0);
-        let r0 = hash(id, seed);
-        let r1 = hash(id, seed + 1u);
-        let r2 = hash(id, seed + 2u);
-        let r3 = hash(id, seed + 3u);
-        let life = fract(ph / TAU + r1);
-        let x = (0.5 + (r0 - 0.5) * spread) * aspect + (r0 - 0.5) * 0.16 * life
-              + sway * sin(ph * (1.0 + floor(r2 * 2.0)) + r3 * TAU);
-        let y = select(-0.04 + life * travel + r3 * 0.08, 1.04 - life * travel - r3 * 0.08, rise > 0.0);
-        let appear = sstep(0.0, 0.14, life) * sstep(1.0, 0.5, life);
-        let flicker = 0.74 + 0.26 * sin(ph * (2.0 + floor(r1 * 3.0)) + r2 * TAU);
-        let radius = size * (0.55 + 0.9 * r2);
-        let d = p - vec2<f32>(x, y);
-        let d2 = dot(d, d);
-        let glow = exp(-d2 / (radius * radius)) + 0.16 * exp(-d2 / (radius * radius * 20.0));
-        light += mix(young, old, sstep(0.0, 1.0, life)) * glow * appear * flicker * (0.55 + 0.45 * r3);
+    let span = spread * aspect;
+    let left = (0.5 - 0.5 * spread) * aspect;
+    let here = i32(floor((p.x - left) / span * f32(cols)));
+    for (var c = here - 1; c <= here + 1; c++) {
+        if (c < 0 || c >= cols) { continue; }
+        for (var k = 0; k < slots; k++) {
+            let id = vec2<f32>(f32(c), f32(k));
+            let r0 = hash(id, seed);
+            let r1 = hash(id, seed + 1u);
+            let r2 = hash(id, seed + 2u);
+            let r3 = hash(id, seed + 3u);
+            let life = fract(ph / TAU + r1);
+            let x = left + (f32(c) + 0.15 + 0.7 * r0) / f32(cols) * span
+                  + sway * sin(ph * (1.0 + floor(r2 * 2.0)) + r3 * TAU);
+            let y = select(-0.04 + life * travel + r3 * 0.08, 1.04 - life * travel - r3 * 0.08, rise > 0.0);
+            let appear = sstep(0.0, 0.14, life) * sstep(1.0, 0.5, life);
+            let flicker = 0.74 + 0.26 * sin(ph * (2.0 + floor(r1 * 3.0)) + r2 * TAU);
+            let radius = size * (0.55 + 0.9 * r2);
+            let d = p - vec2<f32>(x, y);
+            let d2 = dot(d, d);
+            let glow = exp(-d2 / (radius * radius)) + 0.16 * exp(-d2 / (radius * radius * 20.0));
+            light += mix(young, old, sstep(0.0, 1.0, life)) * glow * appear * flicker * (0.55 + 0.45 * r3);
+        }
     }
     return light;
 }
@@ -261,9 +268,9 @@ fn ember(uv: vec2<f32>, aspect: f32, time: f32) -> vec3<f32> {
     // embers in three depths: many small slow ones far away, a few large soft ones near
     let amber = vec3<f32>(1.0, 0.80, 0.48);
     let deep_red = u.bright.rgb * vec3<f32>(0.95, 0.42, 0.22);
-    color += drift_layer(p, aspect, ph, 30, 100u, 0.0050, 0.60, 0.010, 1.0, 1.0, amber, deep_red) * 0.80;
-    color += drift_layer(p, aspect, ph, 16, 200u, 0.0085, 0.85, 0.022, 1.0, 0.95, amber, deep_red) * 1.25;
-    color += drift_layer(p, aspect, ph, 6, 300u, 0.0190, 1.00, 0.040, 1.0, 0.80, amber, deep_red) * 0.75;
+    color += drift_layer(p, aspect, ph, 20, 2, 100u, 0.0050, 0.60, 0.010, 1.0, 1.0, amber, deep_red) * 0.85;
+    color += drift_layer(p, aspect, ph, 10, 2, 200u, 0.0085, 0.85, 0.022, 1.0, 0.95, amber, deep_red) * 1.25;
+    color += drift_layer(p, aspect, ph, 5, 1, 300u, 0.0190, 1.00, 0.040, 1.0, 0.80, amber, deep_red) * 0.75;
     return color;
 }
 
@@ -307,8 +314,8 @@ fn tide(uv: vec2<f32>, aspect: f32, time: f32) -> vec3<f32> {
     color += u.bright.rgb * net * (0.07 + 0.80 * exp(-uv.y * 2.3));
     // plankton: tiny cold lights that sink very slowly
     let pale = u.bright.rgb * vec3<f32>(0.75, 1.0, 1.0);
-    color += drift_layer(p, aspect, ph, 12, 400u, 0.0035, 0.45, 0.012, -1.0, 1.1, pale, pale * 0.6) * 0.40;
-    color += drift_layer(p, aspect, ph, 5, 500u, 0.0120, 0.30, 0.020, -1.0, 1.1, pale, pale * 0.6) * 0.16;
+    color += drift_layer(p, aspect, ph, 14, 1, 400u, 0.0035, 0.45, 0.012, -1.0, 1.0, pale, pale * 0.6) * 0.45;
+    color += drift_layer(p, aspect, ph, 6, 1, 500u, 0.0120, 0.30, 0.020, -1.0, 1.0, pale, pale * 0.6) * 0.18;
     return color;
 }
 
@@ -333,7 +340,7 @@ fn daylight(uv: vec2<f32>, aspect: f32, time: f32) -> vec3<f32> {
     color = mix(color, u.bright.rgb, 0.55 * band);
     // out-of-focus lights drifting up
     let glint = vec3<f32>(1.0, 0.97, 0.90);
-    color = mix(color, glint, clamp(length(drift_layer(p, aspect, ph, 7, 600u, 0.034, 0.32, 0.030, 1.0, 1.0, glint, glint)) * 0.30, 0.0, 0.5));
+    color = mix(color, glint, clamp(length(drift_layer(p, aspect, ph, 6, 1, 600u, 0.030, 0.32, 0.025, 1.0, 1.0, glint, glint)) * 0.30, 0.0, 0.5));
     return color;
 }
 
