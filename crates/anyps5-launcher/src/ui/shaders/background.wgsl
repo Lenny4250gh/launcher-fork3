@@ -322,25 +322,30 @@ fn tide(uv: vec2<f32>, aspect: f32, time: f32) -> vec3<f32> {
 fn daylight(uv: vec2<f32>, aspect: f32, time: f32) -> vec3<f32> {
     let ph = loop_phase(time);
     let p = vec2<f32>(uv.x * aspect, uv.y);
-    // a cool sky high up, warming toward the bottom
-    var color = blend(u.deep.rgb, u.middle.rgb, sstep(0.0, 0.75, uv.y));
-    color = blend(color, u.bright.rgb, 0.85 * sstep(0.5, 1.1, uv.y));
-    // the sun's bloom, upper right, breathing once per loop
-    let sun = vec2<f32>((uv.x - 0.80) * aspect, (uv.y + 0.06) * 1.25);
+    // a saturated morning sky: blue high up, lilac across the middle, apricot at the horizon,
+    // warmer toward the sun's side
+    var color = blend(u.deep.rgb, u.middle.rgb, sstep(0.05, 0.62, uv.y));
+    color = blend(color, u.bright.rgb, 0.80 * sstep(0.55, 1.1, uv.y + 0.12 * (uv.x - 0.5)));
+    // the sun's glow, upper right: a gold that tints the sky instead of bleaching it, breathing once per loop
+    let sun = vec2<f32>((uv.x - 0.80) * aspect, (uv.y + 0.04) * 1.25);
     let breath = 1.0 + 0.06 * sin(ph);
-    color = mix(color, u.bright.rgb, clamp(0.85 * breath * exp(-2.6 * dot(sun, sun)), 0.0, 1.0));
-    // luminous cloud and its soft shade, carried round slowly
+    let gold = vec3<f32>(1.0, 0.80, 0.50);
+    color = mix(color, gold, clamp(0.55 * breath * exp(-2.4 * dot(sun, sun)), 0.0, 1.0));
+    color += vec3<f32>(0.16, 0.07, 0.0) * breath * exp(-9.0 * dot(sun, sun));
+    // coloured cloud (rose and cream) and its soft shade (blue-violet), carried round slowly
     let cp = vec2<f32>(p.x * 1.05, p.y * 1.7);
     let cloud = 0.62 * noise(cp + orbit(ph, 0.30, 0.0)) + 0.38 * noise(cp * 2.3 + vec2<f32>(7.3, 2.1) + orbit(ph, 0.16, 2.0));
-    color = mix(color, vec3<f32>(1.0, 0.985, 0.955), 0.62 * sstep(0.50, 0.80, cloud) * sstep(1.05, 0.0, uv.y));
-    color = mix(color, u.deep.rgb * 0.92, 0.45 * sstep(0.45, 0.20, cloud));
-    // a window of light across the room: two slanted bands that drift to and fro
+    let rose = mix(vec3<f32>(1.0, 0.86, 0.80), vec3<f32>(0.98, 0.78, 0.90), sstep(0.0, 1.0, uv.x));
+    color = mix(color, rose, 0.42 * sstep(0.50, 0.80, cloud) * sstep(1.05, 0.0, uv.y));
+    color = mix(color, vec3<f32>(0.40, 0.46, 0.80), 0.30 * sstep(0.45, 0.20, cloud));
+    // a window of light across the room: two slanted bands, peach, that drift to and fro
     let slant = p.x * 0.78 + p.y * 0.62;
     let band = exp(-pow((slant - 1.15 - 0.10 * sin(ph)) * 3.2, 2.0)) + 0.6 * exp(-pow((slant - 1.65 - 0.08 * sin(ph + 2.0)) * 4.4, 2.0));
-    color = mix(color, u.bright.rgb, 0.55 * band);
-    // out-of-focus lights drifting up
-    let glint = vec3<f32>(1.0, 0.97, 0.90);
-    color = mix(color, glint, clamp(length(drift_layer(p, aspect, ph, 6, 1, 600u, 0.030, 0.32, 0.025, 1.0, 1.0, glint, glint)) * 0.30, 0.0, 0.5));
+    color = mix(color, vec3<f32>(1.0, 0.82, 0.62), 0.34 * band);
+    // out-of-focus lights drifting up, each layer its own colour: apricot to rose, aqua to lilac, gold
+    color += drift_layer(p, aspect, ph, 6, 1, 600u, 0.030, 0.32, 0.025, 1.0, 1.0, vec3<f32>(1.0, 0.70, 0.48), vec3<f32>(1.0, 0.55, 0.78)) * 0.22;
+    color += drift_layer(p, aspect, ph, 5, 1, 650u, 0.024, 0.40, 0.030, 1.0, 1.0, vec3<f32>(0.45, 0.88, 1.0), vec3<f32>(0.70, 0.62, 1.0)) * 0.20;
+    color += drift_layer(p, aspect, ph, 4, 1, 700u, 0.040, 0.28, 0.020, 1.0, 0.9, vec3<f32>(1.0, 0.86, 0.45), vec3<f32>(1.0, 0.74, 0.55)) * 0.16;
     return color;
 }
 
@@ -359,7 +364,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     let centered = (uv - vec2<f32>(0.5)) * vec2<f32>(aspect, 1.0);
     let light_look = u.theme == 6u;
     // vignette: the dark looks fall off at the edges, the light look only just
-    color = color * (1.0 - select(0.4, 0.07, light_look) * sstep(0.35, 1.25, length(centered)));
+    color = color * (1.0 - select(0.4, 0.12, light_look) * sstep(0.35, 1.25, length(centered)));
     if (!light_look) {
         color = color / (vec3<f32>(1.0) + color * 0.35);                  // soft tone map
     }

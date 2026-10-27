@@ -324,11 +324,12 @@ impl Theme {
                 middle: [0.010, 0.190, 0.300],
                 bright: [0.480, 0.930, 1.000],
             },
-            // Cool blue-grey sky, warm white light.
+            // A morning sky that is not pale: saturated blue above, lilac at the middle, apricot
+            // at the horizon. Mid-light on purpose (no near-white wash), the ink stays dark.
             Theme::Daylight => Palette {
-                deep: [0.640, 0.750, 0.890],
-                middle: [0.830, 0.890, 0.950],
-                bright: [1.000, 0.950, 0.820],
+                deep: [0.480, 0.640, 0.910],
+                middle: [0.790, 0.720, 0.950],
+                bright: [1.000, 0.760, 0.580],
             },
         }
     }
@@ -468,12 +469,18 @@ impl Grade {
         }
         // Deeper on the light look, in the same order of brightness.
         let light = match self {
-            Grade::Platinum => rgb(0.30, 0.46, 0.72),
-            Grade::Gold => rgb(0.70, 0.46, 0.0),
-            Grade::Silver => rgb(0.42, 0.45, 0.52),
-            Grade::Bronze => rgb(0.62, 0.32, 0.14),
+            Grade::Platinum => rgb(0.16, 0.30, 0.58),
+            Grade::Gold => rgb(0.46, 0.28, 0.0),
+            Grade::Silver => rgb(0.27, 0.30, 0.38),
+            Grade::Bronze => rgb(0.50, 0.22, 0.06),
         };
         mix(dark, light, t)
+    }
+
+    /// The grade of a trophy not earned yet: the colour dimmed. Dimmed less on the light look,
+    /// where a pale label on pale paper is gone (`ui::contrast` measures it).
+    pub fn dimmed(self) -> Color32 {
+        fade(self.color(), 0.55 + 0.45 * light_t())
     }
 
     pub const fn points(self) -> u32 {
@@ -513,6 +520,12 @@ pub mod color {
     fn tx(alpha: f32) -> Color32 {
         let lift = 0.34 * light_t();
         white(alpha + (1.0 - alpha) * lift)
+    }
+
+    /// Ink of a screen's own at `alpha`, lifted on the light look like the text tokens (`tx`): a
+    /// page that dims its text to a level of its own asks here instead of fading `text()`.
+    pub fn ink_at(alpha: f32) -> Color32 {
+        tx(alpha)
     }
 
     /// The ink or edge level `normal`, or `high` with High Contrast on.
@@ -630,7 +643,7 @@ pub mod color {
     /// The focus ring of keyboard and gamepad focus: thin and quiet, 3:1 or more on every panel
     /// (`ui::contrast` measures it); the fill one step lighter carries the rest of the cue.
     pub fn focus_ring() -> Color32 {
-        white(hc(0.50, 1.0))
+        tx(hc(0.50, 1.0))
     }
     /// The edge of a secondary control at rest and under the pointer or focus.
     pub fn hairline_control() -> Color32 {
