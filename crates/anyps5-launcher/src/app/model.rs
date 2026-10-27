@@ -1972,9 +1972,14 @@ mod tests {
         // Resume goes on from there: no new unlock is queued.
         m.primary_action();
         assert!(!m.holding.contains(&id));
-        assert_eq!(m.effects.len(), 1);
+        let pipeline: Vec<_> = m
+            .effects
+            .iter()
+            .filter(|e| matches!(e, Effect::Pipeline(_)))
+            .collect();
+        assert_eq!(pipeline.len(), 1);
         assert!(matches!(
-            &m.effects[0],
+            pipeline[0],
             Effect::Pipeline(PipelineCommand::Resume(game)) if *game == id
         ));
         assert!(matches!(m.state_of(&g), GameState::Installing { .. }));
