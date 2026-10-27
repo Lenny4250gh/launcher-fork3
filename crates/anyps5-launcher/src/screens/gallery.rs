@@ -1617,6 +1617,8 @@ fn sample_share_play(state: &mut anyps5_core::online::Online, look: OnlineLook) 
             kbps: 8000,
             rtt_ms: Some(24),
             loss_percent: 0,
+            stream_delay_ms: None,
+            input_delay_ms: None,
         },
         requested,
     };
