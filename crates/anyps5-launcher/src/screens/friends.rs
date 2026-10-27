@@ -12,7 +12,7 @@ mod nav;
 mod paint;
 
 use anyps5_core::online::api::AccountId;
-use egui::{Align, Context, Layout, Rect, UiBuilder, pos2, vec2};
+use egui::{Context, Rect, UiBuilder, pos2, vec2};
 
 use crate::screens::footer_hints_enter;
 use crate::screens::friends_strings::FriendsText as FX;
@@ -24,9 +24,9 @@ use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
 use crate::ui::Shell;
 use crate::ui::chrome::{RowAvatar, fullscreen_panel};
-use crate::ui::components::{ConsoleButton, ControlSize, HintSet};
+use crate::ui::components::HintSet;
 use crate::ui::glass::GlassStyle;
-use crate::ui::i18n::{Arg, Key, Language};
+use crate::ui::i18n::{Arg, Language};
 use crate::ui::icons::Icon;
 use crate::ui::input::{Command, InputEvent};
 use crate::ui::sound::Cue;
@@ -197,7 +197,12 @@ impl FriendsScreen {
                     InputEvent::Command(command) if has_rail && !self.panel.capturing() => {
                         let keeps_left = !self.panel.left_leaves(data);
                         match nav::step(self.focus(), command, RAIL, SECTIONS, keeps_left) {
-                            Step::Stay => {}
+                            // The end of the rail: one soft stop, like the end of any list.
+                            Step::Stay => {
+                                if matches!(command, Command::Up | Command::Down) {
+                                    shell.play(Cue::Bump);
+                                }
+                            }
                             Step::Moved(focus) => {
                                 shell.play(Cue::Move);
                                 let moved = focus.rail != self.rail;
@@ -260,17 +265,7 @@ impl FriendsScreen {
                 // A question is a card over this page: it brings its own hints and answers Back.
                 if !asks {
                     footer_hints_enter(ui, screen, language, HintSet::BASIC.without_back(), enter);
-                    let mut back = ui.new_child(
-                        UiBuilder::new()
-                            .max_rect(Rect::from_min_size(area.min, vec2(200.0, 32.0)))
-                            .layout(Layout::left_to_right(Align::Center)),
-                    );
-                    if ConsoleButton::new(language.text(Key::Back))
-                        .icon(Icon::CARET_LEFT)
-                        .size(ControlSize::Small)
-                        .show(&mut back)
-                        .clicked()
-                    {
+                    if crate::screens::back_button(ui, area, language) {
                         back_clicked = true;
                     }
                 }

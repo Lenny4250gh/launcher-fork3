@@ -11,6 +11,9 @@ pub struct ProfileEntry {
     pub page: Option<ProfilePage>,
     /// The last attempt failed (and there is no answer to show).
     pub failed: bool,
+    /// The cloud refused for good: there is no such profile, or it is not open to this player
+    /// (deleted, blocked). Asking again will not help, so the page offers no Try Again.
+    pub gone: bool,
 }
 
 /// The profile shown for `account`, if it has an answer.

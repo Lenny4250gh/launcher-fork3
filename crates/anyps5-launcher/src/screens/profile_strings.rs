@@ -64,6 +64,9 @@ pub enum ProfileText {
     PrivateNote,
     /// `%@` = the handle.
     EmptyNote,
+    /// A profile that does not exist, or is not open to the player (deleted, blocked): asking again will not help.
+    GoneTitle,
+    GoneNote,
     // The player's own empty sections
     OwnGamesEmpty,
     OwnTrophiesEmpty,
@@ -123,6 +126,8 @@ impl ProfileText {
             ProfileText::PrivateTitle => "This profile is private",
             ProfileText::PrivateNote => "%@ shares their profile with friends only.",
             ProfileText::EmptyNote => "%@ has not played or shared anything yet.",
+            ProfileText::GoneTitle => "No profile to show",
+            ProfileText::GoneNote => "This profile does not exist or is not open to you.",
             ProfileText::OwnGamesEmpty => "Games in your library show up here with your time.",
             ProfileText::OwnTrophiesEmpty => "Earn a trophy in a game and it shows up here.",
             ProfileText::OwnActivityEmpty => "Trophies, new friends and first games show up here.",
@@ -182,6 +187,8 @@ impl ProfileText {
             ProfileText::PrivateTitle => "Bu profil gizli",
             ProfileText::PrivateNote => "%@ profilini yalnızca arkadaşlarıyla paylaşıyor.",
             ProfileText::EmptyNote => "%@ henüz bir şey oynamadı veya paylaşmadı.",
+            ProfileText::GoneTitle => "Gösterilecek profil yok",
+            ProfileText::GoneNote => "Bu profil yok ya da sana açık değil.",
             ProfileText::OwnGamesEmpty => "Kitaplığındaki oyunlar süreleriyle burada görünür.",
             ProfileText::OwnTrophiesEmpty => "Bir oyunda kupa kazan, burada görünsün.",
             ProfileText::OwnNothingYet => {
@@ -245,6 +252,10 @@ impl ProfileText {
             ProfileText::PrivateTitle => "Dieses Profil ist privat",
             ProfileText::PrivateNote => "%@ teilt das Profil nur mit Freunden.",
             ProfileText::EmptyNote => "%@ hat noch nichts gespielt oder geteilt.",
+            ProfileText::GoneTitle => "Kein Profil zu zeigen",
+            ProfileText::GoneNote => {
+                "Dieses Profil gibt es nicht oder es ist für dich nicht offen."
+            }
             ProfileText::OwnGamesEmpty => {
                 "Spiele aus deiner Bibliothek erscheinen hier mit deiner Spielzeit."
             }
@@ -313,6 +324,8 @@ impl ProfileText {
             ProfileText::PrivateTitle => "Este perfil es privado",
             ProfileText::PrivateNote => "%@ solo comparte su perfil con amigos.",
             ProfileText::EmptyNote => "%@ aún no ha jugado ni compartido nada.",
+            ProfileText::GoneTitle => "No hay perfil que mostrar",
+            ProfileText::GoneNote => "Este perfil no existe o no está abierto para ti.",
             ProfileText::OwnGamesEmpty => {
                 "Los juegos de tu biblioteca aparecen aquí con tu tiempo de juego."
             }
@@ -379,6 +392,8 @@ impl ProfileText {
             ProfileText::PrivateTitle => "Ce profil est privé",
             ProfileText::PrivateNote => "%@ ne partage son profil qu’avec ses amis.",
             ProfileText::EmptyNote => "%@ n’a encore rien joué ni partagé.",
+            ProfileText::GoneTitle => "Aucun profil à montrer",
+            ProfileText::GoneNote => "Ce profil n’existe pas ou ne t’est pas ouvert.",
             ProfileText::OwnGamesEmpty => {
                 "Les jeux de ta bibliothèque apparaissent ici avec ton temps de jeu."
             }
@@ -445,6 +460,8 @@ impl ProfileText {
             ProfileText::PrivateTitle => "Este perfil é privado",
             ProfileText::PrivateNote => "%@ compartilha o perfil apenas com amigos.",
             ProfileText::EmptyNote => "%@ ainda não jogou nem compartilhou nada.",
+            ProfileText::GoneTitle => "Nenhum perfil para mostrar",
+            ProfileText::GoneNote => "Este perfil não existe ou não está aberto para você.",
             ProfileText::OwnGamesEmpty => {
                 "Os jogos da sua biblioteca aparecem aqui com seu tempo de jogo."
             }

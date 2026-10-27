@@ -34,6 +34,8 @@ pub enum OnlineText {
     BrowserNote,
     /// Toast: the browser sign-in ran out of time.
     SignInTimedOut,
+    SignInStopped,
+    OpenPageFailed,
     ManageAccount,
     ManageAccountDetail,
     StatusOnline,
@@ -208,6 +210,8 @@ impl OnlineText {
             OnlineText::ContinueInBrowser => "Continue in your browser",
             OnlineText::OpenAgain => "Open the Page Again",
             OnlineText::BrowserNote => "When you are done there, the launcher signs in by itself.",
+            OnlineText::OpenPageFailed => "Could not open the page in your browser. Try again.",
+            OnlineText::SignInStopped => "The sign-in was stopped in the browser. Start it again.",
             OnlineText::SignInTimedOut => "The sign-in timed out. Try again.",
             OnlineText::ManageAccount => "Manage Account",
             OnlineText::ManageAccountDetail => "E-mail, passkeys, devices and deletion",
@@ -372,6 +376,8 @@ impl OnlineText {
             OnlineText::ContinueInBrowser => "Tarayıcında devam et",
             OnlineText::OpenAgain => "Sayfayı Yeniden Aç",
             OnlineText::BrowserNote => "Orada işin bitince başlatıcı kendiliğinden giriş yapar.",
+            OnlineText::OpenPageFailed => "Sayfa tarayıcında açılamadı. Yeniden dene.",
+            OnlineText::SignInStopped => "Giriş tarayıcıda durduruldu. Yeniden başlat.",
             OnlineText::SignInTimedOut => "Girişin süresi doldu. Yeniden dene.",
             OnlineText::ManageAccount => "Hesabı Yönet",
             OnlineText::ManageAccountDetail => "E-posta, geçiş anahtarları, cihazlar ve silme",
@@ -534,6 +540,12 @@ impl OnlineText {
             OnlineText::OpenAgain => "Seite erneut öffnen",
             OnlineText::BrowserNote => {
                 "Sobald du dort fertig bist, meldet sich der Launcher selbst an."
+            }
+            OnlineText::OpenPageFailed => {
+                "Die Seite konnte nicht im Browser geöffnet werden. Versuche es erneut."
+            }
+            OnlineText::SignInStopped => {
+                "Die Anmeldung wurde im Browser abgebrochen. Starte sie erneut."
             }
             OnlineText::SignInTimedOut => "Die Anmeldung ist abgelaufen. Versuche es erneut.",
             OnlineText::ManageAccount => "Konto verwalten",
@@ -711,6 +723,12 @@ impl OnlineText {
             OnlineText::ContinueInBrowser => "Continúa en tu navegador",
             OnlineText::OpenAgain => "Abrir la página de nuevo",
             OnlineText::BrowserNote => "Cuando termines allí, el launcher inicia sesión solo.",
+            OnlineText::OpenPageFailed => {
+                "No se pudo abrir la página en el navegador. Inténtalo de nuevo."
+            }
+            OnlineText::SignInStopped => {
+                "El inicio de sesión se detuvo en el navegador. Vuelve a empezar."
+            }
             OnlineText::SignInTimedOut => {
                 "Se agotó el tiempo del inicio de sesión. Inténtalo de nuevo."
             }
@@ -891,6 +909,12 @@ impl OnlineText {
             OnlineText::BrowserNote => {
                 "Quand tu as terminé là-bas, le launcher se connecte tout seul."
             }
+            OnlineText::OpenPageFailed => {
+                "Impossible d’ouvrir la page dans le navigateur. Réessaie."
+            }
+            OnlineText::SignInStopped => {
+                "La connexion a été interrompue dans le navigateur. Recommence."
+            }
             OnlineText::SignInTimedOut => "La connexion a expiré. Réessaie.",
             OnlineText::ManageAccount => "Gérer le compte",
             OnlineText::ManageAccountDetail => "E-mail, clés d’accès, appareils et suppression",
@@ -1061,6 +1085,10 @@ impl OnlineText {
             OnlineText::ContinueInBrowser => "Continue no navegador",
             OnlineText::OpenAgain => "Abrir a página de novo",
             OnlineText::BrowserNote => "Quando terminar lá, o launcher entra sozinho.",
+            OnlineText::OpenPageFailed => {
+                "Não foi possível abrir a página no navegador. Tente de novo."
+            }
+            OnlineText::SignInStopped => "A entrada foi interrompida no navegador. Tente de novo.",
             OnlineText::SignInTimedOut => "O tempo da entrada esgotou. Tente de novo.",
             OnlineText::ManageAccount => "Gerenciar conta",
             OnlineText::ManageAccountDetail => "E-mail, chaves de acesso, dispositivos e exclusão",

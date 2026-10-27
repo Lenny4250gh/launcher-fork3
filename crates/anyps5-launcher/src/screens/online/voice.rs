@@ -76,7 +76,8 @@ pub(super) fn ptt_note(game_running: bool) -> V {
 
 fn status_text(status: &VoiceStatus, language: Language) -> &'static str {
     match status {
-        VoiceStatus::Off | VoiceStatus::Failed(_) => V::StatusOff,
+        VoiceStatus::Off => V::StatusOff,
+        VoiceStatus::Failed(_) => V::StatusFailed,
         VoiceStatus::NoParty => V::StatusNoParty,
         VoiceStatus::Connecting => V::StatusConnecting,
         VoiceStatus::On => V::StatusOn,

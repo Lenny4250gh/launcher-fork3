@@ -301,6 +301,9 @@ pub enum Composer {
     Request,
     /// Offline: writing and answering need the cloud; the bar says so and offers Try Again.
     Offline,
+    /// The messages did not load: the bar offers Try Again (a thread with no way to ask again
+    /// would be a dead end for the keyboard and the pad).
+    LoadFailed,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -505,6 +508,9 @@ pub fn composer(data: &OnlineData<'_>, id: &str) -> Option<Composer> {
     let me = online.account.as_ref().map_or(AccountId(0), |a| a.id);
     if !online.is_online() {
         return Some(Composer::Offline);
+    }
+    if social.has_failed(id) {
+        return Some(Composer::LoadFailed);
     }
     if conversation.request {
         return Some(Composer::Request);
@@ -1107,6 +1113,7 @@ impl OnlinePanel {
                     self.run("pausedSend", data, actions);
                 }
                 Composer::Offline => actions.push(A::Reconnect),
+                Composer::LoadFailed => actions.push(A::RetryMessages(Some(id.to_owned()))),
                 Composer::Blocked { .. } => {
                     let me = super::OnlinePanel::me(data);
                     if let Some(other) = data
@@ -2252,8 +2259,15 @@ fn composer_view(
                 let response = ui.interact(rect, ui.make_persistent_id("note"), Sense::click());
                 let focused = focus == Some(ThreadFocus::Note);
                 crate::ui::a11y::follow(&ctx, response.id, focused);
+                // The bar cancels the reply or the edit: the name says so, then what it quotes.
+                let name = if note.editing {
+                    S::CancelEditName
+                } else {
+                    S::CancelReplyName
+                }
+                .format(language, &[Arg::Str(&note.text)]);
                 response.widget_info(|| {
-                    egui::WidgetInfo::labeled(egui::Role::Button, true, note.text.as_str())
+                    egui::WidgetInfo::labeled(egui::Role::Button, true, name.as_str())
                 });
                 if response.clicked() {
                     events.push(Mouse::Press(ThreadFocus::Note));
@@ -2433,6 +2447,16 @@ fn composer_view(
                 inner,
                 crate::screens::friends_strings::FriendsText::TryAgain.text(language),
                 crate::screens::friends_strings::FriendsText::ComposerOffline.text(language),
+                focus == Some(ThreadFocus::Bar),
+                events,
+            );
+        }
+        Composer::LoadFailed => {
+            button_bar(
+                ui,
+                inner,
+                crate::screens::friends_strings::FriendsText::TryAgain.text(language),
+                S::LoadFailedBar.text(language),
                 focus == Some(ThreadFocus::Bar),
                 events,
             );

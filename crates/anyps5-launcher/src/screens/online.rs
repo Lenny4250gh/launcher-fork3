@@ -1620,6 +1620,7 @@ impl OnlinePanel {
             }
             Page::Account => {
                 let account = online.account.as_ref();
+                self.connection_rows(data, &mut rows);
                 self.restriction_rows_for_page(data, &mut rows);
                 let restricted = !rows.is_empty();
                 let mut manage = busy(
@@ -1864,12 +1865,11 @@ impl OnlinePanel {
         }
     }
 
-    fn home_rows(&self, data: &OnlineData<'_>, rows: &mut Vec<Row>) {
+    /// What the connection is, when it is not up: connecting says so, offline says so and offers
+    /// Try Again. A list or a setting that may be old, or cannot be changed, has this above it.
+    fn connection_rows(&self, data: &OnlineData<'_>, rows: &mut Vec<Row>) {
         let language = data.language;
-        let t = |text: T| text.text(language);
         let online = data.online;
-        // The state of the connection comes first: a list that may be old says so, with the way
-        // out beside it.
         match online.cloud {
             Some(Cloud::Online) => {}
             Some(Cloud::Connecting) | None => {
@@ -1891,6 +1891,13 @@ impl OnlinePanel {
                 );
             }
         }
+    }
+
+    fn home_rows(&self, data: &OnlineData<'_>, rows: &mut Vec<Row>) {
+        let language = data.language;
+        let t = |text: T| text.text(language);
+        let online = data.online;
+        self.connection_rows(data, rows);
         // A limit on the account explains why an action will not work. Then what waits for an
         // answer: friend requests, then invitations.
         self.restriction_rows_for_page(data, rows);

@@ -501,6 +501,10 @@ impl OnlineService {
                 let text = T::SignInTimedOut.text(language).to_owned();
                 model.toast(text, Icon::CLOCK);
             }
+            Notice::SignInStopped => {
+                let text = T::SignInStopped.text(language).to_owned();
+                model.toast(text, Icon::WARNING);
+            }
             Notice::Ended => {
                 self.process = None;
                 if model.prefs.online {
@@ -844,9 +848,16 @@ impl OnlineService {
 
     /// Opens a page of the cloud in the system browser: the sign-in page or the account web. Only
     /// an address under the cloud the player uses is opened, whatever the net service says.
-    pub fn open_cloud_page(model: &Model, url: &str) {
+    pub fn open_cloud_page(model: &mut Model, url: &str) {
+        if !Self::try_open_cloud_page(model, url) {
+            let text = T::OpenPageFailed.text(model.language()).to_owned();
+            model.toast(text, Icon::WARNING);
+        }
+    }
+
+    fn try_open_cloud_page(model: &Model, url: &str) -> bool {
         let Some(cloud) = net::cloud(model.prefs.online_cloud.as_deref()) else {
-            return;
+            return false;
         };
         let base = format!("{}/", cloud.trim_end_matches('/'));
         if !url.starts_with(&base) || url.chars().any(|c| c.is_whitespace() || c.is_control()) {
@@ -854,11 +865,13 @@ impl OnlineService {
                 "not opening a page outside the cloud: {}",
                 loggable_url(url)
             );
-            return;
+            return false;
         }
         if let Err(error) = anyps5_core::platform::open_url(url) {
             tracing::warn!("cannot open the cloud's page: {error}");
+            return false;
         }
+        true
     }
 
     /// A join failed before its game started: the splash goes away.

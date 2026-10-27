@@ -189,6 +189,7 @@ pub fn sample_profile(state: &mut Online, look: ProfileLook) {
     let entry = |page: ProfilePage| ProfileEntry {
         page: Some(page),
         failed: false,
+        gone: false,
     };
     state.feed.merge_newest(Feed {
         items: items(),
@@ -327,6 +328,17 @@ pub fn sample_profile(state: &mut Online, look: ProfileLook) {
                 ProfileEntry {
                     page: None,
                     failed: true,
+                    gone: false,
+                },
+            );
+        }
+        L::Gone => {
+            state.profiles.insert(
+                AccountId(2),
+                ProfileEntry {
+                    page: None,
+                    failed: true,
+                    gone: true,
                 },
             );
         }
