@@ -160,8 +160,9 @@ impl Shell {
             reduced: false,
             bumped_in_hold: false,
         };
-        // Gaming Mode has no keyboard or mouse: start with the pad's hints and keyboard.
-        shell.input.pad_in_use = osk::gaming_mode();
+        // Gaming Mode has no keyboard or mouse, and Console Mode puts the pad first: start with the
+        // pad's hints.
+        shell.input.pad_in_use = osk::gaming_mode() || osk::console_mode();
         shell
     }
 

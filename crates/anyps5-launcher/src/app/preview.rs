@@ -509,6 +509,10 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
             if let Some((Ok(x), Ok(y))) = at.split_once(',').map(|(x, y)| (x.parse(), y.parse())) {
                 options.at = Some((x, y));
             }
+        } else if arg == "--offscreen" {
+            // Far outside every desktop (not -32000, which Windows reads as "minimised"), so a
+            // screenshot run never shows a window on the screen of whoever is at the PC.
+            options.at = Some((-20000.0, -20000.0));
         } else if arg == "--reduced" {
             options.reduced = true;
         } else if let Some(t) = arg.strip_prefix("--time=") {

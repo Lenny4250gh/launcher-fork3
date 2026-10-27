@@ -950,7 +950,7 @@ impl OnlinePanel {
                     icon: state.icon,
                     title: &state.title,
                     note: state.note.as_deref(),
-                    loading: false,
+                    loading: state.icon == Icon::ARROWS_CLOCKWISE,
                     action: Some(&state.label),
                 },
                 focused && self.side.nav.row == at,
@@ -1247,6 +1247,8 @@ impl OnlinePanel {
             ("createAccount", _) if data.cloud.is_some() => {
                 actions.push(OnlineAction::BrowserSignIn { create: true });
             }
+            // The rows say "Set up the cloud first": pressing one takes the player there.
+            ("signIn" | "createAccount", Page::Start) => self.go(Page::Cloud, data),
             ("cancelSignIn", Page::Browser) => {
                 actions.push(OnlineAction::CancelSignIn);
                 self.go(Page::Start, data);
@@ -1780,14 +1782,24 @@ impl OnlinePanel {
                         )),
                     );
                 }
+                // Only friends who are online are listed: none of them is not "no friends".
                 if rows.is_empty() {
-                    rows.push(Row::info("none", t(T::NoFriends), None));
+                    rows.push(Row::info(
+                        "none",
+                        crate::screens::online_social_strings::SocialText::NobodyToInvite
+                            .text(language),
+                        None,
+                    ));
                 }
-                rows.push(
-                    Row::command("sendInvitations", t(T::SendInvitations))
-                        .icon(Icon::PAPER_PLANE_RIGHT)
-                        .group_start(),
-                );
+                let mut send = Row::command("sendInvitations", t(T::SendInvitations))
+                    .icon(Icon::PAPER_PLANE_RIGHT)
+                    .group_start();
+                if self.picked.is_empty() {
+                    send = send.detail(
+                        crate::screens::online_social_strings::SocialText::PickFirst.text(language),
+                    );
+                }
+                rows.push(send);
                 rows.push(Row::command("cancel", language.text(Key::Cancel)).icon(Icon::X));
                 let title = dialog.map(|d| d.title.as_str()).unwrap_or_default();
                 let max = dialog.map(|d| i64::from(d.max)).unwrap_or(1);
@@ -1928,7 +1940,8 @@ impl OnlinePanel {
         let friends = online.sorted_friends();
         // Without friends the page says what it is for, then offers the one next step, as the
         // empty message list does.
-        if friends.is_empty() {
+        // (Only when the cloud answers: connecting or offline, the list is unknown, not empty.)
+        if friends.is_empty() && online.is_online() {
             rows.push(Row::info("noFriends", t(T::NoFriends), None).group_start());
         }
         // Adding a friend sends a request: offline there is nothing to press (the note above says

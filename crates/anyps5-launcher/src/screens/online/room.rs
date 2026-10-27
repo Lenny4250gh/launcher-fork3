@@ -39,7 +39,7 @@ use crate::ui::icons::Icon;
 use crate::ui::input::{self, Command};
 use crate::ui::sound::Cue;
 use crate::ui::text;
-use crate::ui::theme::{TextStyle, black, color, fade, radius, size, space, ty};
+use crate::ui::theme::{TextStyle, color, fade, radius, scrim, size, space, ty};
 
 /// Members per row of the grid when the page has the room for it.
 const COLUMNS: usize = 5;
@@ -53,7 +53,7 @@ const TILE_GAP: f32 = size::CONTROL_GAP;
 const AVATAR: f32 = 88.0;
 /// The fade over the bottom edge of a page that goes on below: its height and its darkest alpha.
 const FADE_HEIGHT: f32 = 48.0;
-const FADE_ALPHA: u8 = 150;
+const FADE_ALPHA: f32 = 0.59;
 /// The dark disc and the glyph of a mark (muted, deafened) on an avatar.
 const MARK_DISC: f32 = 14.0;
 const MARK_GLYPH: f32 = 14.0;
@@ -997,11 +997,11 @@ fn draw(
     view
 }
 
-/// A soft dark band along the bottom edge of the scrolling page: there is more under it.
+/// A soft dark band (a paper veil on the light look) along the bottom edge of the scrolling page: there is more under it.
 fn paint_more_below(painter: &egui::Painter, area: Rect) {
     let band = Rect::from_min_max(pos2(area.min.x, area.max.y - FADE_HEIGHT), area.max);
-    let clear = egui::Color32::from_black_alpha(0);
-    let dark = egui::Color32::from_black_alpha(FADE_ALPHA);
+    let clear = scrim(0.0);
+    let dark = scrim(FADE_ALPHA);
     let mut mesh = egui::Mesh::default();
     mesh.colored_vertex(band.left_top(), clear);
     mesh.colored_vertex(band.right_top(), clear);
@@ -1138,7 +1138,7 @@ fn tile(
     );
     if let Some(mark) = tile.mark {
         let at = centre + vec2(AVATAR * 0.35, AVATAR * 0.35);
-        painter.circle_filled(at, MARK_DISC, black(0.72));
+        painter.circle_filled(at, MARK_DISC, scrim(0.72));
         painter.circle_stroke(
             at,
             MARK_DISC,

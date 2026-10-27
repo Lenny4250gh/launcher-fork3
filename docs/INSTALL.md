@@ -74,6 +74,8 @@ On Windows, in a Linux AppImage and in the Apple silicon Mac app, the launcher l
 
 A launcher from the tar.gz cannot replace itself. A launcher installed by a package manager (Flatpak, and soon the AUR) leaves its files to that package manager. In both cases About shows when a new version is out, and for a package it names the package manager that installs it.
 
+The toolkit that runs your games updates separately. Settings, Toolkit, Channel chooses between Stable (the latest [AnyPS5](https://github.com/boykopovar/AnyPS5) release), AnyPlay Engine, Pinned and Local Build. AnyPlay Engine is opt-in and not yet available on macOS: it downloads the nightly build of [anyplaynet/AnyPS5](https://github.com/anyplaynet/AnyPS5), the fork with the network bridge, checks it against the release's checksum list and offers a newer build when there is one. It changes often and may break games; go back to Stable at any time.
+
 How updates are signed and checked: [How it works](HOW-IT-WORKS.md#self-update) and [UPDATES.md](UPDATES.md).
 
 ## Where your data lives

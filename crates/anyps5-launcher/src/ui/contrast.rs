@@ -391,7 +391,7 @@ fn panel(report: &mut Report) {
             let black = crate::ui::glass::GlassStyle::game_panel().black;
             let panel = over(
                 if theme.is_light() && !glass {
-                    scrim((black * 1.1).min(0.94))
+                    scrim(crate::ui::glass::light_veil(black))
                 } else {
                     crate::ui::theme::black(black)
                 },
@@ -472,6 +472,43 @@ fn panel(report: &mut Report) {
                 ),
             ] {
                 report.add(what, &format!("{name} card"), ink, card, need);
+            }
+            // A trophy row: the grade label earned and not yet, and the dimmed ink of an unearned row.
+            // (Measured on the light look only: the dark looks' tables stay as they were.)
+            let trophy = over(color::surface_trophy_row(), panel);
+            let trophy_hover = over(color::surface_hover(), panel);
+            let trophy_surfaces: &[(&str, Color32)] = if theme.is_light() && !glass {
+                &[("trophy row", trophy), ("trophy row hover", trophy_hover)]
+            } else {
+                &[]
+            };
+            for &(surface, bg) in trophy_surfaces {
+                for grade in theme::Grade::ALL {
+                    let t = grade.title(crate::ui::i18n::Language::English);
+                    report.add(
+                        &format!("grade {t}, earned"),
+                        &format!("{name} {surface}"),
+                        grade.color(),
+                        bg,
+                        Need::of(ty::SECTION_CAPTION),
+                    );
+                    report.add(
+                        &format!("grade {t}, not earned"),
+                        &format!("{name} {surface}"),
+                        grade.dimmed(),
+                        bg,
+                        Need::of(ty::SECTION_CAPTION),
+                    );
+                }
+                for (what, alpha) in [("trophy name, not earned", 0.8), ("trophy detail", 0.6)] {
+                    report.add(
+                        what,
+                        &format!("{name} {surface}"),
+                        color::ink_at(alpha),
+                        bg,
+                        Need::Text,
+                    );
+                }
             }
             // Buttons: the label on the primary in every state, the focus ring on the panel.
             for (state, fill) in [

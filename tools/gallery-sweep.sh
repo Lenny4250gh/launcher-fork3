@@ -43,6 +43,8 @@ scenes() {
     for scene in home-noartwork library settings onboarding-look; do echo "$scene@$look"; done
     echo "home-noartwork@$look+reduced"
   done
+  # Daylight, the light look, on the online screens and the trophies (dark ink on a coloured sky).
+  for scene in friends friends-party friends-messages friends-played-with profile-own notifications trophies find-players friends-share-hosting; do echo "$scene@daylight"; done
 }
 
 one() {

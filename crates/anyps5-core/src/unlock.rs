@@ -94,6 +94,10 @@ pub struct UnlockRecord {
     /// release. An unlock again that changes none of it keeps that output instead of relinking.
     #[serde(default, rename = "relinkKey", skip_serializing_if = "Option::is_none")]
     pub relink_key: Option<String>,
+    /// The relinker ran with `--trace-imports`: the engine can write the observation log of the
+    /// game's network calls.
+    #[serde(default, rename = "traceImports", skip_serializing_if = "is_false")]
+    pub trace_imports: bool,
     /// The files the relinker made besides the executable, relative to `app0`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub generated: Vec<String>,
@@ -265,6 +269,9 @@ pub struct UnlockRequest {
     pub toolkit: Toolkit,
     /// D1: convert AMD-only instructions for an Intel host.
     pub to_intel: bool,
+    /// Pass `--trace-imports`, so the engine can record the game's network calls. Only while the
+    /// player records them: it changes the relinker's output and the key.
+    pub trace_imports: bool,
     /// Relinker patch file text for this title and build (PORT.md 6.9), if it has patches.
     pub patches_toml: Option<String>,
     /// Selected output resolution for a toolkit's Mach-O patch catalogue.
@@ -298,6 +305,7 @@ impl UnlockRequest {
             root,
             toolkit,
             to_intel: false,
+            trace_imports: false,
             patches_toml: None,
             resolution: None,
             relink_flags: Vec::new(),
@@ -328,6 +336,10 @@ pub fn unlocked_copy(title_id: &str, game: &GameId, root: &Path) -> PathBuf {
 }
 
 /// The record of an unlocked copy; `None` when there is no relinked executable or no valid record.
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 pub fn read_record(copy: &Path) -> Option<UnlockRecord> {
     if !copy.join(EXECUTABLE).is_file() {
         return None;
@@ -1171,6 +1183,9 @@ pub fn run_unlock(
     } else if request.to_intel {
         args.push("--to-intel".into());
     }
+    if request.trace_imports {
+        args.push("--trace-imports".into());
+    }
     for directory in module_directories(&modules) {
         args.push("--module-dir".into());
         args.push(directory.into());
@@ -1401,6 +1416,7 @@ pub fn run_unlock(
         relinker_sha256: request.toolkit.digests().map(|d| d.relinker.clone()),
         libs_sha256: request.toolkit.digests().map(|d| d.libs.clone()),
         relink_key: key.filter(|_| !cfg!(target_os = "macos")),
+        trace_imports: request.trace_imports,
         generated,
         sidecars,
     };
@@ -2426,6 +2442,7 @@ mod tests {
             relinker_sha256: None,
             libs_sha256: None,
             relink_key: None,
+            trace_imports: false,
             generated: Vec::new(),
             sidecars: Vec::new(),
         };
