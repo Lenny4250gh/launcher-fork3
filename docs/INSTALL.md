@@ -98,6 +98,6 @@ The main files and folders inside `Logs` are:
 
 ### What is safe to share
 
-- **Safe to attach:** `launcher.log`, `network.log` and reports from `Reports/` are safe to attach to an issue after reading them.
-- **Review before sharing:** A game's log (`<TITLEID>.log`) can hold the game's own output; cut it down to the lines and errors that matter.
+- **Safe to attach:** `launcher.log` and reports from `Reports/` are safe to attach to an issue after reading them.
+- **Review before sharing:** A game's log (`<TITLEID>.log`) can hold the game's own output; cut it down to the lines and errors that matter. Read `network.log` before attaching it too.
 - **Never share:** Never attach game files, decrypted dumps, saves, firmware or encryption keys.
