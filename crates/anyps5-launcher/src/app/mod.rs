@@ -46,6 +46,7 @@ pub mod prepare;
 pub mod preview;
 pub mod profile;
 pub mod relocation;
+pub mod close_guard;
 pub mod run_question;
 pub mod selfupdate;
 pub mod services;
@@ -1194,6 +1195,7 @@ pub fn run(inbox: Option<crate::instance::Inbox>, arguments: Vec<String>) -> efr
             Ok(Box::new(App {
                 app,
                 chrome_applied: false,
+                close_confirmed: false,
                 frames: 0,
                 start_fullscreen: fullscreen,
                 watched: None,
@@ -1258,6 +1260,7 @@ pub struct App {
     pub app: LauncherApp,
     /// The window frame is styled once, on the first frame (the window exists by then).
     chrome_applied: bool,
+    close_confirmed: bool,
     frames: u32,
     /// Fill the screen once the window is shown: asked for at creation, while eframe still keeps
     /// the window hidden, Windows ignores it (and egui would believe it took).
@@ -1302,6 +1305,15 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
         let glass_setting = self.app.model.prefs.glass_window;
         self.app.dress_window(&ctx, frame, glass_setting);
+        if ctx.input(|i| i.viewport().close_requested()) && !self.close_confirmed {
+            if let Some(busy) = self.app.model.busy_for_close() {
+                ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+                if close_guard::confirm_close(busy, self.app.model.language()) {
+                    self.close_confirmed = true;
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
+            }
+        }
         self.frames = self.frames.saturating_add(1);
         if self.frames <= 3 {
             crate::startup::mark(&format!("frame {} begins", self.frames));

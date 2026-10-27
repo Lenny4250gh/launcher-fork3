@@ -57,6 +57,11 @@ pub enum GameState {
     Uninstalling {
         fraction: f32,
     },
+    /// Cancel was pressed during an unlock and the work is still being stopped; `fraction` is the
+    /// overall progress it had reached, 0..=1. Nothing can be pressed until it has stopped.
+    Cancelling {
+        fraction: f32,
+    },
     /// The launcher unlocks the game on its own while the PC is idle. `progress` is `None` until
     /// the work starts.
     Preparing {
@@ -285,6 +290,8 @@ pub struct Model {
     pub progress: HashMap<GameId, (UnlockStep, f32)>,
     /// Games whose unlocked copy is being removed, and how much of it is gone (0..=1).
     pub uninstalling: HashMap<GameId, f32>,
+    /// Games whose running unlock was cancelled and has not stopped yet.
+    pub cancelling: HashSet<GameId>,
     /// Games waiting for their unlock.
     pub queue: Vec<GameId>,
     /// Preparing in the background, and the time left of every unlock (`app/prepare.rs`).
@@ -425,6 +432,7 @@ impl Model {
             settings_page: None,
             progress: HashMap::new(),
             uninstalling: HashMap::new(),
+            cancelling: HashSet::new(),
             queue: Vec::new(),
             prep: Default::default(),
             failures: HashMap::new(),
@@ -744,6 +752,13 @@ impl Model {
         if let Some(&fraction) = self.uninstalling.get(id) {
             return GameState::Uninstalling { fraction };
         }
+        if self.cancelling.contains(id) {
+            let fraction = self
+                .progress
+                .get(id)
+                .map_or(0.0, |&(step, fraction)| self.overall(step, fraction));
+            return GameState::Cancelling { fraction };
+        }
         if let Some(preparing) = self.preparing_state(id) {
             return preparing;
         }
@@ -1000,6 +1015,7 @@ impl Model {
                 }
             }
             PipelineEvent::UnlockFinished { game, result } => {
+                self.cancelling.remove(&game);
                 self.progress.remove(&game);
                 self.queue.retain(|q| q != &game);
                 let prepared = self.prep_ended(&game);
@@ -1028,6 +1044,7 @@ impl Model {
                 self.rescan_after_unlock();
             }
             PipelineEvent::UnlockCancelled { game } => {
+                self.cancelling.remove(&game);
                 self.progress.remove(&game);
                 self.queue.retain(|q| q != &game);
                 self.prep_ended(&game);
@@ -1117,8 +1134,11 @@ impl Model {
             GameState::Running => self
                 .effects
                 .push(Effect::Pipeline(PipelineCommand::Activate(game.id))),
-            // Nothing to press: the button is greyed out while the copy is removed.
-            GameState::Starting | GameState::Uninstalling { .. } => {}
+            // Nothing to press: the button is greyed out while the copy is removed or the
+            // cancelled unlock is stopped.
+            GameState::Starting
+            | GameState::Uninstalling { .. }
+            | GameState::Cancelling { .. } => {}
             GameState::Unreadable => {
                 let text = self.text(Key::UnreadableDump);
                 self.toast(text, Icon::X_CIRCLE);
@@ -1177,6 +1197,10 @@ impl Model {
     }
 
     pub fn cancel_unlock(&mut self, id: &GameId) {
+        if self.cancelling.contains(id) {
+            // Already being stopped: a second press changes nothing.
+            return;
+        }
         if self.prep.background.remove(id) {
             // Held back or not yet started in the core: it still has to be told.
             self.effects
@@ -1195,6 +1219,8 @@ impl Model {
             return;
         }
         if self.progress.contains_key(id) {
+            // The work is running: it takes a moment to stop, and the button shows that.
+            self.cancelling.insert(id.clone());
             self.effects
                 .push(Effect::Pipeline(PipelineCommand::Cancel(id.clone())));
         }

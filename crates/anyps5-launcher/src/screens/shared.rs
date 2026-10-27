@@ -88,6 +88,12 @@ pub fn state_label(state: &GameState, language: Language) -> StateLabel {
             color::text_active(),
             language.text(step.title_key()).to_owned(),
         ),
+        GameState::Cancelling { .. } => (
+            Icon::HOURGLASS,
+            false,
+            color::text_active(),
+            Extra::Cancelling.text(language).to_owned(),
+        ),
         GameState::Uninstalling { .. } => (
             Icon::TRASH,
             true,

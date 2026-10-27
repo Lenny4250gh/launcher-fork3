@@ -1044,7 +1044,9 @@ pub fn tile_overlay(state: &GameState, weights: &crate::app::pipeline::StepWeigh
         GameState::Installing { step, fraction } => {
             TileOverlay::Installing(weights.overall(*step, *fraction))
         }
-        GameState::Uninstalling { fraction } => TileOverlay::Installing(*fraction),
+        GameState::Uninstalling { fraction } | GameState::Cancelling { fraction } => {
+            TileOverlay::Installing(*fraction)
+        }
         GameState::Preparing { progress, paused } => TileOverlay::Preparing {
             fraction: progress.map(|(step, fraction)| weights.overall(step, fraction)),
             paused: *paused,
@@ -1394,9 +1396,14 @@ fn paint_hero(
             // reports, and while it is removed it is greyed out.
             .prominent(!matches!(
                 state,
-                GameState::Starting | GameState::Uninstalling { .. }
+                GameState::Starting
+                    | GameState::Uninstalling { .. }
+                    | GameState::Cancelling { .. }
             ))
-            .enabled(!matches!(state, GameState::Uninstalling { .. }))
+            .enabled(!matches!(
+                state,
+                GameState::Uninstalling { .. } | GameState::Cancelling { .. }
+            ))
             .min_width(size::PLAY_MIN_WIDTH)
             .focused(focused(0))
             .show(ui);
@@ -1627,6 +1634,12 @@ pub fn primary_look(state: &GameState, language: Language) -> (&'static str, Ico
             (language.text(Key::Cancel), Icon::X, false)
         }
         // Removing a copy cannot be undone half way: the button only says what is going on.
+        // The unlock is being stopped: the button is greyed out and only says so.
+        GameState::Cancelling { .. } => (
+            crate::screens::strings::Extra::Cancelling.text(language),
+            Icon::HOURGLASS,
+            false,
+        ),
         GameState::Uninstalling { .. } => (
             crate::screens::strings::Extra::Uninstalling.text(language),
             Icon::TRASH,
@@ -1692,6 +1705,13 @@ fn action_row_status(
             paused: *paused,
         }),
         // Removing a copy has no steps: one bar from 0 to 100.
+        // Stopping has no end to measure: the bar sweeps until the work has stopped.
+        GameState::Cancelling { fraction } => Some(Running {
+            overall: *fraction,
+            label: crate::screens::strings::Extra::Cancelling.text(language),
+            indeterminate: true,
+            paused: false,
+        }),
         GameState::Uninstalling { fraction } => Some(Running {
             overall: *fraction,
             label: crate::screens::strings::Extra::Uninstalling.text(language),
