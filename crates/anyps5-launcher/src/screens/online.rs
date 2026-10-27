@@ -10,6 +10,7 @@ mod profile;
 mod restriction;
 mod room;
 pub mod screen;
+mod share_play;
 mod social;
 mod voice;
 
@@ -23,7 +24,7 @@ use std::collections::BTreeSet;
 use anyps5_core::online::api::{AccountId, Audience, Count, ReportReason};
 use anyps5_core::online::{
     self, Cloud, DeviceKind, FriendRequestOutcome, FriendRequestResult, Link, Online, Pending,
-    Purpose, ScreenCommand, VoiceMode, VoiceProvider,
+    Purpose, ScreenCommand, SharePlayCommand, VoiceMode, VoiceProvider,
 };
 use egui::{Color32, Context, Ui};
 
@@ -201,6 +202,8 @@ pub enum OnlineAction {
     PeerMute(AccountId, bool),
     /// Share screen: start, stop, watch a member's stream, leave it.
     Screen(ScreenCommand),
+    /// Invite, answer, change the mode of, ask about or end a share.
+    SharePlay(SharePlayCommand),
     Close,
 }
 
@@ -1084,7 +1087,7 @@ impl OnlinePanel {
         actions: &mut Vec<OnlineAction>,
     ) {
         let online = data.online;
-        if self.voice_change(change, actions) {
+        if self.voice_change(change, actions) || self.share_play_change(change, actions) {
             return;
         }
         match change {
@@ -1200,6 +1203,7 @@ impl OnlinePanel {
             || self.restriction_run(row, data, actions)
             || self.voice_run(row, data, actions)
             || self.screen_run(row, data, actions)
+            || self.share_play_run(row, data, actions)
         {
             return;
         }
@@ -1865,6 +1869,7 @@ impl OnlinePanel {
         }
         // A stream on offer in the party: one line that leads to the party page.
         screen::home_row(data, rows);
+        share_play::home_row(data, rows);
         // Playing Together shows once someone else is in the session: alone it would list only you.
         let me = online.account.as_ref().map(|a| a.id);
         if let Some(session) = online

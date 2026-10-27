@@ -25,6 +25,7 @@ mod profile;
 mod restrictions;
 mod runs;
 mod screen;
+mod share;
 mod social;
 mod voice;
 
@@ -57,6 +58,7 @@ pub use profile::{
 pub use restrictions::{Blocked, Restrictions, in_force};
 pub use runs::Runs;
 pub use screen::{Screen, ScreenCommand, ScreenNotice};
+pub use share::{SharePlay, SharePlayCommand, SharePlayNotice};
 pub use social::{
     Fetch, Ingested, KEPT, Listed, Social, delivered_to_other, others, plain, read_by_other,
     seen_by, snippet,
@@ -541,6 +543,14 @@ pub enum Purpose {
     ScreenLeave,
     /// Telling the net service where the share worker is.
     ScreenWorker,
+    // Share play
+    ShareStart,
+    ShareAnswer {
+        accept: bool,
+    },
+    ShareMode,
+    ShareRequest,
+    ShareStop,
 }
 
 /// The game's invitation dialog, waiting for the player to pick friends.
@@ -599,6 +609,8 @@ pub enum Notice {
     VoiceFailed(Problem),
     /// A party member started or ended a shared screen, or the player's own ended.
     Screen(ScreenNotice),
+    /// Something about share play: an invitation, a request, a mode, an end.
+    SharePlay(SharePlayNotice),
     /// A moderator limited the account while the launcher ran.
     Restricted(control::Restriction),
     /// The account was banned and is signed out.
@@ -652,6 +664,8 @@ pub struct Online {
     pub voice: Voice,
     /// Share screen: what the player shares, what is offered to them and what they watch.
     pub screen: Screen,
+    /// Share play: the share the player is in and the invitations waiting for an answer.
+    pub share_play: SharePlay,
     /// Calls: who the player is calling, missed calls.
     pub calls: Calls,
     /// What limits the account: mutes, a new account's limits, a ban.
@@ -1968,6 +1982,7 @@ impl Online {
                     self.social = Social::default();
                     self.voice.reset();
                     self.screen.reset();
+                    self.share_play.reset();
                     self.calls = Calls::default();
                     self.session = None;
                     self.cards.clear();
@@ -2123,6 +2138,10 @@ impl Online {
                 offers,
                 watching,
             } => notices.extend(self.screen_event(can_share, can_watch, hosting, offers, watching)),
+            event @ (Event::Share { .. }
+            | Event::ShareInvitation { .. }
+            | Event::ShareInvitationGone { .. }
+            | Event::ShareRequest { .. }) => self.share_play_event(event, &mut notices),
             // News, not data: the page that was looked at reads the feed again.
             Event::Feed => {
                 if self.feed.loaded {
