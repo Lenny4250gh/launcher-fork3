@@ -584,6 +584,13 @@ pub fn indeterminate_phase(time: f64) -> f32 {
     lerp(-0.4, 1.05, sweep(time, 1.3, Bezier::EASE_IN_OUT))
 }
 
+/// The loading signal under "Animations: Reduced": a calm opacity pulse, 1.2 s a cycle, between 0.45
+/// and 1, with no movement. Spinners and the indeterminate bar use it in place of turning and
+/// sweeping.
+pub fn loading_pulse(time: f64) -> f32 {
+    lerp(1.0, 0.45, ping_pong(time, 0.6, Bezier::EASE_IN_OUT))
+}
+
 /// The "Press a key..." pulse: opacity 1 <-> 0.45 with easeInOut 0.7 s each way.
 pub fn pulse_opacity(time: f64) -> f32 {
     lerp(1.0, 0.45, ping_pong(time, 0.7, Bezier::EASE_IN_OUT))
@@ -877,10 +884,23 @@ mod tests {
     }
 
     #[test]
+    fn the_loading_pulse_stays_between_its_bounds_and_repeats() {
+        for i in 0..240 {
+            let t = f64::from(i) * 0.025;
+            let v = loading_pulse(t);
+            assert!((0.449..=1.001).contains(&v), "{v} at {t}");
+            assert!((v - loading_pulse(t + 1.2)).abs() < 1e-4, "period 1.2 s");
+        }
+    }
+
+    #[test]
     fn endless_animations_hit_their_extremes() {
         assert!((pulse_opacity(0.0) - 1.0).abs() < 1e-5);
         assert!((pulse_opacity(0.7) - 0.45).abs() < 1e-3);
         assert!((pulse_opacity(1.4) - 1.0).abs() < 1e-3);
+        assert!((loading_pulse(0.0) - 1.0).abs() < 1e-5);
+        assert!((loading_pulse(0.6) - 0.45).abs() < 1e-3);
+        assert!((loading_pulse(1.2) - 1.0).abs() < 1e-3);
         assert!((indeterminate_phase(0.0) + 0.4).abs() < 1e-5);
         assert!(indeterminate_phase(1.29) > 1.0);
         assert_eq!(drift(24.0, 24.0), 1.0);

@@ -364,8 +364,10 @@ SwiftUI's named curves are the standard cubic Beziers; implement one `cubic_bezi
 0.15 s easeInOut; banner slide -> easeOut 0.25 s. Also (2026-10-25): a panel does not slide, a full-screen panel does not grow from 1.03 and the toast does not travel; each fades in
 place (opacity only), because movement is what reduced motion removes and opacity is what it keeps. The edge bump (6.7) leans nothing.
 Also: the theme background is paused (one still frame is drawn), artwork drift
-and splash breathing are off, the user picture does not drift. **Not** affected: the indeterminate progress sweep, the "Press a
+and splash breathing are off, the user picture does not drift. **Not** affected: the "Press a
 key..." pulse, the banner pop.
+
+**Loading indicators (0.3.5).** Nothing rotates or sweeps under "Animations: Reduced", but the signal that something is loading stays: a calm opacity pulse (`anim::loading_pulse`: 1.2 s a cycle, easeInOut, opacity 1 <-> 0.45, no transform). It is done in two places, so every surface follows the setting: `components::paint_spinner_arc` (every spinner: the Home scan, the starting tile, the loading state page, Captures thumbnails, the sign-in wait) draws the same three-quarter arc standing still at 12 o'clock and pulses it; `components::paint_indeterminate` (the starting screen, the relink step) fills the whole capsule with the accent and pulses it instead of the 35 % band. The static cue each surface already has stays beside it (the "Starting..." label and timer, the headline of the state page, the step name). Gallery scene `--gallery=motion-reduced`.
 
 ### 2.4 Every animation, with its port form
 
@@ -387,7 +389,7 @@ key..." pulse, the banner pop.
 | 14 | Theme card focus | scale 0.97 -> 1.04, opacity 0.72 -> 1 | spring focus |
 | 15 | Switch | knob moves leading <-> trailing, track colour | spring focus on the knob x and the colour mix |
 | 16 | Progress bar | fill width `easeOut 0.35` | width eased with easeOut 0.35 per change |
-| 17 | Indeterminate sweep | a 35 %-wide gradient (clear, accent, clear, left to right) slides from x = -0.4 w to +1.05 w, `easeInOut 1.3 s`, repeat forever **no** autoreverse, clipped to the capsule | `phase = easeInOut(fract(t / 1.3))`, `x = lerp(-0.4, 1.05, phase) * w` |
+| 17 | Indeterminate sweep (reduced: a whole-bar opacity pulse, see 2.3) | a 35 %-wide gradient (clear, accent, clear, left to right) slides from x = -0.4 w to +1.05 w, `easeInOut 1.3 s`, repeat forever **no** autoreverse, clipped to the capsule | `phase = easeInOut(fract(t / 1.3))`, `x = lerp(-0.4, 1.05, phase) * w` |
 | 17b | "Press a key..." | opacity 1 <-> 0.45, `easeInOut 0.7 s`, repeat autoreverse | triangle wave, easeInOut 0.7 each way |
 | 18 | Onboarding step change | `Motion.layout`: old step opacity + x -40, new step opacity + x +40 | spring layout cross-slide; dots widths animate 18 <-> 46 with the same spring |
 | 19 | Onboarding finished | `easeInOut 0.7` flips `onboarded` | cross-fade onboarding -> home over 0.7 s |
@@ -906,7 +908,7 @@ middle (two dots on the digits' cap height), so the minute ticking over moves no
   artwork layer as the app, with the focus hidden as under a panel). New flags: `--theme=aurora|sunset|cosmic` (components,
   panels, home scenes), `--bright` (a pale picture as the selected game's artwork), `--frames=N` (gallery pages, so the real
   home's pictures have loaded), `--hover=X,Y` with `--pad` rests the pointer without taking the device back from the pad.
-  New page `--gallery=states`: destructive buttons, the switch and rows in every state.
+  New page `--gallery=states`: destructive buttons, the switch and rows in every state. `--gallery=motion-reduced`: spinners and the indeterminate bar under "Animations: Reduced".
 
 ### 3.10 Round 3: contrast measured, one case rule, Tab (2026-10-25)
 
@@ -1782,7 +1784,7 @@ Not pages, with the reason: the **toolkit** (it is fetched in the background fro
 
 **Sign-in.** Sign In and Create Account on the online page only record the wish and go on; Start on the last page opens the online area (`Overlay::Friends`) and the browser sign-in starts as soon as the net service has said hello (`online::poll_onboarding_sign_in`; a missing service drops it). Not Now leaves nothing pending.
 
-The sign-in page that waits for the browser (`Page::Browser`) shows a quiet spinner (2 dp arc, radius 7; a still arc under reduced motion) after the line "Continue in your browser".
+The sign-in page that waits for the browser (`Page::Browser`) shows a quiet spinner (2 dp arc, radius 7; a still arc that pulses under reduced motion) after the line "Continue in your browser".
 
 **Gallery scenes** (`--gallery=<scene>`, the states of 5.15): `onboarding-language`, `onboarding-look`, `onboarding-look-access`, `onboarding-controller`, `onboarding-controller-xbox`, `onboarding-controller-lost`, `onboarding-games`, `onboarding-games-none`, `onboarding-games-empty`, `onboarding-games-scanning`, `onboarding-online`, `onboarding-done`, `onboarding-done-signin`, `onboarding-done-bare`; with `--tr`, `--de` and `--pad` like every scene.
 
@@ -1954,7 +1956,7 @@ Original: `Input.swift`, `AppModel.handle`, `panelCommand`, `onboardingCommand`.
 
 ### 5.21 The state page (0.2.8, `ui::state_page`)
 
-The page that has no cards: loading, offline, failed, private, hidden, empty. A 56 dp disc (`surface_row`) with a 24 dp glyph (a 2.5 dp spinner arc while loading, a still glyph under reduced motion), 16 under it the headline (`ty::STATE_TITLE`, one line, 520 wide), 8 under that the note (`ty::NOTE`, centred, 420 wide, leading 1.45, `text_detail`), and, when the state has a way out, 24 under the note one primary button (Try Again after a failure, Add Friend on a private profile). The block stands centred on the page (0.3.1: horizontally on the window, whatever column or rail the caller lays its list in; vertically in the caller's room, 24 dp above the middle), the button centred under the note by its own width. Notifications, the trophy list of a game without trophies, Captures (empty, missing, failed, filtered, loading), Friends, Messages and Party all stand this way. Profile, Compare and the feed use it, so the same state looks the same everywhere; the screen reader hears headline and note as one label. Profile and compare put the button in the focus (it is the only stop).
+The page that has no cards: loading, offline, failed, private, hidden, empty. A 56 dp disc (`surface_row`) with a 24 dp glyph (a 2.5 dp spinner arc while loading, pulsing in place under reduced motion), 16 under it the headline (`ty::STATE_TITLE`, one line, 520 wide), 8 under that the note (`ty::NOTE`, centred, 420 wide, leading 1.45, `text_detail`), and, when the state has a way out, 24 under the note one primary button (Try Again after a failure, Add Friend on a private profile). The block stands centred on the page (0.3.1: horizontally on the window, whatever column or rail the caller lays its list in; vertically in the caller's room, 24 dp above the middle), the button centred under the note by its own width. Notifications, the trophy list of a game without trophies, Captures (empty, missing, failed, filtered, loading), Friends, Messages and Party all stand this way. Profile, Compare and the feed use it, so the same state looks the same everywhere; the screen reader hears headline and note as one label. Profile and compare put the button in the focus (it is the only stop).
 
 Profile 0.2.8: a private profile of a stranger offers Add Friend while the player is online (`ProfileView::state_action`). A new player's own profile shows one line under the header ("Play a game and your hours, trophies and activity show up here.") in place of three empty sections. The figures: the level shows its points and a 120 x 6 track (`paint_progress`), the trophies their grade counts (`paint_grade_counts`, a cup in the grade's colour and the count in ink). 
 
