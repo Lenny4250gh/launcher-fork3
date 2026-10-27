@@ -335,10 +335,19 @@ impl WorkerEvent {
     }
 }
 
-/// The command line of the worker for a game: `--clips SECONDS`, the window the launcher found
-/// and the game's processes.
-pub fn worker_args(seconds: u32, window: Option<i64>, pids: &[u32], title: &str) -> Vec<String> {
+/// The command line of the worker for a game: `--clips SECONDS`, `--clips-dir` (the folder clips
+/// belong in; the worker refuses a save anywhere else), the window the launcher found and the
+/// game's processes.
+pub fn worker_args(
+    seconds: u32,
+    clips_dir: &Path,
+    window: Option<i64>,
+    pids: &[u32],
+    title: &str,
+) -> Vec<String> {
     let mut args = vec!["--clips".to_owned(), seconds.to_string()];
+    args.push("--clips-dir".into());
+    args.push(clips_dir.to_string_lossy().into_owned());
     if let Some(window) = window {
         args.push("--window".into());
         args.push(window.to_string());
@@ -382,6 +391,7 @@ impl Recorder {
     pub fn start(
         worker: &Path,
         seconds: u32,
+        clips_dir: &Path,
         window: Option<i64>,
         pids: &[u32],
         title: &str,
@@ -389,7 +399,7 @@ impl Recorder {
     ) -> std::io::Result<Recorder> {
         let mut command = Command::new(worker);
         command
-            .args(worker_args(seconds, window, pids, title))
+            .args(worker_args(seconds, clips_dir, window, pids, title))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -565,15 +575,37 @@ mod tests {
 
     #[test]
     fn the_worker_gets_the_window_and_the_game_s_processes() {
-        let args = worker_args(30, Some(77), &[10, 11], "My Game");
+        let folder = Path::new("/clips");
+        let args = worker_args(30, folder, Some(77), &[10, 11], "My Game");
         assert_eq!(
             args,
             [
-                "--clips", "30", "--window", "77", "--pid", "10", "--pid", "11", "--title",
+                "--clips",
+                "30",
+                "--clips-dir",
+                folder.to_str().unwrap(),
+                "--window",
+                "77",
+                "--pid",
+                "10",
+                "--pid",
+                "11",
+                "--title",
                 "My Game"
             ]
         );
-        assert_eq!(worker_args(15, None, &[], ""), ["--clips", "15"]);
+        assert_eq!(
+            worker_args(15, folder, None, &[], ""),
+            ["--clips", "15", "--clips-dir", folder.to_str().unwrap()]
+        );
+    }
+
+    #[test]
+    fn the_worker_always_gets_the_clips_folder_even_with_spaces() {
+        let folder = Path::new("/Users/a b/Pictures/Any Play");
+        let args = worker_args(60, folder, None, &[], "");
+        let at = args.iter().position(|a| a == "--clips-dir").expect("flag");
+        assert_eq!(args[at + 1], folder.to_string_lossy());
     }
 
     /// The real worker (`ANYPLAY_SHARE` names it) started the way the launcher starts it, for a
@@ -584,7 +616,9 @@ mod tests {
         let worker =
             std::path::PathBuf::from(std::env::var("ANYPLAY_SHARE").expect("ANYPLAY_SHARE"));
         // Process 4 is the system: it has no window the worker may take.
-        let mut recorder = Recorder::start(&worker, 15, None, &[4], "", || {}).expect("starts");
+        let mut recorder =
+            Recorder::start(&worker, 15, &std::env::temp_dir(), None, &[4], "", || {})
+                .expect("starts");
         let event = recorder
             .events
             .recv_timeout(std::time::Duration::from_secs(20))
