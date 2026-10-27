@@ -481,6 +481,10 @@ impl PanelHost {
             SettingsAction::ContinueMove => model.continue_move(),
             SettingsAction::LeaveOldCopies => model.leave_old_copies(),
             SettingsAction::Rescan => model.rescan(),
+            SettingsAction::PhoneStaysOn => {
+                let text = crate::screens::phone_strings::PhoneText::RemoveToTurnOff.text(model.language());
+                model.toast(text, Icon::PROHIBIT);
+            }
             SettingsAction::ShowScreenshots => {
                 let folder = model.prefs.screenshots_dir(&model.paths);
                 let _ = std::fs::create_dir_all(&folder);

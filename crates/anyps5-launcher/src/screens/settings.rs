@@ -414,6 +414,8 @@ pub enum SettingsAction {
     AddGamesToSteam,
     /// "Controllers": the full-screen page of the pads.
     OpenControllers,
+    /// The phone switch was pressed off while phones are paired: it stays on, and a toast says why.
+    PhoneStaysOn,
     /// A row of the Phone as Controller page asks for something.
     Phone(PhoneAction),
     /// A LudusCtrl row of the same page asks for something.
@@ -2025,6 +2027,17 @@ impl SettingsPanel {
     ) {
         let language = convert::language(prefs.language);
         let mut changed = apply_value_with_phone(prefs, change, Some(env.phone));
+        if matches!(
+            change,
+            Change::Toggle {
+                row: "phone",
+                on: false
+            }
+        ) && !changed
+            && prefs.phone_remote
+        {
+            out.actions.push(SettingsAction::PhoneStaysOn);
+        }
         if let Change::Stepper {
             row: row @ ("volInterface" | "volMusic" | "volGameMusic" | "volNotif"),
             ..
