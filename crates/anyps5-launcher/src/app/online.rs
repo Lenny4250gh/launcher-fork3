@@ -484,6 +484,7 @@ impl OnlineService {
                 model.toast(text.text(language), Icon::MICROPHONE_SLASH);
             }
             Notice::Screen(notice) => super::online_screen::notice(model, notice),
+            Notice::SharePlay(notice) => super::online_share::notice(model, notice),
             Notice::Restricted(restriction) => {
                 // The panel shows it as a row; the toast is for a player who looks elsewhere.
                 let text = restriction_text::toast(&restriction, None, None, language);
@@ -795,6 +796,14 @@ impl OnlineService {
                 | Purpose::ScreenLeave,
                 Err(failure),
             ) => super::online_screen::failed(model, &failure),
+            (
+                Purpose::ShareStart
+                | Purpose::ShareAnswer { .. }
+                | Purpose::ShareMode
+                | Purpose::ShareRequest
+                | Purpose::ShareStop,
+                Err(failure),
+            ) => super::online_share::failed(model, &failure),
             (Purpose::SetPrivacy, Err(failure)) => {
                 // The choice the panel shows goes back to what the cloud keeps.
                 model.online.send(Purpose::Privacy, Command::Privacy);
@@ -1085,7 +1094,10 @@ pub fn failure_text(failure: &Failure, language: Language) -> String {
     } else if code(ErrorCode::Full) {
         T::Full
     } else {
-        return T::Failed.format(language, &[Arg::Str(&failure.message)]);
+        // The service's own sentence is English and unplanned: it goes to the log, the player gets
+        // a line in their language.
+        tracing::warn!("a request failed: {}", failure.message);
+        T::Failed
     };
     text.text(language).to_owned()
 }
@@ -1689,7 +1701,7 @@ mod tests {
                 &Failure::new("limit", "Too many friends."),
                 Language::English
             ),
-            "That did not work: Too many friends."
+            "Could not do that. Try again in a moment."
         );
     }
 

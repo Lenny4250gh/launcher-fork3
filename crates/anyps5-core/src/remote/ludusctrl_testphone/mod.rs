@@ -301,6 +301,35 @@ pub fn beacon_listener(port: u16) -> io::Result<UdpSocket> {
     UdpSocket::bind((Ipv4Addr::LOCALHOST, port))
 }
 
+/// The next datagram on `socket` within `timeout`, or None. It polls the socket without blocking
+/// instead of using a receive timeout: Windows leaves a socket in an indeterminate state when a
+/// receive times out, and a datagram that arrives while the timeout fires is lost. On a busy
+/// machine (a CI runner, where timeouts fire late and datagrams arrive in the same instant) that
+/// loses an ack or a request now and then, and the check that waited for it fails for a reason the
+/// receiver under test has nothing to do with. A poll that always gets to read what is queued has
+/// no such window. The socket stays non-blocking.
+pub(super) fn recv_within(
+    socket: &UdpSocket,
+    buf: &mut [u8],
+    timeout: Duration,
+) -> io::Result<Option<(usize, SocketAddr)>> {
+    socket.set_nonblocking(true)?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        match socket.recv_from(buf) {
+            Ok(received) => return Ok(Some(received)),
+            // Windows reports an ICMP port unreachable for an earlier send as a receive error.
+            Err(e) if e.kind() == io::ErrorKind::ConnectionReset => continue,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => return Err(e),
+        }
+        let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+            return Ok(None);
+        };
+        thread::sleep(left.min(Duration::from_millis(1)));
+    }
+}
+
 /// The next beacon on `socket` that advertises `input_port` (other PCs on the LAN are skipped),
 /// with its source address.
 pub fn wait_beacon(
@@ -311,25 +340,14 @@ pub fn wait_beacon(
     let deadline = Instant::now() + timeout;
     let mut buf = [0; 2048];
     loop {
-        let Some(left) = deadline
-            .checked_duration_since(Instant::now())
-            .filter(|d| !d.is_zero())
-        else {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let Some((n, from)) = recv_within(socket, &mut buf, left)? else {
             return Ok(None);
         };
-        socket.set_read_timeout(Some(left))?;
-        match socket.recv_from(&mut buf) {
-            Ok((n, from)) => {
-                if let Some(beacon) = Beacon::parse(&buf[..n])
-                    && beacon.input_port == input_port
-                {
-                    return Ok(Some((beacon, from)));
-                }
-            }
-            Err(e) if is_timeout(&e) => return Ok(None),
-            // Windows reports an ICMP port unreachable for an earlier send as a receive error.
-            Err(e) if e.kind() == io::ErrorKind::ConnectionReset => {}
-            Err(e) => return Err(e),
+        if let Some(beacon) = Beacon::parse(&buf[..n])
+            && beacon.input_port == input_port
+        {
+            return Ok(Some((beacon, from)));
         }
     }
 }
@@ -350,13 +368,6 @@ pub fn drain(socket: &UdpSocket) -> io::Result<()> {
         }
     }
     socket.set_nonblocking(false)
-}
-
-fn is_timeout(e: &io::Error) -> bool {
-    matches!(
-        e.kind(),
-        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
-    )
 }
 
 // --- pairing ---------------------------------------------------------------------------------
@@ -865,21 +876,13 @@ impl TestPhone {
         let deadline = Instant::now() + timeout;
         let mut buf = [0; 2048];
         loop {
-            let Some(left) = deadline
-                .checked_duration_since(Instant::now())
-                .filter(|d| !d.is_zero())
-            else {
-                return Ok(None);
-            };
-            self.socket.set_read_timeout(Some(left))?;
-            match self.socket.recv_from(&mut buf) {
-                Ok((n, from)) if from.port() == self.pc.port() => {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match recv_within(&self.socket, &mut buf, left)? {
+                Some((n, from)) if from.port() == self.pc.port() => {
                     return Ok(Some(buf[..n].to_vec()));
                 }
-                Ok(_) => {}
-                Err(e) if is_timeout(&e) => return Ok(None),
-                Err(e) if e.kind() == io::ErrorKind::ConnectionReset => {}
-                Err(e) => return Err(e),
+                Some(_) => {}
+                None => return Ok(None),
             }
         }
     }

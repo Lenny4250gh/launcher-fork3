@@ -328,11 +328,284 @@ impl VoiceText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            VoiceText::Voice => "Voz",
+            VoiceText::VoiceSubtitle => "Habla con tu party",
+            VoiceText::PartyVoice => "Voz de la party",
+            VoiceText::StatusOff => "Desactivada",
+            VoiceText::StatusNoParty => "Se inicia cuando estás en una party",
+            VoiceText::StatusConnecting => "Conectando…",
+            VoiceText::StatusOn => "Activada",
+            VoiceText::FailedGeneric => {
+                "No se pudo iniciar la voz. Revisa el micrófono y los altavoces y vuelve a activarla."
+            }
+            VoiceText::FailedDenied => {
+                "El sistema no permitió el acceso al micrófono. Permítelo en los ajustes de privacidad del sistema y vuelve a activar la voz."
+            }
+            VoiceText::FailedReason => "Motivo: %@",
+            VoiceText::Microphone => "Micrófono",
+            VoiceText::MicOff => "Desactivado",
+            VoiceText::MicMuted => "Silenciado · mantén %@ para hablar",
+            VoiceText::MicOpen => "Abierto",
+            VoiceText::MicListening => "Escuchando",
+            VoiceText::MicTalking => "Hablando",
+            VoiceText::Mode => "Modo",
+            VoiceText::PushToTalk => "Pulsar para hablar",
+            VoiceText::VoiceActivity => "Micrófono abierto",
+            VoiceText::PttNote => {
+                "Mantén pulsada la tecla de hablar. También funciona con un juego en primer plano."
+            }
+            VoiceText::PttInGameNote => {
+                "Mantén pulsada la tecla o el botón de hablar. Elige uno que el juego no use."
+            }
+            VoiceText::PttNoteOther => {
+                "Mantén pulsada la tecla de hablar mientras el launcher está en primer plano. Un botón de hablar del mando también funciona en un juego."
+            }
+            VoiceText::PttInGameNoteOther => {
+                "Un juego tiene el teclado, así que la tecla no llega al launcher. Usa un botón de hablar del mando o cambia a Micrófono abierto."
+            }
+            VoiceText::ActivityNote => {
+                "El micrófono se abre cuando hablas. Sin auriculares, los demás se oyen a sí mismos."
+            }
+            VoiceText::CallModeNote => {
+                "En una llamada, el micrófono se abre cuando hablas. Pulsar para hablar vuelve al terminar la llamada."
+            }
+            VoiceText::TalkKey => "Tecla de hablar",
+            VoiceText::TalkKeyNote => "Pulsa una tecla. Esc mantiene la actual.",
+            VoiceText::TalkButton => "Botón de hablar",
+            VoiceText::TalkButtonNone => "Ninguno",
+            VoiceText::NoiseReduction => "Reducir ruido de fondo",
+            VoiceText::NoiseNote => {
+                "Quita de tu micrófono los clics del teclado, los ventiladores y otros ruidos constantes."
+            }
+            VoiceText::Speakers => "Altavoces",
+            VoiceText::SystemDefault => "Predeterminado del sistema",
+            VoiceText::InUse => "En uso",
+            VoiceText::RefreshDevices => "Actualizar dispositivos",
+            VoiceText::DevicesNote => "Un cambio reinicia la voz un momento.",
+            VoiceText::NoMicrophone => {
+                "No se encontró ningún micrófono. Conecta uno o revisa los ajustes de sonido del sistema y actualiza."
+            }
+            VoiceText::NoSound => {
+                "El servicio de red no informa de ningún dispositivo de sonido. Conecta un micrófono y altavoces, o revisa los ajustes de sonido del sistema."
+            }
+            VoiceText::DevicesUnknown => {
+                "Los dispositivos aparecen cuando el servicio de red responde."
+            }
+            VoiceText::PickMicrophone => "Elegir micrófono",
+            VoiceText::PickSpeakers => "Elegir altavoces",
+            VoiceText::DeviceGone => "Este dispositivo no está conectado ahora.",
+            VoiceText::Volume => "Volumen",
+            VoiceText::VolumeValue => "%@\u{a0}%",
+            VoiceText::Mute => "Silenciar",
+            VoiceText::MuteDetail => "Solo tú dejas de oír a %@",
+            VoiceText::Speaking => "Hablando",
+            VoiceText::MutedByYou => "Silenciado",
+            VoiceText::NotInVoice => "No está en la voz",
+            VoiceText::VoiceSettings => "Ajustes de voz",
+            VoiceText::ToastFailed => {
+                "No se pudo iniciar la voz. Revisa el micrófono y los altavoces."
+            }
+            VoiceText::ToastDenied => "El sistema no permitió el micrófono.",
+            VoiceText::ToastNoDevice => "Ese dispositivo no está disponible. Actualiza la lista.",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            VoiceText::Voice => "Voix",
+            VoiceText::VoiceSubtitle => "Parle avec ta party",
+            VoiceText::PartyVoice => "Voix de la party",
+            VoiceText::StatusOff => "Désactivée",
+            VoiceText::StatusNoParty => "Démarre quand tu es dans une party",
+            VoiceText::StatusConnecting => "Connexion…",
+            VoiceText::StatusOn => "Activée",
+            VoiceText::FailedGeneric => {
+                "Impossible de démarrer la voix. Vérifie ton micro et tes haut-parleurs, puis réactive-la."
+            }
+            VoiceText::FailedDenied => {
+                "Le système n’a pas autorisé l’accès au micro. Autorise-le dans les paramètres de confidentialité du système, puis réactive la voix."
+            }
+            VoiceText::FailedReason => "Raison\u{a0}: %@",
+            VoiceText::Microphone => "Micro",
+            VoiceText::MicOff => "Désactivé",
+            VoiceText::MicMuted => "En sourdine · maintiens %@ pour parler",
+            VoiceText::MicOpen => "Ouvert",
+            VoiceText::MicListening => "À l’écoute",
+            VoiceText::MicTalking => "Parle",
+            VoiceText::Mode => "Mode",
+            VoiceText::PushToTalk => "Appuyer pour parler",
+            VoiceText::VoiceActivity => "Micro ouvert",
+            VoiceText::PttNote => {
+                "Maintiens la touche pour parler. Elle fonctionne aussi quand un jeu est au premier plan."
+            }
+            VoiceText::PttInGameNote => {
+                "Maintiens la touche ou le bouton pour parler. Choisis-en un que le jeu n’utilise pas."
+            }
+            VoiceText::PttNoteOther => {
+                "Maintiens la touche pour parler tant que le launcher est au premier plan. Un bouton pour parler sur la manette fonctionne aussi dans un jeu."
+            }
+            VoiceText::PttInGameNoteOther => {
+                "Un jeu a le clavier, donc la touche n’arrive pas au launcher. Utilise un bouton pour parler sur la manette ou passe à Micro ouvert."
+            }
+            VoiceText::ActivityNote => {
+                "Le micro s’ouvre dès que tu parles. Sans casque, les autres s’entendent en retour."
+            }
+            VoiceText::CallModeNote => {
+                "Pendant un appel, le micro s’ouvre dès que tu parles. Appuyer pour parler revient à la fin de l’appel."
+            }
+            VoiceText::TalkKey => "Touche pour parler",
+            VoiceText::TalkKeyNote => "Appuie sur une touche. Échap garde l’actuelle.",
+            VoiceText::TalkButton => "Bouton pour parler",
+            VoiceText::TalkButtonNone => "Aucun",
+            VoiceText::NoiseReduction => "Réduire le bruit de fond",
+            VoiceText::NoiseNote => {
+                "Retire de ton micro les clics de clavier, les ventilateurs et autres bruits constants."
+            }
+            VoiceText::Speakers => "Haut-parleurs",
+            VoiceText::SystemDefault => "Par défaut du système",
+            VoiceText::InUse => "Utilisé",
+            VoiceText::RefreshDevices => "Actualiser les appareils",
+            VoiceText::DevicesNote => "Un changement redémarre la voix un instant.",
+            VoiceText::NoMicrophone => {
+                "Aucun micro trouvé. Branche-en un ou vérifie les paramètres de son du système, puis actualise."
+            }
+            VoiceText::NoSound => {
+                "Le service réseau ne signale aucun appareil audio. Branche un micro et des haut-parleurs, ou vérifie les paramètres de son du système."
+            }
+            VoiceText::DevicesUnknown => {
+                "Les appareils apparaissent quand le service réseau répond."
+            }
+            VoiceText::PickMicrophone => "Choisir le micro",
+            VoiceText::PickSpeakers => "Choisir les haut-parleurs",
+            VoiceText::DeviceGone => "Cet appareil n’est pas connecté pour le moment.",
+            VoiceText::Volume => "Volume",
+            VoiceText::VolumeValue => "%@\u{a0}%",
+            VoiceText::Mute => "Mettre en sourdine",
+            VoiceText::MuteDetail => "Toi seul n’entends plus %@",
+            VoiceText::Speaking => "Parle",
+            VoiceText::MutedByYou => "En sourdine",
+            VoiceText::NotInVoice => "Pas en vocal",
+            VoiceText::VoiceSettings => "Paramètres vocaux",
+            VoiceText::ToastFailed => {
+                "Impossible de démarrer la voix. Vérifie ton micro et tes haut-parleurs."
+            }
+            VoiceText::ToastDenied => "Le système n’a pas autorisé le micro.",
+            VoiceText::ToastNoDevice => "Cet appareil n’est pas disponible. Actualise la liste.",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            VoiceText::Voice => "Voz",
+            VoiceText::VoiceSubtitle => "Fale com sua party",
+            VoiceText::PartyVoice => "Voz da party",
+            VoiceText::StatusOff => "Desativada",
+            VoiceText::StatusNoParty => "Começa quando você está em uma party",
+            VoiceText::StatusConnecting => "Conectando…",
+            VoiceText::StatusOn => "Ativada",
+            VoiceText::FailedGeneric => {
+                "Não foi possível iniciar a voz. Verifique o microfone e os alto-falantes e ative-a de novo."
+            }
+            VoiceText::FailedDenied => {
+                "O sistema não permitiu o acesso ao microfone. Permita nas configurações de privacidade do sistema e ative a voz de novo."
+            }
+            VoiceText::FailedReason => "Motivo: %@",
+            VoiceText::Microphone => "Microfone",
+            VoiceText::MicOff => "Desativado",
+            VoiceText::MicMuted => "Silenciado · segure %@ para falar",
+            VoiceText::MicOpen => "Aberto",
+            VoiceText::MicListening => "Ouvindo",
+            VoiceText::MicTalking => "Falando",
+            VoiceText::Mode => "Modo",
+            VoiceText::PushToTalk => "Apertar para falar",
+            VoiceText::VoiceActivity => "Microfone aberto",
+            VoiceText::PttNote => {
+                "Segure a tecla de falar. Ela também funciona com um jogo em primeiro plano."
+            }
+            VoiceText::PttInGameNote => {
+                "Segure a tecla ou o botão de falar. Escolha um que o jogo não use."
+            }
+            VoiceText::PttNoteOther => {
+                "Segure a tecla de falar enquanto o launcher está em primeiro plano. Um botão de falar no controle também funciona em um jogo."
+            }
+            VoiceText::PttInGameNoteOther => {
+                "Um jogo está com o teclado, então a tecla não chega ao launcher. Use um botão de falar no controle ou mude para Microfone aberto."
+            }
+            VoiceText::ActivityNote => {
+                "O microfone abre quando você fala. Sem fones de ouvido, os outros ouvem a si mesmos."
+            }
+            VoiceText::CallModeNote => {
+                "Em uma chamada, o microfone abre quando você fala. Apertar para falar volta quando a chamada termina."
+            }
+            VoiceText::TalkKey => "Tecla de falar",
+            VoiceText::TalkKeyNote => "Aperte uma tecla. Esc mantém a atual.",
+            VoiceText::TalkButton => "Botão de falar",
+            VoiceText::TalkButtonNone => "Nenhum",
+            VoiceText::NoiseReduction => "Reduzir ruído de fundo",
+            VoiceText::NoiseNote => {
+                "Tira do seu microfone cliques de teclado, ventoinhas e outros ruídos constantes."
+            }
+            VoiceText::Speakers => "Alto-falantes",
+            VoiceText::SystemDefault => "Padrão do sistema",
+            VoiceText::InUse => "Em uso",
+            VoiceText::RefreshDevices => "Atualizar dispositivos",
+            VoiceText::DevicesNote => "Uma mudança reinicia a voz por um momento.",
+            VoiceText::NoMicrophone => {
+                "Nenhum microfone encontrado. Conecte um ou verifique as configurações de som do sistema e atualize."
+            }
+            VoiceText::NoSound => {
+                "O serviço de rede não informa nenhum dispositivo de som. Conecte um microfone e alto-falantes ou verifique as configurações de som do sistema."
+            }
+            VoiceText::DevicesUnknown => {
+                "Os dispositivos aparecem quando o serviço de rede responde."
+            }
+            VoiceText::PickMicrophone => "Escolher microfone",
+            VoiceText::PickSpeakers => "Escolher alto-falantes",
+            VoiceText::DeviceGone => "Este dispositivo não está conectado agora.",
+            VoiceText::Volume => "Volume",
+            VoiceText::VolumeValue => "%@%",
+            VoiceText::Mute => "Silenciar",
+            VoiceText::MuteDetail => "Só você deixa de ouvir %@",
+            VoiceText::Speaking => "Falando",
+            VoiceText::MutedByYou => "Silenciado",
+            VoiceText::NotInVoice => "Fora da voz",
+            VoiceText::VoiceSettings => "Configurações de voz",
+            VoiceText::ToastFailed => {
+                "Não foi possível iniciar a voz. Verifique o microfone e os alto-falantes."
+            }
+            VoiceText::ToastDenied => "O sistema não permitiu o microfone.",
+            VoiceText::ToastNoDevice => "Esse dispositivo não está disponível. Atualize a lista.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },
@@ -360,7 +633,9 @@ mod tests {
         for text in WITH_ARGUMENTS {
             let count = |s: &str| s.matches("%@").count();
             assert_eq!(count(text.english()), 1, "{text:?}");
-            assert_eq!(count(text.turkish()), 1, "{text:?}");
+            for language in Language::ALL {
+                assert_eq!(count(text.text(language)), 1, "{text:?} {language:?}");
+            }
         }
     }
 

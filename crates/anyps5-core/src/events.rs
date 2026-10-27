@@ -81,3 +81,65 @@ pub enum CoreEvent {
         earned: Vec<Earned>,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_new_token_is_not_cancelled() {
+        let token = CancelToken::new();
+        assert!(!token.is_cancelled());
+        assert!(!CancelToken::default().is_cancelled());
+    }
+
+    #[test]
+    fn cancelling_a_token_sets_the_flag_and_repeating_is_harmless() {
+        let token = CancelToken::new();
+        token.cancel();
+        assert!(token.is_cancelled());
+        token.cancel();
+        assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn a_clone_sees_the_cancel_of_the_original_and_the_other_way_round() {
+        let original = CancelToken::new();
+        let clone = original.clone();
+        assert!(!original.is_cancelled());
+        assert!(!clone.is_cancelled());
+
+        original.cancel();
+        assert!(clone.is_cancelled());
+        assert!(original.is_cancelled());
+
+        let original2 = CancelToken::new();
+        let clone2 = original2.clone();
+        assert!(!original2.is_cancelled());
+        assert!(!clone2.is_cancelled());
+
+        clone2.cancel();
+        assert!(original2.is_cancelled());
+        assert!(clone2.is_cancelled());
+    }
+
+    #[test]
+    fn a_clone_equals_its_original_and_separate_tokens_are_not_equal() {
+        let token1 = CancelToken::new();
+        let clone1 = token1.clone();
+        let token2 = CancelToken::new();
+
+        assert_eq!(token1, clone1);
+        assert_eq!(clone1, token1);
+
+        assert_ne!(token1, token2);
+        assert_ne!(token2, token1);
+
+        token1.cancel();
+        assert_eq!(token1, clone1);
+        assert_ne!(token1, token2);
+
+        token2.cancel();
+        assert_ne!(token1, token2);
+    }
+}

@@ -23,6 +23,8 @@ pub enum NotifyText {
     Join,
     Open,
     Dismiss,
+    /// Said before the name of an entry the player has not seen (the dot says it to the eye).
+    EntryNew,
     /// The accessible name of an entry: `%@` = what it is, `%@` = the sentence, `%@` = when.
     EntryName,
     /// The empty state: what lives here and how it fills.
@@ -38,7 +40,7 @@ pub enum NotifyText {
 }
 
 impl NotifyText {
-    pub const ALL: [NotifyText; 23] = [
+    pub const ALL: [NotifyText; 24] = [
         NotifyText::Title,
         NotifyText::BellUnread,
         NotifyText::ClearAll,
@@ -53,6 +55,7 @@ impl NotifyText {
         NotifyText::Join,
         NotifyText::Open,
         NotifyText::Dismiss,
+        NotifyText::EntryNew,
         NotifyText::EntryName,
         NotifyText::EmptyTitle,
         NotifyText::EmptyBody,
@@ -80,6 +83,7 @@ impl NotifyText {
             NotifyText::Join => "Join",
             NotifyText::Open => "Open",
             NotifyText::Dismiss => "Dismiss",
+            NotifyText::EntryNew => "New",
             NotifyText::EntryName => "%@, %@, %@",
             NotifyText::EmptyTitle => "No notifications",
             NotifyText::EmptyBody => {
@@ -114,6 +118,7 @@ impl NotifyText {
             NotifyText::Join => "Katıl",
             NotifyText::Open => "Aç",
             NotifyText::Dismiss => "Kapat",
+            NotifyText::EntryNew => "Yeni",
             NotifyText::EntryName => "%@, %@, %@",
             NotifyText::EmptyTitle => "Bildirim yok",
             NotifyText::EmptyBody => {
@@ -147,6 +152,7 @@ impl NotifyText {
             NotifyText::Join => "Beitreten",
             NotifyText::Open => "Öffnen",
             NotifyText::Dismiss => "Schließen",
+            NotifyText::EntryNew => "Neu",
             NotifyText::EntryName => "%@, %@, %@",
             NotifyText::EmptyTitle => "Keine Benachrichtigungen",
             NotifyText::EmptyBody => {
@@ -167,11 +173,143 @@ impl NotifyText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            NotifyText::Title => "Notificaciones",
+            NotifyText::BellUnread => "Notificaciones, %@ nuevas",
+            NotifyText::ClearAll => "Borrar todo",
+            NotifyText::KindFriendRequest => "Solicitud de amistad",
+            NotifyText::KindInvitation => "Invitación",
+            NotifyText::KindMessage => "Mensaje",
+            NotifyText::KindTrophy => "Trofeo",
+            NotifyText::KindUpdate => "Actualización",
+            NotifyText::KindTogether => "Play Together",
+            NotifyText::KindSystem => "Aviso",
+            NotifyText::Accept => "Aceptar",
+            NotifyText::Join => "Unirse",
+            NotifyText::Open => "Abrir",
+            NotifyText::Dismiss => "Descartar",
+            NotifyText::EntryNew => "Nuevo",
+            NotifyText::EntryName => "%@, %@, %@",
+            NotifyText::EmptyTitle => "Sin notificaciones",
+            NotifyText::EmptyBody => {
+                "Aquí aparecen las solicitudes de amistad, invitaciones, mensajes, trofeos y actualizaciones."
+            }
+            NotifyText::CopyInviteLink => "Copiar enlace de invitación",
+            NotifyText::CopyInviteLinkDetail => {
+                "Un enlace que invita a unirse; nunca se une por sí solo"
+            }
+            NotifyText::InviteLinkCopied => "Enlace de invitación copiado",
+            NotifyText::InviteLinkWaiting => "Obteniendo tu enlace de invitación…",
+            NotifyText::InviteLinkOffline => {
+                "Inicia sesión en la red de AnyPlay para obtener un enlace de invitación."
+            }
+            NotifyText::InviteLinkFailed => {
+                "No se pudo obtener el enlace de invitación. Inténtalo de nuevo en un momento."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            NotifyText::Title => "Notifications",
+            NotifyText::BellUnread => "Notifications, %@ nouvelles",
+            NotifyText::ClearAll => "Tout effacer",
+            NotifyText::KindFriendRequest => "Demande d’ami",
+            NotifyText::KindInvitation => "Invitation",
+            NotifyText::KindMessage => "Message",
+            NotifyText::KindTrophy => "Trophée",
+            NotifyText::KindUpdate => "Mise à jour",
+            NotifyText::KindTogether => "Play Together",
+            NotifyText::KindSystem => "Avis",
+            NotifyText::Accept => "Accepter",
+            NotifyText::Join => "Rejoindre",
+            NotifyText::Open => "Ouvrir",
+            NotifyText::Dismiss => "Ignorer",
+            NotifyText::EntryNew => "Nouveau",
+            NotifyText::EntryName => "%@, %@, %@",
+            NotifyText::EmptyTitle => "Aucune notification",
+            NotifyText::EmptyBody => {
+                "Les demandes d’ami, invitations, messages, trophées et mises à jour apparaissent ici."
+            }
+            NotifyText::CopyInviteLink => "Copier le lien d’invitation",
+            NotifyText::CopyInviteLinkDetail => {
+                "Un lien qui invite à rejoindre\u{a0}; il ne rejoint jamais tout seul"
+            }
+            NotifyText::InviteLinkCopied => "Lien d’invitation copié",
+            NotifyText::InviteLinkWaiting => "Récupération de ton lien d’invitation…",
+            NotifyText::InviteLinkOffline => {
+                "Connecte-toi au réseau AnyPlay pour obtenir un lien d’invitation."
+            }
+            NotifyText::InviteLinkFailed => {
+                "Impossible d’obtenir le lien d’invitation. Réessaie dans un instant."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            NotifyText::Title => "Notificações",
+            NotifyText::BellUnread => "Notificações, %@ novas",
+            NotifyText::ClearAll => "Limpar tudo",
+            NotifyText::KindFriendRequest => "Pedido de amizade",
+            NotifyText::KindInvitation => "Convite",
+            NotifyText::KindMessage => "Mensagem",
+            NotifyText::KindTrophy => "Troféu",
+            NotifyText::KindUpdate => "Atualização",
+            NotifyText::KindTogether => "Play Together",
+            NotifyText::KindSystem => "Aviso",
+            NotifyText::Accept => "Aceitar",
+            NotifyText::Join => "Entrar",
+            NotifyText::Open => "Abrir",
+            NotifyText::Dismiss => "Dispensar",
+            NotifyText::EntryNew => "Novo",
+            NotifyText::EntryName => "%@, %@, %@",
+            NotifyText::EmptyTitle => "Nenhuma notificação",
+            NotifyText::EmptyBody => {
+                "Pedidos de amizade, convites, mensagens, troféus e atualizações aparecem aqui."
+            }
+            NotifyText::CopyInviteLink => "Copiar link de convite",
+            NotifyText::CopyInviteLinkDetail => {
+                "Um link que convida a entrar; ele nunca entra sozinho"
+            }
+            NotifyText::InviteLinkCopied => "Link de convite copiado",
+            NotifyText::InviteLinkWaiting => "Obtendo seu link de convite…",
+            NotifyText::InviteLinkOffline => {
+                "Entre na rede do AnyPlay para obter um link de convite."
+            }
+            NotifyText::InviteLinkFailed => {
+                "Não foi possível obter o link de convite. Tente de novo em instantes."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },

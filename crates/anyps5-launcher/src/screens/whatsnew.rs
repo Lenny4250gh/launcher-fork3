@@ -117,24 +117,68 @@ impl Line<'_> {
 fn area_title(scope: &str, language: Language) -> String {
     let scope = scope.to_ascii_lowercase();
     let has = |parts: &[&str]| parts.iter().any(|part| scope.contains(part));
-    let (english, turkish, german) = if has(&["trophy"]) {
-        ("Trophies", "Kupalar", "Trophäen")
+    let (english, turkish, german, spanish, french, portuguese) = if has(&["trophy"]) {
+        (
+            "Trophies",
+            "Kupalar",
+            "Trophäen",
+            "Trofeos",
+            "Trophées",
+            "Troféus",
+        )
     } else if has(&["savedata", "save"]) {
-        ("Saves", "Kayıtlar", "Spielstände")
+        (
+            "Saves",
+            "Kayıtlar",
+            "Spielstände",
+            "Partidas guardadas",
+            "Sauvegardes",
+            "Jogos salvos",
+        )
     } else if has(&[
         "agc", "gnm", "gpu", "vulkan", "shader", "videoout", "graphics",
     ]) {
-        ("Graphics", "Grafik", "Grafik")
+        (
+            "Graphics",
+            "Grafik",
+            "Grafik",
+            "Gráficos",
+            "Graphismes",
+            "Gráficos",
+        )
     } else if has(&["audio", "sound", "ngs"]) {
-        ("Sound", "Ses", "Ton")
+        ("Sound", "Ses", "Ton", "Sonido", "Son", "Som")
     } else if has(&["pad", "input", "mouse", "keyboard"]) {
-        ("Controllers", "Kontrolcüler", "Controller")
+        (
+            "Controllers",
+            "Kontrolcüler",
+            "Controller",
+            "Mandos",
+            "Manettes",
+            "Controles",
+        )
     } else if has(&["net", "np", "http", "ssl"]) {
-        ("Online", "Çevrimiçi", "Online")
+        (
+            "Online",
+            "Çevrimiçi",
+            "Online",
+            "En línea",
+            "En ligne",
+            "Online",
+        )
     } else if has(&["relink", "loader", "elf", "module"]) {
-        ("Starting games", "Oyunları başlatma", "Spielstart")
+        (
+            "Starting games",
+            "Oyunları başlatma",
+            "Spielstart",
+            "Inicio de juegos",
+            "Lancement des jeux",
+            "Início de jogos",
+        )
     } else if has(&["libc", "kernel", "system", "thread"]) {
-        ("System", "Sistem", "System")
+        (
+            "System", "Sistem", "System", "Sistema", "Système", "Sistema",
+        )
     } else {
         return scope;
     };
@@ -142,6 +186,9 @@ fn area_title(scope: &str, language: Language) -> String {
         Language::Turkish => turkish.to_owned(),
         Language::English => english.to_owned(),
         Language::German => german.to_owned(),
+        Language::Spanish => spanish.to_owned(),
+        Language::French => french.to_owned(),
+        Language::Portuguese => portuguese.to_owned(),
     }
 }
 

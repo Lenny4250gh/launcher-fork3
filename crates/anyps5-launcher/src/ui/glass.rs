@@ -12,7 +12,7 @@ use egui::{Color32, Context, Painter, Rect, Stroke, StrokeKind, epaint::RectShap
 
 use crate::ui::background::{BackdropGpu, SLOT_MAIN};
 use crate::ui::gpu;
-use crate::ui::theme::{self, black, color};
+use crate::ui::theme::{self, color, scrim};
 
 /// Most glass panels drawn in one frame.
 pub const MAX_PANELS: usize = 512;
@@ -41,6 +41,16 @@ pub struct GlassStyle {
 /// Material tint toward white and saturation boost of the blurred copy (estimates, DESIGN.md 12).
 const MATERIAL_TINT: f32 = 0.06;
 const MATERIAL_SATURATION: f32 = 1.25;
+
+/// How much paper the light look lays over the backdrop where a panel replaces `black` of dark:
+/// 1.1 times the black, at most `LIGHT_VEIL_MAX`, so the sky's colour stays visible through the panel
+/// (`ui::contrast` measures the ink on it from this same function).
+pub fn light_veil(black: f32) -> f32 {
+    (black * 1.1).min(LIGHT_VEIL_MAX)
+}
+
+/// The most paper a panel of the light look is veiled in.
+pub const LIGHT_VEIL_MAX: f32 = 0.88;
 
 impl GlassStyle {
     /// `.glass(radius, opacity:)` of the original.
@@ -396,11 +406,19 @@ pub fn paint_glass_on(
     // The shader and the stroke share one pixel-aligned rect and one whole-dp radius.
     let rect = rect.round_to_pixels(ctx.pixels_per_point());
     style.radius = style.radius.round();
+    let light = theme::light_t();
+    let dark_black = style.black;
+    if light > 0.0 && style.overlay.a() == 0 {
+        // The light look: a panel is the backdrop veiled in paper, not darkened by black. The
+        // veil is a little stronger than the black it replaces, so the dark ink on it reads.
+        style.overlay = scrim(light_veil(style.black) * light);
+        style.black *= 1.0 - light;
+    }
     if theme::high_contrast() {
-        // High Contrast: no frosted glass, a dark plate with a clear edge.
+        // High Contrast: no frosted glass, a plate (dark, or paper on the light look) with a clear edge.
         // The painter applies its own opacity again; the rest of the fade is in the alpha.
         let fade = style.alpha / painter.opacity().max(0.001);
-        let plate = black((style.black + 0.22).clamp(0.82, 0.94) * fade.min(1.0));
+        let plate = plate_colour((dark_black + 0.22).clamp(0.82, 0.94) * fade.min(1.0));
         painter.rect_filled(rect, style.radius, plate);
         painter.add(RectShape::stroke(
             rect,
@@ -436,7 +454,16 @@ pub fn paint_glass(ctx: &Context, painter: &Painter, rect: Rect, style: GlassSty
     paint_glass_on(ctx, painter, rect, ctx.content_rect(), SLOT_MAIN, style);
 }
 
+/// A flat plate: black on the dark looks, paper on the light one.
+fn plate_colour(alpha: f32) -> Color32 {
+    if theme::is_light() {
+        scrim(alpha)
+    } else {
+        theme::black(alpha)
+    }
+}
+
 /// Fallback when the GPU path is unavailable: the flat black overlay alone.
 pub fn paint_flat(painter: &Painter, rect: Rect, style: GlassStyle) {
-    painter.rect_filled(rect, style.radius, black(style.black.max(0.3)));
+    painter.rect_filled(rect, style.radius, plate_colour(style.black.max(0.3)));
 }

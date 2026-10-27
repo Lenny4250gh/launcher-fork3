@@ -174,6 +174,15 @@ pub fn show(
                 color::text_detail()
             };
             let name = one_line(&painter, &game.name, ink, caption_width);
+            // A name cut to the caption is read in full while the pointer or the focus is on it.
+            crate::ui::reveal::full_text(
+                &ctx,
+                response.id,
+                cell,
+                &game.name,
+                hovered || (focused && input::focus_visible(&ctx)),
+                name.elided,
+            );
             let name_y = rect.max.y + CAPTION_GAP;
             painter.galley(pos2(rect.min.x, name_y), name, ink);
             let second_y = name_y + line;

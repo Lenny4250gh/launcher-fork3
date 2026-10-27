@@ -47,6 +47,20 @@ pub struct ControllersData<'a> {
     pub game_running: bool,
 }
 
+/// The right face button (Circle on a PlayStation pad) confirms and the bottom one goes back.
+/// Settings and the first start both read it here.
+pub fn confirm_is_circle(prefs: &Preferences) -> bool {
+    Bindings::from_prefs(prefs).pad_buttons(Role::Select) == ["East"]
+}
+
+/// Chooses which face button confirms: the right one (`true`) or the bottom one. The two swap
+/// jobs, as in the Controllers page.
+pub fn set_confirm_circle(prefs: &mut Preferences, circle: bool) {
+    let mut bindings = Bindings::from_prefs(prefs);
+    let _ = bindings.assign_pad(Role::Select, if circle { "East" } else { "South" });
+    bindings.store(prefs);
+}
+
 /// How long a binding waits for a button, in seconds.
 const CAPTURE_WAIT: f64 = 10.0;
 /// How long the Back button of the pad is held to leave the test, in seconds.
@@ -467,9 +481,7 @@ impl ControllersPanel {
                 row: "confirmCircle",
                 on,
             } => {
-                let mut bindings = Bindings::from_prefs(data.prefs);
-                let _ = bindings.assign_pad(Role::Select, if *on { "East" } else { "South" });
-                bindings.store(data.prefs);
+                set_confirm_circle(data.prefs, *on);
                 nav_bindings::apply(data.prefs);
                 out.changed = true;
             }
@@ -738,7 +750,10 @@ fn build_rows(panel: &ControllersPanel, data: &ControllersData<'_>, snap: &Snaps
             let (hue, brightness) = lightbar::custom_of(light_now(data.prefs));
             let percent = match language {
                 Language::Turkish => format!("%{brightness}"),
-                Language::German => format!("{brightness} %"),
+                Language::German | Language::Spanish | Language::French => {
+                    format!("{brightness} %")
+                }
+                Language::Portuguese => format!("{brightness}%"),
                 Language::English => format!("{brightness}%"),
             };
             rows.push(
@@ -769,7 +784,7 @@ fn build_rows(panel: &ControllersPanel, data: &ControllersData<'_>, snap: &Snaps
     }
 
     rows.push(Row::caption("controlsCaption", Pads::CaptionControls.text(language)).group_start());
-    let circle = bindings.pad_buttons(Role::Select) == ["East"];
+    let circle = confirm_is_circle(data.prefs);
     let confirm = button_label(family, "East");
     rows.push(
         Row::toggle(
@@ -1024,6 +1039,25 @@ fn draw_test(
 mod tests {
     use super::*;
     use crate::ui::pad_hub::Live;
+
+    #[test]
+    fn the_confirm_button_swaps_and_comes_back_without_leaving_a_trace() {
+        let mut prefs = Preferences::default();
+        assert!(!confirm_is_circle(&prefs));
+        set_confirm_circle(&mut prefs, true);
+        assert!(confirm_is_circle(&prefs));
+        // The two buttons swapped jobs: Cross goes back now.
+        assert_eq!(
+            Bindings::from_prefs(&prefs).pad_buttons(Role::Back),
+            ["South"]
+        );
+        set_confirm_circle(&mut prefs, false);
+        assert!(!confirm_is_circle(&prefs));
+        assert!(
+            prefs.nav_pad.is_empty(),
+            "the defaults are stored as nothing"
+        );
+    }
 
     fn pad(name: &str, vendor: u16, product: u16, battery: Battery) -> PadInfo {
         PadInfo {

@@ -100,6 +100,27 @@ fn no_leftovers(root: &Path) {
 }
 
 #[test]
+fn passes_trace_imports_only_when_asked_and_remembers_it() {
+    let w = world(&[]);
+    let mut request = w.dump("Stray", "PPSA02100", &self_v1());
+    let (result, _) = run(&request);
+    let record = result.expect("unlock succeeds");
+    let copy = unlock::unlocked_copy("PPSA02100", &request.game, &w.root);
+    assert!(!record.trace_imports);
+    assert!(!args_of(&copy.join(EXECUTABLE)).contains(&"--trace-imports".to_string()));
+
+    request.trace_imports = true;
+    let (result, _) = run(&request);
+    let record = result.expect("unlock succeeds");
+    assert!(record.trace_imports);
+    assert_eq!(
+        unlock::read_record(&copy).map(|r| r.trace_imports),
+        Some(true)
+    );
+    assert!(args_of(&copy.join(EXECUTABLE)).contains(&"--trace-imports".to_string()));
+}
+
+#[test]
 fn unlocks_a_dump_end_to_end() {
     let w = world(&[]);
     let mut request = w.dump("Stray", "PPSA02100", &self_v1());

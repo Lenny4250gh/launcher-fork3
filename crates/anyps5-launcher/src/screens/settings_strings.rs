@@ -120,11 +120,94 @@ impl SettingsText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            SettingsText::General => "General",
+            SettingsText::Online => "En línea",
+            SettingsText::NoApps => "No hay nada que conectar en este sistema.",
+            SettingsText::NoBroadcast => {
+                "La transmisión en directo solo está disponible en Windows."
+            }
+            SettingsText::Sound => "Sonido",
+            SettingsText::Captures => "Capturas",
+            SettingsText::Controllers => "Mandos",
+            SettingsText::ConnectedApps => "Apps conectadas",
+            SettingsText::Fonts => "Fuentes",
+            SettingsText::ShareScreen => "Compartir pantalla",
+            SettingsText::Updates => "Actualizaciones",
+            SettingsText::Unused => "Sin uso en ningún juego",
+            SettingsText::Installed => "Toolkit instalado",
+            SettingsText::NotCheckedYet => "Aún sin comprobar",
+            SettingsText::ScreenshotHint => "F12 en un juego guarda una captura de pantalla.",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            SettingsText::General => "Général",
+            SettingsText::Online => "En ligne",
+            SettingsText::NoApps => "Rien à connecter sur ce système.",
+            SettingsText::NoBroadcast => "La diffusion en direct nécessite Windows.",
+            SettingsText::Sound => "Son",
+            SettingsText::Captures => "Captures",
+            SettingsText::Controllers => "Manettes",
+            SettingsText::ConnectedApps => "Apps connectées",
+            SettingsText::Fonts => "Polices",
+            SettingsText::ShareScreen => "Partage d’écran",
+            SettingsText::Updates => "Mises à jour",
+            SettingsText::Unused => "Utilisé par aucun jeu",
+            SettingsText::Installed => "Toolkit installé",
+            SettingsText::NotCheckedYet => "Pas encore vérifié",
+            SettingsText::ScreenshotHint => "F12 en jeu enregistre une capture d’écran.",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            SettingsText::General => "Geral",
+            SettingsText::Online => "Online",
+            SettingsText::NoApps => "Não há nada para conectar neste sistema.",
+            SettingsText::NoBroadcast => "A transmissão ao vivo só funciona no Windows.",
+            SettingsText::Sound => "Som",
+            SettingsText::Captures => "Capturas",
+            SettingsText::Controllers => "Controles",
+            SettingsText::ConnectedApps => "Apps conectados",
+            SettingsText::Fonts => "Fontes",
+            SettingsText::ShareScreen => "Compartilhar tela",
+            SettingsText::Updates => "Atualizações",
+            SettingsText::Unused => "Não usado por nenhum jogo",
+            SettingsText::Installed => "Toolkit instalado",
+            SettingsText::NotCheckedYet => "Ainda não verificado",
+            SettingsText::ScreenshotHint => "F12 em um jogo salva uma captura de tela.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },

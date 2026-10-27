@@ -36,11 +36,25 @@ scenes() {
   sed -n '/^const BLOCKERS/,/^];/p' "$SRC/screens/gallery_together.rs" | grep -oE '"[a-z0-9-]+"' | tr -d '"' | sed 's/^/together-/'
   echo together-offer; echo together-offer-invitation
   # The foundation's own pages.
-  printf '%s\n' components panels states type artwork themes cosmic aurora sunset
+  printf '%s\n' components panels states type artwork themes cosmic aurora sunset ember tide daylight
+  # The three newer looks on the screens that carry the most ink: `scene@look` renders the scene
+  # with `--theme=look`, and `scene@look+reduced` with Reduced Motion on (the still frame).
+  for look in ember tide daylight; do
+    for scene in home-noartwork library settings onboarding-look; do echo "$scene@$look"; done
+    echo "home-noartwork@$look+reduced"
+  done
+  # Daylight, the light look, on the online screens and the trophies (dark ink on a coloured sky).
+  for scene in friends friends-party friends-messages friends-played-with profile-own notifications trophies find-players friends-share-hosting; do echo "$scene@daylight"; done
 }
 
 one() {
   scene=$1
+  flags=()
+  if [[ $scene == *@* ]]; then
+    look=${scene#*@}
+    flags+=("--theme=${look%%+*}")
+    [[ $look == *+reduced ]] && flags+=(--reduced)
+  fi
   png=$OUT/$scene.png
   log=$OUT/$scene.log
   # A fresh data folder per scene: nothing of the runner's (or a previous scene's) state leaks in.
@@ -48,7 +62,7 @@ one() {
   env -u WAYLAND_DISPLAY HOME="$home" XDG_DATA_HOME="$home/data" XDG_CONFIG_HOME="$home/config" \
     VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
     timeout -k 5 "$LIMIT" \
-    "$BIN" --gallery="$scene" --screenshot="$png" --size=1280x720 --frames=12 >"$log" 2>&1
+    "$BIN" --gallery="${scene%%@*}" "${flags[@]}" --screenshot="$png" --size=1280x720 --frames=12 >"$log" 2>&1
   code=$?
   rm -rf "$home"
   if [ $code -eq 124 ] || [ $code -eq 137 ]; then

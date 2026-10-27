@@ -291,7 +291,7 @@ impl OnlineText {
             OnlineText::NotFound => "No account has this name.",
             OnlineText::RateLimited => "Too many tries. Wait a moment and try again.",
             OnlineText::Banned => "This account is banned.",
-            OnlineText::Failed => "That did not work: %@",
+            OnlineText::Failed => "Could not do that. Try again in a moment.",
             OnlineText::NotOwned => "%@ is not in your library.",
             OnlineText::NotUnlocked => "Unlock %@ first, then join.",
             OnlineText::VersionMismatch => {
@@ -453,7 +453,7 @@ impl OnlineText {
             OnlineText::NotFound => "Bu adda bir hesap yok.",
             OnlineText::RateLimited => "Çok fazla deneme. Biraz bekleyip yeniden dene.",
             OnlineText::Banned => "Bu hesap engellendi.",
-            OnlineText::Failed => "Olmadı: %@",
+            OnlineText::Failed => "Bu yapılamadı. Biraz sonra yeniden dene.",
             OnlineText::NotOwned => "%@ kütüphanende yok.",
             OnlineText::NotUnlocked => "Önce %@ oyununun kilidini aç, sonra katıl.",
             OnlineText::VersionMismatch => {
@@ -626,7 +626,7 @@ impl OnlineText {
                 "Zu viele Versuche. Warte einen Moment und versuche es erneut."
             }
             OnlineText::Banned => "Dieses Konto ist gesperrt.",
-            OnlineText::Failed => "Das hat nicht geklappt: %@",
+            OnlineText::Failed => "Das ging nicht. Versuche es gleich noch einmal.",
             OnlineText::NotOwned => "%@ ist nicht in deiner Bibliothek.",
             OnlineText::NotUnlocked => "Schalte zuerst %@ frei, dann tritt bei.",
             OnlineText::VersionMismatch => {
@@ -682,11 +682,545 @@ impl OnlineText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            OnlineText::Online => "En línea",
+            OnlineText::Subtitle => "Juega con tus amigos por internet",
+            OnlineText::SignedInOn => "Sesión iniciada en %@.",
+            OnlineText::Cloud => "Nube",
+            OnlineText::CloudNotSet => "Aún sin configurar",
+            OnlineText::CloudOfficial => "AnyPlay",
+            OnlineText::CloudUseOfficial => "Usar la nube de AnyPlay",
+            OnlineText::CloudSubtitle => "La dirección de la nube en la que inicias sesión",
+            OnlineText::CloudAddress => "Dirección",
+            OnlineText::CloudUse => "Usar esta nube",
+            OnlineText::CloudHint => {
+                "Una nube propia o de amigos que tengan una. Pide la dirección a quien la gestione, por ejemplo https://cloud.example.org."
+            }
+            OnlineText::CloudInvalid => "Escribe una dirección que empiece por https://",
+            OnlineText::Sending => "Enviando…",
+            OnlineText::SignInNote => {
+                "Inicias sesión o creas tu cuenta en la página de la nube, en tu navegador. Antes de eso, nada se conecta."
+            }
+            OnlineText::NeedsCloud => "Configura primero la nube.",
+            OnlineText::SignIn => "Iniciar sesión",
+            OnlineText::Handle => "Nombre",
+            OnlineText::CreateAccount => "Crear cuenta",
+            OnlineText::ContinueInBrowser => "Continúa en tu navegador",
+            OnlineText::OpenAgain => "Abrir la página de nuevo",
+            OnlineText::BrowserNote => "Cuando termines allí, el launcher inicia sesión solo.",
+            OnlineText::SignInTimedOut => {
+                "Se agotó el tiempo del inicio de sesión. Inténtalo de nuevo."
+            }
+            OnlineText::ManageAccount => "Gestionar cuenta",
+            OnlineText::ManageAccountDetail => {
+                "Correo electrónico, llaves de acceso, dispositivos y eliminación"
+            }
+            OnlineText::StatusOnline => "En línea",
+            OnlineText::StatusConnecting => "Conectando…",
+            OnlineText::StatusOffline => "Sin conexión, reintentando",
+            OnlineText::Invitations => "Invitaciones",
+            OnlineText::Requests => "Solicitudes de amistad",
+            OnlineText::SeeAllRequests => "Ver todas las solicitudes",
+            OnlineText::RequestsWaiting => "%@ en espera",
+            OnlineText::FriendsOnlineCount => "%@ en línea",
+            OnlineText::Friends => "Amigos",
+            OnlineText::Sent => "Solicitudes enviadas",
+            OnlineText::Session => "Play Together",
+            OnlineText::Blocked => "Bloqueados",
+            OnlineText::Playing => "Jugando a %@",
+            OnlineText::PlayingOnline => "Jugando a %@ · En línea",
+            OnlineText::PlayingOnlineJoinable => "Jugando a %@ · En línea · Puedes unirte",
+            OnlineText::FriendOnline => "En línea",
+            OnlineText::FriendOffline => "Sin conexión",
+            OnlineText::NoFriends => {
+                "Aún no tienes amigos. Añade a alguien con el nombre que eligió."
+            }
+            OnlineText::AddFriend => "Añadir amigo",
+            OnlineText::AddFriendSubtitle => "Escribe el nombre de su cuenta",
+            OnlineText::SendRequest => "Enviar solicitud",
+            OnlineText::AddFriendHint => {
+                "Las mayúsculas no importan. Verán la solicitud cuando estén en línea."
+            }
+            OnlineText::WantsFriend => "Quiere ser tu amigo",
+            OnlineText::Waiting => "Esperando respuesta",
+            OnlineText::Accept => "Aceptar",
+            OnlineText::Decline => "Rechazar",
+            OnlineText::Withdraw => "Retirar solicitud",
+            OnlineText::RemoveFriend => "Quitar amigo",
+            OnlineText::Block => "Bloquear",
+            OnlineText::Unblock => "Desbloquear",
+            OnlineText::Report => "Denunciar",
+            OnlineText::ReportTitle => "Denunciar a %@",
+            OnlineText::Reason => "Motivo",
+            OnlineText::ReasonCheating => "Trampas",
+            OnlineText::ReasonHarassment => "Acoso",
+            OnlineText::ReasonSpam => "Spam",
+            OnlineText::ReasonName => "Nombre ofensivo",
+            OnlineText::ReasonOther => "Otro motivo",
+            OnlineText::SendReport => "Enviar denuncia",
+            OnlineText::JoinGame => "Unirse a la partida",
+            OnlineText::JoinDetail => "%@ de %@ jugadores",
+            OnlineText::InviteToSession => "Invitar a tu partida",
+            OnlineText::InvitedBy => "%@ te invita",
+            OnlineText::LinkDirect => "Directa",
+            OnlineText::LinkRelay => "A través de un relay",
+            OnlineText::LinkConnecting => "Conectando…",
+            OnlineText::You => "Tú",
+            OnlineText::Account => "Cuenta",
+            OnlineText::SignOut => "Cerrar sesión",
+            OnlineText::PickerTitle => "Invitar a %@",
+            OnlineText::PickerSubtitle => "Elige hasta %@ amigos",
+            OnlineText::SendInvitations => "Enviar invitaciones",
+            OnlineText::Welcome => "Sesión iniciada como %@",
+            OnlineText::SignedOut => "Sesión cerrada",
+            OnlineText::RequestSent => "Solicitud enviada a %@",
+            OnlineText::NowFriends => "Ya eres amigo de %@",
+            OnlineText::AddSelf => "No puedes añadirte a ti mismo.",
+            OnlineText::AddBlocked => "Has bloqueado esta cuenta. Desbloquéala primero.",
+            OnlineText::AddLimit => {
+                "Has alcanzado el límite de amigos o solicitudes. Inténtalo más tarde."
+            }
+            OnlineText::AddEnterName => "Escribe primero su nombre",
+            OnlineText::RequestArrived => "%@ quiere ser tu amigo",
+            OnlineText::InvitationArrived => "%@ te invita a %@",
+            OnlineText::BlockedToast => "%@ está bloqueado",
+            OnlineText::Reported => "Denuncia enviada. Gracias.",
+            OnlineText::Joining => "Entrando en la partida de %@: %@",
+            OnlineText::InvitationsSent => "Invitaciones enviadas",
+            OnlineText::Offline => {
+                "No se puede acceder a la nube. Revisa tu conexión e inténtalo de nuevo."
+            }
+            OnlineText::CodeWrong => "El código no coincide. Mira el último correo.",
+            OnlineText::CodeExpired => "El código caducó. Envía uno nuevo.",
+            OnlineText::HandleTaken => "Ese nombre ya está en uso. Prueba con otro.",
+            OnlineText::HandleInvalid => {
+                "Usa de 3 a 16 letras, dígitos, - o _, empezando por una letra."
+            }
+            OnlineText::NotFound => "Ninguna cuenta tiene este nombre.",
+            OnlineText::RateLimited => {
+                "Demasiados intentos. Espera un momento e inténtalo de nuevo."
+            }
+            OnlineText::Banned => "Esta cuenta está suspendida.",
+            OnlineText::Failed => "No se pudo hacer. Inténtalo de nuevo en un momento.",
+            OnlineText::NotOwned => "%@ no está en tu biblioteca.",
+            OnlineText::NotUnlocked => "Desbloquea %@ primero y luego únete.",
+            OnlineText::VersionMismatch => {
+                "%@ juega la versión %@ con AnyPS5 %@. Tú tienes la %@ con AnyPS5 %@."
+            }
+            OnlineText::Full => "La partida está llena.",
+            OnlineText::ServiceMissing => {
+                "Esta instalación no tiene servicio de red. Vuelve a instalar el launcher."
+            }
+            OnlineText::ServiceEnded => {
+                "El servicio de red se detuvo. Abre En línea para iniciarlo de nuevo."
+            }
+            OnlineText::RecordNetwork => "Registrar llamadas de red",
+            OnlineText::RecordNetworkDetail => {
+                "Los juegos escriben sus solicitudes de red en la carpeta Logs, para ayudar a crear el soporte en línea. No se sube nada."
+            }
+            OnlineText::AppearOffline => "Aparecer sin conexión",
+            OnlineText::AppearOfflineDetail => "Tus amigos te ven sin conexión",
+            OnlineText::PublicProfile => "Perfil público",
+            OnlineText::PublicProfileDetail => "Cualquiera puede abrir tu página en la web",
+            OnlineText::PublicProfileNote => {
+                "Desactivado hasta que lo actives. Aun así, quien no es tu amigo solo ve lo que compartes con Todos."
+            }
+            OnlineText::AppearingOffline => "Apareces sin conexión",
+            OnlineText::RelayOnly => "Ocultar tu dirección IP",
+            OnlineText::RelayOnlyNote => {
+                "Los demás jugadores te alcanzan solo a través de un relay y nunca ven tu dirección IP. Los juegos pueden responder algo más lento."
+            }
+            OnlineText::Openh264 => "Video para compartir pantalla",
+            OnlineText::Openh264Off => {
+                "Actívalo para descargar el códec de video de Cisco. Sin él, compartir pantalla no puede enviar ni mostrar video"
+            }
+            OnlineText::Openh264Downloading => "Descargando de Cisco",
+            OnlineText::Openh264Ready => "Descargado de Cisco",
+            OnlineText::Openh264Missing => "Aún sin descargar",
+            OnlineText::Openh264Failed => "Falló la descarga: %@",
+            OnlineText::Openh264Refused => {
+                "El archivo no es la compilación de Cisco. Desactiva y activa de nuevo para descargarlo otra vez."
+            }
+            OnlineText::Openh264NotLoaded => "No se cargó: %@",
+            // Cisco's text stays in English in every language.
+            OnlineText::Openh264Notice => "OpenH264 Video Codec provided by Cisco Systems, Inc.",
+            OnlineText::TrophiesHidden => "Ocultos",
+            OnlineText::TrophiesNone => "Aún ninguno",
+            OnlineText::TrophyAudience => "Quién ve tus trofeos",
+            OnlineText::AudienceFriends => "Amigos",
+            OnlineText::AudienceEveryone => "Todos",
+            OnlineText::AudienceOnlyYou => "Solo tú",
+            OnlineText::TrophyAudienceNote => {
+                "Los jugadores que elijas ven cuántos trofeos tienes de cada grado. Solo el número, el grado y la fecha de cada trofeo salen de este PC."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            OnlineText::Online => "En ligne",
+            OnlineText::Subtitle => "Joue avec tes amis par internet",
+            OnlineText::SignedInOn => "Connecté sur %@.",
+            OnlineText::Cloud => "Cloud",
+            OnlineText::CloudNotSet => "Pas encore configuré",
+            OnlineText::CloudOfficial => "AnyPlay",
+            OnlineText::CloudUseOfficial => "Utiliser le cloud AnyPlay",
+            OnlineText::CloudSubtitle => "L’adresse du cloud auquel tu te connectes",
+            OnlineText::CloudAddress => "Adresse",
+            OnlineText::CloudUse => "Utiliser ce cloud",
+            OnlineText::CloudHint => {
+                "Un cloud à toi, ou celui d’amis qui en font tourner un. Demande l’adresse à la personne qui le gère, par exemple https://cloud.example.org."
+            }
+            OnlineText::CloudInvalid => "Saisis une adresse qui commence par https://",
+            OnlineText::Sending => "Envoi…",
+            OnlineText::SignInNote => {
+                "Tu te connectes ou tu crées ton compte sur la page du cloud, dans ton navigateur. Rien n’est en ligne avant cela."
+            }
+            OnlineText::NeedsCloud => "Configure d’abord le cloud.",
+            OnlineText::SignIn => "Se connecter",
+            OnlineText::Handle => "Nom",
+            OnlineText::CreateAccount => "Créer un compte",
+            OnlineText::ContinueInBrowser => "Continue dans ton navigateur",
+            OnlineText::OpenAgain => "Rouvrir la page",
+            OnlineText::BrowserNote => {
+                "Quand tu as terminé là-bas, le launcher se connecte tout seul."
+            }
+            OnlineText::SignInTimedOut => "La connexion a expiré. Réessaie.",
+            OnlineText::ManageAccount => "Gérer le compte",
+            OnlineText::ManageAccountDetail => "E-mail, clés d’accès, appareils et suppression",
+            OnlineText::StatusOnline => "En ligne",
+            OnlineText::StatusConnecting => "Connexion…",
+            OnlineText::StatusOffline => "Hors ligne, nouvelle tentative",
+            OnlineText::Invitations => "Invitations",
+            OnlineText::Requests => "Demandes d’ami",
+            OnlineText::SeeAllRequests => "Voir toutes les demandes",
+            OnlineText::RequestsWaiting => "%@ en attente",
+            OnlineText::FriendsOnlineCount => "%@ en ligne",
+            OnlineText::Friends => "Amis",
+            OnlineText::Sent => "Demandes envoyées",
+            OnlineText::Session => "Play Together",
+            OnlineText::Blocked => "Bloqués",
+            OnlineText::Playing => "Joue à %@",
+            OnlineText::PlayingOnline => "Joue à %@ · En ligne",
+            OnlineText::PlayingOnlineJoinable => "Joue à %@ · En ligne · Tu peux rejoindre",
+            OnlineText::FriendOnline => "En ligne",
+            OnlineText::FriendOffline => "Hors ligne",
+            OnlineText::NoFriends => {
+                "Pas encore d’amis. Ajoute quelqu’un avec le nom qu’il a choisi."
+            }
+            OnlineText::AddFriend => "Ajouter un ami",
+            OnlineText::AddFriendSubtitle => "Saisis le nom de son compte",
+            OnlineText::SendRequest => "Envoyer la demande",
+            OnlineText::AddFriendHint => {
+                "Les majuscules n’ont pas d’importance. La personne verra la demande quand elle sera en ligne."
+            }
+            OnlineText::WantsFriend => "Veut devenir ton ami",
+            OnlineText::Waiting => "En attente d’une réponse",
+            OnlineText::Accept => "Accepter",
+            OnlineText::Decline => "Refuser",
+            OnlineText::Withdraw => "Retirer la demande",
+            OnlineText::RemoveFriend => "Retirer l’ami",
+            OnlineText::Block => "Bloquer",
+            OnlineText::Unblock => "Débloquer",
+            OnlineText::Report => "Signaler",
+            OnlineText::ReportTitle => "Signaler %@",
+            OnlineText::Reason => "Motif",
+            OnlineText::ReasonCheating => "Triche",
+            OnlineText::ReasonHarassment => "Harcèlement",
+            OnlineText::ReasonSpam => "Spam",
+            OnlineText::ReasonName => "Nom offensant",
+            OnlineText::ReasonOther => "Autre chose",
+            OnlineText::SendReport => "Envoyer le signalement",
+            OnlineText::JoinGame => "Rejoindre la partie",
+            OnlineText::JoinDetail => "%@ sur %@ joueurs",
+            OnlineText::InviteToSession => "Inviter dans ta partie",
+            OnlineText::InvitedBy => "%@ t’invite",
+            OnlineText::LinkDirect => "Direct",
+            OnlineText::LinkRelay => "Via un relais",
+            OnlineText::LinkConnecting => "Connexion…",
+            OnlineText::You => "Toi",
+            OnlineText::Account => "Compte",
+            OnlineText::SignOut => "Se déconnecter",
+            OnlineText::PickerTitle => "Inviter à %@",
+            OnlineText::PickerSubtitle => "Choisis jusqu’à %@ amis",
+            OnlineText::SendInvitations => "Envoyer les invitations",
+            OnlineText::Welcome => "Connecté en tant que %@",
+            OnlineText::SignedOut => "Déconnecté",
+            OnlineText::RequestSent => "Demande envoyée à %@",
+            OnlineText::NowFriends => "Toi et %@ êtes maintenant amis",
+            OnlineText::AddSelf => "Tu ne peux pas t’ajouter toi-même.",
+            OnlineText::AddBlocked => "Tu as bloqué ce compte. Débloque-le d’abord.",
+            OnlineText::AddLimit => {
+                "La limite d’amis ou de demandes est atteinte. Réessaie plus tard."
+            }
+            OnlineText::AddEnterName => "Saisis d’abord son nom",
+            OnlineText::RequestArrived => "%@ veut devenir ton ami",
+            OnlineText::InvitationArrived => "%@ t’invite à %@",
+            OnlineText::BlockedToast => "%@ est bloqué",
+            OnlineText::Reported => "Signalement envoyé. Merci.",
+            OnlineText::Joining => "Connexion à la partie de %@\u{a0}: %@",
+            OnlineText::InvitationsSent => "Invitations envoyées",
+            OnlineText::Offline => "Le cloud est inaccessible. Vérifie ta connexion et réessaie.",
+            OnlineText::CodeWrong => "Le code ne correspond pas. Regarde le dernier e-mail.",
+            OnlineText::CodeExpired => "Le code a expiré. Envoies-en un nouveau.",
+            OnlineText::HandleTaken => "Ce nom est déjà pris. Essaie-en un autre.",
+            OnlineText::HandleInvalid => {
+                "Utilise de 3 à 16 lettres, chiffres, - ou _, en commençant par une lettre."
+            }
+            OnlineText::NotFound => "Aucun compte ne porte ce nom.",
+            OnlineText::RateLimited => "Trop d’essais. Attends un instant et réessaie.",
+            OnlineText::Banned => "Ce compte est banni.",
+            OnlineText::Failed => "Impossible de le faire. Réessaie dans un instant.",
+            OnlineText::NotOwned => "%@ n’est pas dans ta bibliothèque.",
+            OnlineText::NotUnlocked => "Déverrouille d’abord %@, puis rejoins.",
+            OnlineText::VersionMismatch => {
+                "%@ joue à la version %@ avec AnyPS5 %@. Tu as la %@ avec AnyPS5 %@."
+            }
+            OnlineText::Full => "La partie est complète.",
+            OnlineText::ServiceMissing => {
+                "Cette installation n’a pas de service réseau. Réinstalle le launcher."
+            }
+            OnlineText::ServiceEnded => {
+                "Le service réseau s’est arrêté. Ouvre En ligne pour le relancer."
+            }
+            OnlineText::RecordNetwork => "Enregistrer les appels réseau",
+            OnlineText::RecordNetworkDetail => {
+                "Les jeux écrivent leurs requêtes réseau dans le dossier Logs pour aider à créer la prise en charge en ligne. Rien n’est envoyé."
+            }
+            OnlineText::AppearOffline => "Apparaître hors ligne",
+            OnlineText::AppearOfflineDetail => "Tes amis te voient hors ligne",
+            OnlineText::PublicProfile => "Profil public",
+            OnlineText::PublicProfileDetail => "N’importe qui peut ouvrir ta page sur le web",
+            OnlineText::PublicProfileNote => {
+                "Désactivé tant que tu ne l’actives pas. Même alors, les personnes qui ne sont pas tes amis ne voient que ce que tu partages avec Tout le monde."
+            }
+            OnlineText::AppearingOffline => "Tu apparais hors ligne",
+            OnlineText::RelayOnly => "Masquer ton adresse IP",
+            OnlineText::RelayOnlyNote => {
+                "Les autres joueurs te joignent uniquement via un relais et ne voient jamais ton adresse IP. Les jeux peuvent répondre un peu plus lentement."
+            }
+            OnlineText::Openh264 => "Vidéo pour le partage d’écran",
+            OnlineText::Openh264Off => {
+                "Active pour télécharger le codec vidéo de Cisco. Sans lui, le partage d’écran ne peut ni envoyer ni afficher de vidéo"
+            }
+            OnlineText::Openh264Downloading => "Téléchargement depuis Cisco",
+            OnlineText::Openh264Ready => "Téléchargé depuis Cisco",
+            OnlineText::Openh264Missing => "Pas encore téléchargé",
+            OnlineText::Openh264Failed => "Échec du téléchargement\u{a0}: %@",
+            OnlineText::Openh264Refused => {
+                "Le fichier n’est pas le build de Cisco. Désactive puis réactive pour le télécharger de nouveau."
+            }
+            OnlineText::Openh264NotLoaded => "Chargement impossible\u{a0}: %@",
+            // Cisco's text stays in English in every language.
+            OnlineText::Openh264Notice => "OpenH264 Video Codec provided by Cisco Systems, Inc.",
+            OnlineText::TrophiesHidden => "Masqués",
+            OnlineText::TrophiesNone => "Aucun pour l’instant",
+            OnlineText::TrophyAudience => "Qui voit tes trophées",
+            OnlineText::AudienceFriends => "Amis",
+            OnlineText::AudienceEveryone => "Tout le monde",
+            OnlineText::AudienceOnlyYou => "Toi seul",
+            OnlineText::TrophyAudienceNote => {
+                "Les joueurs que tu choisis voient combien de trophées tu as de chaque rang. Seuls le numéro, le rang et la date de chaque trophée quittent ce PC."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            OnlineText::Online => "Online",
+            OnlineText::Subtitle => "Jogue com seus amigos pela internet",
+            OnlineText::SignedInOn => "Conectado em %@.",
+            OnlineText::Cloud => "Nuvem",
+            OnlineText::CloudNotSet => "Ainda não configurada",
+            OnlineText::CloudOfficial => "AnyPlay",
+            OnlineText::CloudUseOfficial => "Usar a nuvem da AnyPlay",
+            OnlineText::CloudSubtitle => "O endereço da nuvem em que você entra",
+            OnlineText::CloudAddress => "Endereço",
+            OnlineText::CloudUse => "Usar esta nuvem",
+            OnlineText::CloudHint => {
+                "Uma nuvem sua ou de amigos que mantêm uma. Peça o endereço a quem a administra, como https://cloud.example.org."
+            }
+            OnlineText::CloudInvalid => "Digite um endereço que comece com https://",
+            OnlineText::Sending => "Enviando…",
+            OnlineText::SignInNote => {
+                "Você entra ou cria sua conta na página da nuvem, no navegador. Antes disso, nada fica online."
+            }
+            OnlineText::NeedsCloud => "Configure a nuvem primeiro.",
+            OnlineText::SignIn => "Entrar",
+            OnlineText::Handle => "Nome",
+            OnlineText::CreateAccount => "Criar conta",
+            OnlineText::ContinueInBrowser => "Continue no navegador",
+            OnlineText::OpenAgain => "Abrir a página de novo",
+            OnlineText::BrowserNote => "Quando terminar lá, o launcher entra sozinho.",
+            OnlineText::SignInTimedOut => "O tempo da entrada esgotou. Tente de novo.",
+            OnlineText::ManageAccount => "Gerenciar conta",
+            OnlineText::ManageAccountDetail => "E-mail, chaves de acesso, dispositivos e exclusão",
+            OnlineText::StatusOnline => "Online",
+            OnlineText::StatusConnecting => "Conectando…",
+            OnlineText::StatusOffline => "Offline, tentando de novo",
+            OnlineText::Invitations => "Convites",
+            OnlineText::Requests => "Pedidos de amizade",
+            OnlineText::SeeAllRequests => "Ver todos os pedidos",
+            OnlineText::RequestsWaiting => "%@ aguardando",
+            OnlineText::FriendsOnlineCount => "%@ online",
+            OnlineText::Friends => "Amigos",
+            OnlineText::Sent => "Pedidos enviados",
+            OnlineText::Session => "Play Together",
+            OnlineText::Blocked => "Bloqueados",
+            OnlineText::Playing => "Jogando %@",
+            OnlineText::PlayingOnline => "Jogando %@ · Online",
+            OnlineText::PlayingOnlineJoinable => "Jogando %@ · Online · Você pode entrar",
+            OnlineText::FriendOnline => "Online",
+            OnlineText::FriendOffline => "Offline",
+            OnlineText::NoFriends => {
+                "Você ainda não tem amigos. Adicione alguém pelo nome que a pessoa escolheu."
+            }
+            OnlineText::AddFriend => "Adicionar amigo",
+            OnlineText::AddFriendSubtitle => "Digite o nome da conta da pessoa",
+            OnlineText::SendRequest => "Enviar pedido",
+            OnlineText::AddFriendHint => {
+                "Maiúsculas e minúsculas não importam. A pessoa vê o pedido quando ficar online."
+            }
+            OnlineText::WantsFriend => "Quer ser seu amigo",
+            OnlineText::Waiting => "Aguardando resposta",
+            OnlineText::Accept => "Aceitar",
+            OnlineText::Decline => "Recusar",
+            OnlineText::Withdraw => "Cancelar pedido",
+            OnlineText::RemoveFriend => "Remover amigo",
+            OnlineText::Block => "Bloquear",
+            OnlineText::Unblock => "Desbloquear",
+            OnlineText::Report => "Denunciar",
+            OnlineText::ReportTitle => "Denunciar %@",
+            OnlineText::Reason => "Motivo",
+            OnlineText::ReasonCheating => "Trapaça",
+            OnlineText::ReasonHarassment => "Assédio",
+            OnlineText::ReasonSpam => "Spam",
+            OnlineText::ReasonName => "Nome ofensivo",
+            OnlineText::ReasonOther => "Outro motivo",
+            OnlineText::SendReport => "Enviar denúncia",
+            OnlineText::JoinGame => "Entrar no jogo",
+            OnlineText::JoinDetail => "%@ de %@ jogadores",
+            OnlineText::InviteToSession => "Convidar para seu jogo",
+            OnlineText::InvitedBy => "%@ convidou você",
+            OnlineText::LinkDirect => "Direta",
+            OnlineText::LinkRelay => "Por um relay",
+            OnlineText::LinkConnecting => "Conectando…",
+            OnlineText::You => "Você",
+            OnlineText::Account => "Conta",
+            OnlineText::SignOut => "Sair",
+            OnlineText::PickerTitle => "Convidar para %@",
+            OnlineText::PickerSubtitle => "Escolha até %@ amigos",
+            OnlineText::SendInvitations => "Enviar convites",
+            OnlineText::Welcome => "Conectado como %@",
+            OnlineText::SignedOut => "Sessão encerrada",
+            OnlineText::RequestSent => "Pedido enviado para %@",
+            OnlineText::NowFriends => "Você e %@ agora são amigos",
+            OnlineText::AddSelf => "Você não pode adicionar a si mesmo.",
+            OnlineText::AddBlocked => "Você bloqueou esta conta. Desbloqueie primeiro.",
+            OnlineText::AddLimit => {
+                "O limite de amigos ou pedidos foi atingido. Tente de novo mais tarde."
+            }
+            OnlineText::AddEnterName => "Digite o nome primeiro",
+            OnlineText::RequestArrived => "%@ quer ser seu amigo",
+            OnlineText::InvitationArrived => "%@ convidou você para %@",
+            OnlineText::BlockedToast => "%@ está bloqueado",
+            OnlineText::Reported => "Denúncia enviada. Obrigado.",
+            OnlineText::Joining => "Entrando no jogo de %@: %@",
+            OnlineText::InvitationsSent => "Convites enviados",
+            OnlineText::Offline => {
+                "Não foi possível acessar a nuvem. Verifique sua conexão e tente de novo."
+            }
+            OnlineText::CodeWrong => "O código não confere. Veja o e-mail mais recente.",
+            OnlineText::CodeExpired => "O código expirou. Envie um novo.",
+            OnlineText::HandleTaken => "Esse nome já está em uso. Tente outro.",
+            OnlineText::HandleInvalid => {
+                "Use de 3 a 16 letras, dígitos, - ou _, começando por uma letra."
+            }
+            OnlineText::NotFound => "Nenhuma conta tem este nome.",
+            OnlineText::RateLimited => "Muitas tentativas. Aguarde um momento e tente de novo.",
+            OnlineText::Banned => "Esta conta está banida.",
+            OnlineText::Failed => "Não foi possível. Tenta de novo daqui a pouco.",
+            OnlineText::NotOwned => "%@ não está na sua biblioteca.",
+            OnlineText::NotUnlocked => "Desbloqueie %@ primeiro e depois entre.",
+            OnlineText::VersionMismatch => {
+                "%@ joga a versão %@ com o AnyPS5 %@. Você tem a %@ com o AnyPS5 %@."
+            }
+            OnlineText::Full => "O jogo está cheio.",
+            OnlineText::ServiceMissing => {
+                "Esta instalação não tem serviço de rede. Instale o launcher de novo."
+            }
+            OnlineText::ServiceEnded => {
+                "O serviço de rede parou. Abra Online para iniciá-lo de novo."
+            }
+            OnlineText::RecordNetwork => "Registrar chamadas de rede",
+            OnlineText::RecordNetworkDetail => {
+                "Os jogos gravam suas requisições de rede na pasta Logs, para ajudar a criar o suporte online. Nada é enviado."
+            }
+            OnlineText::AppearOffline => "Aparecer offline",
+            OnlineText::AppearOfflineDetail => "Seus amigos veem você offline",
+            OnlineText::PublicProfile => "Perfil público",
+            OnlineText::PublicProfileDetail => "Qualquer pessoa pode abrir sua página na web",
+            OnlineText::PublicProfileNote => {
+                "Desativado até você ativar. Mesmo assim, quem não é seu amigo vê só o que você compartilha com Todos."
+            }
+            OnlineText::AppearingOffline => "Você aparece offline",
+            OnlineText::RelayOnly => "Ocultar seu endereço IP",
+            OnlineText::RelayOnlyNote => {
+                "Outros jogadores alcançam você só por um relay e nunca veem seu endereço IP. Os jogos podem responder um pouco mais devagar."
+            }
+            OnlineText::Openh264 => "Vídeo para compartilhar tela",
+            OnlineText::Openh264Off => {
+                "Ative para baixar o codec de vídeo da Cisco. Sem ele, compartilhar tela não consegue enviar nem mostrar vídeo"
+            }
+            OnlineText::Openh264Downloading => "Baixando da Cisco",
+            OnlineText::Openh264Ready => "Baixado da Cisco",
+            OnlineText::Openh264Missing => "Ainda não baixado",
+            OnlineText::Openh264Failed => "O download falhou: %@",
+            OnlineText::Openh264Refused => {
+                "O arquivo não é o build da Cisco. Desative e ative de novo para baixá-lo outra vez."
+            }
+            OnlineText::Openh264NotLoaded => "Não foi possível carregar: %@",
+            // Cisco's text stays in English in every language.
+            OnlineText::Openh264Notice => "OpenH264 Video Codec provided by Cisco Systems, Inc.",
+            OnlineText::TrophiesHidden => "Ocultos",
+            OnlineText::TrophiesNone => "Nenhum ainda",
+            OnlineText::TrophyAudience => "Quem vê seus troféus",
+            OnlineText::AudienceFriends => "Amigos",
+            OnlineText::AudienceEveryone => "Todos",
+            OnlineText::AudienceOnlyYou => "Só você",
+            OnlineText::TrophyAudienceNote => {
+                "Os jogadores que você escolher veem quantos troféus você tem de cada grau. Só o número, o grau e a data de cada troféu saem deste PC."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },
@@ -733,6 +1267,13 @@ mod tests {
         for text in ALL {
             let count = |s: &str| s.matches("%@").count();
             assert_eq!(count(text.english()), count(text.turkish()), "{text:?}");
+            for language in Language::ALL {
+                assert_eq!(
+                    count(text.english()),
+                    count(text.text(language)),
+                    "{text:?} {language:?}"
+                );
+            }
         }
     }
 

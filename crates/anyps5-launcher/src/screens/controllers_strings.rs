@@ -527,11 +527,381 @@ impl Pads {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            Pads::Entry | Pads::Title => "Mandos",
+            Pads::EntryDetail => {
+                "Prueba los botones, la vibración y la barra de luz, cambia los botones del launcher y resuelve problemas"
+            }
+            Pads::Subtitle => {
+                "Todo sobre los mandos de este PC. Los juegos conservan sus propios controles."
+            }
+            Pads::CaptionConnected => "Conectados",
+            Pads::CaptionTest => "Probar y ajustar",
+            Pads::CaptionControls => "Controles del launcher",
+            Pads::CaptionHelp => "Solución de problemas",
+            Pads::NoPad => "No se encontró ningún mando",
+            Pads::NoPadDetail => "Conecta un mando y pulsa un botón.",
+            Pads::PadDetail => "%@ · %@ · %@",
+            Pads::InUse => "En uso",
+            Pads::Usb => "USB",
+            Pads::Bluetooth => "Bluetooth",
+            Pads::LinkUnknown => "Conexión desconocida",
+            Pads::Battery => "Batería %@\u{a0}%",
+            Pads::BatteryCharging => "Cargando %@\u{a0}%",
+            Pads::BatteryNone => "Sin lectura de batería",
+            Pads::TestButtons => "Probar botones",
+            Pads::TestButtonsDetail => "Pulsa botones y mueve los sticks; se iluminan",
+            Pads::TestVibration => "Probar vibración",
+            Pads::TestVibrationDetail => "Una vibración corta, primero el motor suave",
+            Pads::NotWhileGame => "No mientras se ejecuta un juego.",
+            Pads::NoRumble => "Ningún mando conectado puede vibrar.",
+            Pads::VibrationSent => "Vibrando",
+            Pads::DeadZone => "Zona muerta del stick",
+            Pads::DeadZoneDetail => {
+                "Cuánto debe inclinarse el stick izquierdo para que se mueva el launcher. Los juegos tienen la suya."
+            }
+            Pads::LightBar => "Color de la barra de luz",
+            Pads::LightBarDetail => {
+                "Solo DualSense. Un juego recupera la barra de luz mientras se ejecuta."
+            }
+            Pads::LightBarSet => "Barra de luz cambiada",
+            Pads::LightBarFailed => "No se pudo acceder a la barra de luz del mando.",
+            Pads::ColourBlue => "Azul",
+            Pads::ColourRed => "Rojo",
+            Pads::ColourGreen => "Verde",
+            Pads::ColourPurple => "Morado",
+            Pads::ColourOrange => "Naranja",
+            Pads::ColourWhite => "Blanco",
+            Pads::ColourOff => "Apagada",
+            Pads::ColourCustom => "Personalizado",
+            Pads::LightBarHue => "Tono",
+            Pads::LightBarBrightness => "Brillo",
+            Pads::ConfirmWith => "Confirmar con %@",
+            Pads::ConfirmWithDetail => {
+                "Intercambia Seleccionar y Atrás en el mando, como están acostumbrados algunos jugadores"
+            }
+            Pads::ControlsNote => {
+                "Elige una función y pulsa el botón o la tecla. Un botón que ya se usa intercambia su lugar."
+            }
+            Pads::Select => "Seleccionar",
+            Pads::Back => "Atrás",
+            Pads::Options => "Opciones",
+            Pads::Previous => "Sección anterior",
+            Pads::Next => "Sección siguiente",
+            Pads::ReleaseToCapture => "Pulsa un botón o una tecla",
+            Pads::Reset => "Restablecer valores",
+            Pads::ResetDetail => "Restablece todos los botones y teclas del launcher",
+            Pads::Swapped => "%@ era %@. %@ ahora usa %@.",
+            Pads::SwappedNoReturn => "%@ pasó de %@",
+            Pads::FixedButton => "Ese botón siempre hace lo mismo y no se puede cambiar.",
+            Pads::TestTitle => "Probar botones",
+            Pads::TestLeave => "Mantén pulsado %@ para salir, o pulsa Esc",
+            Pads::TestWaiting => "Pulsa cualquier botón",
+            Pads::TestNoPad => "No se encontró ningún mando. Conecta uno y pulsa un botón.",
+            Pads::StatusOk => "OK",
+            Pads::StatusCheck => "Revisar",
+            Pads::HelpMissingTitle => "Mando no encontrado",
+            Pads::HelpMissing => {
+                "Conecta o empareja el mando y pulsa un botón. Prueba con otro cable u otro puerto: algunos cables solo cargan. Un mando conectado después de iniciar un juego lo ve el launcher, pero no ese juego."
+            }
+            Pads::HelpMissingFound => {
+                "Detectado. Si un juego no lo ve, inicia el juego después de conectar el mando."
+            }
+            Pads::HelpMissingNone => {
+                "No hay ningún mando conectado al launcher. Conéctalo o empárejalo y pulsa un botón. Prueba con otro cable u otro puerto: algunos cables solo cargan."
+            }
+            Pads::HelpDoubleTitle => "Cada pulsación cuenta doble",
+            Pads::HelpDouble => {
+                "Steam Input o DS4Windows añade un segundo mando virtual junto al real. El launcher ignora el eco, pero un juego puede no hacerlo. Cierra la herramienta o desactiva su emulación de mando para el launcher y el juego."
+            }
+            Pads::HelpSteamTitle => "Steam y mandos DualSense",
+            Pads::HelpSteam => {
+                "Con la compatibilidad de configuración para mandos DualSense y DualShock activada, Steam se encarga de ellos y pasa un mando Xbox virtual. Desactívala en Steam, Ajustes, Mando, o pon Steam Input en desactivado para el launcher y el juego."
+            }
+            Pads::HelpHideTitle => "DS4Windows y HidHide",
+            Pads::HelpHide => {
+                "DS4Windows y HidHide ocultan a propósito el mando real a otros programas. Si el launcher o un juego no ve ningún mando, añádelo a las aplicaciones permitidas en HidHide o desactiva «Hide DS4 Controller» en DS4Windows."
+            }
+            Pads::HelpHomeTitle => "El botón PS no hace nada",
+            Pads::HelpHome => {
+                "Revisa Ajustes, Comportamiento, El botón Home abre el launcher. Funciona con un DualSense o un DualShock 4 por USB o Bluetooth. Otra herramienta que retenga el mando en exclusiva puede bloquearlo."
+            }
+            Pads::HelpHomeLinux => {
+                "El botón PS se lee del nodo hidraw del mando, que muchos escritorios solo dejan leer a root. Guarda la regla udev de docs/INSTALL.md como /etc/udev/rules.d/70-anyplay-pad.rules, ejecuta sudo udevadm control --reload && sudo udevadm trigger y vuelve a conectar el mando."
+            }
+            Pads::HelpLinuxTitle => "Permisos en Linux",
+            Pads::HelpLinux => {
+                "Los mandos se leen de /dev/input y /dev/hidraw. Si no aparece ninguno, añádete al grupo input (sudo usermod -aG input $USER) y vuelve a iniciar sesión, o instala la regla udev de docs/INSTALL.md."
+            }
+            Pads::HelpBatteryTitle => "Batería baja",
+            Pads::HelpBattery => {
+                "Carga el mando con un cable USB. Un mando con cable no muestra el nivel de batería."
+            }
+            Pads::LowBattery => "Baja, %@\u{a0}%",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            Pads::Entry | Pads::Title => "Manettes",
+            Pads::EntryDetail => {
+                "Teste les boutons, la vibration et la barre lumineuse, change les boutons du launcher et résous les problèmes"
+            }
+            Pads::Subtitle => {
+                "Tout sur les manettes de ce PC. Les jeux gardent leurs propres commandes."
+            }
+            Pads::CaptionConnected => "Connectées",
+            Pads::CaptionTest => "Tester et régler",
+            Pads::CaptionControls => "Commandes du launcher",
+            Pads::CaptionHelp => "Dépannage",
+            Pads::NoPad => "Aucune manette trouvée",
+            Pads::NoPadDetail => "Branche une manette et appuie sur un bouton.",
+            Pads::PadDetail => "%@ · %@ · %@",
+            Pads::InUse => "Utilisée",
+            Pads::Usb => "USB",
+            Pads::Bluetooth => "Bluetooth",
+            Pads::LinkUnknown => "Connexion inconnue",
+            Pads::Battery => "Batterie %@\u{a0}%",
+            Pads::BatteryCharging => "En charge %@\u{a0}%",
+            Pads::BatteryNone => "Niveau de batterie indisponible",
+            Pads::TestButtons => "Tester les boutons",
+            Pads::TestButtonsDetail => {
+                "Appuie sur les boutons et bouge les sticks\u{a0}; ils s’allument"
+            }
+            Pads::TestVibration => "Tester la vibration",
+            Pads::TestVibrationDetail => "Une courte vibration, moteur léger d’abord",
+            Pads::NotWhileGame => "Impossible pendant qu’un jeu tourne.",
+            Pads::NoRumble => "Aucune manette connectée ne peut vibrer.",
+            Pads::VibrationSent => "Vibration en cours",
+            Pads::DeadZone => "Zone morte du stick",
+            Pads::DeadZoneDetail => {
+                "De combien le stick gauche doit être incliné pour que le launcher réagisse. Les jeux ont la leur."
+            }
+            Pads::LightBar => "Couleur de la barre lumineuse",
+            Pads::LightBarDetail => {
+                "DualSense uniquement. Un jeu reprend la barre lumineuse pendant qu’il tourne."
+            }
+            Pads::LightBarSet => "Barre lumineuse modifiée",
+            Pads::LightBarFailed => "Barre lumineuse de la manette inaccessible.",
+            Pads::ColourBlue => "Bleu",
+            Pads::ColourRed => "Rouge",
+            Pads::ColourGreen => "Vert",
+            Pads::ColourPurple => "Violet",
+            Pads::ColourOrange => "Orange",
+            Pads::ColourWhite => "Blanc",
+            Pads::ColourOff => "Éteinte",
+            Pads::ColourCustom => "Personnalisée",
+            Pads::LightBarHue => "Teinte",
+            Pads::LightBarBrightness => "Luminosité",
+            Pads::ConfirmWith => "Confirmer avec %@",
+            Pads::ConfirmWithDetail => {
+                "Échange Sélectionner et Retour sur la manette, comme certains joueurs en ont l’habitude"
+            }
+            Pads::ControlsNote => {
+                "Choisis une fonction, puis appuie sur le bouton ou la touche. Un bouton déjà utilisé échange sa place."
+            }
+            Pads::Select => "Sélectionner",
+            Pads::Back => "Retour",
+            Pads::Options => "Options",
+            Pads::Previous => "Section précédente",
+            Pads::Next => "Section suivante",
+            Pads::ReleaseToCapture => "Appuie sur un bouton ou une touche",
+            Pads::Reset => "Rétablir par défaut",
+            Pads::ResetDetail => "Rétablit tous les boutons et touches du launcher",
+            Pads::Swapped => "%@ était %@. %@ utilise maintenant %@.",
+            Pads::SwappedNoReturn => "%@ vient de %@",
+            Pads::FixedButton => {
+                "Ce bouton a toujours la même fonction et ne peut pas être changé."
+            }
+            Pads::TestTitle => "Tester les boutons",
+            Pads::TestLeave => "Maintiens %@ pour quitter, ou appuie sur Échap",
+            Pads::TestWaiting => "Appuie sur un bouton",
+            Pads::TestNoPad => "Aucune manette trouvée. Branches-en une et appuie sur un bouton.",
+            Pads::StatusOk => "OK",
+            Pads::StatusCheck => "Vérifier",
+            Pads::HelpMissingTitle => "Manette introuvable",
+            Pads::HelpMissing => {
+                "Branche ou associe la manette, puis appuie sur un bouton. Essaie un autre câble ou un autre port\u{a0}: certains câbles ne font que charger. Une manette connectée après le lancement d’un jeu est vue par le launcher, mais pas par ce jeu."
+            }
+            Pads::HelpMissingFound => {
+                "Détectée. Si un jeu ne la voit pas, lance-le une fois la manette connectée."
+            }
+            Pads::HelpMissingNone => {
+                "Aucune manette n’est connectée au launcher. Branche-la ou associe-la, puis appuie sur un bouton. Essaie un autre câble ou un autre port\u{a0}: certains câbles ne font que charger."
+            }
+            Pads::HelpDoubleTitle => "Chaque appui compte double",
+            Pads::HelpDouble => {
+                "Steam Input ou DS4Windows ajoute une seconde manette virtuelle à côté de la vraie. Le launcher ignore l’écho, pas forcément un jeu. Ferme l’outil, ou désactive son émulation de manette pour le launcher et le jeu."
+            }
+            Pads::HelpSteamTitle => "Steam et manettes DualSense",
+            Pads::HelpSteam => {
+                "Quand la prise en charge de la configuration des manettes DualSense et DualShock est activée, Steam les prend en charge et transmet une manette Xbox virtuelle. Désactive-la dans Steam, Paramètres, Manette, ou mets Steam Input sur désactivé pour le launcher et le jeu."
+            }
+            Pads::HelpHideTitle => "DS4Windows et HidHide",
+            Pads::HelpHide => {
+                "DS4Windows et HidHide cachent volontairement la vraie manette aux autres programmes. Si le launcher ou un jeu ne voit aucune manette, ajoute-le aux applications autorisées dans HidHide, ou désactive «\u{a0}Hide DS4 Controller\u{a0}» dans DS4Windows."
+            }
+            Pads::HelpHomeTitle => "Le bouton PS ne fait rien",
+            Pads::HelpHome => {
+                "Vérifie Paramètres, Comportement, Le bouton Home ouvre le launcher. Il fonctionne avec une DualSense ou une DualShock 4 en USB ou Bluetooth. Un autre outil qui retient la manette en exclusivité peut le bloquer."
+            }
+            Pads::HelpHomeLinux => {
+                "Le bouton PS est lu depuis le nœud hidraw de la manette, que beaucoup de bureaux ne laissent lire qu’à root. Enregistre la règle udev de docs/INSTALL.md sous /etc/udev/rules.d/70-anyplay-pad.rules, lance sudo udevadm control --reload && sudo udevadm trigger, puis rebranche la manette."
+            }
+            Pads::HelpLinuxTitle => "Autorisations Linux",
+            Pads::HelpLinux => {
+                "Les manettes sont lues depuis /dev/input et /dev/hidraw. Si aucune n’apparaît, ajoute-toi au groupe input (sudo usermod -aG input $USER) et reconnecte-toi, ou installe la règle udev de docs/INSTALL.md."
+            }
+            Pads::HelpBatteryTitle => "Batterie faible",
+            Pads::HelpBattery => {
+                "Recharge la manette avec un câble USB. Une manette sur câble n’affiche pas le niveau de batterie."
+            }
+            Pads::LowBattery => "Faible, %@\u{a0}%",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            Pads::Entry | Pads::Title => "Controles",
+            Pads::EntryDetail => {
+                "Teste botões, vibração e a barra de luz, mude os botões do launcher e resolva problemas"
+            }
+            Pads::Subtitle => {
+                "Tudo sobre os controles deste PC. Os jogos mantêm os seus próprios comandos."
+            }
+            Pads::CaptionConnected => "Conectados",
+            Pads::CaptionTest => "Testar e ajustar",
+            Pads::CaptionControls => "Botões do launcher",
+            Pads::CaptionHelp => "Solução de problemas",
+            Pads::NoPad => "Nenhum controle encontrado",
+            Pads::NoPadDetail => "Conecte um controle e pressione um botão.",
+            Pads::PadDetail => "%@ · %@ · %@",
+            Pads::InUse => "Em uso",
+            Pads::Usb => "USB",
+            Pads::Bluetooth => "Bluetooth",
+            Pads::LinkUnknown => "Conexão desconhecida",
+            Pads::Battery => "Bateria %@%",
+            Pads::BatteryCharging => "Carregando %@%",
+            Pads::BatteryNone => "Sem leitura da bateria",
+            Pads::TestButtons => "Testar botões",
+            Pads::TestButtonsDetail => "Pressione botões e mova os analógicos; eles acendem",
+            Pads::TestVibration => "Testar vibração",
+            Pads::TestVibrationDetail => "Uma vibração curta, motor leve primeiro",
+            Pads::NotWhileGame => "Não enquanto um jogo está em execução.",
+            Pads::NoRumble => "Nenhum controle conectado pode vibrar.",
+            Pads::VibrationSent => "Vibrando",
+            Pads::DeadZone => "Zona morta do analógico",
+            Pads::DeadZoneDetail => {
+                "O quanto o analógico esquerdo precisa se inclinar para o launcher se mover. Os jogos têm a sua própria."
+            }
+            Pads::LightBar => "Cor da barra de luz",
+            Pads::LightBarDetail => {
+                "Somente DualSense. Um jogo assume a barra de luz enquanto está em execução."
+            }
+            Pads::LightBarSet => "Barra de luz alterada",
+            Pads::LightBarFailed => "Não foi possível acessar a barra de luz do controle.",
+            Pads::ColourBlue => "Azul",
+            Pads::ColourRed => "Vermelho",
+            Pads::ColourGreen => "Verde",
+            Pads::ColourPurple => "Roxo",
+            Pads::ColourOrange => "Laranja",
+            Pads::ColourWhite => "Branco",
+            Pads::ColourOff => "Desligada",
+            Pads::ColourCustom => "Personalizada",
+            Pads::LightBarHue => "Matiz",
+            Pads::LightBarBrightness => "Brilho",
+            Pads::ConfirmWith => "Confirmar com %@",
+            Pads::ConfirmWithDetail => {
+                "Troca Selecionar e Voltar no controle, como alguns jogadores estão acostumados"
+            }
+            Pads::ControlsNote => {
+                "Escolha uma função e pressione o botão ou a tecla. Um botão que já está em uso troca de lugar."
+            }
+            Pads::Select => "Selecionar",
+            Pads::Back => "Voltar",
+            Pads::Options => "Opções",
+            Pads::Previous => "Seção anterior",
+            Pads::Next => "Próxima seção",
+            Pads::ReleaseToCapture => "Pressione um botão ou uma tecla",
+            Pads::Reset => "Restaurar padrão",
+            Pads::ResetDetail => "Restaura todos os botões e teclas do launcher",
+            Pads::Swapped => "%@ era %@. %@ agora usa %@.",
+            Pads::SwappedNoReturn => "%@ veio de %@",
+            Pads::FixedButton => "Esse botão sempre faz a mesma coisa e não pode ser alterado.",
+            Pads::TestTitle => "Testar botões",
+            Pads::TestLeave => "Segure %@ para sair ou pressione Esc",
+            Pads::TestWaiting => "Pressione qualquer botão",
+            Pads::TestNoPad => "Nenhum controle encontrado. Conecte um e pressione um botão.",
+            Pads::StatusOk => "OK",
+            Pads::StatusCheck => "Verificar",
+            Pads::HelpMissingTitle => "Controle não encontrado",
+            Pads::HelpMissing => {
+                "Conecte o controle ou faça o pareamento e pressione um botão. Tente outro cabo ou outra porta: alguns cabos só carregam. Um controle conectado depois que um jogo começou aparece no launcher, mas não nesse jogo."
+            }
+            Pads::HelpMissingFound => {
+                "Encontrado. Se um jogo não o vê, inicie o jogo depois de conectar o controle."
+            }
+            Pads::HelpMissingNone => {
+                "Nenhum controle está conectado ao launcher. Conecte-o ou faça o pareamento e pressione um botão. Tente outro cabo ou outra porta: alguns cabos só carregam."
+            }
+            Pads::HelpDoubleTitle => "Cada pressionamento conta em dobro",
+            Pads::HelpDouble => {
+                "O Steam Input ou o DS4Windows adiciona um segundo controle, virtual, ao lado do real. O launcher ignora o eco, mas um jogo pode não ignorar. Feche a ferramenta ou desative a emulação de controle dela para o launcher e o jogo."
+            }
+            Pads::HelpSteamTitle => "Steam e controles DualSense",
+            Pads::HelpSteam => {
+                "Com o suporte à configuração de controles DualSense e DualShock ativado, o Steam assume esses controles e repassa um controle Xbox virtual. Desative em Steam, Configurações, Controle, ou coloque o Steam Input como desativado para o launcher e o jogo."
+            }
+            Pads::HelpHideTitle => "DS4Windows e HidHide",
+            Pads::HelpHide => {
+                "O DS4Windows e o HidHide escondem de propósito o controle real de outros programas. Se o launcher ou um jogo não vê nenhum controle, adicione-o aos aplicativos permitidos no HidHide ou desative “Hide DS4 Controller” no DS4Windows."
+            }
+            Pads::HelpHomeTitle => "O botão PS não faz nada",
+            Pads::HelpHome => {
+                "Verifique Configurações, Comportamento, Botão Home abre o launcher. Funciona com DualSense ou DualShock 4 por USB ou Bluetooth. Outra ferramenta que prende o controle com exclusividade pode bloqueá-lo."
+            }
+            Pads::HelpHomeLinux => {
+                "O botão PS é lido do nó hidraw do controle, que muitos desktops só deixam o root ler. Salve a regra udev de docs/INSTALL.md como /etc/udev/rules.d/70-anyplay-pad.rules, execute sudo udevadm control --reload && sudo udevadm trigger e conecte o controle de novo."
+            }
+            Pads::HelpLinuxTitle => "Permissões no Linux",
+            Pads::HelpLinux => {
+                "Os controles são lidos de /dev/input e /dev/hidraw. Se nenhum aparecer, adicione-se ao grupo input (sudo usermod -aG input $USER) e entre de novo, ou instale a regra udev de docs/INSTALL.md."
+            }
+            Pads::HelpBatteryTitle => "Bateria fraca",
+            Pads::HelpBattery => {
+                "Carregue o controle com um cabo USB. Um controle no cabo não mostra a leitura da bateria."
+            }
+            Pads::LowBattery => "Fraca, %@%",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },
@@ -560,16 +930,22 @@ mod tests {
     }
 
     #[test]
-    fn every_text_has_a_german_one_with_the_same_arguments() {
+    fn every_text_has_a_translation_with_the_same_arguments() {
         for text in Pads::ALL {
-            let german = text
-                .german()
-                .unwrap_or_else(|| panic!("{text:?} has no German text"));
-            assert_eq!(
-                text.english().matches("%@").count(),
-                german.matches("%@").count(),
-                "{text:?}"
-            );
+            for (name, translated) in [
+                ("German", text.german()),
+                ("Spanish", text.spanish()),
+                ("French", text.french()),
+                ("Portuguese", text.portuguese()),
+            ] {
+                let translated =
+                    translated.unwrap_or_else(|| panic!("{text:?} has no {name} text"));
+                assert_eq!(
+                    text.english().matches("%@").count(),
+                    translated.matches("%@").count(),
+                    "{text:?} {name}"
+                );
+            }
         }
     }
 

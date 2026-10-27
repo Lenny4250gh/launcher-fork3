@@ -79,7 +79,9 @@ use crate::screens::rows::RowId;
 use crate::screens::saves::{
     self as saves_screen, RestoreAction, RestorePanel, SavesAction, SavesData, SavesPanel,
 };
-use crate::screens::settings::{Category, SettingsAction, SettingsEnv, SettingsPanel};
+use crate::screens::settings::{
+    AutostartEnv, AutostartState, Category, SettingsAction, SettingsEnv, SettingsPanel,
+};
 use crate::screens::share_strings::Share;
 use crate::screens::steam_strings::SteamText;
 use crate::screens::strings::Extra;
@@ -252,6 +254,8 @@ pub struct PanelHost {
     update_noted: Option<String>,
     /// Who answers `anyps5://` links, read when the settings open and after a change.
     links: LinkHandler,
+    /// Whether the launcher opens at sign-in, read the same way.
+    autostart: AutostartEnv,
     /// The demo and the tests keep the registration in memory and never touch the registry.
     simulated: bool,
 }
@@ -338,6 +342,10 @@ impl PanelHost {
             toolkit_auto_tried: simulated,
             update_noted: None,
             links: LinkHandler::Absent,
+            autostart: AutostartEnv {
+                state: AutostartState::Off,
+                os: anyps5_core::platform::Os::current(),
+            },
             simulated,
         }
     }
@@ -373,6 +381,7 @@ impl PanelHost {
     fn settings_ui(&mut self, cx: &mut OverlayCx<'_>, wanted: bool) {
         if wanted && !self.settings.is_open() {
             self.refresh_links();
+            self.refresh_autostart();
             if let Some(page) = cx.model.settings_page.take() {
                 self.settings
                     .open_at(Category::from_link(page) as usize, false);
@@ -425,6 +434,7 @@ impl PanelHost {
             launcher_notes: self.launcher.notes().is_some(),
             default_screenshots: &default_screenshots,
             links: self.links.clone(),
+            autostart: self.autostart,
             cjk_fonts: anyps5_core::fonts::cjk_state(&cx.model.paths, &crate::fonts::BUNDLE),
             phone: &cx.model.phone,
             ludus: &cx.model.ludus,
@@ -606,6 +616,8 @@ impl PanelHost {
                 );
             }
             SettingsAction::SetLinks(on) => self.set_links(model, on),
+            SettingsAction::SetAutostart(on) => self.set_autostart(model, on),
+            SettingsAction::SetFullscreen(on) => super::enter_fullscreen(cx.ctx, on),
             SettingsAction::AddToSteam => self.add_to_steam(model, steam::Request::Launcher),
             SettingsAction::AddGamesToSteam => {
                 let games = model.games.clone();
@@ -656,6 +668,47 @@ impl PanelHost {
             let _ = tx.send(Work::Steam { games, result });
             ctx.request_repaint();
         });
+    }
+
+    /// Reads the sign-in entry of this system.
+    fn refresh_autostart(&mut self) {
+        if self.simulated {
+            return;
+        }
+        let state =
+            match anyps5_core::autostart::Entry::current(&anyps5_core::platform::process_vars) {
+                None => AutostartState::Unavailable,
+                Some(entry) if entry.state() == anyps5_core::autostart::State::Off => {
+                    AutostartState::Off
+                }
+                Some(entry) if entry.is_appimage_file() => AutostartState::OnAppImage,
+                Some(_) => AutostartState::On,
+            };
+        self.autostart.state = state;
+    }
+
+    /// "Start with Windows": writes or removes the entry of the player's own session.
+    fn set_autostart(&mut self, model: &mut Model, on: bool) {
+        if self.simulated {
+            self.autostart.state = if on {
+                AutostartState::On
+            } else {
+                AutostartState::Off
+            };
+            return;
+        }
+        let result =
+            match anyps5_core::autostart::Entry::current(&anyps5_core::platform::process_vars) {
+                Some(entry) if on => entry.enable(),
+                Some(entry) => entry.disable(),
+                None => Err(std::io::ErrorKind::Unsupported.into()),
+            };
+        if let Err(error) = result {
+            tracing::warn!("cannot change the autostart entry: {error}");
+            let text = crate::screens::console_strings::ConsoleText::Failed.text(model.language());
+            model.toast(text, crate::ui::icons::Icon::WARNING);
+        }
+        self.refresh_autostart();
     }
 
     /// Reads who answers the links from the registry.
@@ -2590,6 +2643,7 @@ fn open_known_url(url: &str) {
         crate::screens::about_strings::DISCORD,
         crate::screens::about_strings::PRIVACY,
         crate::screens::about_strings::TERMS,
+        crate::screens::about_strings::TRANSLATIONS,
         crate::screens::about_strings::INSTALL_GUIDE,
         crate::screens::update_strings::RELEASES,
     ];

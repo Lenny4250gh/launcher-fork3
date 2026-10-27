@@ -97,11 +97,68 @@ impl Pin {
         }
     }
 
+    pub const fn spanish(self) -> &'static str {
+        match self {
+            Pin::Title => "Toolkit para este juego",
+            Pin::FollowGlobal => "Seguir el ajuste global",
+            Pin::Recommended => "Recomendado: %@",
+            Pin::NotInstalled => "%@ (no instalado)",
+            Pin::Pinned => "%@ (fijado)",
+            Pin::MissingAsk => {
+                "Este juego se queda con el Toolkit %@, que no está instalado. Descárgalo de nuevo o deja que el juego siga el ajuste global."
+            }
+            Pin::Download => "Descargar %@",
+            Pin::Remove => "Quitar %@",
+            Pin::RemoveDetail => "%@ · Ningún juego lo usa",
+            Pin::Removed => "%@ quitado",
+            Pin::RemoveFailed => "No se pudo quitar el Toolkit.",
+        }
+    }
+
+    pub const fn french(self) -> &'static str {
+        match self {
+            Pin::Title => "Toolkit pour ce jeu",
+            Pin::FollowGlobal => "Suivre le paramètre global",
+            Pin::Recommended => "Recommandé\u{a0}: %@",
+            Pin::NotInstalled => "%@ (non installé)",
+            Pin::Pinned => "%@ (épinglé)",
+            Pin::MissingAsk => {
+                "Ce jeu reste sur le Toolkit %@, qui n’est pas installé. Télécharge-le de nouveau ou laisse le jeu suivre le paramètre global."
+            }
+            Pin::Download => "Télécharger %@",
+            Pin::Remove => "Supprimer %@",
+            Pin::RemoveDetail => "%@ · Aucun jeu ne l’utilise",
+            Pin::Removed => "%@ supprimé",
+            Pin::RemoveFailed => "Impossible de supprimer le Toolkit.",
+        }
+    }
+
+    pub const fn portuguese(self) -> &'static str {
+        match self {
+            Pin::Title => "Toolkit para este jogo",
+            Pin::FollowGlobal => "Seguir a configuração global",
+            Pin::Recommended => "Recomendado: %@",
+            Pin::NotInstalled => "%@ (não instalado)",
+            Pin::Pinned => "%@ (fixado)",
+            Pin::MissingAsk => {
+                "Este jogo fica no Toolkit %@, que não está instalado. Baixe de novo ou deixe o jogo seguir a configuração global."
+            }
+            Pin::Download => "Baixar %@",
+            Pin::Remove => "Remover %@",
+            Pin::RemoveDetail => "%@ · Nenhum jogo usa",
+            Pin::Removed => "%@ removido",
+            Pin::RemoveFailed => "Não foi possível remover o Toolkit.",
+        }
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => self.german(),
+            Language::Spanish => self.spanish(),
+            Language::French => self.french(),
+            Language::Portuguese => self.portuguese(),
         }
     }
 

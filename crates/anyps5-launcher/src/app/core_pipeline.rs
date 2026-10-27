@@ -370,6 +370,7 @@ impl CorePipeline {
             settings::CpuConversion::Intel => CpuConversion::Intel,
         };
         request.to_intel = HostCpu::detect().wants_intel_conversion(mode);
+        request.trace_imports = prefs.record_network;
         request.relink_flags = prefs.game_settings(&game.id).relink;
         request.resolution = prefs.game_settings(&game.id).resolution;
         // Unlocking again replaces the copy; its saves are backed up first.
@@ -428,11 +429,9 @@ impl CorePipeline {
             .is_none_or(|v| compat::supports(Feature::Screenshots, v))
             .then(|| prefs.screenshots_dir(&self.paths));
         let shader_cache = self.paths.shader_cache_dir(&game.title_id);
-        let launcher_language = match prefs.language {
-            settings::Language::Turkish => 19,
-            settings::Language::English => 1,
-            settings::Language::German => 4,
-        };
+        let launcher_language = prefs
+            .language
+            .console_language_for(&crate::ui::i18n::system_locale());
         let fonts = fonts::resolve(
             &self.paths,
             &crate::fonts::BUNDLE,

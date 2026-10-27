@@ -70,7 +70,7 @@ The Mac toolkit currently comes from AnyPS5-ARM. Playing a game through AnyPlay'
 
 ## First start
 
-1. Choose a language (English, Turkish or German; the launcher picks German or Turkish by itself when your system uses it) and a look.
+1. Choose a language (English, Turkish, German, Spanish, French or Brazilian Portuguese; the launcher picks your system's language by itself when it is one of these) and a look.
 2. Pick your games folder, the one that holds your decrypted dumps. The launcher lists what it finds there.
 3. The launcher downloads the AnyPS5 toolkit and tells you when it is ready. Without internet, open Settings later and choose *Download the Toolkit*.
 4. Select a game, unlock it and press Play.
@@ -80,6 +80,8 @@ The Mac toolkit currently comes from AnyPS5-ARM. Playing a game through AnyPlay'
 On Windows, in a Linux AppImage and in the Apple silicon Mac app, the launcher looks for a new release when it starts and every 6 hours after, downloads and checks it in the background, and installs it when you close the launcher (or at once with *Restart Now* in Settings, About). Updates are signed, and the launcher installs one only if the signature, the hash and the size match. Turn *Check for Updates* off in Settings to stop that.
 
 A launcher from the tar.gz cannot replace itself. A launcher installed by a package manager (Flatpak, and soon the AUR) leaves its files to that package manager. In both cases About shows when a new version is out, and for a package it names the package manager that installs it.
+
+The toolkit that runs your games updates separately. Settings, Toolkit, Channel chooses between Stable (the latest [AnyPS5](https://github.com/boykopovar/AnyPS5) release), AnyPlay Engine, Pinned and Local Build. AnyPlay Engine is opt-in and not yet available on macOS: it downloads the nightly build of [anyplaynet/AnyPS5](https://github.com/anyplaynet/AnyPS5), the fork with the network bridge, checks it against the release's checksum list and offers a newer build when there is one. It changes often and may break games; go back to Stable at any time.
 
 How updates are signed and checked: [How it works](HOW-IT-WORKS.md#self-update) and [UPDATES.md](UPDATES.md).
 

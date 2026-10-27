@@ -147,7 +147,9 @@ pub fn paint_caret(painter: &Painter, centre: Pos2, right: bool, size: f32, colo
     ));
 }
 
-/// A spinning three-quarter arc with round ends (the original's small `ProgressView`).
+/// A spinning three-quarter arc with round ends (the original's small `ProgressView`). Under
+/// "Animations: Reduced" the arc stands still and pulses in opacity instead (`anim::loading_pulse`),
+/// so every spinner of the launcher follows the setting from this one place.
 pub fn paint_spinner_arc(
     painter: &Painter,
     centre: Pos2,
@@ -157,7 +159,16 @@ pub fn paint_spinner_arc(
     color: Color32,
 ) {
     const POINTS: usize = 36;
-    let angle = (time * std::f64::consts::TAU * 1.1) as f32;
+    let ctx = painter.ctx();
+    let (angle, color) = if ctx.reduced_motion() {
+        ctx.request_repaint();
+        (
+            -std::f32::consts::FRAC_PI_2,
+            color.gamma_multiply(anim::loading_pulse(time)),
+        )
+    } else {
+        ((time * std::f64::consts::TAU * 1.1) as f32, color)
+    };
     let points: Vec<Pos2> = (0..=POINTS)
         .map(|i| {
             let a = angle + i as f32 / POINTS as f32 * std::f32::consts::PI * 1.5;
@@ -380,7 +391,7 @@ pub fn paint_control(
                 if destructive {
                     color::destructive_icon()
                 } else {
-                    Color32::WHITE
+                    crate::ui::theme::color::text()
                 },
             )
         }
@@ -809,7 +820,7 @@ impl Switch {
         }
         // White on the off track; on the accent the knob turns dark, because white on mint or gold
         // is 1.5:1 and the knob is what shows the state (DESIGN.md 3.10).
-        let knob_ink = mix(Color32::WHITE, color::on_primary(), t);
+        let knob_ink = mix(color::knob(), color::on_primary(), t);
         painter.circle_filled(centre, knob * 0.5, fade(knob_ink, a));
         response
     }
@@ -955,9 +966,20 @@ impl IndeterminateLine {
     }
 }
 
-/// Paints the indeterminate bar for clock time `time`.
+/// Paints the indeterminate bar for clock time `time`. Under "Animations: Reduced" nothing sweeps:
+/// the whole bar fills with the accent and pulses in opacity (`anim::loading_pulse`).
 pub fn paint_indeterminate(painter: &Painter, rect: Rect, time: f64, accent: Color32) {
     paint_capsule(painter, rect, color::track());
+    if painter.ctx().reduced_motion() {
+        let accent = accent.to_srgba_unmultiplied();
+        let accent = Color32::from_rgba_unmultiplied(accent[0], accent[1], accent[2], 255);
+        paint_capsule(
+            painter,
+            rect,
+            accent.gamma_multiply(anim::loading_pulse(time)),
+        );
+        return;
+    }
     let phase = anim::indeterminate_phase(time);
     let w = rect.width();
     let x0 = rect.min.x + w * phase;
@@ -1469,7 +1491,7 @@ pub fn key_cap(ui: &mut Ui, label: &str, keyboard: bool, _focus: f32) -> Respons
     let height = size::KEYCAP_MIN.1.max(galley.size().y);
     let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
     if ui.is_rect_visible(rect) {
-        let ink = Color32::WHITE;
+        let ink = crate::ui::theme::color::text();
         let fill = fade(ink, if keyboard { 0.12 } else { 0.06 });
         painter.rect_filled(rect, corner(radius::KEYCAP), fill);
         paint_hairline(&painter, rect, radius::KEYCAP, fade(ink, 0.18));

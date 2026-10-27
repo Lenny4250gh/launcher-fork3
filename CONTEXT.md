@@ -30,6 +30,10 @@ _Avoid_: Library folder, root
 On macOS only, the launcher is dressed for the Mac: a see-through window with the system blur behind it, the Mac's window chrome and menu. It is the same launcher with the same screens (docs/DESIGN.md 19).
 _Avoid_: Mac version (the Mac has no different launcher), skin, theme (a theme is a background)
 
+**Theme**:
+The animated backdrop behind the launcher, chosen in Settings, Appearance: Cosmic, Aurora, Sunset, Ember, Tide, Daylight (the one light theme) or Game Colors, which takes its colours from the selected game's artwork. Release notes call them looks.
+_Avoid_: Skin
+
 **Glass Window**:
 The setting that turns the see-through window of Mac style on and off. The window is solid in full screen, while a game runs, and when the system asks for less transparency, whatever the setting says.
 _Avoid_: Transparency, blur, vibrancy (in visible text)
@@ -296,6 +300,9 @@ One entry of the Friends screen's rail with a first page of its own. Every page 
 
 **Quick actions**:
 The buttons at the end of a friend's row (Join, Message, Invite to Party, View Profile, Options). They rest hidden and come up with the focus or the pointer; select presses the chosen one and a click on the row's body opens Options, the friend's own page.
+
+**Played With Recently**:
+The page of the Friends section that lists the people the player shared a party or a game session with for at least 2 minutes in the last 30 days (at most 50). The cloud keeps the list and only the player sees it; the launcher shows it, reached by a row under Add a Friend on the Friends page. Each person is a row with Add Friend (until they are a friend or a request is out), View Profile and Block at its end, like quick actions; the page ends with the switch that stops recording new people and Clear the List. Defined in the network's glossary as _Played with recently_.
 
 **Play Together**:
 Starting a game that finds others on a local network so that friends can join it. The player presses Play Together on the game's page or in the party; a friend presses Join on an invitation, a friend's page or the prompt card. Only games in the LAN title table have the button. Defined in the network's glossary; the launcher only adds what it shows.

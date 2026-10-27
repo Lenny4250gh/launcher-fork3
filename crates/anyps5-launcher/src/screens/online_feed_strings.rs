@@ -357,11 +357,275 @@ impl FeedText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            FeedText::Feed => "Actividad",
+            FeedText::FeedDetail => "Lo que hacen tus amigos",
+            FeedText::FeedSubtitle => "Actividad reciente tuya y de tus amigos",
+            FeedText::YourProfile => "Tu perfil",
+            FeedText::YourProfileDetail => "Lo que ven otros jugadores",
+            FeedText::ViewProfile => "Ver perfil",
+            FeedText::Loading => "Cargando…",
+            FeedText::Empty => "Aún no hay nada",
+            FeedText::EmptyNote => {
+                "Aquí aparecen trofeos, amigos nuevos, primeras partidas y parties, tuyos y de tus amigos."
+            }
+            FeedText::Offline => "Estás sin conexión",
+            FeedText::OfflineNote => "La actividad vuelve cuando te conectes de nuevo.",
+            FeedText::LoadFailedTitle => "No se cargó la actividad",
+            FeedText::LoadFailed => "Comprueba tu conexión e inténtalo de nuevo.",
+            FeedText::TryAgain => "Reintentar",
+            FeedText::ShowOlder => "Mostrar actividad anterior",
+            FeedText::OlderFailed => "No se pudo cargar. Selecciona para reintentar.",
+            FeedText::Profile => "Perfil",
+            FeedText::EndOfFeed => "Estás al día.",
+            FeedText::TrophyNamed => "obtuvo el trofeo de %@ «%@» en %@",
+            FeedText::TrophyNamedOwn => "obtuviste el trofeo de %@ «%@» en %@",
+            FeedText::Trophy => "obtuvo un trofeo de %@ en %@",
+            FeedText::TrophyOwn => "obtuviste un trofeo de %@ en %@",
+            FeedText::TrophyUnknownGame => "obtuvo un trofeo de %@ en un juego",
+            FeedText::TrophyUnknownGameOwn => "obtuviste un trofeo de %@ en un juego",
+            FeedText::Friend => "ahora es amigo de %@",
+            FeedText::FriendOwn => "ahora eres amigo de %@",
+            FeedText::FriendWithYou => "ahora es amigo tuyo",
+            FeedText::FirstPlayed => "jugó a %@ por primera vez",
+            FeedText::FirstPlayedOwn => "jugaste a %@ por primera vez",
+            FeedText::FirstPlayedUnknown => "jugó a un juego por primera vez",
+            FeedText::FirstPlayedUnknownOwn => "jugaste a un juego por primera vez",
+            FeedText::Party => "creó una party con %@",
+            FeedText::PartyOwn => "creaste una party con %@",
+            FeedText::PartyAlone => "creó una party",
+            FeedText::PartyAloneOwn => "creaste una party",
+            FeedText::ListTwo => "%@ y %@",
+            FeedText::ListThree => "%@, %@ y %@",
+            FeedText::ListMore => "%@, %@ y %@ más",
+            FeedText::GradePlatinum => "platino",
+            FeedText::GradeGold => "oro",
+            FeedText::GradeSilver => "plata",
+            FeedText::GradeBronze => "bronce",
+            FeedText::RarityExtreme => "Extremadamente raro",
+            FeedText::RarityRare => "Raro",
+            FeedText::RarityUncommon => "Poco común",
+            FeedText::RarityCommon => "Común",
+            FeedText::RarityFact => "%@, %@\u{a0}%%",
+            FeedText::AgoNow => "Ahora mismo",
+            FeedText::AgoMinutes => "hace %@ min",
+            FeedText::AgoHours => "hace %@ h",
+            FeedText::AgoDays => "hace %@ d",
+            FeedText::AgoYesterday => "Ayer",
+            FeedText::OwnSubtitle => "Esto es lo que ven otros jugadores",
+            FeedText::ProfileLoading => "Cargando…",
+            FeedText::ProfileFailed => {
+                "No se pudo cargar este perfil. Comprueba tu conexión e inténtalo de nuevo."
+            }
+            FeedText::Favourites => "Juegos favoritos",
+            FeedText::NotInLibrary => "%@, no está en tu biblioteca",
+            FeedText::MostPlayed => "Más jugados",
+            FeedText::LinkedAccounts => "Cuentas vinculadas",
+            FeedText::Discord => "Discord",
+            FeedText::Steam => "Steam",
+            FeedText::Linked => "Vinculada",
+            FeedText::TrophiesPrivate => "Los trofeos son privados",
+            FeedText::EditProfile => "Editar perfil",
+            FeedText::EditProfileDetail => "Abre tu cuenta en la web",
+            FeedText::OwnEmpty => {
+                "Tu perfil está vacío. Añade en la web un texto breve, juegos favoritos y una imagen."
+            }
+            FeedText::HoursMinutes => "%@ h %@ min",
+            FeedText::Hours => "%@ h",
+            FeedText::Minutes => "%@ min",
+            FeedText::BannerName => "Perfil de %@",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            FeedText::Feed => "Activité",
+            FeedText::FeedDetail => "Ce que font tes amis",
+            FeedText::FeedSubtitle => "Activité récente de toi et de tes amis",
+            FeedText::YourProfile => "Ton profil",
+            FeedText::YourProfileDetail => "Ce que voient les autres joueurs",
+            FeedText::ViewProfile => "Voir le profil",
+            FeedText::Loading => "Chargement…",
+            FeedText::Empty => "Rien ici pour l’instant",
+            FeedText::EmptyNote => {
+                "Trophées, nouveaux amis, premiers jeux et nouvelles party apparaissent ici, pour toi et tes amis."
+            }
+            FeedText::Offline => "Tu es hors ligne",
+            FeedText::OfflineNote => "L’activité revient dès que tu es de nouveau en ligne.",
+            FeedText::LoadFailedTitle => "L’activité n’a pas été chargée",
+            FeedText::LoadFailed => "Vérifie ta connexion et réessaie.",
+            FeedText::TryAgain => "Réessayer",
+            FeedText::ShowOlder => "Afficher les activités plus anciennes",
+            FeedText::OlderFailed => "Chargement impossible. Sélectionne pour réessayer.",
+            FeedText::Profile => "Profil",
+            FeedText::EndOfFeed => "Tu es à jour.",
+            FeedText::TrophyNamed => "a obtenu le trophée en %@ «\u{a0}%@\u{a0}» dans %@",
+            FeedText::TrophyNamedOwn => "as obtenu le trophée en %@ «\u{a0}%@\u{a0}» dans %@",
+            FeedText::Trophy => "a obtenu un trophée en %@ dans %@",
+            FeedText::TrophyOwn => "as obtenu un trophée en %@ dans %@",
+            FeedText::TrophyUnknownGame => "a obtenu un trophée en %@ dans un jeu",
+            FeedText::TrophyUnknownGameOwn => "as obtenu un trophée en %@ dans un jeu",
+            FeedText::Friend => "est maintenant ami avec %@",
+            FeedText::FriendOwn => "es maintenant ami avec %@",
+            FeedText::FriendWithYou => "est maintenant ami avec toi",
+            FeedText::FirstPlayed => "a joué à %@ pour la première fois",
+            FeedText::FirstPlayedOwn => "as joué à %@ pour la première fois",
+            FeedText::FirstPlayedUnknown => "a joué à un jeu pour la première fois",
+            FeedText::FirstPlayedUnknownOwn => "as joué à un jeu pour la première fois",
+            FeedText::Party => "a lancé une party avec %@",
+            FeedText::PartyOwn => "as lancé une party avec %@",
+            FeedText::PartyAlone => "a lancé une party",
+            FeedText::PartyAloneOwn => "as lancé une party",
+            FeedText::ListTwo => "%@ et %@",
+            FeedText::ListThree => "%@, %@ et %@",
+            FeedText::ListMore => "%@, %@ et %@ de plus",
+            FeedText::GradePlatinum => "platine",
+            FeedText::GradeGold => "or",
+            FeedText::GradeSilver => "argent",
+            FeedText::GradeBronze => "bronze",
+            FeedText::RarityExtreme => "Extrêmement rare",
+            FeedText::RarityRare => "Rare",
+            FeedText::RarityUncommon => "Peu courant",
+            FeedText::RarityCommon => "Courant",
+            FeedText::RarityFact => "%@, %@\u{a0}%%",
+            FeedText::AgoNow => "À l’instant",
+            FeedText::AgoMinutes => "il y a %@ min",
+            FeedText::AgoHours => "il y a %@ h",
+            FeedText::AgoDays => "il y a %@ j",
+            FeedText::AgoYesterday => "Hier",
+            FeedText::OwnSubtitle => "Voici ce que voient les autres joueurs",
+            FeedText::ProfileLoading => "Chargement…",
+            FeedText::ProfileFailed => {
+                "Impossible de charger ce profil. Vérifie ta connexion et réessaie."
+            }
+            FeedText::Favourites => "Jeux favoris",
+            FeedText::NotInLibrary => "%@, absent de ta bibliothèque",
+            FeedText::MostPlayed => "Les plus joués",
+            FeedText::LinkedAccounts => "Comptes liés",
+            FeedText::Discord => "Discord",
+            FeedText::Steam => "Steam",
+            FeedText::Linked => "Lié",
+            FeedText::TrophiesPrivate => "Les trophées sont privés",
+            FeedText::EditProfile => "Modifier le profil",
+            FeedText::EditProfileDetail => "Ouvre ton compte sur le web",
+            FeedText::OwnEmpty => {
+                "Ton profil est vide. Ajoute sur le web un court texte, des jeux favoris et une image."
+            }
+            FeedText::HoursMinutes => "%@ h %@ min",
+            FeedText::Hours => "%@ h",
+            FeedText::Minutes => "%@ min",
+            FeedText::BannerName => "Profil de %@",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            FeedText::Feed => "Atividade",
+            FeedText::FeedDetail => "O que seus amigos estão fazendo",
+            FeedText::FeedSubtitle => "Atividade recente sua e dos seus amigos",
+            FeedText::YourProfile => "Seu perfil",
+            FeedText::YourProfileDetail => "O que outros jogadores veem",
+            FeedText::ViewProfile => "Ver perfil",
+            FeedText::Loading => "Carregando…",
+            FeedText::Empty => "Nada aqui ainda",
+            FeedText::EmptyNote => {
+                "Troféus, novos amigos, primeiros jogos e parties aparecem aqui, para você e seus amigos."
+            }
+            FeedText::Offline => "Você está offline",
+            FeedText::OfflineNote => "A atividade volta quando você estiver online de novo.",
+            FeedText::LoadFailedTitle => "A atividade não carregou",
+            FeedText::LoadFailed => "Verifique sua conexão e tente de novo.",
+            FeedText::TryAgain => "Tentar de novo",
+            FeedText::ShowOlder => "Mostrar atividade anterior",
+            FeedText::OlderFailed => "Não foi possível carregar. Selecione para tentar de novo.",
+            FeedText::Profile => "Perfil",
+            FeedText::EndOfFeed => "Você está em dia.",
+            FeedText::TrophyNamed => "ganhou o troféu de %@ “%@” em %@",
+            FeedText::TrophyNamedOwn => "ganhou o troféu de %@ “%@” em %@",
+            FeedText::Trophy => "ganhou um troféu de %@ em %@",
+            FeedText::TrophyOwn => "ganhou um troféu de %@ em %@",
+            FeedText::TrophyUnknownGame => "ganhou um troféu de %@ em um jogo",
+            FeedText::TrophyUnknownGameOwn => "ganhou um troféu de %@ em um jogo",
+            FeedText::Friend => "agora é amigo de %@",
+            FeedText::FriendOwn => "agora é amigo de %@",
+            FeedText::FriendWithYou => "agora é seu amigo",
+            FeedText::FirstPlayed => "jogou %@ pela primeira vez",
+            FeedText::FirstPlayedOwn => "jogou %@ pela primeira vez",
+            FeedText::FirstPlayedUnknown => "jogou um jogo pela primeira vez",
+            FeedText::FirstPlayedUnknownOwn => "jogou um jogo pela primeira vez",
+            FeedText::Party => "criou uma party com %@",
+            FeedText::PartyOwn => "criou uma party com %@",
+            FeedText::PartyAlone => "criou uma party",
+            FeedText::PartyAloneOwn => "criou uma party",
+            FeedText::ListTwo => "%@ e %@",
+            FeedText::ListThree => "%@, %@ e %@",
+            FeedText::ListMore => "%@, %@ e mais %@",
+            FeedText::GradePlatinum => "platina",
+            FeedText::GradeGold => "ouro",
+            FeedText::GradeSilver => "prata",
+            FeedText::GradeBronze => "bronze",
+            FeedText::RarityExtreme => "Extremamente raro",
+            FeedText::RarityRare => "Raro",
+            FeedText::RarityUncommon => "Incomum",
+            FeedText::RarityCommon => "Comum",
+            FeedText::RarityFact => "%@, %@%%",
+            FeedText::AgoNow => "Agora mesmo",
+            FeedText::AgoMinutes => "há %@ min",
+            FeedText::AgoHours => "há %@ h",
+            FeedText::AgoDays => "há %@ d",
+            FeedText::AgoYesterday => "Ontem",
+            FeedText::OwnSubtitle => "É isto que outros jogadores veem",
+            FeedText::ProfileLoading => "Carregando…",
+            FeedText::ProfileFailed => {
+                "Não foi possível carregar este perfil. Verifique sua conexão e tente de novo."
+            }
+            FeedText::Favourites => "Jogos favoritos",
+            FeedText::NotInLibrary => "%@, não está na sua biblioteca",
+            FeedText::MostPlayed => "Mais jogados",
+            FeedText::LinkedAccounts => "Contas vinculadas",
+            FeedText::Discord => "Discord",
+            FeedText::Steam => "Steam",
+            FeedText::Linked => "Vinculada",
+            FeedText::TrophiesPrivate => "Os troféus são privados",
+            FeedText::EditProfile => "Editar perfil",
+            FeedText::EditProfileDetail => "Abre sua conta na web",
+            FeedText::OwnEmpty => {
+                "Seu perfil está vazio. Adicione na web um texto curto, jogos favoritos e uma imagem."
+            }
+            FeedText::HoursMinutes => "%@ h %@ min",
+            FeedText::Hours => "%@ h",
+            FeedText::Minutes => "%@ min",
+            FeedText::BannerName => "Perfil de %@",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },
@@ -406,7 +670,13 @@ mod tests {
             FeedText::BannerName,
         ] {
             let count = |s: &str| s.matches("%@").count();
-            assert_eq!(count(text.english()), count(text.turkish()), "{text:?}");
+            for language in Language::ALL {
+                assert_eq!(
+                    count(text.english()),
+                    count(text.text(language)),
+                    "{text:?} {language:?}"
+                );
+            }
         }
     }
 

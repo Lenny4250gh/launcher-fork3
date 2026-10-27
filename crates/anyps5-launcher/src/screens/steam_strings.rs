@@ -136,11 +136,133 @@ impl SteamText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            SteamText::Add => "Añadir a Steam",
+            SteamText::AddDetail => {
+                "Pone el launcher en tu biblioteca de Steam para que Big Picture y la Steam Deck puedan iniciarlo. Steam debe estar cerrado."
+            }
+            SteamText::AddGames => "Añadir mis juegos a Steam",
+            SteamText::AddGamesDetail => {
+                "Pone en Steam cada juego de tu biblioteca, cada uno con su propia imagen. Steam debe estar cerrado."
+            }
+            SteamText::Added => "Añadido a Steam. Abre Steam de nuevo y estará ahí.",
+            SteamText::Updated => "Entrada de Steam actualizada. Abre Steam de nuevo para verla.",
+            SteamText::GameAdded => "Se añadió 1 juego a Steam. Abre Steam de nuevo y estará ahí.",
+            SteamText::GamesAdded => {
+                "Se añadieron %@ juegos a Steam. Abre Steam de nuevo y estarán ahí."
+            }
+            SteamText::Running => "Steam sigue abierto. Ciérralo e inténtalo de nuevo.",
+            SteamText::NoSteam => {
+                "No se encontró ninguna instalación de Steam en este PC. Configura Steam, inicia sesión una vez y vuelve."
+            }
+            SteamText::NoUsers => {
+                "Steam no tiene ninguna cuenta con sesión iniciada en este PC. Inicia sesión en Steam una vez y vuelve."
+            }
+            SteamText::Unreadable => {
+                "No se pudo leer la lista de accesos directos de Steam. No se cambió nada."
+            }
+            SteamText::Failed => {
+                "No se pudo escribir en tu carpeta de Steam. Comprueba que la carpeta no sea de solo lectura e inténtalo de nuevo."
+            }
+            SteamText::NoGames => "Aún no hay juegos en la biblioteca.",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            SteamText::Add => "Ajouter à Steam",
+            SteamText::AddDetail => {
+                "Place le launcher dans ta bibliothèque Steam pour que Big Picture et la Steam Deck puissent le lancer. Steam doit être fermé."
+            }
+            SteamText::AddGames => "Ajouter mes jeux à Steam",
+            SteamText::AddGamesDetail => {
+                "Place chaque jeu de ta bibliothèque dans Steam, chacun avec son propre visuel. Steam doit être fermé."
+            }
+            SteamText::Added => "Ajouté à Steam. Rouvre Steam et il sera là.",
+            SteamText::Updated => "Entrée Steam mise à jour. Rouvre Steam pour la voir.",
+            SteamText::GameAdded => "1 jeu a été ajouté à Steam. Rouvre Steam et il sera là.",
+            SteamText::GamesAdded => {
+                "%@ jeux ont été ajoutés à Steam. Rouvre Steam et ils seront là."
+            }
+            SteamText::Running => "Steam est encore ouvert. Ferme-le et réessaie.",
+            SteamText::NoSteam => {
+                "Aucune installation de Steam n’a été trouvée sur ce PC. Installe Steam, connecte-toi une fois, puis reviens."
+            }
+            SteamText::NoUsers => {
+                "Aucun compte n’est connecté à Steam sur ce PC. Connecte-toi une fois à Steam, puis reviens."
+            }
+            SteamText::Unreadable => {
+                "La liste des raccourcis de Steam n’a pas pu être lue. Rien n’a été modifié."
+            }
+            SteamText::Failed => {
+                "L’écriture dans ton dossier Steam a échoué. Vérifie que le dossier n’est pas en lecture seule, puis réessaie."
+            }
+            SteamText::NoGames => "Pas encore de jeux dans la bibliothèque.",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            SteamText::Add => "Adicionar ao Steam",
+            SteamText::AddDetail => {
+                "Coloca o launcher na sua biblioteca do Steam para que o Big Picture e o Steam Deck possam iniciá-lo. O Steam precisa estar fechado."
+            }
+            SteamText::AddGames => "Adicionar meus jogos ao Steam",
+            SteamText::AddGamesDetail => {
+                "Coloca no Steam cada jogo da sua biblioteca, cada um com sua própria arte. O Steam precisa estar fechado."
+            }
+            SteamText::Added => "Adicionado ao Steam. Abra o Steam de novo e ele estará lá.",
+            SteamText::Updated => "Entrada do Steam atualizada. Abra o Steam de novo para vê-la.",
+            SteamText::GameAdded => {
+                "1 jogo foi adicionado ao Steam. Abra o Steam de novo e ele estará lá."
+            }
+            SteamText::GamesAdded => {
+                "%@ jogos foram adicionados ao Steam. Abra o Steam de novo e eles estarão lá."
+            }
+            SteamText::Running => "O Steam ainda está aberto. Feche-o e tente de novo.",
+            SteamText::NoSteam => {
+                "Nenhuma instalação do Steam foi encontrada neste PC. Configure o Steam, entre uma vez e volte."
+            }
+            SteamText::NoUsers => {
+                "O Steam não tem nenhuma conta conectada neste PC. Entre no Steam uma vez e volte."
+            }
+            SteamText::Unreadable => {
+                "Não foi possível ler a lista de atalhos do Steam. Nada foi alterado."
+            }
+            SteamText::Failed => {
+                "Falha ao gravar na sua pasta do Steam. Verifique se a pasta não é somente leitura e tente de novo."
+            }
+            SteamText::NoGames => "Ainda não há jogos na biblioteca.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },

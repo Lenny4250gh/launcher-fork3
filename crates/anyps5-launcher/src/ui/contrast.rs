@@ -18,7 +18,9 @@ use egui::{Color32, Pos2, Rect, pos2, vec2};
 
 use crate::ui::artwork;
 use crate::ui::shade;
-use crate::ui::theme::{self, Accent, TextStyle, Theme, Weight, black, color, mix, ty, white};
+use crate::ui::theme::{
+    self, Accent, TextStyle, Theme, Weight, color, mix, scrim, ty, white, with_light,
+};
 
 /// sRGB channel (0..=255) to linear light.
 fn linear(c: u8) -> f64 {
@@ -88,7 +90,8 @@ fn screen() -> Rect {
 fn lit(theme: Theme) -> Color32 {
     let p = theme.palette();
     let k = match theme {
-        Theme::Cosmic | Theme::Aurora | Theme::GameColors => 0.35,
+        Theme::Cosmic | Theme::Aurora | Theme::GameColors | Theme::Tide | Theme::Daylight => 0.35,
+        Theme::Ember => 0.4,
         Theme::Sunset => 0.5,
     };
     mix(p.middle_color(), p.bright_color(), k)
@@ -110,6 +113,13 @@ struct Ground {
     base: Base,
     /// The artwork scrims lie over it (a picture), at the text's place.
     art: bool,
+    /// Seen through a see-through window: there the ink is white, even on the light look.
+    glass: bool,
+}
+
+/// Whether the ink on this ground is the light look's.
+fn light_ink(theme: Theme, ground: &Ground) -> bool {
+    theme.is_light() && !ground.glass
 }
 
 /// The lightest tone the shader lays at `at`. Under the top bar it is the middle tone with a soft
@@ -140,26 +150,39 @@ fn grounds(theme: Theme) -> Vec<Ground> {
             name: format!("{t} deep"),
             base: Base::Fixed(p.deep_color()),
             art: false,
+            glass: false,
         },
         Ground {
             name: format!("{t} lit"),
             base: Base::Lit(theme),
             art: false,
+            glass: false,
         },
         Ground {
             name: format!("{t} deep, glass window"),
             base: Base::Fixed(glassed(p.deep_color())),
             art: false,
+            glass: true,
         },
         Ground {
             name: format!("{t} lit, glass window"),
             base: Base::Fixed(glassed(lit(theme))),
             art: false,
+            glass: true,
         },
         Ground {
-            name: format!("{t} + white picture"),
-            base: Base::Fixed(Color32::WHITE),
+            // The worst picture: white under white ink, black under dark ink.
+            name: format!(
+                "{t} + {} picture",
+                if theme.is_light() { "black" } else { "white" }
+            ),
+            base: Base::Fixed(if theme.is_light() {
+                Color32::BLACK
+            } else {
+                Color32::WHITE
+            }),
             art: true,
+            glass: false,
         },
     ]
 }
@@ -173,11 +196,11 @@ fn home_backdrop(ground: &Ground, at: Pos2) -> Color32 {
     };
     if ground.art {
         bg = over(
-            black(artwork::scrim_alpha(at.x / s.width(), at.y / s.height())),
+            scrim(artwork::scrim_alpha(at.x / s.width(), at.y / s.height())),
             bg,
         );
     }
-    over(black(shade::alpha_at(s, at, true)), bg)
+    over(scrim(shade::alpha_at(s, at, true)), bg)
 }
 
 /// One measured pair.
@@ -211,116 +234,120 @@ impl Report {
 /// Home screen text at its places (reference size 1600 x 900).
 fn home(report: &mut Report) {
     // (what, ink, style, where, on a keycap)
-    let places: [(&str, Color32, Need, Pos2, bool); 14] = [
-        (
-            "clock",
-            color::text_clock(),
-            Need::of(ty::CLOCK),
-            pos2(1512.0, 55.0),
-            false,
-        ),
-        (
-            "window glyphs",
-            color::caption_glyph(),
-            Need::Glyph,
-            pos2(1530.0, 16.0),
-            false,
-        ),
-        (
-            "state, neutral",
-            color::state_neutral(),
-            Need::of(ty::STATE_LABEL),
-            pos2(120.0, 522.0),
-            false,
-        ),
-        (
-            "state, active",
-            color::text_active(),
-            Need::of(ty::STATE_LABEL),
-            pos2(120.0, 522.0),
-            false,
-        ),
-        (
-            "state, update",
-            color::update_available(),
-            Need::of(ty::STATE_LABEL),
-            pos2(120.0, 522.0),
-            false,
-        ),
-        (
-            "state, error",
-            color::error_state(),
-            Need::of(ty::STATE_LABEL),
-            pos2(120.0, 522.0),
-            false,
-        ),
-        (
-            "fact overline",
-            color::text_overline(),
-            Need::of(ty::INFO_OVERLINE),
-            pos2(330.0, 735.0),
-            false,
-        ),
-        // The facts and the glibc line run to the right when a value or a sentence is long.
-        (
-            "fact overline, far",
-            color::text_overline(),
-            Need::of(ty::INFO_OVERLINE),
-            pos2(870.0, 735.0),
-            false,
-        ),
-        (
-            "fact value, far",
-            color::text_value(),
-            Need::of(ty::INFO_VALUE),
-            pos2(870.0, 758.0),
-            false,
-        ),
-        (
-            "warning under Play, far",
-            color::warning_text(),
-            Need::of(ty::DETAIL_LARGE),
-            pos2(870.0, 700.0),
-            false,
-        ),
-        (
-            "fact value",
-            color::text_value(),
-            Need::of(ty::INFO_VALUE),
-            pos2(330.0, 758.0),
-            false,
-        ),
-        (
-            "warning under Play",
-            color::warning_text(),
-            Need::of(ty::DETAIL_LARGE),
-            pos2(330.0, 700.0),
-            false,
-        ),
-        (
-            "hint label",
-            color::text_hint(),
-            Need::of(ty::HINT_LABEL),
-            pos2(1400.0, 862.0),
-            false,
-        ),
-        (
-            "hint key",
-            color::text_hint_key(),
-            Need::of(ty::HINT_KEY),
-            pos2(1250.0, 862.0),
-            true,
-        ),
-    ];
+    let places = || -> [(&str, Color32, Need, Pos2, bool); 14] {
+        [
+            (
+                "clock",
+                color::text_clock(),
+                Need::of(ty::CLOCK),
+                pos2(1512.0, 55.0),
+                false,
+            ),
+            (
+                "window glyphs",
+                color::caption_glyph(),
+                Need::Glyph,
+                pos2(1530.0, 16.0),
+                false,
+            ),
+            (
+                "state, neutral",
+                color::state_neutral(),
+                Need::of(ty::STATE_LABEL),
+                pos2(120.0, 522.0),
+                false,
+            ),
+            (
+                "state, active",
+                color::text_active(),
+                Need::of(ty::STATE_LABEL),
+                pos2(120.0, 522.0),
+                false,
+            ),
+            (
+                "state, update",
+                color::update_available(),
+                Need::of(ty::STATE_LABEL),
+                pos2(120.0, 522.0),
+                false,
+            ),
+            (
+                "state, error",
+                color::error_state(),
+                Need::of(ty::STATE_LABEL),
+                pos2(120.0, 522.0),
+                false,
+            ),
+            (
+                "fact overline",
+                color::text_overline(),
+                Need::of(ty::INFO_OVERLINE),
+                pos2(330.0, 735.0),
+                false,
+            ),
+            // The facts and the glibc line run to the right when a value or a sentence is long.
+            (
+                "fact overline, far",
+                color::text_overline(),
+                Need::of(ty::INFO_OVERLINE),
+                pos2(870.0, 735.0),
+                false,
+            ),
+            (
+                "fact value, far",
+                color::text_value(),
+                Need::of(ty::INFO_VALUE),
+                pos2(870.0, 758.0),
+                false,
+            ),
+            (
+                "warning under Play, far",
+                color::warning_text(),
+                Need::of(ty::DETAIL_LARGE),
+                pos2(870.0, 700.0),
+                false,
+            ),
+            (
+                "fact value",
+                color::text_value(),
+                Need::of(ty::INFO_VALUE),
+                pos2(330.0, 758.0),
+                false,
+            ),
+            (
+                "warning under Play",
+                color::warning_text(),
+                Need::of(ty::DETAIL_LARGE),
+                pos2(330.0, 700.0),
+                false,
+            ),
+            (
+                "hint label",
+                color::text_hint(),
+                Need::of(ty::HINT_LABEL),
+                pos2(1400.0, 862.0),
+                false,
+            ),
+            (
+                "hint key",
+                color::text_hint_key(),
+                Need::of(ty::HINT_KEY),
+                pos2(1250.0, 862.0),
+                true,
+            ),
+        ]
+    };
     for theme in Theme::ALL {
         for ground in grounds(theme) {
-            for (what, ink, need, at, keycap) in places {
-                let mut bg = home_backdrop(&ground, at);
-                if keycap {
-                    bg = over(color::keycap(), bg);
+            with_light(light_ink(theme, &ground), || {
+                for (what, ink, need, at, keycap) in places() {
+                    let mut bg = home_backdrop(&ground, at);
+                    if keycap {
+                        bg = over(color::keycap(), bg);
+                    }
+                    report.add(what, &ground.name, ink, bg, need);
                 }
-                report.add(what, &ground.name, ink, bg, need);
-            }
+            });
         }
     }
 }
@@ -335,7 +362,7 @@ const WORST_BLUR: u8 = 105;
 /// over the brightest blur.
 fn glassed(theme_color: Color32) -> Color32 {
     let under = over(
-        black(crate::ui::background::GLASS_PLATE),
+        theme::black(crate::ui::background::GLASS_PLATE),
         Color32::from_gray(WORST_BLUR),
     );
     over(
@@ -351,140 +378,187 @@ fn panel(report: &mut Report) {
             theme.title(crate::ui::i18n::Language::English),
             if glass { " glass" } else { "" }
         );
-        let under = if glass {
-            glassed(lit(theme))
-        } else {
-            lit(theme)
-        };
-        // The frame of the game panels is a full-screen area: the game panels' black (GlassStyle::game_panel) over the lit backdrop.
-        let panel = over(
-            crate::ui::theme::black(crate::ui::glass::GlassStyle::game_panel().black),
-            under,
-        );
-        let row = over(color::surface_row(), panel);
-        let hover = over(color::surface_hover(), panel);
-        let focus = over(color::surface_focus(), panel);
-        let pressed = over(color::surface_pressed(), panel);
-        let surfaces = [
-            ("panel", panel),
-            ("row", row),
-            ("row hover", hover),
-            ("row focus", focus),
-            ("row pressed", pressed),
-        ];
-        let inks: [(&str, Color32, Need); 21] = [
-            ("row title", Color32::WHITE, Need::of(ty::ROW_TITLE)),
-            (
-                "row title, inert",
-                color::text_inert(),
-                Need::of(ty::ROW_TITLE),
-            ),
-            ("row detail", color::text_row_detail(), Need::of(ty::DETAIL)),
-            ("label", color::text_label(), Need::Text),
-            ("value", color::text_value(), Need::Text),
-            ("hint", color::text_hint(), Need::Text),
-            ("subtitle", color::text_subtitle(), Need::Text),
-            ("empty state", color::text_empty(), Need::Text),
-            ("detail", color::text_detail(), Need::of(ty::DETAIL)),
-            ("note", color::text_note(), Need::of(ty::NOTE)),
-            (
-                "caption",
-                color::text_caption(),
-                Need::of(ty::SECTION_CAPTION),
-            ),
-            (
-                "overline",
-                color::text_overline(),
-                Need::of(ty::INFO_OVERLINE),
-            ),
-            ("count", color::text_count(), Need::Text),
-            ("path", color::text_path(), Need::Text),
-            ("state, neutral", color::state_neutral(), Need::Text),
-            (
-                "destructive",
-                color::destructive_text(),
-                Need::of(ty::ROW_TITLE),
-            ),
-            ("destructive glyph", color::destructive_icon(), Need::Glyph),
-            ("error", color::error_text(), Need::Text),
-            ("error state", color::error_state(), Need::Text),
-            ("warning", color::warning_text(), Need::Text),
-            ("update available", color::update_available(), Need::Text),
-        ];
-        for (surface, bg) in surfaces {
-            for (what, ink, need) in inks {
-                // A row never carries a note, a caption or a count (they are bare on the panel).
-                if surface != "panel" && matches!(what, "note" | "caption" | "count" | "path") {
-                    continue;
-                }
-                report.add(what, &format!("{name} {surface}"), ink, bg, need);
-            }
-        }
-        // Toasts and banners.
-        let card = over(color::card_fill(), lit(theme));
-        for (what, ink, need) in [
-            ("toast text", Color32::WHITE, Need::Text),
-            (
-                "banner detail",
-                color::text_subtitle(),
-                Need::of(ty::BANNER_DETAIL),
-            ),
-            (
-                "banner label",
-                color::text_subtitle(),
-                Need::of(ty::BANNER_LABEL),
-            ),
-        ] {
-            report.add(what, &format!("{name} card"), ink, card, need);
-        }
-        // Buttons: the label on the primary in every state, the focus ring on the panel.
-        for (state, fill) in [
-            ("rest", color::primary()),
-            ("hover", color::primary_hover()),
-            ("pressed", color::primary_pressed()),
-        ] {
-            let bg = over(fill, panel);
-            report.add(
-                "primary label",
-                &format!("{name} primary {state}"),
-                color::on_primary(),
-                bg,
-                Need::Text,
+        with_light(theme.is_light() && !glass, || {
+            // The ground under a panel: the lit tone, or on the light look its darkest, which is the
+            // worst for dark ink.
+            let base = if theme.is_light() && !glass {
+                theme.palette().deep_color()
+            } else {
+                lit(theme)
+            };
+            let under = if glass { glassed(lit(theme)) } else { base };
+            // The frame of the game panels is a full-screen area: the game panels' black (GlassStyle::game_panel) over the lit backdrop.
+            let black = crate::ui::glass::GlassStyle::game_panel().black;
+            let panel = over(
+                if theme.is_light() && !glass {
+                    scrim(crate::ui::glass::light_veil(black))
+                } else {
+                    crate::ui::theme::black(black)
+                },
+                under,
             );
-        }
-        report.add(
-            "focus ring",
-            &format!("{name} panel"),
-            color::focus_ring(),
-            panel,
-            Need::Glyph,
-        );
-        // The switch: the knob against the track in each state.
-        for accent in Accent::ALL {
-            let on = accent.color();
-            report.add(
-                "switch knob on track",
-                &format!(
-                    "{name} {}",
-                    accent.title(crate::ui::i18n::Language::English)
+            let row = over(color::surface_row(), panel);
+            let hover = over(color::surface_hover(), panel);
+            let focus = over(color::surface_focus(), panel);
+            let pressed = over(color::surface_pressed(), panel);
+            let surfaces = [
+                ("panel", panel),
+                ("row", row),
+                ("row hover", hover),
+                ("row focus", focus),
+                ("row pressed", pressed),
+            ];
+            let inks: [(&str, Color32, Need); 21] = [
+                ("row title", color::text(), Need::of(ty::ROW_TITLE)),
+                (
+                    "row title, inert",
+                    color::text_inert(),
+                    Need::of(ty::ROW_TITLE),
                 ),
-                color::on_primary(),
-                on,
-                Need::Glyph,
-            );
-        }
-        for (state, track) in [
-            ("off", color::switch_track_off()),
-            ("off, row focused", color::switch_track_off_on_focus()),
-        ] {
+                ("row detail", color::text_row_detail(), Need::of(ty::DETAIL)),
+                ("label", color::text_label(), Need::Text),
+                ("value", color::text_value(), Need::Text),
+                ("hint", color::text_hint(), Need::Text),
+                ("subtitle", color::text_subtitle(), Need::Text),
+                ("empty state", color::text_empty(), Need::Text),
+                ("detail", color::text_detail(), Need::of(ty::DETAIL)),
+                ("note", color::text_note(), Need::of(ty::NOTE)),
+                (
+                    "caption",
+                    color::text_caption(),
+                    Need::of(ty::SECTION_CAPTION),
+                ),
+                (
+                    "overline",
+                    color::text_overline(),
+                    Need::of(ty::INFO_OVERLINE),
+                ),
+                ("count", color::text_count(), Need::Text),
+                ("path", color::text_path(), Need::Text),
+                ("state, neutral", color::state_neutral(), Need::Text),
+                (
+                    "destructive",
+                    color::destructive_text(),
+                    Need::of(ty::ROW_TITLE),
+                ),
+                ("destructive glyph", color::destructive_icon(), Need::Glyph),
+                ("error", color::error_text(), Need::Text),
+                ("error state", color::error_state(), Need::Text),
+                ("warning", color::warning_text(), Need::Text),
+                ("update available", color::update_available(), Need::Text),
+            ];
+            for (surface, bg) in surfaces {
+                for (what, ink, need) in inks {
+                    // A row never carries a note, a caption or a count (they are bare on the panel).
+                    if surface != "panel" && matches!(what, "note" | "caption" | "count" | "path") {
+                        continue;
+                    }
+                    report.add(what, &format!("{name} {surface}"), ink, bg, need);
+                }
+            }
+            // Toasts and banners.
+            let card = over(color::card_fill(), base);
+            for (what, ink, need) in [
+                ("toast text", color::text(), Need::Text),
+                (
+                    "banner detail",
+                    color::text_subtitle(),
+                    Need::of(ty::BANNER_DETAIL),
+                ),
+                (
+                    "banner label",
+                    color::text_subtitle(),
+                    Need::of(ty::BANNER_LABEL),
+                ),
+            ] {
+                report.add(what, &format!("{name} card"), ink, card, need);
+            }
+            // A trophy row: the grade label earned and not yet, and the dimmed ink of an unearned row.
+            // (Measured on the light look only: the dark looks' tables stay as they were.)
+            let trophy = over(color::surface_trophy_row(), panel);
+            let trophy_hover = over(color::surface_hover(), panel);
+            let trophy_surfaces: &[(&str, Color32)] = if theme.is_light() && !glass {
+                &[("trophy row", trophy), ("trophy row hover", trophy_hover)]
+            } else {
+                &[]
+            };
+            for &(surface, bg) in trophy_surfaces {
+                for grade in theme::Grade::ALL {
+                    let t = grade.title(crate::ui::i18n::Language::English);
+                    report.add(
+                        &format!("grade {t}, earned"),
+                        &format!("{name} {surface}"),
+                        grade.color(),
+                        bg,
+                        Need::of(ty::SECTION_CAPTION),
+                    );
+                    report.add(
+                        &format!("grade {t}, not earned"),
+                        &format!("{name} {surface}"),
+                        grade.dimmed(),
+                        bg,
+                        Need::of(ty::SECTION_CAPTION),
+                    );
+                }
+                for (what, alpha) in [("trophy name, not earned", 0.8), ("trophy detail", 0.6)] {
+                    report.add(
+                        what,
+                        &format!("{name} {surface}"),
+                        color::ink_at(alpha),
+                        bg,
+                        Need::Text,
+                    );
+                }
+            }
+            // Buttons: the label on the primary in every state, the focus ring on the panel.
+            for (state, fill) in [
+                ("rest", color::primary()),
+                ("hover", color::primary_hover()),
+                ("pressed", color::primary_pressed()),
+            ] {
+                let bg = over(fill, panel);
+                report.add(
+                    "primary label",
+                    &format!("{name} primary {state}"),
+                    color::on_primary(),
+                    bg,
+                    Need::Text,
+                );
+            }
             report.add(
-                "switch knob on track",
-                &format!("{name} {state}"),
-                Color32::WHITE,
-                over(track, panel),
+                "focus ring",
+                &format!("{name} panel"),
+                color::focus_ring(),
+                panel,
                 Need::Glyph,
             );
-        }
+            // The switch: the knob against the track in each state.
+            for accent in Accent::ALL {
+                let on = accent.color();
+                report.add(
+                    "switch knob on track",
+                    &format!(
+                        "{name} {}",
+                        accent.title(crate::ui::i18n::Language::English)
+                    ),
+                    color::on_primary(),
+                    on,
+                    Need::Glyph,
+                );
+            }
+            for (state, track) in [
+                ("off", color::switch_track_off()),
+                ("off, row focused", color::switch_track_off_on_focus()),
+            ] {
+                report.add(
+                    "switch knob on track",
+                    &format!("{name} {state}"),
+                    color::knob(),
+                    over(track, panel),
+                    Need::Glyph,
+                );
+            }
+        });
     }
 }
 
@@ -524,19 +598,21 @@ fn accents(report: &mut Report) {
     let at = pos2(500.0, 653.0);
     for theme in Theme::ALL {
         for ground in grounds(theme) {
-            let bg = home_backdrop(&ground, at);
-            for accent in Accent::ALL {
-                report.add(
-                    &format!(
-                        "progress line, {}",
-                        accent.title(crate::ui::i18n::Language::English)
-                    ),
-                    &ground.name,
-                    accent.color(),
-                    bg,
-                    Need::Glyph,
-                );
-            }
+            with_light(light_ink(theme, &ground), || {
+                let bg = home_backdrop(&ground, at);
+                for accent in Accent::ALL {
+                    report.add(
+                        &format!(
+                            "progress line, {}",
+                            accent.title(crate::ui::i18n::Language::English)
+                        ),
+                        &ground.name,
+                        accent.color(),
+                        bg,
+                        Need::Glyph,
+                    );
+                }
+            });
         }
     }
 }

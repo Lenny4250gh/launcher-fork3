@@ -11,7 +11,7 @@ use crate::screens::side::commands;
 use crate::ui::Shell;
 use crate::ui::anim::AnimExt;
 use crate::ui::chrome::{TileImage, TileOverlay, TileStyle, fullscreen_panel, paint_tile};
-use crate::ui::components::{ConsoleButton, ControlSize};
+use crate::ui::components::{ConsoleButton, ControlSize, HintSet};
 use crate::ui::glass::GlassStyle;
 use crate::ui::i18n::{Key, Language};
 use crate::ui::icons::Icon;
@@ -274,6 +274,7 @@ impl LibraryGrid {
         let mut clicked = None;
         let mut bar_clicked = None;
         let mut clear = false;
+        let mut closed = false;
         let mut folder = false;
         let mut columns = self.columns;
         let index = self.index;
@@ -293,6 +294,7 @@ impl LibraryGrid {
                     &mut folder,
                     &mut columns,
                     (&mut bar_clicked, &mut clear),
+                    &mut closed,
                 )
             },
         );
@@ -309,6 +311,11 @@ impl LibraryGrid {
         if open && clear {
             shell.play(Cue::Select);
             actions.push(LibraryAction::ClearFilters);
+        }
+        if open && closed {
+            shell.play(Cue::Close);
+            self.close();
+            actions.push(LibraryAction::Close);
         }
         if open && folder {
             shell.play(Cue::Select);
@@ -350,6 +357,7 @@ fn draw(
     folder: &mut bool,
     columns_out: &mut usize,
     (bar_clicked, clear): (&mut Option<usize>, &mut bool),
+    closed: &mut bool,
 ) {
     let ctx = ui.ctx().clone();
     let painter = ui.painter().clone();
@@ -377,7 +385,24 @@ fn draw(
         );
     }
     let header = Rect::from_min_size(area.min, vec2(area.width(), title_h));
-    crate::screens::right_aligned_hints(ui, header, language);
+    let (edge, leave) = crate::screens::close_button(ui, header, language);
+    *closed |= leave;
+    // Options on a tile opens its hub, so the bar says so while the focus is on a tile (on the bar
+    // above the grid Options leaves, like Back).
+    let set = if data.entries.is_empty() || zone != Zone::Grid {
+        HintSet::BASIC
+    } else {
+        HintSet::WITH_OPTIONS
+    };
+    crate::screens::right_aligned_hints_set(
+        ui,
+        Rect::from_min_max(
+            header.min,
+            pos2(edge - size::CONTROL_GAP * 2.0, header.max.y),
+        ),
+        language,
+        set,
+    );
 
     // The bar under the header: order, filter, search, storage. A button stays 12 dp from the next.
     let mut bar_bottom = header.max.y;
@@ -624,6 +649,15 @@ fn draw(
                 if focused { 2 } else { 1 },
             );
             let extra = (name_g.size().y - ty::SENTENCE.line_height()).max(0.0);
+            // A name cut by the tile's width is read in full while the pointer or the focus is on it.
+            crate::ui::reveal::full_text(
+                &ctx,
+                response.id,
+                cell,
+                &entry.name,
+                input::hovered(&ctx, &response) || (focused && input::focus_visible(&ctx)),
+                name_g.elided,
+            );
             let ny = cell.min.y + tile + 10.0;
             painter.galley(pos2(cell.min.x, ny), name_g, ink);
             let mut sy = ny + ty::SENTENCE.line_height() + extra + 10.0;

@@ -115,11 +115,118 @@ impl ConfirmText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            ConfirmText::BlockTitle => "¿Bloquear a %@?",
+            ConfirmText::BlockNote => {
+                "%@ ya no podrá enviarte mensajes ni solicitudes de amistad. Puedes desbloquear en Ajustes."
+            }
+            ConfirmText::BlockRequestNote => {
+                "%@ ya no podrá enviarte mensajes ni solicitudes de amistad, y esta solicitud se elimina. Puedes desbloquear en Ajustes."
+            }
+            ConfirmText::RemoveFriendTitle => "¿Quitar a %@ de tus amigos?",
+            ConfirmText::RemoveFriendNote => {
+                "Ya no verán el estado del otro. Cualquiera de los dos puede enviar una solicitud nueva más tarde."
+            }
+            ConfirmText::UnsendTitle => "¿Retirar este mensaje?",
+            ConfirmText::UnsendNote => {
+                "Se elimina para todos en la conversación. No se puede deshacer."
+            }
+            ConfirmText::LeavePartyTitle => "¿Salir de la party?",
+            ConfirmText::LeavePartyNote => "Necesitas una invitación nueva para volver.",
+            ConfirmText::RemoveMemberTitle => "¿Quitar a %@ de la party?",
+            ConfirmText::RemoveMemberNote => "Necesita una invitación nueva para volver.",
+            ConfirmText::LeaveConversationTitle => "¿Salir de esta conversación?",
+            ConfirmText::LeaveConversationNote => {
+                "Dejas de recibir sus mensajes. Alguien tiene que añadirte de nuevo para que vuelvas."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            ConfirmText::BlockTitle => "Bloquer %@\u{a0}?",
+            ConfirmText::BlockNote => {
+                "%@ ne pourra plus t’envoyer de messages ni de demandes d’ami. Tu peux débloquer dans les paramètres."
+            }
+            ConfirmText::BlockRequestNote => {
+                "%@ ne pourra plus t’envoyer de messages ni de demandes d’ami, et cette demande est supprimée. Tu peux débloquer dans les paramètres."
+            }
+            ConfirmText::RemoveFriendTitle => "Retirer %@ de tes amis\u{a0}?",
+            ConfirmText::RemoveFriendNote => {
+                "Vous ne verrez plus le statut l’un de l’autre. L’un de vous pourra envoyer une nouvelle demande plus tard."
+            }
+            ConfirmText::UnsendTitle => "Retirer ce message\u{a0}?",
+            ConfirmText::UnsendNote => {
+                "Il est supprimé pour tout le monde dans la conversation. Impossible d’annuler."
+            }
+            ConfirmText::LeavePartyTitle => "Quitter la party\u{a0}?",
+            ConfirmText::LeavePartyNote => "Il te faut une nouvelle invitation pour revenir.",
+            ConfirmText::RemoveMemberTitle => "Retirer %@ de la party\u{a0}?",
+            ConfirmText::RemoveMemberNote => {
+                "Cette personne a besoin d’une nouvelle invitation pour revenir."
+            }
+            ConfirmText::LeaveConversationTitle => "Quitter cette conversation\u{a0}?",
+            ConfirmText::LeaveConversationNote => {
+                "Tu ne reçois plus ses messages. Quelqu’un doit t’ajouter de nouveau pour que tu reviennes."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            ConfirmText::BlockTitle => "Bloquear %@?",
+            ConfirmText::BlockNote => {
+                "%@ não poderá mais enviar mensagens nem pedidos de amizade para você. Você pode desbloquear em Configurações."
+            }
+            ConfirmText::BlockRequestNote => {
+                "%@ não poderá mais enviar mensagens nem pedidos de amizade para você, e este pedido é removido. Você pode desbloquear em Configurações."
+            }
+            ConfirmText::RemoveFriendTitle => "Remover %@ dos amigos?",
+            ConfirmText::RemoveFriendNote => {
+                "Vocês deixam de ver o status um do outro. Qualquer um dos dois pode enviar um novo pedido depois."
+            }
+            ConfirmText::UnsendTitle => "Apagar esta mensagem para todos?",
+            ConfirmText::UnsendNote => {
+                "Ela é removida para todos na conversa. Isso não pode ser desfeito."
+            }
+            ConfirmText::LeavePartyTitle => "Sair da party?",
+            ConfirmText::LeavePartyNote => "Você precisa de um novo convite para voltar.",
+            ConfirmText::RemoveMemberTitle => "Remover %@ da party?",
+            ConfirmText::RemoveMemberNote => "A pessoa precisa de um novo convite para voltar.",
+            ConfirmText::LeaveConversationTitle => "Sair desta conversa?",
+            ConfirmText::LeaveConversationNote => {
+                "Você deixa de receber as mensagens dela. Alguém precisa adicionar você de novo para você voltar."
+            }
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },
@@ -149,6 +256,13 @@ mod tests {
         ] {
             let count = |s: &str| s.matches("%@").count();
             assert_eq!(count(text.english()), count(text.turkish()), "{text:?}");
+            for language in Language::ALL {
+                assert_eq!(
+                    count(text.english()),
+                    count(text.text(language)),
+                    "{text:?} {language:?}"
+                );
+            }
         }
     }
 
@@ -164,6 +278,12 @@ mod tests {
         ] {
             assert!(title.english().ends_with('?'), "{title:?}");
             assert!(title.turkish().ends_with('?'), "{title:?}");
+            for language in Language::ALL {
+                assert!(
+                    title.text(language).ends_with('?'),
+                    "{title:?} {language:?}"
+                );
+            }
         }
         for note in [
             ConfirmText::BlockNote,
@@ -176,6 +296,9 @@ mod tests {
         ] {
             assert!(note.english().ends_with('.'), "{note:?}");
             assert!(note.turkish().ends_with('.'), "{note:?}");
+            for language in Language::ALL {
+                assert!(note.text(language).ends_with('.'), "{note:?} {language:?}");
+            }
         }
         assert_eq!(
             ConfirmText::BlockTitle.format(Language::English, &[Arg::Str("Lumen")]),

@@ -196,7 +196,7 @@ pub fn rarity_text(percent: f32, language: Language) -> String {
         Rarity::Common => F::RarityCommon,
     };
     let mut number = format!("{percent:.1}");
-    if matches!(language, Language::Turkish | Language::German) {
+    if language.decimal_comma() {
         number = number.replace('.', ",");
     }
     F::RarityFact.format(
@@ -663,7 +663,7 @@ fn show_card(
         0.0,
         size::FOCUS_RING,
     );
-    let fg = Color32::WHITE;
+    let fg = crate::ui::theme::color::text();
     let dim = |factor: f32| fade(fg, factor);
 
     // The avatar.
@@ -716,7 +716,7 @@ pub(super) fn paint_state(ui: &mut Ui, icon: Icon, title: &str, note: Option<&st
         icon,
         title,
         note,
-        loading: false,
+        loading: icon == Icon::ARROWS_CLOCKWISE,
         action: None,
     };
     let width = ui.available_width();

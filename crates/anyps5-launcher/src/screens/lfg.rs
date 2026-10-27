@@ -397,14 +397,24 @@ impl LfgPanel {
             players,
         ));
         let count = self.draft_note.chars().count();
+        // The field fills its row and its title is its hint, so a detail has no column to stand in
+        // (it was drawn over the hint): the count is the note under the field, like the notes of the
+        // other fields.
         rows.push(
             Row::text("postNote", t(T::Note), self.draft_note.clone())
                 .icon(Icon::PENCIL_SIMPLE)
-                .wide()
-                .detail(T::NoteCount.format(
+                .wide(),
+        );
+        rows.push(
+            Row::info(
+                "postNoteCount",
+                T::NoteCount.format(
                     language,
                     &[Arg::Int(count as i64), Arg::Int(MAX_LFG_NOTE as i64)],
-                )),
+                ),
+                None,
+            )
+            .attached(),
         );
         let mut post = Row::command("submit", t(T::PostNow))
             .icon(Icon::CHECK)
@@ -1013,8 +1023,11 @@ mod tests {
             ..LfgPanel::default()
         };
         let (_, _, rows) = panel.build(&data(&online));
-        let note = rows.iter().find(|r| r.id == "postNote").expect("note");
-        assert_eq!(note.detail.as_deref(), Some("5 of 140 characters"));
+        let note = rows
+            .iter()
+            .find(|r| r.id == "postNoteCount")
+            .expect("the count under the note");
+        assert_eq!(note.title, "5 of 140 characters");
         online.lfg.post_error = Some("limit".into());
         let (_, _, rows) = panel.build(&data(&online));
         let submit = rows.iter().find(|r| r.id == "submit").expect("submit");

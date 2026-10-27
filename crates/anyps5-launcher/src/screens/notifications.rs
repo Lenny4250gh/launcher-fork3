@@ -31,7 +31,7 @@ use crate::ui::input::{self, Command, InputEvent};
 use crate::ui::sound::Cue;
 use crate::ui::state_page::{self, StatePage};
 use crate::ui::text;
-use crate::ui::theme::{color, fade, pad, radius, size, space, ty};
+use crate::ui::theme::{color, pad, radius, size, space, ty};
 
 /// Room around the scrolling rows for the focused row's lift.
 const LIST_MARGIN: f32 = 8.0;
@@ -237,12 +237,13 @@ impl NotificationsScreen {
         let open = self.open;
         let stop = self.stop(data.items).filter(|_| open);
         let mut clicked: Vec<(Stop, NotifyAction)> = Vec::new();
+        let mut closed = false;
         let drawn = fullscreen_panel(
             ctx,
             "notifications",
             open,
             GlassStyle::fullscreen_panel(),
-            |ui, _| self.draw(ui, data, stop, &mut clicked),
+            |ui, _| self.draw(ui, data, stop, &mut clicked, &mut closed),
         );
         if drawn.is_none() {
             self.closing = false;
@@ -254,6 +255,11 @@ impl NotificationsScreen {
                 shell.play(Cue::Select);
                 actions.push(action);
             }
+            if closed {
+                shell.play(Cue::Close);
+                self.close();
+                actions.push(NotifyAction::Close);
+            }
         }
         actions
     }
@@ -264,6 +270,7 @@ impl NotificationsScreen {
         data: &NotifyData<'_>,
         stop: Option<Stop>,
         clicked: &mut Vec<(Stop, NotifyAction)>,
+        closed: &mut bool,
     ) {
         let language = data.language;
         let screen = ui.max_rect();
@@ -277,6 +284,9 @@ impl NotificationsScreen {
 
         let width = area.width().min(LIST_MAX);
         let header = Rect::from_min_size(area.min, vec2(width, ControlSize::Small.height() + 12.0));
+        // The way out for the pointer, at the end of the title row; Clear All stands beside it.
+        let (edge, leave) = crate::screens::close_button(ui, header, language);
+        *closed |= leave;
         text::paint(
             &painter,
             pos2(header.min.x, header.center().y),
@@ -294,7 +304,10 @@ impl NotificationsScreen {
             let mut bar = ui.new_child(
                 UiBuilder::new()
                     .max_rect(Rect::from_min_size(
-                        pos2(header.max.x - button_width - 8.0, header.center().y - 16.0),
+                        pos2(
+                            edge - space::M - button_width - 8.0,
+                            header.center().y - 16.0,
+                        ),
                         vec2(button_width + 8.0, 32.0),
                     ))
                     .layout(Layout::right_to_left(Align::Center)),
@@ -442,6 +455,12 @@ impl NotificationsScreen {
             language,
             &[Arg::Str(kind), Arg::Str(&item.text), Arg::Str(&when)],
         );
+        // A new entry says so in words too: the dot and the brighter ink are only for the eye.
+        let name = if fresh {
+            format!("{}, {name}", NT::EntryNew.text(language))
+        } else {
+            name
+        };
         response.widget_info(|| WidgetInfo::labeled(Role::Label, true, name.as_str()));
         crate::ui::a11y::follow(&ctx, response.id, focus.is_some());
 
@@ -468,7 +487,7 @@ impl NotificationsScreen {
             pos2(rect.min.x + ROW_EDGE + DISC * 0.5, rect.center().y),
             vec2(DISC, DISC),
         );
-        painter.circle_filled(disc.center(), DISC * 0.5, fade(Color32::WHITE, 0.08));
+        painter.circle_filled(disc.center(), DISC * 0.5, color::surface_row());
         painter.text(
             disc.center(),
             Align2::CENTER_CENTER,
@@ -491,7 +510,18 @@ impl NotificationsScreen {
         } else {
             color::text_label()
         };
+        let body_cut = body.elided;
         painter.galley(pos2(x, top + caption_height + 4.0), body, ink);
+        // A sentence cut to two lines is read in full while the pointer or the focus is on the
+        // entry (the chip of DESIGN.md 3.13).
+        crate::ui::reveal::full_text(
+            &ctx,
+            response.id,
+            rect,
+            &item.text,
+            input::hovered(&ctx, &response) || (focus.is_some() && input::focus_visible(&ctx)),
+            body_cut,
+        );
         if fresh {
             painter.circle_filled(
                 pos2(rect.min.x + ROW_EDGE * 0.5, rect.center().y),
@@ -515,7 +545,9 @@ impl NotificationsScreen {
         );
         buttons.spacing_mut().item_spacing.x = size::CONTROL_GAP;
         buttons.add_space(8.0);
+        // Every row has the same two buttons: the name says whose they are.
         if ConsoleButton::new(dismiss)
+            .accessible_name(format!("{dismiss}, {}", item.text))
             .size(ControlSize::Small)
             .focused(focus == Some(false))
             .show(&mut buttons)
@@ -531,6 +563,7 @@ impl NotificationsScreen {
         }
         if let Some(primary) = item.primary
             && ConsoleButton::new(primary.text(language))
+                .accessible_name(format!("{}, {}", primary.text(language), item.text))
                 .size(ControlSize::Small)
                 .focused(focus == Some(true))
                 .show(&mut buttons)

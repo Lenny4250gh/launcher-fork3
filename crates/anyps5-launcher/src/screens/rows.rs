@@ -56,6 +56,9 @@ pub enum Control {
         /// tick sounds at the volume it sets).
         own_tick: bool,
     },
+    /// One of a list of exclusive choices (the languages): the chosen one carries a check at the
+    /// trailing edge. Select runs the row ([`Change::Run`]); the page writes the choice.
+    Pick(bool),
     /// Opens a picker or a panel: a trailing chevron.
     Action,
     /// Runs at once: no chevron.
@@ -271,6 +274,11 @@ impl Row {
         self
     }
 
+    /// One choice of a list: `chosen` puts the check at the trailing edge.
+    pub fn pick(id: RowId, title: impl Into<String>, chosen: bool) -> Row {
+        Row::new(id, title, Control::Pick(chosen))
+    }
+
     pub fn action(id: RowId, title: impl Into<String>) -> Row {
         Row::new(id, title, Control::Action)
     }
@@ -362,7 +370,7 @@ impl Row {
             Control::Choice { .. } | Control::Buttons { .. } => RowKind::Choice,
             Control::Toggle(_) => RowKind::Toggle,
             Control::Stepper { .. } | Control::Slider { .. } => RowKind::Stepper,
-            Control::Action | Control::Command => RowKind::Action,
+            Control::Action | Control::Command | Control::Pick(_) => RowKind::Action,
             Control::Info(_) | Control::Caption | Control::Qr(_) | Control::Link(_) => {
                 RowKind::Info
             }
@@ -530,7 +538,9 @@ pub fn resolve(rows: &[Row], effect: PanelEffect) -> Option<Change> {
                         value + step
                     },
                 }),
-                Control::Action | Control::Command => Some(Change::Run { row: r.id }),
+                Control::Action | Control::Command | Control::Pick(_) => {
+                    Some(Change::Run { row: r.id })
+                }
                 Control::Keys { .. } => Some(Change::Capture { row: r.id }),
                 Control::Text(_) => Some(Change::Edit { row: r.id }),
                 _ => None,
@@ -914,6 +924,7 @@ fn show_row(
             labels,
             selected: *selected,
         },
+        Control::Pick(chosen) => RowControl::Pick { chosen: *chosen },
         Control::Action => RowControl::Action,
         Control::Command => RowControl::Command,
         Control::Caption => RowControl::Caption,

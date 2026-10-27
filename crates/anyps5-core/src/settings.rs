@@ -372,29 +372,87 @@ pub enum Language {
     English,
     #[serde(rename = "de")]
     German,
+    #[serde(rename = "es")]
+    Spanish,
+    #[serde(rename = "fr")]
+    French,
+    /// Brazilian Portuguese (`pt-BR`); the code stays `pt`.
+    #[serde(rename = "pt")]
+    Portuguese,
 }
 
 impl Language {
-    /// Turkish for any locale tag starting with `tr`, German for `de`, English otherwise.
+    /// The language a locale tag (`de-AT`, `pt_BR`, `es-419`) asks for; English for any other.
     pub fn from_locale(tag: &str) -> Language {
         let tag = tag.to_ascii_lowercase();
-        if tag.starts_with("tr") {
-            Language::Turkish
-        } else if tag.starts_with("de") {
-            Language::German
-        } else {
-            Language::English
+        let primary = tag.split(['-', '_']).next().unwrap_or("");
+        match primary {
+            "tr" => Language::Turkish,
+            "de" => Language::German,
+            "es" => Language::Spanish,
+            "fr" => Language::French,
+            "pt" => Language::Portuguese,
+            _ => Language::English,
         }
     }
 
-    /// The console language number games get by default.
+    /// The console language number games get by default. Spanish is Spain's (3); see
+    /// [`Language::console_language_for`] for Latin America.
     pub fn console_language(self) -> i32 {
         match self {
             Language::Turkish => 19,
             Language::English => 1,
             Language::German => 4,
+            Language::Spanish => 3,
+            Language::French => 2,
+            Language::Portuguese => 17,
         }
     }
+
+    /// [`Language::console_language`], with Latin American Spanish (20) when the system locale is
+    /// a Latin American one (`es-MX`, `es-419`, ...).
+    pub fn console_language_for(self, system_locale: &str) -> i32 {
+        if self == Language::Spanish && is_latin_american_spanish(system_locale) {
+            20
+        } else {
+            self.console_language()
+        }
+    }
+}
+
+/// True for the Spanish locales outside Spain: `es-419` and the countries of the Americas.
+fn is_latin_american_spanish(tag: &str) -> bool {
+    let tag = tag.to_ascii_lowercase().replace('_', "-");
+    let mut parts = tag.split('-');
+    if parts.next() != Some("es") {
+        return false;
+    }
+    parts.any(|part| {
+        matches!(
+            part,
+            "419"
+                | "mx"
+                | "ar"
+                | "cl"
+                | "co"
+                | "pe"
+                | "ve"
+                | "uy"
+                | "py"
+                | "bo"
+                | "ec"
+                | "cr"
+                | "pa"
+                | "gt"
+                | "hn"
+                | "ni"
+                | "sv"
+                | "do"
+                | "cu"
+                | "pr"
+                | "us"
+        )
+    })
 }
 
 /// The colour theme, stored as the Swift raw integer.
@@ -406,6 +464,12 @@ pub enum Theme {
     Sunset,
     /// The colours of the selected game's art (0.3.0).
     GameColors,
+    /// Slow embers rising from a low warm glow (stored as 4).
+    Ember,
+    /// Deep water with light moving through it (stored as 5).
+    Tide,
+    /// Soft daylight, the one light look (stored as 6).
+    Daylight,
 }
 
 impl Serialize for Theme {
@@ -415,6 +479,9 @@ impl Serialize for Theme {
             Theme::Aurora => 1,
             Theme::Sunset => 2,
             Theme::GameColors => 3,
+            Theme::Ember => 4,
+            Theme::Tide => 5,
+            Theme::Daylight => 6,
         })
     }
 }
@@ -425,6 +492,9 @@ impl<'de> Deserialize<'de> for Theme {
             1 => Theme::Aurora,
             2 => Theme::Sunset,
             3 => Theme::GameColors,
+            4 => Theme::Ember,
+            5 => Theme::Tide,
+            6 => Theme::Daylight,
             _ => Theme::Cosmic,
         })
     }
@@ -610,6 +680,11 @@ pub struct Preferences {
     /// Mac it starts as a window instead: the glass needs the desktop behind it.
     #[serde(default = "fills_screen")]
     pub fullscreen: bool,
+    /// Console Mode: the launcher is the home of the PC, like a console. It opens by itself when
+    /// the player signs in (the autostart entry is the system's, see [`crate::autostart`]), always
+    /// fills the screen and starts with the controller first. Off until the player turns it on.
+    #[serde(default)]
+    pub console_mode: bool,
     /// Mac style: the window is see-through, with the system blur behind it ("Glass Window").
     /// Only the Mac has the setting; the file keeps it everywhere.
     #[serde(default = "yes")]
@@ -763,6 +838,7 @@ impl Default for Preferences {
             lightbar: None,
             show_hidden_trophies: false,
             fullscreen: fills_screen(),
+            console_mode: false,
             glass_window: true,
             profile_name: default_profile_name(),
             games_folder: None,
@@ -1307,8 +1383,21 @@ mod tests {
         assert_eq!(Language::from_locale("TR"), Language::Turkish);
         assert_eq!(Language::from_locale("de-DE"), Language::German);
         assert_eq!(Language::from_locale("de"), Language::German);
-        assert_eq!(Language::from_locale("fr-FR"), Language::English);
+        assert_eq!(Language::from_locale("fr-FR"), Language::French);
+        assert_eq!(Language::from_locale("fr_CA"), Language::French);
+        assert_eq!(Language::from_locale("es-419"), Language::Spanish);
+        assert_eq!(Language::from_locale("pt_BR"), Language::Portuguese);
+        assert_eq!(Language::from_locale("pt-PT"), Language::Portuguese);
+        assert_eq!(Language::from_locale("it-IT"), Language::English);
+        assert_eq!(Language::from_locale("tra"), Language::English);
         assert_eq!(Language::German.console_language(), 4);
+        assert_eq!(Language::Spanish.console_language(), 3);
+        assert_eq!(Language::French.console_language(), 2);
+        assert_eq!(Language::Portuguese.console_language(), 17);
+        assert_eq!(Language::Spanish.console_language_for("es-ES"), 3);
+        assert_eq!(Language::Spanish.console_language_for("es-MX"), 20);
+        assert_eq!(Language::Spanish.console_language_for("es_419"), 20);
+        assert_eq!(Language::French.console_language_for("es-MX"), 2);
         assert_eq!(Language::Turkish.console_language(), 19);
         assert_eq!(Language::English.console_language(), 1);
     }
@@ -1572,9 +1661,24 @@ mod tests {
     }
 
     #[test]
+    fn the_three_newer_looks_are_stored_as_four_five_and_six() {
+        for (look, number) in [
+            (Theme::Cosmic, 0),
+            (Theme::GameColors, 3),
+            (Theme::Ember, 4),
+            (Theme::Tide, 5),
+            (Theme::Daylight, 6),
+        ] {
+            let text = serde_json::to_string(&look).unwrap();
+            assert_eq!(text, number.to_string());
+            assert_eq!(serde_json::from_str::<Theme>(&text).unwrap(), look);
+        }
+    }
+
+    #[test]
     fn unknown_enum_values_fall_back() {
         let prefs: Preferences =
-            serde_json::from_str(r#"{"theme": 9, "accent": "teal", "backdrop": "gif", "language": "fr", "cpuConversion": "amd"}"#).unwrap();
+            serde_json::from_str(r#"{"theme": 9, "accent": "teal", "backdrop": "gif", "language": "it", "cpuConversion": "amd"}"#).unwrap();
         assert_eq!(prefs.theme, Theme::Cosmic);
         assert_eq!(prefs.accent, None);
         assert_eq!(prefs.backdrop, Backdrop::Theme);
@@ -1582,6 +1686,22 @@ mod tests {
         assert!(prefs.notification_sounds && !prefs.larger_text && !prefs.high_contrast);
         assert_eq!(prefs.language, Language::English);
         assert_eq!(prefs.cpu_conversion, CpuConversion::Auto);
+    }
+
+    #[test]
+    fn every_language_is_saved_under_its_code() {
+        for (language, code) in [
+            (Language::Turkish, "tr"),
+            (Language::English, "en"),
+            (Language::German, "de"),
+            (Language::Spanish, "es"),
+            (Language::French, "fr"),
+            (Language::Portuguese, "pt"),
+        ] {
+            let json = serde_json::to_string(&language).unwrap();
+            assert_eq!(json, format!("\"{code}\""));
+            assert_eq!(serde_json::from_str::<Language>(&json).unwrap(), language);
+        }
     }
 
     #[test]
