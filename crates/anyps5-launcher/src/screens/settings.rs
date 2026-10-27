@@ -1617,6 +1617,15 @@ pub fn apply_preferences(shell: &mut Shell, ctx: &Context, prefs: &Preferences) 
 /// Writes one change into the preferences. Dialogs (a picture, a folder) are the caller's
 /// business: this covers the plain values. Returns whether anything changed.
 pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
+    apply_value_with_phone(prefs, change, None)
+}
+
+/// The same, but with the phone server state to guard against turning off while controllers are paired.
+pub fn apply_value_with_phone(
+    prefs: &mut Preferences,
+    change: &Change,
+    phone: Option<&PhoneState>,
+) -> bool {
     let before = prefs.clone();
     match change {
         Change::Choice {
@@ -1726,7 +1735,12 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             index: 0,
         } => prefs.backdrop = Backdrop::Theme,
         Change::Run { row: "fontsReset" } => prefs.fonts_folder = None,
-        Change::Toggle { row: "phone", on } => prefs.phone_remote = *on,
+        Change::Toggle { row: "phone", on } => {
+            if !*on && phone.is_some_and(|p| !p.paired.is_empty()) {
+                return false;
+            }
+            prefs.phone_remote = *on;
+        }
         Change::Toggle {
             row: "ludusctrl",
             on,
@@ -2010,7 +2024,7 @@ impl SettingsPanel {
         out: &mut Output<SettingsAction>,
     ) {
         let language = convert::language(prefs.language);
-        let mut changed = apply_value(prefs, change);
+        let mut changed = apply_value_with_phone(prefs, change, Some(env.phone));
         if let Change::Stepper {
             row: row @ ("volInterface" | "volMusic" | "volGameMusic" | "volNotif"),
             ..
@@ -3452,5 +3466,56 @@ mod tests {
         panel.focus_row_id("homeButton");
         panel.apply_focus_id(&cats);
         assert_eq!(panel.nav.row, want);
+    }
+
+    #[test]
+    fn phone_switch_cannot_be_turned_off_while_controllers_are_paired() {
+        let mut prefs = Preferences {
+            phone_remote: true,
+            ..Preferences::first_run()
+        };
+        let phone_with_paired = PhoneState {
+            paired: vec![anyps5_core::remote::PairedDevice {
+                added: "2026-10-24T18:14:03Z".into(),
+                id: "p1".into(),
+                key: "k".into(),
+                name: "Pixel 8".into(),
+            }],
+            ..PhoneState::default()
+        };
+        let phone_empty = PhoneState::default();
+
+        // Turning off while paired is blocked and leaves the setting on.
+        assert!(!apply_value_with_phone(
+            &mut prefs,
+            &Change::Toggle {
+                row: "phone",
+                on: false
+            },
+            Some(&phone_with_paired),
+        ));
+        assert!(prefs.phone_remote);
+
+        // Turning off with no paired controllers succeeds.
+        assert!(apply_value_with_phone(
+            &mut prefs,
+            &Change::Toggle {
+                row: "phone",
+                on: false
+            },
+            Some(&phone_empty),
+        ));
+        assert!(!prefs.phone_remote);
+
+        // Turning on is always allowed.
+        assert!(apply_value_with_phone(
+            &mut prefs,
+            &Change::Toggle {
+                row: "phone",
+                on: true
+            },
+            Some(&phone_with_paired),
+        ));
+        assert!(prefs.phone_remote);
     }
 }
