@@ -91,7 +91,7 @@ When something goes wrong, you may need the launcher's logs or a generated repor
 The main files and folders inside `Logs` are:
 
 - `launcher.log`: The launcher's own log, including startup checks and panics.
-- `launcher.log.1`: The log from the previous run of the launcher.
+- `launcher.log.1`: The previous launcher log, kept when the current one fills up.
 - `<TITLEID>.log`: One game's console output (e.g. `CUSA00123.log`); only the last start is kept.
 - `network.log`: The AnyPlay net service log.
 - `Reports/`: Diagnostic reports generated with **Make a Report** (see [docs/DESIGN.md](DESIGN.md)).
