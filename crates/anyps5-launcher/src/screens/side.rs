@@ -276,9 +276,18 @@ pub fn draw_with_header(
         focus: Some(view.nav.row),
         force: view.force,
     };
-    panel(ctx, open, view.title, view.subtitle, view.language, |ui| {
-        rows::list_with_header(ui, view.list_id, rows, &opts, header)
-    })
+    // "Select" is only said where something can be selected: the live controller test has nothing
+    // to select (Back leaves it) and says so itself.
+    let selectable = rows::kinds(rows).iter().any(|k| k.focusable());
+    panel(
+        ctx,
+        open,
+        view.title,
+        view.subtitle,
+        view.language,
+        selectable,
+        |ui| rows::list_with_header(ui, view.list_id, rows, &opts, header),
+    )
     .map(|(back_clicked, events)| SideDrawn {
         back_clicked,
         events,
@@ -294,6 +303,7 @@ fn panel<R>(
     title: &str,
     subtitle: Option<&str>,
     language: crate::ui::i18n::Language,
+    selectable: bool,
     contents: impl FnOnce(&mut Ui) -> R,
 ) -> Option<(bool, R)> {
     chrome::fullscreen_panel(ctx, SIDE_ID, open, GlassStyle::game_panel(), |ui, _| {
@@ -302,7 +312,9 @@ fn panel<R>(
         let painter = ui.painter().clone();
         // The hint bar is the footer's, as everywhere (DESIGN.md 3.12); "Back" is left out where a
         // Back button is on screen.
-        footer_hints(ui, screen, language, HintSet::BASIC.without_back());
+        if selectable {
+            footer_hints(ui, screen, language, HintSet::BASIC.without_back());
+        }
         let back = back_button(ui, area, language);
         let top = area.min.y + BACK_ROW;
         let width = COLUMN.min(area.width());

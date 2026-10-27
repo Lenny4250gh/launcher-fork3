@@ -1939,6 +1939,7 @@ impl SettingsPanel {
         let open = self.open;
         let mut mouse = None;
         let mut picked_category = None;
+        let mut closed = false;
         let nav = self.nav;
         let switches = self.switches;
         let accent = shell.accent_color();
@@ -1956,12 +1957,17 @@ impl SettingsPanel {
                     language,
                     accent,
                     &mut mouse,
-                    &mut picked_category,
+                    (&mut picked_category, &mut closed),
                 )
             },
         );
         if drawn.is_none() {
             self.closing = false;
+        }
+        if open && closed {
+            shell.play(Cue::Close);
+            self.close();
+            out.actions.push(SettingsAction::Close);
         }
         if open {
             if let Some(index) = picked_category {
@@ -2274,7 +2280,7 @@ fn draw(
     language: Language,
     accent: Color32,
     mouse: &mut Option<Vec<rows::ListEvent>>,
-    picked: &mut Option<usize>,
+    (picked, closed): (&mut Option<usize>, &mut bool),
 ) {
     let ctx = ui.ctx().clone();
     let painter = ui.painter().clone();
@@ -2298,18 +2304,40 @@ fn draw(
         language.text(Key::Settings),
         color::text(),
     );
+    // The way out for the pointer, and the hint bar of every full-screen area (3.12).
+    let (_, leave) = crate::screens::close_button(
+        ui,
+        Rect::from_min_size(area.min, vec2(area.width(), title.height())),
+        language,
+    );
+    *closed |= leave;
+    crate::screens::footer_hints(ui, ui.max_rect(), language, components::HintSet::BASIC);
     let list_top = title.max.y + space::XXL;
     let column_w = size::SETTINGS_CATEGORY_WIDTH;
 
     // The rail: thirteen tabs do not fit under the title on a small window, so it scrolls. The
     // selected tab is brought into view whenever it changes (keys, pad or the first frame); the
     // wheel scrolls it freely otherwise.
+    //
+    // The first frame of a page knows no content height yet, so a scroll asked for then reaches
+    // nothing (opened straight on the last tab, "Toolkit" stood half cut off): the request is
+    // repeated for a few frames after every change.
+    const SETTLE_FRAMES: u8 = 3;
     let rail_id = ui.make_persistent_id("settings-rail-seen");
+    let settle_id = rail_id.with("settle");
     let bring_into_view = ctx.data_mut(|d| {
         let seen: Option<u32> = d.get_temp(rail_id);
         d.insert_temp(rail_id, switches);
-        seen != Some(switches)
+        let mut left: u8 = d.get_temp(settle_id).unwrap_or(0);
+        if seen != Some(switches) {
+            left = SETTLE_FRAMES;
+        }
+        d.insert_temp(settle_id, left.saturating_sub(1));
+        left > 0
     });
+    if bring_into_view {
+        ctx.request_repaint();
+    }
     // Room around the rows for the focus ring, which the scroll area would clip.
     const RING_ROOM: f32 = 8.0;
     let rail = Rect::from_min_max(

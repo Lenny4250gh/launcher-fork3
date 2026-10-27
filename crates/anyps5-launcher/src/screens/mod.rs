@@ -25,6 +25,7 @@
 #![allow(dead_code)]
 
 pub mod about_strings;
+pub mod access_strings;
 pub mod advanced;
 pub mod banner;
 pub mod broadcast_strings;
@@ -146,6 +147,17 @@ pub fn right_aligned_hints(
     rect: egui::Rect,
     language: crate::ui::i18n::Language,
 ) {
+    right_aligned_hints_set(ui, rect, language, crate::ui::components::HintSet::BASIC);
+}
+
+/// [`right_aligned_hints`] for a [`HintSet`](crate::ui::components::HintSet): a screen whose
+/// Options does something says so.
+pub fn right_aligned_hints_set(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    language: crate::ui::i18n::Language,
+    set: crate::ui::components::HintSet,
+) {
     use egui::{Align, Layout, UiBuilder, pos2};
     let mut probe = ui.new_child(
         UiBuilder::new()
@@ -153,7 +165,7 @@ pub fn right_aligned_hints(
             .layout(Layout::left_to_right(Align::Center))
             .invisible(),
     );
-    crate::ui::components::hint_bar(&mut probe, language, false);
+    crate::ui::components::hint_bar_set(&mut probe, language, set);
     let width = probe.min_rect().width();
     let mut bar = ui.new_child(
         UiBuilder::new()
@@ -163,7 +175,7 @@ pub fn right_aligned_hints(
             ))
             .layout(Layout::left_to_right(Align::Center)),
     );
-    crate::ui::components::hint_bar(&mut bar, language, false);
+    crate::ui::components::hint_bar_set(&mut bar, language, set);
 }
 
 /// The hint bar of a full-screen area: bottom right of `screen`, where Home has it (DESIGN.md
@@ -244,6 +256,33 @@ pub fn back_button(
         .size(ControlSize::Small)
         .show(&mut back)
         .clicked()
+}
+
+/// The button that leaves a full-screen area for the pointer: an X at the trailing end of the title
+/// row, 44 dp, named "Back" for a screen reader. Keys and the pad leave with Back as before; the
+/// mouse had only its side button, which not every mouse has. Returns the left edge it took (the
+/// hints and other buttons of the row stand to the left of it) and whether it was clicked.
+pub fn close_button(
+    ui: &mut egui::Ui,
+    row: egui::Rect,
+    language: crate::ui::i18n::Language,
+) -> (f32, bool) {
+    use crate::ui::components::{ConsoleButton, ControlSize};
+    use crate::ui::i18n::Key;
+    use crate::ui::icons::Icon;
+    use crate::ui::theme::size;
+    use egui::{Rect, UiBuilder, pos2, vec2};
+    let side = size::CONTROL_M;
+    let button = Rect::from_min_size(
+        pos2(row.max.x - side, row.center().y - side * 0.5),
+        vec2(side, side),
+    );
+    let mut child = ui.new_child(UiBuilder::new().max_rect(button));
+    let clicked = ConsoleButton::icon_only(Icon::X, language.text(Key::HintBack))
+        .size(ControlSize::Medium)
+        .show(&mut child)
+        .clicked();
+    (button.min.x, clicked)
 }
 
 /// A message for the host's toast (section 5.6): a glyph and a sentence.

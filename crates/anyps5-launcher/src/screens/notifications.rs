@@ -237,12 +237,13 @@ impl NotificationsScreen {
         let open = self.open;
         let stop = self.stop(data.items).filter(|_| open);
         let mut clicked: Vec<(Stop, NotifyAction)> = Vec::new();
+        let mut closed = false;
         let drawn = fullscreen_panel(
             ctx,
             "notifications",
             open,
             GlassStyle::fullscreen_panel(),
-            |ui, _| self.draw(ui, data, stop, &mut clicked),
+            |ui, _| self.draw(ui, data, stop, &mut clicked, &mut closed),
         );
         if drawn.is_none() {
             self.closing = false;
@@ -254,6 +255,11 @@ impl NotificationsScreen {
                 shell.play(Cue::Select);
                 actions.push(action);
             }
+            if closed {
+                shell.play(Cue::Close);
+                self.close();
+                actions.push(NotifyAction::Close);
+            }
         }
         actions
     }
@@ -264,6 +270,7 @@ impl NotificationsScreen {
         data: &NotifyData<'_>,
         stop: Option<Stop>,
         clicked: &mut Vec<(Stop, NotifyAction)>,
+        closed: &mut bool,
     ) {
         let language = data.language;
         let screen = ui.max_rect();
@@ -277,6 +284,9 @@ impl NotificationsScreen {
 
         let width = area.width().min(LIST_MAX);
         let header = Rect::from_min_size(area.min, vec2(width, ControlSize::Small.height() + 12.0));
+        // The way out for the pointer, at the end of the title row; Clear All stands beside it.
+        let (edge, leave) = crate::screens::close_button(ui, header, language);
+        *closed |= leave;
         text::paint(
             &painter,
             pos2(header.min.x, header.center().y),
@@ -294,7 +304,10 @@ impl NotificationsScreen {
             let mut bar = ui.new_child(
                 UiBuilder::new()
                     .max_rect(Rect::from_min_size(
-                        pos2(header.max.x - button_width - 8.0, header.center().y - 16.0),
+                        pos2(
+                            edge - space::M - button_width - 8.0,
+                            header.center().y - 16.0,
+                        ),
                         vec2(button_width + 8.0, 32.0),
                     ))
                     .layout(Layout::right_to_left(Align::Center)),
@@ -491,7 +504,18 @@ impl NotificationsScreen {
         } else {
             color::text_label()
         };
+        let body_cut = body.elided;
         painter.galley(pos2(x, top + caption_height + 4.0), body, ink);
+        // A sentence cut to two lines is read in full while the pointer or the focus is on the
+        // entry (the chip of DESIGN.md 3.13).
+        crate::ui::reveal::full_text(
+            &ctx,
+            response.id,
+            rect,
+            &item.text,
+            input::hovered(&ctx, &response) || (focus.is_some() && input::focus_visible(&ctx)),
+            body_cut,
+        );
         if fresh {
             painter.circle_filled(
                 pos2(rect.min.x + ROW_EDGE * 0.5, rect.center().y),

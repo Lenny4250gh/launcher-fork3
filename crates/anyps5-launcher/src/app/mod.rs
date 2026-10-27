@@ -887,7 +887,7 @@ impl LauncherApp {
         if crate::macstyle::AVAILABLE {
             // The Mac has its own traffic lights.
             crate::macstyle::drag_strip(&ctx);
-        } else if let Some(fullscreen) = crate::ui::caption::show(&ctx) {
+        } else if let Some(fullscreen) = crate::ui::caption::show(&ctx, self.model.language()) {
             self.set_fullscreen(&ctx, fullscreen);
         }
         crate::ui::intro::paint_curtain(&ctx);
