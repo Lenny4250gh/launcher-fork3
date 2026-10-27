@@ -524,8 +524,34 @@ impl OnlinePanel {
                 label: label("retryList")?,
                 action: "retryList",
             }),
+            // The activity feed that failed to load, or a player with no friends: the same page as
+            // the others, the button inside the block and not a row at the foot of the list.
+            (Page::Feed, ["feedRetry"]) if !self.feed_is_list(data) => {
+                self.feed_empty_page(data, "feedRetry", label("feedRetry")?)
+            }
+            (Page::Feed, ["addFriend"]) if !self.feed_is_list(data) => {
+                self.feed_empty_page(data, "addFriend", label("addFriend")?)
+            }
             _ => None,
         }
+    }
+
+    /// The Activity page's state with its one action.
+    fn feed_empty_page(
+        &self,
+        data: &OnlineData<'_>,
+        action: &'static str,
+        label: String,
+    ) -> Option<EmptyPage> {
+        let language = data.language;
+        let (icon, title, note) = self.feed_state(data);
+        Some(EmptyPage {
+            icon,
+            title: title.text(language).to_owned(),
+            note: note.map(|n| n.text(language).to_owned()),
+            label,
+            action,
+        })
     }
 
     /// What Enter does on the focused thing when "Select" would be wrong: a field edits, a

@@ -117,7 +117,7 @@ impl PanelHost {
                 captures: list,
                 sections: &secs,
                 any: !list.is_empty(),
-                clips_available: cfg!(windows),
+                clips_available: anyps5_core::clips::SUPPORTED,
                 language,
                 accent,
                 now,

@@ -286,61 +286,22 @@ impl Accent {
 
     /// Localised name (not part of the string table in the original either).
     pub fn title(self, language: Language) -> &'static str {
-        let tr = language == Language::Turkish;
-        let de = language == Language::German;
-        match self {
-            Accent::Blue => {
-                if tr {
-                    "Mavi"
-                } else if de {
-                    "Blau"
-                } else {
-                    "Blue"
-                }
-            }
-            Accent::Mint => {
-                if tr {
-                    "Nane"
-                } else if de {
-                    "Minze"
-                } else {
-                    "Mint"
-                }
-            }
-            Accent::Coral => {
-                if tr {
-                    "Mercan"
-                } else if de {
-                    "Koralle"
-                } else {
-                    "Coral"
-                }
-            }
-            Accent::Violet => {
-                if tr {
-                    "Mor"
-                } else if de {
-                    "Violett"
-                } else {
-                    "Violet"
-                }
-            }
-            Accent::Gold => {
-                if tr {
-                    "Altın"
-                } else {
-                    "Gold"
-                }
-            }
-            Accent::White => {
-                if tr {
-                    "Beyaz"
-                } else if de {
-                    "Weiß"
-                } else {
-                    "White"
-                }
-            }
+        // English, Turkish, German, Spanish, French, Portuguese.
+        let [en, tr, de, es, fr, pt] = match self {
+            Accent::Blue => ["Blue", "Mavi", "Blau", "Azul", "Bleu", "Azul"],
+            Accent::Mint => ["Mint", "Nane", "Minze", "Menta", "Menthe", "Menta"],
+            Accent::Coral => ["Coral", "Mercan", "Koralle", "Coral", "Corail", "Coral"],
+            Accent::Violet => ["Violet", "Mor", "Violett", "Violeta", "Violet", "Violeta"],
+            Accent::Gold => ["Gold", "Altın", "Gold", "Dorado", "Or", "Dourado"],
+            Accent::White => ["White", "Beyaz", "Weiß", "Blanco", "Blanc", "Branco"],
+        };
+        match language {
+            Language::English => en,
+            Language::Turkish => tr,
+            Language::German => de,
+            Language::Spanish => es,
+            Language::French => fr,
+            Language::Portuguese => pt,
         }
     }
 }
@@ -730,7 +691,7 @@ pub mod size {
     pub const KEYCAP_GAP: f32 = 6.0;
     pub const TROPHY_ICON: f32 = 68.0;
     pub const TROPHY_HEADER_ICON: f32 = 112.0;
-    pub const LANGUAGE_CARD: (f32, f32) = (280.0, 150.0);
+    pub const LANGUAGE_CARD: (f32, f32) = (312.0, 176.0);
     pub const THEME_CARD_PREVIEW: (f32, f32) = (330.0, 186.0);
     pub const PROGRESS_HEIGHT: f32 = 4.0;
     pub const HERO_PROGRESS_WIDTH: f32 = 260.0;

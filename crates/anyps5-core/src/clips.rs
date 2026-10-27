@@ -14,6 +14,17 @@ use serde::Deserialize;
 /// The lengths the player can choose, in seconds; 0 is Off.
 pub const LENGTHS: [u32; 5] = [0, 15, 30, 60, 120];
 
+/// Clips run on this system: Windows, and macOS through ScreenCaptureKit and VideoToolbox (network
+/// ADR 0036).
+pub const SUPPORTED: bool = cfg!(any(windows, target_os = "macos"));
+
+/// The system has a global hotkey the launcher can take (Windows). Elsewhere the Create button
+/// saves a clip.
+pub const HOTKEY_AVAILABLE: bool = cfg!(windows);
+
+/// The reason the worker ends with when macOS has not been told to allow Screen Recording.
+pub const NO_PERMISSION: &str = "no_permission";
+
 /// The hotkey until the player binds another.
 pub const DEFAULT_HOTKEY: &str = "Alt+F12";
 
@@ -343,6 +354,23 @@ pub fn worker_args(seconds: u32, window: Option<i64>, pids: &[u32], title: &str)
     args
 }
 
+/// Opens the page of System Settings where the player allows Screen Recording (macOS). The worker
+/// does it (`--open-screen-settings`), so the launcher carries no macOS code for it. Returns at
+/// once.
+pub fn open_screen_settings(worker: &Path) {
+    let mut command = Command::new(worker);
+    command
+        .arg("--open-screen-settings")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if let Ok(mut child) = command.spawn() {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
+}
+
 /// The worker running for one game. Dropping it ends the worker.
 pub struct Recorder {
     child: Child,
@@ -528,6 +556,11 @@ mod tests {
         );
         assert!(WorkerEvent::parse("not json").is_none());
         assert!(WorkerEvent::parse(r#"{"event":"future"}"#).is_none());
+    }
+
+    #[test]
+    fn the_permission_reason_is_the_workers_word() {
+        assert_eq!(NO_PERMISSION, "no_permission");
     }
 
     #[test]

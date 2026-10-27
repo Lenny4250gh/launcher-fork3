@@ -2274,12 +2274,8 @@ impl ScreenGallery {
     ) -> Self {
         let mut prefs = Preferences::first_run();
         prefs.theme = crate::screens::convert::theme_to_core(theme);
-        // --tr shows the page in Turkish, --de in German.
-        if language == crate::ui::i18n::Language::Turkish {
-            prefs.language = anyps5_core::settings::Language::Turkish;
-        } else if language == crate::ui::i18n::Language::German {
-            prefs.language = anyps5_core::settings::Language::German;
-        }
+        // --tr shows the page in Turkish, --de in German, --es Spanish, --fr French, --pt Portuguese.
+        prefs.language = crate::screens::convert::language_to_core(language);
         prefs.onboarded = true;
         prefs.profile_name = "Mira".into();
         prefs.games_folder = Some("D:\\Games".into());

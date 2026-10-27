@@ -782,7 +782,11 @@ fn conformance_fails_on(quirk: Quirk) -> &'static str {
     let mut pc = ReferencePc::start(None, true, quirk).unwrap();
     match run_conformance(&mut pc) {
         Ok(report) => panic!("{quirk:?} passed: {report:?}"),
-        Err(failure) => failure.check,
+        Err(failure) => {
+            // The detail lands in the log of a run that goes wrong, next to the failed assert.
+            eprintln!("{quirk:?} failed: {failure}");
+            failure.check
+        }
     }
 }
 

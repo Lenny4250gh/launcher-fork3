@@ -4,7 +4,7 @@
   <img src="docs/media/home-screen.jpg" width="800" alt="The launcher's home screen: a row of game tiles, the selected game's artwork, its name, a Play button and its details">
 </p>
 
-The home of your games on PC. The launcher finds the games you dumped from your own console, unlocks them for [AnyPS5](https://github.com/anyplaynet/AnyPS5) and starts them from a console-style home screen. It also connects you with friends for parties, voice and sharing your captures. It runs on Windows, Linux and macOS (Apple silicon), in English, Turkish and German.
+The home of your games on PC. The launcher finds the games you dumped from your own console, unlocks them for [AnyPS5](https://github.com/anyplaynet/AnyPS5) and starts them from a console-style home screen. It also connects you with friends for parties, voice and sharing your captures. It runs on Windows, Linux and macOS (Apple silicon), in English, Turkish, German, Spanish, French and Brazilian Portuguese.
 
 The latest release is [0.3.2](docs/releases/v0.3.2.md). [Download](#get-it) · [Discord](https://discord.gg/9zYqf8fEsh) · [anyplaynet.com](https://anyplaynet.com) · [Compatibility list](https://anyplaynet.com/compatibility)
 

@@ -100,6 +100,18 @@ pub fn show(ui: &mut Ui, cx: &mut ScreenCx<'_>) {
         staged(ui, &ctx, intro::HERO, screen, |ui, screen| {
             empty_library(ui, cx, screen, &mut presses);
         });
+        // The one button of the page is a stop like any other: the bar says what Select does (not
+        // while the scan runs, when there is nothing to select).
+        if !cx.model.scanning {
+            let language = cx.language();
+            let set = HintSet {
+                back: back_does_something(cx.model),
+                options: false,
+            };
+            staged(ui, &ctx, intro::HINTS, screen, |ui, screen| {
+                hints(ui, language, set, screen);
+            });
+        }
     } else {
         staged(ui, &ctx, intro::TILES, screen, |ui, screen| {
             tile_row(ui, cx, screen, &mut presses);
@@ -619,8 +631,16 @@ fn phone_status(
     );
     let response = ui.allocate_rect(rect, Sense::hover());
     response.widget_info(|| WidgetInfo::labeled(Role::Label, true, label));
-    // The name may have been cut in the middle; the pointer reads it whole.
-    response.on_hover_text(name);
+    // The name may have been cut in the middle; the pointer reads it whole, in the launcher's own
+    // chip (DESIGN.md 3.13) and not in a tooltip of the toolkit's.
+    crate::ui::reveal::full_text(
+        ui.ctx(),
+        response.id,
+        rect,
+        name,
+        input::hovered(ui.ctx(), &response),
+        shown != name,
+    );
     if !ui.is_rect_visible(rect) {
         return Some(rect.max.x);
     }
@@ -1787,9 +1807,14 @@ fn action_row_status(
             let response = ui.allocate_rect(total, Sense::hover());
             response.widget_info(|| WidgetInfo::labeled(Role::Label, true, name.as_str()));
             // A sentence that did not fit stays readable in full under the pointer.
-            if detail.elided {
-                response.on_hover_text(message.as_str());
-            }
+            crate::ui::reveal::full_text(
+                cx.ctx,
+                response.id,
+                total,
+                message.as_str(),
+                input::hovered(cx.ctx, &response),
+                detail.elided,
+            );
             painter.galley(pos2(x + 16.0, top), detail, color::text_subtitle());
         }
         _ => {

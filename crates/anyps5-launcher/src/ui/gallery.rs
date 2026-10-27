@@ -111,6 +111,12 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
             options.language = Language::Turkish;
         } else if arg == "--de" {
             options.language = Language::German;
+        } else if arg == "--es" {
+            options.language = Language::Spanish;
+        } else if arg == "--fr" {
+            options.language = Language::French;
+        } else if arg == "--pt" {
+            options.language = Language::Portuguese;
         } else if let Some(name) = arg.strip_prefix("--theme=") {
             options.theme = Theme::ALL
                 .into_iter()
@@ -834,9 +840,9 @@ fn panels_page(ui: &mut Ui, shell: &Shell, art: &TextureHandle) {
     )));
     cards.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 26.0;
-        chrome::language_card(ui, Language::Turkish, false, None);
-        chrome::language_card(ui, Language::English, true, None);
-        chrome::language_card(ui, Language::German, false, None);
+        chrome::language_card(ui, Language::Turkish, false, false, true);
+        chrome::language_card(ui, Language::English, true, true, true);
+        chrome::language_card(ui, Language::German, false, false, true);
     });
     let mut dots = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(
         pos2(right, area.min.y + 740.0),

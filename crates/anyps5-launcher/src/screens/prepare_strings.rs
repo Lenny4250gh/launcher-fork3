@@ -25,6 +25,18 @@ pub fn tile_label(percent: Option<u32>, paused: bool, language: Language) -> Str
         (Language::German, false, Some(p)) => format!("Wird vorbereitet\u{2026} {p} %"),
         (Language::German, true, None) => "Pausiert".to_owned(),
         (Language::German, true, Some(p)) => format!("Pausiert \u{b7} {p} %"),
+        (Language::Spanish, false, None) => "Preparando…".to_owned(),
+        (Language::Spanish, false, Some(p)) => format!("Preparando… {p}\u{a0}%"),
+        (Language::Spanish, true, None) => "En pausa".to_owned(),
+        (Language::Spanish, true, Some(p)) => format!("En pausa \u{b7} {p}\u{a0}%"),
+        (Language::French, false, None) => "Préparation…".to_owned(),
+        (Language::French, false, Some(p)) => format!("Préparation… {p}\u{a0}%"),
+        (Language::French, true, None) => "En pause".to_owned(),
+        (Language::French, true, Some(p)) => format!("En pause \u{b7} {p}\u{a0}%"),
+        (Language::Portuguese, false, None) => "Preparando…".to_owned(),
+        (Language::Portuguese, false, Some(p)) => format!("Preparando… {p}%"),
+        (Language::Portuguese, true, None) => "Pausado".to_owned(),
+        (Language::Portuguese, true, Some(p)) => format!("Pausado \u{b7} {p}%"),
     }
 }
 
@@ -37,6 +49,12 @@ pub fn state_label(paused: bool, language: Language) -> &'static str {
         (Language::Turkish, true) => "Duraklat\u{131}ld\u{131}",
         (Language::German, false) => "Wird vorbereitet",
         (Language::German, true) => "Pausiert",
+        (Language::Spanish, false) => "Preparando",
+        (Language::Spanish, true) => "En pausa",
+        (Language::French, false) => "Préparation",
+        (Language::French, true) => "En pause",
+        (Language::Portuguese, false) => "Preparando",
+        (Language::Portuguese, true) => "Pausado",
     }
 }
 
@@ -61,6 +79,24 @@ pub fn hero_note(paused: bool, language: Language) -> &'static str {
         (Language::German, true) => {
             "Wartet, bis der PC frei ist. Es geht von allein weiter, oder sofort, wenn du auf Spielen drückst."
         }
+        (Language::Spanish, false) => {
+            "Preparando este juego en segundo plano. Con Jugar pasa al primer plano."
+        }
+        (Language::Spanish, true) => {
+            "Esperando a que el PC esté libre. Sigue solo, o de inmediato al pulsar Jugar."
+        }
+        (Language::French, false) => {
+            "Ce jeu est préparé en arrière-plan. Jouer le fait passer en priorité."
+        }
+        (Language::French, true) => {
+            "En attente que le PC soit libre. La préparation reprend toute seule, ou tout de suite si tu appuies sur Jouer."
+        }
+        (Language::Portuguese, false) => {
+            "Preparando este jogo em segundo plano. Jogar o coloca na frente."
+        }
+        (Language::Portuguese, true) => {
+            "Aguardando o PC ficar livre. Continua sozinho, ou na hora se você apertar Jogar."
+        }
     }
 }
 
@@ -70,6 +106,9 @@ pub fn paused_note(language: Language) -> &'static str {
         Language::English => "Paused. Goes on when the PC is free.",
         Language::Turkish => "Duraklatıldı. PC boş olunca devam eder.",
         Language::German => "Pausiert. Geht weiter, sobald der PC frei ist.",
+        Language::Spanish => "En pausa. Sigue cuando el PC esté libre.",
+        Language::French => "En pause. Reprend quand le PC est libre.",
+        Language::Portuguese => "Pausado. Continua quando o PC estiver livre.",
     }
 }
 
@@ -106,6 +145,36 @@ pub fn time_left(seconds: f32, language: Language) -> String {
                 substitute("Noch etwa %d Min.", &[Arg::Int(minutes.max(1))])
             } else {
                 substitute("Noch etwa %d Std.", &[Arg::Int(hours)])
+            }
+        }
+        Language::Spanish => {
+            if seconds < 45.0 {
+                "Menos de un minuto restante".to_owned()
+            } else if minutes < 90 {
+                substitute(
+                    "Tiempo restante: aprox. %d min",
+                    &[Arg::Int(minutes.max(1))],
+                )
+            } else {
+                substitute("Tiempo restante: aprox. %d h", &[Arg::Int(hours)])
+            }
+        }
+        Language::French => {
+            if seconds < 45.0 {
+                "Moins d’une minute restante".to_owned()
+            } else if minutes < 90 {
+                substitute("Reste environ %d min", &[Arg::Int(minutes.max(1))])
+            } else {
+                substitute("Reste environ %d h", &[Arg::Int(hours)])
+            }
+        }
+        Language::Portuguese => {
+            if seconds < 45.0 {
+                "Menos de um minuto para terminar".to_owned()
+            } else if minutes < 90 {
+                substitute("Cerca de %d min para terminar", &[Arg::Int(minutes.max(1))])
+            } else {
+                substitute("Cerca de %d h para terminar", &[Arg::Int(hours)])
             }
         }
     }
@@ -182,6 +251,69 @@ pub fn failure(kind: FailureKind, language: Language) -> String {
         (Language::German, FailureKind::Other) => {
             "Versuch es noch einmal. Wenn es wieder anhält, zeigt dir %@ > %@ den Grund, und %@ schickt ihn an uns."
         }
+        (Language::Spanish, FailureKind::ToolkitMissing) => {
+            "No hay ningún Toolkit instalado. Instálalo en %@ > %@ y vuelve a desbloquear."
+        }
+        (Language::Spanish, FailureKind::DiskFull) => {
+            "La unidad de tus juegos desbloqueados está llena. Libera espacio y vuelve a intentarlo."
+        }
+        (Language::Spanish, FailureKind::LocationMissing) => {
+            "No se encuentra la carpeta de los juegos desbloqueados. Conecta su unidad o elige otra carpeta en %@ > %@."
+        }
+        (Language::Spanish, FailureKind::FileInUse) => {
+            "Otro programa tiene abierto un archivo del juego. Ciérralo o pausa su análisis de la carpeta de juegos y vuelve a intentarlo."
+        }
+        (Language::Spanish, FailureKind::BadDump) => {
+            "Este dump no se puede usar. Vuelve a hacer el dump del juego desde tu consola y reemplaza la carpeta."
+        }
+        (Language::Spanish, FailureKind::Converter) => {
+            "El conversor se detuvo. Inténtalo de nuevo. Si vuelve a detenerse, %@ > %@ muestra el motivo y %@ nos lo envía."
+        }
+        (Language::Spanish, FailureKind::Other) => {
+            "Inténtalo de nuevo. Si vuelve a detenerse, %@ > %@ muestra el motivo y %@ nos lo envía."
+        }
+        (Language::French, FailureKind::ToolkitMissing) => {
+            "Aucun Toolkit n’est installé. Installes-en un dans %@ > %@, puis déverrouille de nouveau."
+        }
+        (Language::French, FailureKind::DiskFull) => {
+            "Le disque des jeux déverrouillés est plein. Libère de l’espace, puis réessaie."
+        }
+        (Language::French, FailureKind::LocationMissing) => {
+            "Le dossier des jeux déverrouillés est introuvable. Branche son disque ou choisis un autre dossier dans %@ > %@."
+        }
+        (Language::French, FailureKind::FileInUse) => {
+            "Un autre programme utilise un fichier du jeu. Ferme-le ou mets en pause son analyse du dossier des jeux, puis réessaie."
+        }
+        (Language::French, FailureKind::BadDump) => {
+            "Ce dump est inutilisable. Refais le dump du jeu depuis ta console et remplace le dossier."
+        }
+        (Language::French, FailureKind::Converter) => {
+            "Le convertisseur s’est arrêté. Réessaie. S’il s’arrête encore, %@ > %@ en montre la cause et %@ nous l’envoie."
+        }
+        (Language::French, FailureKind::Other) => {
+            "Réessaie. Si cela s’arrête encore, %@ > %@ en montre la cause et %@ nous l’envoie."
+        }
+        (Language::Portuguese, FailureKind::ToolkitMissing) => {
+            "Nenhum Toolkit instalado. Instale um em %@ > %@ e desbloqueie de novo."
+        }
+        (Language::Portuguese, FailureKind::DiskFull) => {
+            "A unidade dos jogos desbloqueados está cheia. Libere espaço e tente de novo."
+        }
+        (Language::Portuguese, FailureKind::LocationMissing) => {
+            "A pasta dos jogos desbloqueados não foi encontrada. Conecte a unidade ou escolha outra pasta em %@ > %@."
+        }
+        (Language::Portuguese, FailureKind::FileInUse) => {
+            "Outro programa está usando um arquivo do jogo. Feche-o ou pause a verificação dele na pasta de jogos e tente de novo."
+        }
+        (Language::Portuguese, FailureKind::BadDump) => {
+            "Este dump não pode ser usado. Refaça o dump do jogo no seu console e substitua a pasta."
+        }
+        (Language::Portuguese, FailureKind::Converter) => {
+            "O conversor parou. Tente de novo. Se parar outra vez, %@ > %@ mostra o motivo e %@ envia para nós."
+        }
+        (Language::Portuguese, FailureKind::Other) => {
+            "Tente de novo. Se parar outra vez, %@ > %@ mostra o motivo e %@ envia para nós."
+        }
     };
     let names: &[&str] = match kind {
         FailureKind::ToolkitMissing => &[settings, toolkit],
@@ -207,6 +339,15 @@ pub fn pinned_toolkit_missing(language: Language) -> String {
         Language::German => {
             "Das Toolkit, bei dem dieses Spiel bleibt, ist weg. Wähle unter %@ > %@ ein anderes und schalte dann noch einmal frei."
         }
+        Language::Spanish => {
+            "El Toolkit fijado para este juego ya no está. Elige otro en %@ > %@ y vuelve a desbloquear."
+        }
+        Language::French => {
+            "Le Toolkit choisi pour ce jeu n’existe plus. Choisis-en un autre dans %@ > %@, puis déverrouille de nouveau."
+        }
+        Language::Portuguese => {
+            "O Toolkit fixado neste jogo não existe mais. Escolha outro em %@ > %@ e desbloqueie de novo."
+        }
     };
     substitute(template, &[Arg::Str(options), Arg::Str(row)])
 }
@@ -217,6 +358,9 @@ pub fn failure_headline(language: Language) -> &'static str {
         Language::English => "Unlocking stopped.",
         Language::Turkish => "Kilit a\u{e7}ma durdu.",
         Language::German => "Das Freischalten wurde angehalten.",
+        Language::Spanish => "El desbloqueo se detuvo.",
+        Language::French => "Le déverrouillage s’est arrêté.",
+        Language::Portuguese => "O desbloqueio parou.",
     }
 }
 
@@ -226,6 +370,9 @@ pub fn prepare_failed(language: Language) -> &'static str {
         Language::English => "Could not prepare",
         Language::Turkish => "Haz\u{131}rlanamad\u{131}",
         Language::German => "Vorbereitung fehlgeschlagen",
+        Language::Spanish => "No se pudo preparar",
+        Language::French => "Préparation impossible",
+        Language::Portuguese => "Não foi possível preparar",
     }
 }
 
@@ -235,6 +382,9 @@ pub fn setting(language: Language) -> &'static str {
         Language::English => "Prepare New Games Automatically",
         Language::Turkish => "Yeni oyunlar\u{131} otomatik haz\u{131}rla",
         Language::German => "Neue Spiele automatisch vorbereiten",
+        Language::Spanish => "Preparar juegos nuevos automáticamente",
+        Language::French => "Préparer automatiquement les nouveaux jeux",
+        Language::Portuguese => "Preparar jogos novos automaticamente",
     }
 }
 
@@ -248,6 +398,15 @@ pub fn setting_detail(language: Language) -> &'static str {
         }
         Language::German => {
             "Schaltet neue Spiele im Hintergrund frei, solange der PC nichts zu tun hat, damit sie bereit sind, wenn du spielen willst. Hört auf, sobald ein Spiel startet."
+        }
+        Language::Spanish => {
+            "Desbloquea los juegos nuevos en segundo plano mientras el PC está inactivo, para que estén listos cuando quieras jugar. Se detiene en cuanto empieza un juego."
+        }
+        Language::French => {
+            "Déverrouille les nouveaux jeux en arrière-plan quand le PC est inactif, pour qu’ils soient prêts quand tu veux jouer. S’arrête dès qu’un jeu démarre."
+        }
+        Language::Portuguese => {
+            "Desbloqueia jogos novos em segundo plano enquanto o PC está ocioso, para que fiquem prontos quando você quiser jogar. Para assim que um jogo começa."
         }
     }
 }

@@ -519,7 +519,10 @@ mod tests {
                 assert!(
                     s[..at].contains("Options > Log")
                         || s[..at].contains("Seçenekler > Günlük")
-                        || s[..at].contains("Optionen > Protokoll"),
+                        || s[..at].contains("Optionen > Protokoll")
+                        || s[..at].contains("Opciones > Registro")
+                        || s[..at].contains("Options > Journal")
+                        || s[..at].contains("Opções > Registro"),
                     "{d:?} {language:?}: the step must come first: {s}"
                 );
             }
@@ -557,6 +560,22 @@ mod tests {
             "Schließe",
             "Füge deinen",
             "Bericht",
+            "de nuevo",
+            "Actualiza",
+            "Cierra",
+            "Añade",
+            "informe",
+            "à nouveau",
+            "Mets à jour",
+            "relance",
+            "Ferme",
+            "Ajoute",
+            "rapport",
+            "de novo",
+            "Atualize",
+            "Feche",
+            "Adicione",
+            "relatório",
         ];
         for language in Language::ALL {
             for d in &all {
