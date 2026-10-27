@@ -102,9 +102,71 @@ impl FeelText {
         }
     }
 
+    pub const fn spanish(self) -> &'static str {
+        match self {
+            FeelText::ThemeGameColors => "Colores del juego",
+            FeelText::VolumeInterface => "Volumen de la interfaz",
+            FeelText::VolumeMusic => "Volumen de la música del inicio",
+            FeelText::VolumeGameMusic => "Volumen de la música del juego",
+            FeelText::NotificationSounds => "Sonidos de notificación",
+            FeelText::NotificationSoundsDetail => {
+                "Un tono para un mensaje, una solicitud, una invitación o una llamada."
+            }
+            FeelText::VolumeNotifications => "Volumen de las notificaciones",
+            FeelText::LargerText => "Texto más grande",
+            FeelText::LargerTextDetail => "Aumenta todo el texto un nivel.",
+            FeelText::HighContrast => "Alto contraste",
+            FeelText::HighContrastDetail => {
+                "Texto y bordes más brillantes, y sin cristal esmerilado."
+            }
+            FeelText::VolumeOff => "Desactivado",
+        }
+    }
+
+    pub const fn french(self) -> &'static str {
+        match self {
+            FeelText::ThemeGameColors => "Couleurs du jeu",
+            FeelText::VolumeInterface => "Volume de l’interface",
+            FeelText::VolumeMusic => "Volume de la musique de l’accueil",
+            FeelText::VolumeGameMusic => "Volume de la musique du jeu",
+            FeelText::NotificationSounds => "Sons de notification",
+            FeelText::NotificationSoundsDetail => {
+                "Un carillon pour un message, une demande, une invitation ou un appel."
+            }
+            FeelText::VolumeNotifications => "Volume des notifications",
+            FeelText::LargerText => "Texte plus grand",
+            FeelText::LargerTextDetail => "Agrandit tout le texte d’un cran.",
+            FeelText::HighContrast => "Contraste élevé",
+            FeelText::HighContrastDetail => "Texte et bordures plus lumineux, sans verre dépoli.",
+            FeelText::VolumeOff => "Désactivé",
+        }
+    }
+
+    pub const fn portuguese(self) -> &'static str {
+        match self {
+            FeelText::ThemeGameColors => "Cores do jogo",
+            FeelText::VolumeInterface => "Volume da interface",
+            FeelText::VolumeMusic => "Volume da música da tela inicial",
+            FeelText::VolumeGameMusic => "Volume da música do jogo",
+            FeelText::NotificationSounds => "Sons de notificação",
+            FeelText::NotificationSoundsDetail => {
+                "Um toque para uma mensagem, um pedido, um convite ou uma chamada."
+            }
+            FeelText::VolumeNotifications => "Volume das notificações",
+            FeelText::LargerText => "Texto maior",
+            FeelText::LargerTextDetail => "Aumenta todo o texto um nível.",
+            FeelText::HighContrast => "Alto contraste",
+            FeelText::HighContrastDetail => "Texto e bordas mais claros, sem vidro fosco.",
+            FeelText::VolumeOff => "Desativado",
+        }
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::German => self.german(),
+            Language::Spanish => self.spanish(),
+            Language::French => self.french(),
+            Language::Portuguese => self.portuguese(),
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
         }
@@ -119,7 +181,8 @@ pub fn volume_text(percent: u8, language: Language) -> String {
         match language {
             Language::Turkish => format!("%{percent}"),
             Language::German => format!("{percent} %"),
-            Language::English => format!("{percent}%"),
+            Language::English | Language::Portuguese => format!("{percent}%"),
+            Language::Spanish | Language::French => format!("{percent}\u{a0}%"),
         }
     }
 }

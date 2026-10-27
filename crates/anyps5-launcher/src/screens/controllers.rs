@@ -750,7 +750,10 @@ fn build_rows(panel: &ControllersPanel, data: &ControllersData<'_>, snap: &Snaps
             let (hue, brightness) = lightbar::custom_of(light_now(data.prefs));
             let percent = match language {
                 Language::Turkish => format!("%{brightness}"),
-                Language::German => format!("{brightness} %"),
+                Language::German | Language::Spanish | Language::French => {
+                    format!("{brightness} %")
+                }
+                Language::Portuguese => format!("{brightness}%"),
                 Language::English => format!("{brightness}%"),
             };
             rows.push(

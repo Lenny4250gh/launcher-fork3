@@ -638,9 +638,16 @@ fn language_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut V
     y = caption(&painter, page, y, language.text(Key::ChooseLanguage));
     let focus = cx.model.onboarding_target();
     let (w, h) = size::LANGUAGE_CARD;
-    let left = row_start(page, Language::ALL.len(), w, CARD_GAP);
+    // Three cards a row, centred; six languages make two rows.
+    const PER_ROW: usize = 3;
+    let left = row_start(page, PER_ROW, w, CARD_GAP);
     for (index, card_language) in Language::ALL.iter().enumerate() {
-        let rect = Rect::from_min_size(pos2(left + index as f32 * (w + CARD_GAP), y), vec2(w, h));
+        let (column, row) = (index % PER_ROW, index / PER_ROW);
+        let at = pos2(
+            left + column as f32 * (w + CARD_GAP),
+            y + row as f32 * (h + CARD_GAP),
+        );
+        let rect = Rect::from_min_size(at, vec2(w, h));
         let response = place(ui, rect, |ui| {
             chrome::language_card(
                 ui,

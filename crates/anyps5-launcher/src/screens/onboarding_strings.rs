@@ -308,11 +308,224 @@ impl OnboardingText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            OnboardingText::OnlineTitle => "Play Together",
+            OnboardingText::OnlineSubtitle => {
+                "Inicia sesión para ver a tus amigos, unirte a sus parties y llamadas, y guardar tus trofeos en tu perfil. Al iniciar sesión se abre el navegador un momento."
+            }
+            OnboardingText::NotNow => "Ahora no",
+            OnboardingText::OnlineLater => {
+                "Puedes iniciar sesión cuando quieras desde la barra superior."
+            }
+            OnboardingText::StepOf => "Paso %@ de %@",
+            OnboardingText::LookTitle => "Elige tu estilo",
+            OnboardingText::LookSubtitle => {
+                "El fondo muestra tu elección. Todo lo de aquí puedes cambiarlo después en Ajustes."
+            }
+            OnboardingText::Accessibility => "Accesibilidad",
+            OnboardingText::ReduceMotion => "Reducir movimiento",
+            OnboardingText::PadTitle => "Tu mando",
+            OnboardingText::PadConnected => {
+                "%@ está conectado. Pulsa uno de los cuatro botones de la derecha y se iluminará abajo."
+            }
+            OnboardingText::PadLost => {
+                "El mando no está conectado ahora. Conéctalo para probar los botones. Las opciones de abajo valen igualmente."
+            }
+            OnboardingText::PadGoesBack => "%@ vuelve atrás",
+            OnboardingText::NoFolderTitle => "Aún no has elegido una carpeta",
+            OnboardingText::NoFolderDetail => "Puedes elegir una después en Ajustes.",
+            OnboardingText::FactPrivateTitle => "Privado por defecto",
+            OnboardingText::FactPrivateDetail => {
+                "Tu perfil, tus trofeos y tu tiempo de juego solo los ven tus amigos."
+            }
+            OnboardingText::FactOfflineDetail => {
+                "Tus amigos ven cuándo estás en línea. Aparecer sin conexión lo oculta a todos, cuando quieras."
+            }
+            OnboardingText::FactLocalTitle => "Tus archivos de juego se quedan en este PC",
+            OnboardingText::FactLocalDetail => "No se sube nada de tu carpeta de juegos.",
+            OnboardingText::DoneTitle => "Todo listo",
+            OnboardingText::DoneSubtitle => "Un par de cosas que conviene saber antes de empezar.",
+            OnboardingText::DoneHomeTitle => "Botón Home",
+            OnboardingText::DoneHomeDetail => {
+                "Púlsalo en tu mando para traer el launcher al frente mientras se ejecuta un juego."
+            }
+            OnboardingText::DonePadTitle => "Mandos",
+            OnboardingText::DonePadDetail => {
+                "Conecta uno cuando quieras. En Ajustes tienes la disposición de botones y una prueba en vivo."
+            }
+            OnboardingText::DoneSettingsTitle => "Ajustes",
+            OnboardingText::DoneSettingsDetail => {
+                "El engranaje de la barra superior. Todo lo que elegiste aquí está dentro."
+            }
+            OnboardingText::DoneGamesTitle => "Tus juegos",
+            OnboardingText::DoneGamesDetail => "Los juegos nuevos de tu carpeta aparecen solos.",
+            OnboardingText::DoneNoFolderTitle => "Añade tus juegos",
+            OnboardingText::DoneNoFolderDetail => {
+                "Elige una carpeta en Ajustes, en Biblioteca. La pantalla de inicio te muestra cómo."
+            }
+            OnboardingText::DoneNextSignIn => "Siguiente: iniciar sesión",
+            OnboardingText::DoneNextCreate => "Siguiente: crear cuenta",
+            OnboardingText::DoneSignInDetail => "Tu navegador se abre cuando pulsas Iniciar.",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            OnboardingText::OnlineTitle => "Play Together",
+            OnboardingText::OnlineSubtitle => {
+                "Connecte-toi pour voir tes amis, rejoindre leurs parties et leurs appels, et garder tes trophées sur ton profil. La connexion ouvre brièvement ton navigateur."
+            }
+            OnboardingText::NotNow => "Pas maintenant",
+            OnboardingText::OnlineLater => {
+                "Tu peux te connecter à tout moment depuis la barre du haut."
+            }
+            OnboardingText::StepOf => "Étape %@ sur %@",
+            OnboardingText::LookTitle => "Choisis ton style",
+            OnboardingText::LookSubtitle => {
+                "L’arrière-plan montre ton choix. Tout ce qui est ici se change plus tard dans les Paramètres."
+            }
+            OnboardingText::Accessibility => "Accessibilité",
+            OnboardingText::ReduceMotion => "Réduire les animations",
+            OnboardingText::PadTitle => "Ta manette",
+            OnboardingText::PadConnected => {
+                "%@ est connectée. Appuie sur l’un des quatre boutons de droite\u{a0}: il s’allume en dessous."
+            }
+            OnboardingText::PadLost => {
+                "La manette n’est pas connectée pour le moment. Connecte-la pour tester les boutons. Les choix ci-dessous comptent quand même."
+            }
+            OnboardingText::PadGoesBack => "%@ revient en arrière",
+            OnboardingText::NoFolderTitle => "Aucun dossier choisi pour l’instant",
+            OnboardingText::NoFolderDetail => {
+                "Tu pourras en choisir un plus tard dans les Paramètres."
+            }
+            OnboardingText::FactPrivateTitle => "Privé par défaut",
+            OnboardingText::FactPrivateDetail => {
+                "Ton profil, tes trophées et ton temps de jeu ne sont visibles que par tes amis."
+            }
+            OnboardingText::FactOfflineDetail => {
+                "Tes amis voient quand tu es en ligne. Apparaître hors ligne le cache à tout le monde, quand tu veux."
+            }
+            OnboardingText::FactLocalTitle => "Tes fichiers de jeu restent sur ce PC",
+            OnboardingText::FactLocalDetail => "Rien de ton dossier de jeux n’est envoyé.",
+            OnboardingText::DoneTitle => "Tout est prêt",
+            OnboardingText::DoneSubtitle => "Quelques points utiles avant de commencer.",
+            OnboardingText::DoneHomeTitle => "Bouton Home",
+            OnboardingText::DoneHomeDetail => {
+                "Appuie dessus sur ta manette pour ramener le launcher devant pendant qu’un jeu tourne."
+            }
+            OnboardingText::DonePadTitle => "Manettes",
+            OnboardingText::DonePadDetail => {
+                "Branches-en une quand tu veux. Les Paramètres ont la disposition des boutons et un test en direct."
+            }
+            OnboardingText::DoneSettingsTitle => "Paramètres",
+            OnboardingText::DoneSettingsDetail => {
+                "La roue dentée de la barre du haut. Tout ce que tu as choisi ici s’y trouve."
+            }
+            OnboardingText::DoneGamesTitle => "Tes jeux",
+            OnboardingText::DoneGamesDetail => {
+                "Les nouveaux jeux de ton dossier apparaissent d’eux-mêmes."
+            }
+            OnboardingText::DoneNoFolderTitle => "Ajoute tes jeux",
+            OnboardingText::DoneNoFolderDetail => {
+                "Choisis un dossier dans les Paramètres, sous Bibliothèque. L’accueil montre comment."
+            }
+            OnboardingText::DoneNextSignIn => "Ensuite\u{a0}: se connecter",
+            OnboardingText::DoneNextCreate => "Ensuite\u{a0}: créer un compte",
+            OnboardingText::DoneSignInDetail => {
+                "Ton navigateur s’ouvre quand tu appuies sur Démarrer."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            OnboardingText::OnlineTitle => "Play Together",
+            OnboardingText::OnlineSubtitle => {
+                "Entre para ver seus amigos, participar das parties e chamadas deles e manter seus troféus no perfil. Ao entrar, seu navegador abre por um instante."
+            }
+            OnboardingText::NotNow => "Agora não",
+            OnboardingText::OnlineLater => {
+                "Você pode entrar a qualquer momento pela barra superior."
+            }
+            OnboardingText::StepOf => "Etapa %@ de %@",
+            OnboardingText::LookTitle => "Escolha seu visual",
+            OnboardingText::LookSubtitle => {
+                "O plano de fundo mostra sua escolha. Tudo aqui pode ser mudado depois em Configurações."
+            }
+            OnboardingText::Accessibility => "Acessibilidade",
+            OnboardingText::ReduceMotion => "Reduzir movimento",
+            OnboardingText::PadTitle => "Seu controle",
+            OnboardingText::PadConnected => {
+                "%@ está conectado. Aperte um dos quatro botões da direita e ele acende abaixo."
+            }
+            OnboardingText::PadLost => {
+                "O controle não está conectado agora. Conecte-o para testar os botões. As escolhas abaixo valem do mesmo jeito."
+            }
+            OnboardingText::PadGoesBack => "%@ volta",
+            OnboardingText::NoFolderTitle => "Nenhuma pasta escolhida ainda",
+            OnboardingText::NoFolderDetail => "Você pode escolher uma depois em Configurações.",
+            OnboardingText::FactPrivateTitle => "Privado por padrão",
+            OnboardingText::FactPrivateDetail => {
+                "Seu perfil, seus troféus e seu tempo de jogo só aparecem para os amigos."
+            }
+            OnboardingText::FactOfflineDetail => {
+                "Seus amigos veem quando você está online. Aparecer offline esconde isso de todos, quando quiser."
+            }
+            OnboardingText::FactLocalTitle => "Seus arquivos de jogo ficam neste PC",
+            OnboardingText::FactLocalDetail => "Nada da sua pasta de jogos é enviado.",
+            OnboardingText::DoneTitle => "Tudo pronto",
+            OnboardingText::DoneSubtitle => "Algumas coisas úteis antes de começar.",
+            OnboardingText::DoneHomeTitle => "Botão Home",
+            OnboardingText::DoneHomeDetail => {
+                "Aperte-o no controle para trazer o launcher para a frente enquanto um jogo roda."
+            }
+            OnboardingText::DonePadTitle => "Controles",
+            OnboardingText::DonePadDetail => {
+                "Conecte um quando quiser. Em Configurações há o layout dos botões e um teste ao vivo."
+            }
+            OnboardingText::DoneSettingsTitle => "Configurações",
+            OnboardingText::DoneSettingsDetail => {
+                "A engrenagem na barra superior. Tudo o que você escolheu aqui está lá."
+            }
+            OnboardingText::DoneGamesTitle => "Seus jogos",
+            OnboardingText::DoneGamesDetail => "Jogos novos na sua pasta aparecem sozinhos.",
+            OnboardingText::DoneNoFolderTitle => "Adicione seus jogos",
+            OnboardingText::DoneNoFolderDetail => {
+                "Escolha uma pasta em Configurações, em Biblioteca. A tela inicial mostra como."
+            }
+            OnboardingText::DoneNextSignIn => "Em seguida: entrar",
+            OnboardingText::DoneNextCreate => "Em seguida: criar conta",
+            OnboardingText::DoneSignInDetail => "Seu navegador abre quando você aperta Iniciar.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },

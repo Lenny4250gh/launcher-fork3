@@ -263,11 +263,217 @@ impl CallText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            CallText::IncomingName => "Llamada entrante de %@",
+            CallText::IncomingLine => "te está llamando",
+            CallText::IncomingDiscordLine => "Tu voz está configurada en Discord",
+            CallText::Accept => "Aceptar",
+            CallText::Decline => "Rechazar",
+            CallText::InCall => "En llamada",
+            CallText::Calling => "Llamando a %@",
+            CallText::Cancel => "Cancelar",
+            CallText::Mute => "Silenciar",
+            CallText::Unmute => "Quitar silencio",
+            CallText::Deafen => "Desactivar sonido",
+            CallText::Undeafen => "Activar sonido",
+            CallText::Leave => "Salir de la llamada",
+            CallText::SpeakingSuffix => "hablando",
+            CallText::YouMuted => "Tu micrófono está silenciado",
+            CallText::YouDeafened => "No oyes a nadie",
+            CallText::WaitingForOthers => "Esperando a los demás",
+            CallText::VoiceOnDiscord => "Voz en Discord",
+            CallText::AnswerOnDiscord => "Responder en Discord",
+            CallText::OpenInDiscord => "Abrir en Discord",
+            CallText::DiscordSetNote => {
+                "Tu voz está configurada en Discord. Únete a la llamada allí; AnyPlay no abre tu micrófono."
+            }
+            CallText::MissedAgo => "Llamada perdida · %@",
+            CallText::MissedNow => "Llamada perdida · ahora mismo",
+            CallText::CallFriend => "Llamar",
+            CallText::CallFriendDetail => "Suena durante 30 segundos",
+            CallText::AddToCall => "Añadir a la llamada",
+            CallText::CallNeedsLeader => "Solo quien inició la llamada puede añadir personas.",
+            CallText::CallFriendBusy => "Ya está en una party",
+            CallText::VoiceOn => "Servicio de voz",
+            CallText::ProviderAnyPlay => "AnyPlay",
+            CallText::ProviderDiscord => "Discord",
+            CallText::ProviderDiscordNote => {
+                "Con Discord, AnyPlay nunca abre tu micrófono en parties ni llamadas. Las llamadas siguen sonando aquí."
+            }
+            CallText::ProviderAnyPlayNote => {
+                "Las parties y las llamadas usan el chat de voz propio de AnyPlay."
+            }
+            CallText::StatusDiscord => "En Discord",
+            CallText::DiscordLink => "Enlace de Discord",
+            CallText::DiscordLinkNone => "Sin configurar",
+            CallText::DiscordLinkField => "discord.com/channels/… o discord.gg/…",
+            CallText::SetLink => "Guardar enlace",
+            CallText::RemoveLink => "Quitar enlace",
+            CallText::LinkNote => {
+                "Todos los de la party ven este enlace. Solo el líder puede cambiarlo."
+            }
+            CallText::LinkInvalid => {
+                "Eso no es un enlace de Discord. Usa una dirección de discord.com/channels o discord.gg."
+            }
+            CallText::ToastMissed => "Llamada perdida de %@",
+            CallText::ToastNoAnswer => "%@ no respondió.",
+            CallText::ToastDeclined => "%@ rechazó la llamada.",
+            CallText::ToastUnreachable => "%@ no puede recibir una llamada ahora mismo.",
+            CallText::ToastNeedsLeader => "Solo quien inició la llamada puede añadir personas.",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            CallText::IncomingName => "Appel entrant de %@",
+            CallText::IncomingLine => "t’appelle",
+            CallText::IncomingDiscordLine => "Ta voix est réglée sur Discord",
+            CallText::Accept => "Accepter",
+            CallText::Decline => "Refuser",
+            CallText::InCall => "En appel",
+            CallText::Calling => "Appel vers %@",
+            CallText::Cancel => "Annuler",
+            CallText::Mute => "Couper le micro",
+            CallText::Unmute => "Réactiver le micro",
+            CallText::Deafen => "Couper le son",
+            CallText::Undeafen => "Rétablir le son",
+            CallText::Leave => "Quitter l’appel",
+            CallText::SpeakingSuffix => "parle",
+            CallText::YouMuted => "Ton micro est coupé",
+            CallText::YouDeafened => "Tu n’entends personne",
+            CallText::WaitingForOthers => "En attente des autres",
+            CallText::VoiceOnDiscord => "Voix sur Discord",
+            CallText::AnswerOnDiscord => "Répondre sur Discord",
+            CallText::OpenInDiscord => "Ouvrir dans Discord",
+            CallText::DiscordSetNote => {
+                "Ta voix est réglée sur Discord. Rejoins l’appel là-bas\u{a0}; AnyPlay n’active pas ton micro."
+            }
+            CallText::MissedAgo => "Appel manqué · %@",
+            CallText::MissedNow => "Appel manqué · à l’instant",
+            CallText::CallFriend => "Appeler",
+            CallText::CallFriendDetail => "Sonne pendant 30 secondes",
+            CallText::AddToCall => "Ajouter à l’appel",
+            CallText::CallNeedsLeader => {
+                "Seule la personne qui a lancé l’appel peut ajouter des gens."
+            }
+            CallText::CallFriendBusy => "Déjà dans une party",
+            CallText::VoiceOn => "Service vocal",
+            CallText::ProviderAnyPlay => "AnyPlay",
+            CallText::ProviderDiscord => "Discord",
+            CallText::ProviderDiscordNote => {
+                "Avec Discord, AnyPlay n’active jamais ton micro pour les party ou les appels. Les appels sonnent toujours ici."
+            }
+            CallText::ProviderAnyPlayNote => {
+                "Les party et les appels utilisent le chat vocal propre d’AnyPlay."
+            }
+            CallText::StatusDiscord => "Sur Discord",
+            CallText::DiscordLink => "Lien Discord",
+            CallText::DiscordLinkNone => "Non défini",
+            CallText::DiscordLinkField => "discord.com/channels/… ou discord.gg/…",
+            CallText::SetLink => "Enregistrer le lien",
+            CallText::RemoveLink => "Supprimer le lien",
+            CallText::LinkNote => {
+                "Tous les membres de la party voient ce lien. Seul le chef peut le modifier."
+            }
+            CallText::LinkInvalid => {
+                "Ce n’est pas un lien Discord. Utilise une adresse de discord.com/channels ou discord.gg."
+            }
+            CallText::ToastMissed => "Appel manqué de %@",
+            CallText::ToastNoAnswer => "%@ n’a pas répondu.",
+            CallText::ToastDeclined => "%@ a refusé l’appel.",
+            CallText::ToastUnreachable => "%@ ne peut pas recevoir d’appel pour l’instant.",
+            CallText::ToastNeedsLeader => {
+                "Seule la personne qui a lancé l’appel peut ajouter des gens."
+            }
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            CallText::IncomingName => "Chamada recebida de %@",
+            CallText::IncomingLine => "está ligando para você",
+            CallText::IncomingDiscordLine => "Sua voz está configurada no Discord",
+            CallText::Accept => "Aceitar",
+            CallText::Decline => "Recusar",
+            CallText::InCall => "Em chamada",
+            CallText::Calling => "Chamando %@",
+            CallText::Cancel => "Cancelar",
+            CallText::Mute => "Silenciar",
+            CallText::Unmute => "Reativar microfone",
+            CallText::Deafen => "Desativar áudio",
+            CallText::Undeafen => "Ativar áudio",
+            CallText::Leave => "Sair da chamada",
+            CallText::SpeakingSuffix => "falando",
+            CallText::YouMuted => "Seu microfone está silenciado",
+            CallText::YouDeafened => "Você não ouve ninguém",
+            CallText::WaitingForOthers => "Aguardando os outros",
+            CallText::VoiceOnDiscord => "Voz no Discord",
+            CallText::AnswerOnDiscord => "Atender no Discord",
+            CallText::OpenInDiscord => "Abrir no Discord",
+            CallText::DiscordSetNote => {
+                "Sua voz está configurada no Discord. Entre na chamada por lá; o AnyPlay não abre seu microfone."
+            }
+            CallText::MissedAgo => "Chamada perdida · %@",
+            CallText::MissedNow => "Chamada perdida · agora mesmo",
+            CallText::CallFriend => "Ligar",
+            CallText::CallFriendDetail => "Toca por 30 segundos",
+            CallText::AddToCall => "Adicionar à chamada",
+            CallText::CallNeedsLeader => "Só quem iniciou a chamada pode adicionar pessoas.",
+            CallText::CallFriendBusy => "Já está em uma party",
+            CallText::VoiceOn => "Serviço de voz",
+            CallText::ProviderAnyPlay => "AnyPlay",
+            CallText::ProviderDiscord => "Discord",
+            CallText::ProviderDiscordNote => {
+                "Com o Discord, o AnyPlay nunca abre seu microfone em parties ou chamadas. As chamadas continuam tocando aqui."
+            }
+            CallText::ProviderAnyPlayNote => {
+                "Parties e chamadas usam o chat de voz próprio do AnyPlay."
+            }
+            CallText::StatusDiscord => "No Discord",
+            CallText::DiscordLink => "Link do Discord",
+            CallText::DiscordLinkNone => "Não definido",
+            CallText::DiscordLinkField => "discord.com/channels/… ou discord.gg/…",
+            CallText::SetLink => "Salvar link",
+            CallText::RemoveLink => "Remover link",
+            CallText::LinkNote => "Todos na party veem este link. Só o líder pode alterá-lo.",
+            CallText::LinkInvalid => {
+                "Isso não é um link do Discord. Use um endereço de discord.com/channels ou discord.gg."
+            }
+            CallText::ToastMissed => "Chamada perdida de %@",
+            CallText::ToastNoAnswer => "%@ não atendeu.",
+            CallText::ToastDeclined => "%@ recusou a chamada.",
+            CallText::ToastUnreachable => "%@ não pode receber uma chamada agora.",
+            CallText::ToastNeedsLeader => "Só quem iniciou a chamada pode adicionar pessoas.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },
@@ -305,6 +511,9 @@ pub fn ago(seconds: u64, language: Language) -> String {
                 _ => "gün",
             }
         ),
+        Language::Spanish => format!("hace {n} {unit}"),
+        Language::French => format!("il y a {n}\u{a0}{}", if unit == "d" { "j" } else { unit }),
+        Language::Portuguese => format!("há {n} {unit}"),
     };
     CallText::MissedAgo.format(language, &[Arg::Str(&how)])
 }
@@ -329,6 +538,9 @@ mod tests {
             let count = |s: &str| s.matches("%@").count();
             assert_eq!(count(text.english()), 1, "{text:?}");
             assert_eq!(count(text.turkish()), 1, "{text:?}");
+            for language in Language::ALL {
+                assert_eq!(count(text.text(language)), 1, "{text:?} {language:?}");
+            }
         }
     }
 
@@ -340,5 +552,19 @@ mod tests {
         assert_eq!(ago(3 * 86_400, Language::English), "Missed call · 3 d ago");
         assert_eq!(ago(300, Language::German), "Verpasster Anruf · vor 5 Min.");
         assert_eq!(ago(300, Language::Turkish), "Cevapsız arama · 5 dk önce");
+        assert_eq!(ago(300, Language::Spanish), "Llamada perdida · hace 5 min");
+        assert_eq!(
+            ago(7300, Language::French),
+            "Appel manqué · il y a 2\u{a0}h"
+        );
+        assert_eq!(
+            ago(3 * 86_400, Language::French),
+            "Appel manqué · il y a 3\u{a0}j"
+        );
+        assert_eq!(
+            ago(3 * 86_400, Language::Portuguese),
+            "Chamada perdida · há 3 d"
+        );
+        assert_eq!(ago(10, Language::French), "Appel manqué · à l’instant");
     }
 }

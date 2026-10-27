@@ -265,10 +265,202 @@ impl BroadcastText {
         })
     }
 
+    /// The Spanish text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn spanish(self) -> Option<&'static str> {
+        Some(match self {
+            BroadcastText::Title => "Transmisión",
+            BroadcastText::Service => "Transmitir a",
+            BroadcastText::ServiceDetail => {
+                "Muestra en directo el juego en ejecución con su sonido"
+            }
+            BroadcastText::Twitch => "Twitch",
+            BroadcastText::YouTube => "YouTube",
+            BroadcastText::Custom => "RTMP personalizado",
+            BroadcastText::Server => "Dirección del servidor",
+            BroadcastText::ServerDetail => "Empieza por rtmp:// o rtmps://",
+            BroadcastText::Key => "Clave de transmisión",
+            BroadcastText::KeyDetail => {
+                "Pega la clave de tu panel. Se queda en este PC y nunca se muestra"
+            }
+            BroadcastText::Quality => "Calidad de transmisión",
+            BroadcastText::Quality720p30 => "720p, 30 fps",
+            BroadcastText::Quality720p60 => "720p, 60 fps",
+            BroadcastText::Quality1080p60 => "1080p, 60 fps",
+            BroadcastText::Start => "Iniciar transmisión",
+            BroadcastText::Stop => "Detener transmisión",
+            BroadcastText::Connecting => "Conectando con el servidor de transmisión",
+            BroadcastText::Live => "En directo",
+            BroadcastText::Badge => "EN DIRECTO",
+            BroadcastText::Started => "Estás en directo",
+            BroadcastText::Ended => "Transmisión finalizada",
+            BroadcastText::NeedKey => "Añade primero tu clave de transmisión en Ajustes.",
+            BroadcastText::NeedServer => "Añade primero la dirección del servidor en Ajustes.",
+            BroadcastText::KeyNotKept => "No se pudo guardar la clave de transmisión en este PC.",
+            BroadcastText::NoWorker => "La transmisión no forma parte de esta versión.",
+            BroadcastText::BadKey => {
+                "El servicio no aceptó tu clave de transmisión. Revísala en Ajustes."
+            }
+            BroadcastText::NoServer => {
+                "No se pudo conectar con el servidor de transmisión. Revisa la dirección y tu conexión."
+            }
+            BroadcastText::CertUntrusted => {
+                "Este PC no confía en el certificado de seguridad del servicio. Revisa la dirección del servidor."
+            }
+            BroadcastText::CertExpired => {
+                "El certificado de seguridad del servicio no es válido ahora mismo. Revisa la fecha y la hora de tu PC."
+            }
+            BroadcastText::SecureFailed => {
+                "No se pudo establecer una conexión segura con el servicio. Revisa la dirección y tu conexión."
+            }
+            BroadcastText::Lost => {
+                "Se perdió la conexión con el servicio. La transmisión se detuvo."
+            }
+            BroadcastText::NoEncoder => {
+                "Para transmitir hace falta un codificador de video, y este PC no tiene ninguno."
+            }
+            BroadcastText::NoWindow => "La transmisión no encontró la ventana del juego.",
+            BroadcastText::Failed => "La transmisión se detuvo.",
+            _ => return None,
+        })
+    }
+
+    /// The French text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn french(self) -> Option<&'static str> {
+        Some(match self {
+            BroadcastText::Title => "Diffusion",
+            BroadcastText::Service => "Diffuser sur",
+            BroadcastText::ServiceDetail => "Montre le jeu en cours en direct, avec son audio",
+            BroadcastText::Twitch => "Twitch",
+            BroadcastText::YouTube => "YouTube",
+            BroadcastText::Custom => "RTMP personnalisé",
+            BroadcastText::Server => "Adresse du serveur",
+            BroadcastText::ServerDetail => "Commence par rtmp:// ou rtmps://",
+            BroadcastText::Key => "Clé de diffusion",
+            BroadcastText::KeyDetail => {
+                "Colle la clé de ton tableau de bord. Elle reste sur ce PC et n’est jamais affichée"
+            }
+            BroadcastText::Quality => "Qualité de diffusion",
+            BroadcastText::Quality720p30 => "720p, 30 fps",
+            BroadcastText::Quality720p60 => "720p, 60 fps",
+            BroadcastText::Quality1080p60 => "1080p, 60 fps",
+            BroadcastText::Start => "Démarrer la diffusion",
+            BroadcastText::Stop => "Arrêter la diffusion",
+            BroadcastText::Connecting => "Connexion au serveur de diffusion",
+            BroadcastText::Live => "En direct",
+            BroadcastText::Badge => "EN DIRECT",
+            BroadcastText::Started => "Tu es en direct",
+            BroadcastText::Ended => "Diffusion terminée",
+            BroadcastText::NeedKey => "Ajoute d’abord ta clé de diffusion dans Paramètres.",
+            BroadcastText::NeedServer => "Ajoute d’abord l’adresse du serveur dans Paramètres.",
+            BroadcastText::KeyNotKept => "Impossible de conserver la clé de diffusion sur ce PC.",
+            BroadcastText::NoWorker => "La diffusion n’est pas incluse dans cette version.",
+            BroadcastText::BadKey => {
+                "Le service n’a pas accepté ta clé de diffusion. Vérifie-la dans Paramètres."
+            }
+            BroadcastText::NoServer => {
+                "Le serveur de diffusion est injoignable. Vérifie l’adresse et ta connexion."
+            }
+            BroadcastText::CertUntrusted => {
+                "Ce PC ne fait pas confiance au certificat de sécurité du service. Vérifie l’adresse du serveur."
+            }
+            BroadcastText::CertExpired => {
+                "Le certificat de sécurité du service n’est pas valide pour le moment. Vérifie la date et l’heure de ton PC."
+            }
+            BroadcastText::SecureFailed => {
+                "Impossible d’établir une connexion sécurisée avec le service. Vérifie l’adresse et ta connexion."
+            }
+            BroadcastText::Lost => {
+                "La connexion au service a été perdue. La diffusion s’est arrêtée."
+            }
+            BroadcastText::NoEncoder => {
+                "La diffusion nécessite un encodeur vidéo, et ce PC n’en a pas."
+            }
+            BroadcastText::NoWindow => "La diffusion n’a pas trouvé la fenêtre du jeu.",
+            BroadcastText::Failed => "La diffusion s’est arrêtée.",
+            _ => return None,
+        })
+    }
+
+    /// The Portuguese text; `None` falls back to English.
+    #[allow(unreachable_patterns)]
+    pub const fn portuguese(self) -> Option<&'static str> {
+        Some(match self {
+            BroadcastText::Title => "Transmissão",
+            BroadcastText::Service => "Transmitir para",
+            BroadcastText::ServiceDetail => "Mostra ao vivo o jogo em execução com o som",
+            BroadcastText::Twitch => "Twitch",
+            BroadcastText::YouTube => "YouTube",
+            BroadcastText::Custom => "RTMP personalizado",
+            BroadcastText::Server => "Endereço do servidor",
+            BroadcastText::ServerDetail => "Começa com rtmp:// ou rtmps://",
+            BroadcastText::Key => "Chave de transmissão",
+            BroadcastText::KeyDetail => {
+                "Cole a chave do seu painel. Ela fica neste PC e nunca é exibida"
+            }
+            BroadcastText::Quality => "Qualidade da transmissão",
+            BroadcastText::Quality720p30 => "720p, 30 fps",
+            BroadcastText::Quality720p60 => "720p, 60 fps",
+            BroadcastText::Quality1080p60 => "1080p, 60 fps",
+            BroadcastText::Start => "Iniciar transmissão",
+            BroadcastText::Stop => "Parar transmissão",
+            BroadcastText::Connecting => "Conectando ao servidor de transmissão",
+            BroadcastText::Live => "Ao vivo",
+            BroadcastText::Badge => "AO VIVO",
+            BroadcastText::Started => "Você está ao vivo",
+            BroadcastText::Ended => "Transmissão encerrada",
+            BroadcastText::NeedKey => {
+                "Adicione primeiro sua chave de transmissão em Configurações."
+            }
+            BroadcastText::NeedServer => {
+                "Adicione primeiro o endereço do servidor em Configurações."
+            }
+            BroadcastText::KeyNotKept => {
+                "Não foi possível guardar a chave de transmissão neste PC."
+            }
+            BroadcastText::NoWorker => "A transmissão não faz parte desta versão.",
+            BroadcastText::BadKey => {
+                "O serviço não aceitou sua chave de transmissão. Verifique-a em Configurações."
+            }
+            BroadcastText::NoServer => {
+                "Não foi possível alcançar o servidor de transmissão. Verifique o endereço e sua conexão."
+            }
+            BroadcastText::CertUntrusted => {
+                "Este PC não confia no certificado de segurança do serviço. Verifique o endereço do servidor."
+            }
+            BroadcastText::CertExpired => {
+                "O certificado de segurança do serviço não é válido no momento. Verifique a data e a hora do seu PC."
+            }
+            BroadcastText::SecureFailed => {
+                "Não foi possível criar uma conexão segura com o serviço. Verifique o endereço e sua conexão."
+            }
+            BroadcastText::Lost => "A conexão com o serviço foi perdida. A transmissão parou.",
+            BroadcastText::NoEncoder => {
+                "Para transmitir é preciso um codificador de vídeo, e este PC não tem nenhum."
+            }
+            BroadcastText::NoWindow => "A transmissão não encontrou a janela do jogo.",
+            BroadcastText::Failed => "A transmissão parou.",
+            _ => return None,
+        })
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::German => match self.german() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Spanish => match self.spanish() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::French => match self.french() {
+                Some(text) => text,
+                None => self.english(),
+            },
+            Language::Portuguese => match self.portuguese() {
                 Some(text) => text,
                 None => self.english(),
             },

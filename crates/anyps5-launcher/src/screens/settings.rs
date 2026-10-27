@@ -704,6 +704,15 @@ pub fn build_categories(
         )
         .icon(Icon::GLOBE),
     ];
+    {
+        use crate::screens::about_strings::AboutText as A;
+        languages.push(
+            Row::command("languageTranslations", A::Translations.text(language))
+                .detail(A::TranslationsDetail.text(language))
+                .icon(Icon::TRANSLATE)
+                .group_start(),
+        );
+    }
     languages.push(Row::caption("fontsCaption", words::Fonts.text(language)).group_start());
     languages.push(
         Row::action("fonts", t(Key::FontsFolder))
@@ -1235,6 +1244,11 @@ pub fn build_categories(
                 .group_start(),
         );
         about.push(Row::command("aboutTerms", A::Terms.text(language)).icon(Icon::FILE_TEXT));
+        about.push(
+            Row::command("aboutTranslations", A::Translations.text(language))
+                .detail(A::TranslationsDetail.text(language))
+                .icon(Icon::TRANSLATE),
+        );
         about.push(Row::info("credits", A::Credits.text(language), None));
         about.push(Row::info("creditsLudus", A::LudusCredits.text(language), None).attached());
     }
@@ -1524,12 +1538,15 @@ fn whats_new_row(version: &str, language: Language) -> Row {
 }
 /// The page an About row opens.
 fn about_page(row: &str) -> Option<&'static str> {
-    use crate::screens::about_strings::{DISCORD, INSTALL_GUIDE, PRIVACY, TERMS, WEBSITE};
+    use crate::screens::about_strings::{
+        DISCORD, INSTALL_GUIDE, PRIVACY, TERMS, TRANSLATIONS, WEBSITE,
+    };
     Some(match row {
         "aboutWebsite" => WEBSITE,
         "aboutDiscord" => DISCORD,
         "aboutPrivacy" => PRIVACY,
         "aboutTerms" => TERMS,
+        "aboutTranslations" | "languageTranslations" => TRANSLATIONS,
         "toolkitGlibcGuide" => INSTALL_GUIDE,
         _ => return None,
     })

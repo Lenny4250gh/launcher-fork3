@@ -428,11 +428,9 @@ impl CorePipeline {
             .is_none_or(|v| compat::supports(Feature::Screenshots, v))
             .then(|| prefs.screenshots_dir(&self.paths));
         let shader_cache = self.paths.shader_cache_dir(&game.title_id);
-        let launcher_language = match prefs.language {
-            settings::Language::Turkish => 19,
-            settings::Language::English => 1,
-            settings::Language::German => 4,
-        };
+        let launcher_language = prefs
+            .language
+            .console_language_for(&crate::ui::i18n::system_locale());
         let fonts = fonts::resolve(
             &self.paths,
             &crate::fonts::BUNDLE,

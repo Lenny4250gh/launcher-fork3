@@ -87,11 +87,66 @@ impl InGameText {
         }
     }
 
+    pub const fn spanish(self) -> &'static str {
+        match self {
+            InGameText::Setting => "El botón Home abre el launcher",
+            InGameText::SettingDetail => {
+                "Mientras se ejecuta un juego, el botón Home trae el launcher al frente. Púlsalo de nuevo para volver."
+            }
+            InGameText::Running => "El juego sigue en ejecución detrás del launcher.",
+            InGameText::BackToGame => "Volver al juego",
+            InGameText::Friends => "Amigos y party",
+            InGameText::CloseGame => "Cerrar juego",
+            InGameText::CloseAsk => {
+                "%@ se cierra de inmediato. Se pierde todo lo que el juego no haya guardado."
+            }
+            InGameText::CloseTitle => "¿Cerrar el juego?",
+            InGameText::KeepPlaying => "Seguir jugando",
+        }
+    }
+
+    pub const fn french(self) -> &'static str {
+        match self {
+            InGameText::Setting => "Le bouton Home ouvre le launcher",
+            InGameText::SettingDetail => {
+                "Pendant qu’un jeu tourne, le bouton Home met le launcher au premier plan. Appuie de nouveau pour revenir."
+            }
+            InGameText::Running => "Le jeu continue de tourner derrière le launcher.",
+            InGameText::BackToGame => "Retour au jeu",
+            InGameText::Friends => "Amis et party",
+            InGameText::CloseGame => "Fermer le jeu",
+            InGameText::CloseAsk => {
+                "%@ se ferme immédiatement. Tout ce que le jeu n’a pas sauvegardé est perdu."
+            }
+            InGameText::CloseTitle => "Fermer le jeu\u{a0}?",
+            InGameText::KeepPlaying => "Continuer à jouer",
+        }
+    }
+
+    pub const fn portuguese(self) -> &'static str {
+        match self {
+            InGameText::Setting => "O botão Home abre o launcher",
+            InGameText::SettingDetail => {
+                "Enquanto um jogo está em execução, o botão Home traz o launcher para a frente. Pressione de novo para voltar."
+            }
+            InGameText::Running => "O jogo continua em execução atrás do launcher.",
+            InGameText::BackToGame => "Voltar ao jogo",
+            InGameText::Friends => "Amigos e party",
+            InGameText::CloseGame => "Fechar jogo",
+            InGameText::CloseAsk => "%@ fecha na hora. Tudo o que o jogo não salvou será perdido.",
+            InGameText::CloseTitle => "Fechar o jogo?",
+            InGameText::KeepPlaying => "Continuar jogando",
+        }
+    }
+
     pub const fn text(self, language: Language) -> &'static str {
         match language {
             Language::Turkish => self.turkish(),
             Language::English => self.english(),
             Language::German => self.german(),
+            Language::Spanish => self.spanish(),
+            Language::French => self.french(),
+            Language::Portuguese => self.portuguese(),
         }
     }
 
