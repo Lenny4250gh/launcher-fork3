@@ -26,7 +26,7 @@ use crate::ui::input::{self, Command};
 use crate::ui::sound::Cue;
 use crate::ui::state_page::{self, StatePage};
 use crate::ui::text;
-use crate::ui::theme::{self, TextStyle, Weight, black, color, fade, mix, radius, size, space, ty};
+use crate::ui::theme::{self, TextStyle, Weight, black, color, mix, radius, size, space, ty};
 
 /// Items from the end at which the next older page is fetched.
 const PREFETCH: usize = 3;
@@ -664,7 +664,7 @@ fn show_card(
         size::FOCUS_RING,
     );
     let fg = crate::ui::theme::color::text();
-    let dim = |factor: f32| fade(fg, factor);
+    let dim = crate::ui::theme::color::ink_at;
 
     // The avatar.
     let avatar = Rect::from_min_size(rect.min + vec2(PAD_X, PAD_Y), vec2(AVATAR, AVATAR));

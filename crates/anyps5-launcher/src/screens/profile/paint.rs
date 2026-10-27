@@ -367,7 +367,11 @@ fn measure_columns(painter: &Painter, ready: &Ready, width: f32) -> Columns {
 /// the page that is only this player's. A gradient of the avatar's colour from 22 % at the corner
 /// to nothing 520 dp down and 70 % across, so text on it keeps its contrast with the glass.
 fn paint_wash(painter: &Painter, screen: Rect, tint: [u8; 3]) {
-    let corner_alpha = 0.22;
+    // On the light look the colour is lifted toward the paper and a little weaker: the wash lies
+    // under dark ink there, and a deep colour would darken the ground the ink reads on.
+    let light = crate::ui::theme::light_t();
+    let tint = tint.map(|c| (f32::from(c) + (255.0 - f32::from(c)) * 0.45 * light) as u8);
+    let corner_alpha = 0.22 - 0.06 * light;
     let at = |alpha: f32| {
         Color32::from_rgba_premultiplied(
             (f32::from(tint[0]) * alpha) as u8,

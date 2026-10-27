@@ -21,7 +21,7 @@ use crate::ui::nav_bindings::{self, Bindings, Role as NavRole};
 use crate::ui::pad_info;
 use crate::ui::text;
 use crate::ui::theme::{
-    self, TextStyle, black, color, fade, mix, radius, shadows, size, space, ty, white,
+    self, TextStyle, black, color, fade, mix, radius, scrim, shadows, size, space, ty, white,
 };
 
 /// Forces a visual state so galleries and tests can show hover or press without a pointer.
@@ -92,18 +92,19 @@ pub fn paint_focus_stroke(painter: &Painter, rect: Rect, radius: f32, width: f32
         let rect = rect.translate(crate::ui::nudge::offset(painter.ctx()) * t);
         let width = snap_width(painter, width);
         // A hairline of shade in the gap keeps the ring apart from a light fill and one outside it keeps
-        // it visible on a light picture.
+        // it visible on a light picture. On the light look the ring is dark ink, so the edges turn over:
+        // paper keeps it apart from a dark fill and visible on a dark picture (`edge_shade`).
         painter.add(RectShape::stroke(
             snap_rect(painter, rect.expand(1.0)),
             corner(radius + 1.0),
-            Stroke::new(snap_width(painter, 1.0), black(0.22 * t)),
+            Stroke::new(snap_width(painter, 1.0), edge_shade(0.22, 0.30, t)),
             StrokeKind::Inside,
         ));
         let outer = width * 1.6 + 1.0;
         painter.add(RectShape::stroke(
             snap_rect(painter, rect.expand(outer)),
             corner(radius + outer),
-            Stroke::new(snap_width(painter, 1.0), black(0.26 * t)),
+            Stroke::new(snap_width(painter, 1.0), edge_shade(0.26, 0.55, t)),
             StrokeKind::Inside,
         ));
         painter.add(RectShape::stroke(
@@ -113,6 +114,13 @@ pub fn paint_focus_stroke(painter: &Painter, rect: Rect, radius: f32, width: f32
             StrokeKind::Inside,
         ));
     }
+}
+
+/// The shade beside a focus ring, `t` of the way in: black at `dark` alpha on the dark looks (the ring is
+/// white), the paper at `light` alpha on the light one (the ring is dark ink).
+fn edge_shade(dark: f32, light: f32, t: f32) -> Color32 {
+    let k = crate::ui::theme::light_t();
+    scrim((dark + (light - dark) * k) * t)
 }
 
 /// 1 px hairline drawn inside the shape (SwiftUI `strokeBorder`).
