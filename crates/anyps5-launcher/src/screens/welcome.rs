@@ -511,7 +511,7 @@ pub fn show(
         let x = rect.min.x;
         let mut y = rect.min.y;
         let ink_x = |painter: &egui::Painter, galley: std::sync::Arc<egui::Galley>, y: f32| {
-            painter.galley(pos2(x, y), galley, Color32::WHITE);
+            painter.galley(pos2(x, y), galley, crate::ui::theme::color::text());
         };
         let h = overline.size().y;
         ink_x(&painter, overline, y);
@@ -555,11 +555,15 @@ pub fn show(
                     );
                     let tx = cx + CARD_PAD + ICON_BOX + space::M;
                     let title_h = card.title.size().y;
-                    painter.galley(pos2(tx, y + CARD_PAD), card.title, Color32::WHITE);
+                    painter.galley(
+                        pos2(tx, y + CARD_PAD),
+                        card.title,
+                        crate::ui::theme::color::text(),
+                    );
                     painter.galley(
                         pos2(tx, y + CARD_PAD + title_h + space::XS),
                         card.note,
-                        Color32::WHITE,
+                        crate::ui::theme::color::text(),
                     );
                 }
                 y += row_h + gap;

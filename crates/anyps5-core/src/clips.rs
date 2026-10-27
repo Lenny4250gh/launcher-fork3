@@ -340,10 +340,19 @@ impl WorkerEvent {
     }
 }
 
-/// The command line of the worker for a game: `--clips SECONDS`, the window the launcher found
-/// and the game's processes.
-pub fn worker_args(seconds: u32, window: Option<i64>, pids: &[u32], title: &str) -> Vec<String> {
+/// The command line of the worker for a game: `--clips SECONDS`, `--clips-dir` (the folder clips
+/// belong in; the worker refuses a save anywhere else), the window the launcher found and the
+/// game's processes.
+pub fn worker_args(
+    seconds: u32,
+    clips_dir: &Path,
+    window: Option<i64>,
+    pids: &[u32],
+    title: &str,
+) -> Vec<String> {
     let mut args = vec!["--clips".to_owned(), seconds.to_string()];
+    args.push("--clips-dir".into());
+    args.push(clips_dir.to_string_lossy().into_owned());
     if let Some(window) = window {
         args.push("--window".into());
         args.push(window.to_string());
@@ -357,6 +366,25 @@ pub fn worker_args(seconds: u32, window: Option<i64>, pids: &[u32], title: &str)
         args.push(title.to_owned());
     }
     args
+}
+
+/// The environment value that keeps the worker's hardware encoder off, or `None` when it should
+/// be left alone. Only on Linux, and only when the player's own environment does not already set
+/// `ANYPLAY_HWENC`, so testers can opt in with `ANYPLAY_HWENC=auto` (or any other value).
+///
+/// Why: the NVENC and VA-API probing in the share worker (network#99) has never run on a real
+/// GPU (board task T61), so the worker encodes in software for now. Remove this, and its two
+/// call sites, once T61 is green.
+pub(crate) fn hwenc_default(linux: bool, already_set: bool) -> Option<&'static str> {
+    (linux && !already_set).then_some("off")
+}
+
+/// Applies [`hwenc_default`] to a worker command (the share worker and the clips worker).
+pub(crate) fn apply_hwenc_default(command: &mut Command) {
+    let already = std::env::var_os("ANYPLAY_HWENC").is_some();
+    if let Some(value) = hwenc_default(cfg!(target_os = "linux"), already) {
+        command.env("ANYPLAY_HWENC", value);
+    }
 }
 
 /// Opens the page of System Settings where the player allows Screen Recording (macOS). The worker
@@ -387,14 +415,16 @@ impl Recorder {
     pub fn start(
         worker: &Path,
         seconds: u32,
+        clips_dir: &Path,
         window: Option<i64>,
         pids: &[u32],
         title: &str,
         wake: impl Fn() + Send + 'static,
     ) -> std::io::Result<Recorder> {
         let mut command = Command::new(worker);
+        apply_hwenc_default(&mut command);
         command
-            .args(worker_args(seconds, window, pids, title))
+            .args(worker_args(seconds, clips_dir, window, pids, title))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -457,6 +487,15 @@ impl Drop for Recorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hardware_encode_is_off_by_default_on_linux_only() {
+        assert_eq!(hwenc_default(true, false), Some("off"));
+        // A tester's own value wins, and other systems are left alone.
+        assert_eq!(hwenc_default(true, true), None);
+        assert_eq!(hwenc_default(false, false), None);
+        assert_eq!(hwenc_default(false, true), None);
+    }
 
     #[test]
     fn the_default_hotkey_is_alt_f12_and_round_trips() {
@@ -570,15 +609,37 @@ mod tests {
 
     #[test]
     fn the_worker_gets_the_window_and_the_game_s_processes() {
-        let args = worker_args(30, Some(77), &[10, 11], "My Game");
+        let folder = Path::new("/clips");
+        let args = worker_args(30, folder, Some(77), &[10, 11], "My Game");
         assert_eq!(
             args,
             [
-                "--clips", "30", "--window", "77", "--pid", "10", "--pid", "11", "--title",
+                "--clips",
+                "30",
+                "--clips-dir",
+                folder.to_str().unwrap(),
+                "--window",
+                "77",
+                "--pid",
+                "10",
+                "--pid",
+                "11",
+                "--title",
                 "My Game"
             ]
         );
-        assert_eq!(worker_args(15, None, &[], ""), ["--clips", "15"]);
+        assert_eq!(
+            worker_args(15, folder, None, &[], ""),
+            ["--clips", "15", "--clips-dir", folder.to_str().unwrap()]
+        );
+    }
+
+    #[test]
+    fn the_worker_always_gets_the_clips_folder_even_with_spaces() {
+        let folder = Path::new("/Users/a b/Pictures/Any Play");
+        let args = worker_args(60, folder, None, &[], "");
+        let at = args.iter().position(|a| a == "--clips-dir").expect("flag");
+        assert_eq!(args[at + 1], folder.to_string_lossy());
     }
 
     /// The real worker (`ANYPLAY_SHARE` names it) started the way the launcher starts it, for a
@@ -589,7 +650,9 @@ mod tests {
         let worker =
             std::path::PathBuf::from(std::env::var("ANYPLAY_SHARE").expect("ANYPLAY_SHARE"));
         // Process 4 is the system: it has no window the worker may take.
-        let mut recorder = Recorder::start(&worker, 15, None, &[4], "", || {}).expect("starts");
+        let mut recorder =
+            Recorder::start(&worker, 15, &std::env::temp_dir(), None, &[4], "", || {})
+                .expect("starts");
         let event = recorder
             .events
             .recv_timeout(std::time::Duration::from_secs(20))

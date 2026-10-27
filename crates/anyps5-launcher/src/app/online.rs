@@ -484,6 +484,7 @@ impl OnlineService {
                 model.toast(text.text(language), Icon::MICROPHONE_SLASH);
             }
             Notice::Screen(notice) => super::online_screen::notice(model, notice),
+            Notice::SharePlay(notice) => super::online_share::notice(model, notice),
             Notice::Restricted(restriction) => {
                 // The panel shows it as a row; the toast is for a player who looks elsewhere.
                 let text = restriction_text::toast(&restriction, None, None, language);
@@ -795,6 +796,14 @@ impl OnlineService {
                 | Purpose::ScreenLeave,
                 Err(failure),
             ) => super::online_screen::failed(model, &failure),
+            (
+                Purpose::ShareStart
+                | Purpose::ShareAnswer { .. }
+                | Purpose::ShareMode
+                | Purpose::ShareRequest
+                | Purpose::ShareStop,
+                Err(failure),
+            ) => super::online_share::failed(model, &failure),
             (Purpose::SetPrivacy, Err(failure)) => {
                 // The choice the panel shows goes back to what the cloud keeps.
                 model.online.send(Purpose::Privacy, Command::Privacy);

@@ -12,7 +12,7 @@
 
 use anyps5_core::online::api::AccountId;
 use anyps5_core::online::control::ScreenPhase;
-use anyps5_core::online::{ScreenCommand, VoiceProvider};
+use anyps5_core::online::{ScreenCommand, SharePlayCommand, VoiceProvider};
 use egui::containers::scroll_area::ScrollBarVisibility;
 use egui::{Align, Align2, Layout, Margin, Rect, ScrollArea, Sense, Ui, UiBuilder, pos2, vec2};
 
@@ -231,6 +231,8 @@ pub(super) enum CardAction {
     StopWatching,
     /// Look at the invitation.
     Invitation(String),
+    /// Share play: invite this member, answer an invitation, set or ask for a mode, end it.
+    Share(SharePlayCommand),
 }
 
 /// One thing the party can do together now, or a line about it.
@@ -656,6 +658,7 @@ fn cards(data: &OnlineData<'_>, may_take: bool) -> Vec<Card> {
             action,
         });
     }
+    cards.extend(super::share_play::cards(data));
     if let Some(watching) = screen.watching() {
         let name = super::screen::name_of(online, watching.account, language);
         let phase = match watching.phase {
@@ -789,6 +792,7 @@ impl OnlinePanel {
                         actions.push(OnlineAction::Screen(ScreenCommand::Leave));
                     }
                     CardAction::Invitation(id) => self.go(Page::PartyInvitation(id), data),
+                    CardAction::Share(command) => actions.push(OnlineAction::SharePlay(command)),
                 }
             }
             Stop::Invitation(n) => {

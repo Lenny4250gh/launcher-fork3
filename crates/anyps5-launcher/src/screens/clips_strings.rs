@@ -29,6 +29,8 @@ pub enum ClipsText {
     Saved,
     /// Toast: a save did not work.
     SaveFailed,
+    /// Toast: the worker refused a save outside the Captures folder (`outside_clips_folder`).
+    OutsideFolder,
     /// Toast: pressed before the first seconds were kept.
     NothingYet,
     /// Toast: Create was pressed in a game while Clips is off.
@@ -72,6 +74,9 @@ impl ClipsText {
             ClipsText::CountMany => "%@ clips",
             ClipsText::Saved => "Clip saved",
             ClipsText::SaveFailed => "The clip could not be saved.",
+            ClipsText::OutsideFolder => {
+                "The clip was not saved. Clips can only be saved in the Captures folder."
+            }
             ClipsText::NothingYet => "Nothing recorded yet. Try again in a moment.",
             ClipsText::IsOff => "Clips are off. Turn them on in Settings.",
             ClipsText::NoEncoder => "Clips need a graphics card with a video encoder.",
@@ -117,6 +122,9 @@ impl ClipsText {
             ClipsText::CountMany => "%@ klip",
             ClipsText::Saved => "Klip kaydedildi",
             ClipsText::SaveFailed => "Klip kaydedilemedi.",
+            ClipsText::OutsideFolder => {
+                "Klip kaydedilmedi. Klipler yalnızca Yakalamalar klasörüne kaydedilebilir."
+            }
             ClipsText::NothingYet => "Henüz bir şey kaydedilmedi. Biraz sonra tekrar dene.",
             ClipsText::IsOff => "Klipler kapalı. Ayarlar'dan aç.",
             ClipsText::NoEncoder => "Klipler için video kodlayıcısı olan bir ekran kartı gerekir.",
@@ -168,6 +176,9 @@ impl ClipsText {
             ClipsText::CountMany => "%@ Clips",
             ClipsText::Saved => "Clip gespeichert",
             ClipsText::SaveFailed => "Der Clip konnte nicht gespeichert werden.",
+            ClipsText::OutsideFolder => {
+                "Der Clip wurde nicht gespeichert. Clips lassen sich nur im Ordner „Aufnahmen“ speichern."
+            }
             ClipsText::NothingYet => "Noch nichts aufgenommen. Versuche es gleich noch einmal.",
             ClipsText::IsOff => "Clips sind aus. Schalte sie in den Einstellungen ein.",
             ClipsText::NoEncoder => "Clips brauchen eine Grafikkarte mit Video-Encoder.",
@@ -216,6 +227,9 @@ impl ClipsText {
             ClipsText::CountMany => "%@ clips",
             ClipsText::Saved => "Clip guardado",
             ClipsText::SaveFailed => "No se pudo guardar el clip.",
+            ClipsText::OutsideFolder => {
+                "No se guardó el clip. Los clips solo se pueden guardar en la carpeta de capturas."
+            }
             ClipsText::NothingYet => "Aún no se ha grabado nada. Inténtalo de nuevo en un momento.",
             ClipsText::IsOff => "Los clips están desactivados. Actívalos en Ajustes.",
             ClipsText::NoEncoder => {
@@ -268,6 +282,9 @@ impl ClipsText {
             ClipsText::CountMany => "%@ clips",
             ClipsText::Saved => "Clip enregistré",
             ClipsText::SaveFailed => "Impossible d’enregistrer le clip.",
+            ClipsText::OutsideFolder => {
+                "Le clip n’a pas été enregistré. Les clips ne peuvent l’être que dans le dossier des captures."
+            }
             ClipsText::NothingYet => "Rien n’est encore enregistré. Réessaie dans un instant.",
             ClipsText::IsOff => "Les clips sont désactivés. Active-les dans Paramètres.",
             ClipsText::NoEncoder => {
@@ -320,6 +337,9 @@ impl ClipsText {
             ClipsText::CountMany => "%@ clipes",
             ClipsText::Saved => "Clipe salvo",
             ClipsText::SaveFailed => "Não foi possível salvar o clipe.",
+            ClipsText::OutsideFolder => {
+                "O clipe não foi salvo. Os clipes só podem ser salvos na pasta de capturas."
+            }
             ClipsText::NothingYet => "Nada foi gravado ainda. Tente de novo daqui a pouco.",
             ClipsText::IsOff => "Os clipes estão desativados. Ative-os em Configurações.",
             ClipsText::NoEncoder => {
@@ -375,7 +395,7 @@ impl ClipsText {
         substitute(self.text(language), args)
     }
 
-    pub const ALL: [ClipsText; 28] = [
+    pub const ALL: [ClipsText; 29] = [
         ClipsText::Title,
         ClipsText::Detail,
         ClipsText::Off,
@@ -392,6 +412,7 @@ impl ClipsText {
         ClipsText::CountMany,
         ClipsText::Saved,
         ClipsText::SaveFailed,
+        ClipsText::OutsideFolder,
         ClipsText::NothingYet,
         ClipsText::IsOff,
         ClipsText::NoEncoder,

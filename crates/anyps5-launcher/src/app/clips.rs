@@ -5,6 +5,7 @@
 //! share worker in its clips mode (network spec/clips.md); it keeps the pictures, this module
 //! only asks it to save and says what came of it.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyps5_core::clips::{self, HotkeyListener, Recorder, WorkerEvent};
@@ -21,6 +22,8 @@ use crate::ui::sound::Cue;
 struct Active {
     game: GameId,
     seconds: u32,
+    /// The folder the worker was told clips belong in; it refuses a save elsewhere.
+    folder: PathBuf,
     recorder: Recorder,
     /// The worker reported `ready`: pictures are being kept.
     ready: bool,
@@ -55,6 +58,7 @@ impl ClipsService {
     pub fn frame(&mut self, model: &mut Model, pipeline: &dyn Pipeline) {
         let seconds = clips::length_or_off(model.prefs.clips_seconds);
         let running = model.running.clone();
+        let folder = model.prefs.screenshots_dir(&model.paths);
         let wanted = !self.simulated && clips::SUPPORTED && seconds > 0;
         let Some(game) = running.filter(|_| wanted) else {
             self.active = None;
@@ -65,7 +69,7 @@ impl ClipsService {
         if self
             .active
             .as_ref()
-            .is_some_and(|a| a.game != game || a.seconds != seconds)
+            .is_some_and(|a| a.game != game || a.seconds != seconds || a.folder != folder)
         {
             self.active = None;
         }
@@ -90,11 +94,13 @@ impl ClipsService {
             model.toast_failure(text);
             return;
         };
+        let folder = model.prefs.screenshots_dir(&model.paths);
         let title = model.game(game).map(|g| g.name.clone()).unwrap_or_default();
         let wake = self.wake.clone();
         match Recorder::start(
             &worker,
             seconds,
+            &folder,
             target.window,
             &target.pids,
             &title,
@@ -110,6 +116,7 @@ impl ClipsService {
                 self.active = Some(Active {
                     game: game.clone(),
                     seconds,
+                    folder,
                     recorder,
                     ready: false,
                 });
@@ -176,13 +183,9 @@ impl ClipsService {
                     }
                     WorkerEvent::SaveFailed { reason } => {
                         tracing::warn!("clips: not saved: {reason}");
-                        let text = if reason == "empty" {
-                            ClipsText::NothingYet
-                        } else {
-                            ClipsText::SaveFailed
-                        };
+                        let text = save_failed_text(&reason);
                         // "Nothing yet" is a notice and fades; a save that failed stays.
-                        if matches!(text, ClipsText::SaveFailed) {
+                        if !matches!(text, ClipsText::NothingYet) {
                             model.toast_failure(text.text(model.language()));
                         } else {
                             model.toast(text.text(model.language()), Icon::WARNING);
@@ -237,7 +240,7 @@ impl ClipsService {
             model.toast(ClipsText::NothingYet.text(language), Icon::WARNING);
             return;
         }
-        let folder = model.prefs.screenshots_dir(&model.paths);
+        let folder = active.folder.clone();
         let title = model
             .game(&active.game)
             .map(|g| g.name.clone())
@@ -247,6 +250,15 @@ impl ClipsService {
             tracing::warn!("clips: the save command failed: {error}");
             model.toast_failure(ClipsText::SaveFailed.text(language));
         }
+    }
+}
+
+/// What to tell the player when a save failed for `reason`.
+fn save_failed_text(reason: &str) -> ClipsText {
+    match reason {
+        "empty" => ClipsText::NothingYet,
+        "outside_clips_folder" => ClipsText::OutsideFolder,
+        _ => ClipsText::SaveFailed,
     }
 }
 
@@ -299,6 +311,16 @@ mod tests {
     #[test]
     fn a_cancelled_window_dialog_is_told_calmly_not_as_a_missing_window() {
         assert_eq!(reason_text("no_window", true), Some(ClipsText::NoPick));
+    }
+
+    #[test]
+    fn every_save_failure_has_its_words() {
+        assert_eq!(save_failed_text("empty"), ClipsText::NothingYet);
+        assert_eq!(
+            save_failed_text("outside_clips_folder"),
+            ClipsText::OutsideFolder
+        );
+        assert_eq!(save_failed_text("write: disk full"), ClipsText::SaveFailed);
     }
 
     #[test]
