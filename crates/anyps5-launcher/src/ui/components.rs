@@ -380,7 +380,7 @@ pub fn paint_control(
                 if destructive {
                     color::destructive_icon()
                 } else {
-                    Color32::WHITE
+                    crate::ui::theme::color::text()
                 },
             )
         }
@@ -809,7 +809,7 @@ impl Switch {
         }
         // White on the off track; on the accent the knob turns dark, because white on mint or gold
         // is 1.5:1 and the knob is what shows the state (DESIGN.md 3.10).
-        let knob_ink = mix(Color32::WHITE, color::on_primary(), t);
+        let knob_ink = mix(color::knob(), color::on_primary(), t);
         painter.circle_filled(centre, knob * 0.5, fade(knob_ink, a));
         response
     }
@@ -1469,7 +1469,7 @@ pub fn key_cap(ui: &mut Ui, label: &str, keyboard: bool, _focus: f32) -> Respons
     let height = size::KEYCAP_MIN.1.max(galley.size().y);
     let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
     if ui.is_rect_visible(rect) {
-        let ink = Color32::WHITE;
+        let ink = crate::ui::theme::color::text();
         let fill = fade(ink, if keyboard { 0.12 } else { 0.06 });
         painter.rect_filled(rect, corner(radius::KEYCAP), fill);
         paint_hairline(&painter, rect, radius::KEYCAP, fade(ink, 0.18));

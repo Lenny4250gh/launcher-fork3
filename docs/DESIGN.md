@@ -80,7 +80,7 @@ conversion, so they behave as display-referred (sRGB-encoded) values; hex = valu
 | Aurora (index 1) | (0.006, 0.030, 0.045) `#02080B` | (0.020, 0.300, 0.300) `#054D4D` | (0.560, 1.000, 0.780) `#8FFFC7` | Mint |
 | Sunset (index 2) | (0.060, 0.010, 0.040) `#0F030A` | (0.520, 0.110, 0.220) `#851C38` | (1.000, 0.640, 0.330) `#FFA354` | Coral |
 
-Theme titles: Cosmic / Aurora / Sunset (TR: Kozmik / Aurora / Gün Batımı). `Theme.gradient` (middle to deep, top to bottom) exists
+Theme titles: Cosmic / Aurora / Sunset (TR: Kozmik / Aurora / Gün Batımı). Ember, Tide and Daylight (4 to 6) are in 3.16. `Theme.gradient` (middle to deep, top to bottom) exists
 in the source but is not used anywhere; it is the documented fallback if the GPU shader is unavailable (use it for that).
 
 #### Accent colours (user setting, default per theme)
@@ -448,7 +448,7 @@ When paused the original stops redrawing; draw one frame when pausing so the pic
 struct Uniforms { deep: vec4<f32>, middle: vec4<f32>, bright: vec4<f32>, size: vec2<f32>, time: f32, theme: u32 }
 ```
 
-`deep/middle/bright` = palette rgb with a = 1; `size` = offscreen pixel size; `theme` 0 = Cosmic, 1 = Aurora, 2 = Sunset.
+`deep/middle/bright` = palette rgb with a = 1; `size` = offscreen pixel size; `theme` 0 = Cosmic, 1 = Aurora, 2 = Sunset (4 = Ember, 5 = Tide, 6 = Daylight, 3.16).
 
 ### 3.4 WGSL port (complete)
 
@@ -1151,6 +1151,71 @@ were missing:
 - **A scroll the page asks for on its first frame is asked again**: a scroll area has no content height before its first pass, so the
   settings rail repeats "bring the selected tab into view" for three frames after every change (a deep link to Toolkit used to stand
   half cut off). Gallery scenes: `notifications-long`, `toolkit`, `friends-activity-error`, `post-listing`.
+
+### 3.16 Ember, Tide and Daylight (0.3.5)
+
+Three more looks, each with a backdrop of its own (not a recolour), stored as themes 4, 5 and 6 (Game Colors stays 3). The
+Look page of the first start shows the six as two rows of three; Settings, Appearance, Theme steps through the seven (the six, then
+Game Colors).
+
+| Theme | deep | middle | bright | default accent | idea |
+|---|---|---|---|---|---|
+| Ember (4) | (0.030, 0.011, 0.006) | (0.250, 0.085, 0.030) | (1.000, 0.560, 0.170) | Gold | charcoal and copper, one low hearth, nothing pink |
+| Tide (5) | (0.004, 0.020, 0.036) | (0.010, 0.190, 0.300) | (0.480, 0.930, 1.000) | Violet | deep petrol water, light from the surface |
+| Daylight (6) | (0.640, 0.750, 0.890) | (0.830, 0.890, 0.950) | (1.000, 0.950, 0.820) | Blue | soft daylight, the one **light** look |
+
+Names (`screens/theme_strings.rs`): Ember / Köz / Glut / Brasa / Braise / Brasa; Tide / Gelgit / Gezeiten / Marea / Marée / Maré;
+Daylight / Gün Işığı / Tageslicht / Luz del Día / Plein Jour / Luz do Dia (EN / TR / DE / ES / FR / PT).
+
+**Motion.** All three repeat exactly every `LOOP` = 10 s (`background.wgsl`): each moving part is a sine of whole turns per loop, a
+light that lives one loop (born at one edge, faded out at the other, so the wrap is never seen), or a noise field carried round a
+circle. So a presentation can loop one period without a seam, and any clock value is a good still (Reduced Motion freezes the
+clock where it is). Speeds are the calm ones of the older looks: embers climb 0.55 to 1 screen height in 10 s, the caustic net
+moves at about 0.6 rad/s, the clouds of Daylight orbit by 0.3 noise cells. Pausing (window not focused, minimised, a game
+running), Reduced Motion and the see-through Mac window are the same as for the other backdrops (3.1). The newer looks add one pixel
+of noise (±0.5/255) before the 8-bit output, so the smooth gradients do not band.
+- **Ember:** charcoal above, copper below; one hearth glow (bright tone, 0.55) that breathes by 10 % once per loop; warm smoke from
+  two octaves of noise; 52 embers in three depths (30 small and slow, 16 mid, 6 large and soft), amber when young, deep red when old.
+- **Tide:** light water at the surface to deep below; a net of light threads (the caustic function after Dave Hoskins' public domain
+  "Tileable Water Caustic", five steps with whole-turn phases) strong near the surface and gone in the deep; two faint slanted
+  shafts; 17 plankton lights that sink slowly.
+- **Daylight:** cool sky high, warm horizon; the sun's bloom upper right (breathes by 6 %); luminous cloud and its soft shade
+  (two octaves of noise on a circle); two slanted bands of window light that drift to and fro; seven out-of-focus lights. No tone
+  map and a light vignette (7 %).
+
+**The light look.** Dark ink on a pale backdrop needs its own token set, and it is one switch, not a second set of pages.
+`theme::light_t()` (0 on the dark looks, 1 on Daylight, eased with the theme change over `Motion::Fade` by the backdrop, and 0 in
+the Mac see-through window where the backdrop is dark) turns the building blocks over:
+- `white(a)` is the ink `LIGHT_INK` (0.055, 0.075, 0.130) at the same alpha: every text, surface, hairline and ring token follows, so
+  rows, cards, the focus fill and hover steps go from a white veil to a dark one with the same steps (0.07 / 0.10 / 0.16 / 0.20 / 0.26).
+- Text ink lifts a third of the way toward full strength (`tx`): note 0.55 becomes 0.70, detail 0.78 becomes 0.85. Four levels
+  and the order of strength stay.
+- `scrim(a)` replaces `black(a)` wherever a layer calms a backdrop behind ink (the shades of Home, the artwork scrims, the
+  onboarding scrim, flat glass): `LIGHT_PAPER` (0.965, 0.960, 0.945) there. Shadows and the dark plate behind a picture's own white
+  glyph stay black. Glass panels are the backdrop veiled in paper at 1.1 times the black they replace (at most 0.94) instead of
+  darkened; High Contrast gets a paper plate.
+- The primary button is ink with a paper label (`on_primary`), the switch knob is the ink, the toast card is paper, the window
+  background is paper.
+- Status ink (error, destructive, warning, update) and the accents take deeper forms on the light look (`Accent::on_light`, the
+  `status` pairs, the trophy grades) so they reach 3:1 or 4.5:1 on a pale panel; a state is still never carried by colour alone.
+- Where a page wrote `Color32::WHITE` for ink it now asks `color::text()`; white remains on pictures, accent fills and dark chips.
+
+**Contrast.** `ui::contrast` measures Daylight like the others, with its ink and its own worst grounds: the deepest tone for the
+panels, a black picture (the worst under dark ink) in place of the white one, and the glass-window grounds with white ink, as the
+window is dark there. Every pair of every theme passes (the weakest on Daylight: focus ring 3.4:1 on its panel, a hint key 4.6:1
+in the glass window).
+
+**First start.** The Look page is two rows of three cards (312 × 120 dp), the name in a dark chip on the card (white ink, 0.55
+black: it reads on Daylight too); the focus grid has two rows of cards, then the three switches, then Continue; the focus starts on
+the row of the look that is on. `TALLEST` of the onboarding pages grows from 500 to 540 dp for it.
+
+**Gallery.** `--gallery=ember|tide|daylight` (also `bg4`, `bg5`, `bg6`) are the plain backdrops; the scenes `home-ember`,
+`home-tide` and `home-daylight` show Home over the backdrop alone (no artwork); `tools/gallery-sweep.sh` also renders
+`home-noartwork`, `library`, `settings` and `onboarding-look` with `--theme=<look>`, and `home-noartwork` with `--reduced` (the
+Reduced Motion stills), for each of the three. New preview flags: `--time=<seconds>` (the backdrop's clock),
+`--reduced`, and `--sequence=<count>@<fps>` with `--screenshot=dir/f_%04d.png` (one picture per frame, the clock stepping by 1/fps;
+the presentation videos are made from them with ffmpeg).
+
 
 ## 4. Materials and blur on the GPU
 

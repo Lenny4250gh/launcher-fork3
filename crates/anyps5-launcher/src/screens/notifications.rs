@@ -31,7 +31,7 @@ use crate::ui::input::{self, Command, InputEvent};
 use crate::ui::sound::Cue;
 use crate::ui::state_page::{self, StatePage};
 use crate::ui::text;
-use crate::ui::theme::{color, fade, pad, radius, size, space, ty};
+use crate::ui::theme::{color, pad, radius, size, space, ty};
 
 /// Room around the scrolling rows for the focused row's lift.
 const LIST_MARGIN: f32 = 8.0;
@@ -481,7 +481,7 @@ impl NotificationsScreen {
             pos2(rect.min.x + ROW_EDGE + DISC * 0.5, rect.center().y),
             vec2(DISC, DISC),
         );
-        painter.circle_filled(disc.center(), DISC * 0.5, fade(Color32::WHITE, 0.08));
+        painter.circle_filled(disc.center(), DISC * 0.5, color::surface_row());
         painter.text(
             disc.center(),
             Align2::CENTER_CENTER,

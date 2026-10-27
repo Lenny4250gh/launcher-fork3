@@ -107,6 +107,7 @@ pub mod side;
 pub mod start;
 pub mod steam_strings;
 pub mod strings;
+pub mod theme_strings;
 pub mod together;
 pub mod together_strings;
 pub mod toolkit_pin;

@@ -158,7 +158,7 @@ fn draw(ui: &mut Ui, data: &StartData<'_>, since: f64) -> bool {
         &painter,
         ty::SPLASH_TITLE,
         data.game_name,
-        Color32::WHITE,
+        crate::ui::theme::color::text(),
         title_w,
         2,
     );
@@ -201,7 +201,7 @@ fn draw(ui: &mut Ui, data: &StartData<'_>, since: f64) -> bool {
 
     // Name.
     let mut y = top + tile_side + COLUMN_GAP;
-    painter.galley(pos2(cx, y), title.clone(), Color32::WHITE);
+    painter.galley(pos2(cx, y), title.clone(), crate::ui::theme::color::text());
     y += title.size().y + COLUMN_GAP;
 
     // "Starting..." with the timer on the right, the sweep, the explanation.

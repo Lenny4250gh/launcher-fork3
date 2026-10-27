@@ -267,7 +267,7 @@ fn draw(ui: &mut Ui, data: &LogData<'_>, clicked: &mut Option<LogAction>) {
             Align2::LEFT_CENTER,
             ty::LOG_TITLE,
             &shown,
-            Color32::WHITE,
+            crate::ui::theme::color::text(),
         );
     }
     let mut buttons = ui.new_child(

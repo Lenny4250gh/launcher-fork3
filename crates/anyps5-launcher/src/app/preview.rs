@@ -32,7 +32,7 @@ use anyps5_core::online::api::{
     Account, AccountId, Activity, Friend, Presence, RunSummary, Verdict, VerdictCounts,
 };
 use anyps5_core::paths::{AppPaths, GameId};
-use anyps5_core::settings::{Preferences, Theme as CoreTheme};
+use anyps5_core::settings::Preferences;
 use anyps5_core::trophies::{Grade, Trophy, TrophySet};
 use egui::{ColorImage, Context, Ui};
 use image::{Rgba, RgbaImage};
@@ -266,6 +266,9 @@ impl Scene {
             "home-together" => Scene::HomeTogether,
             "home-theme1" => Scene::HomeTheme(1),
             "home-theme2" => Scene::HomeTheme(2),
+            "home-ember" => Scene::HomeTheme(4),
+            "home-tide" => Scene::HomeTheme(5),
+            "home-daylight" => Scene::HomeTheme(6),
             "home-noartwork" => Scene::HomeNoArtwork,
             "home-toolkit" => Scene::HomeToolkit,
             "home-toolkit-missing" => Scene::HomeToolkitMissing,
@@ -291,7 +294,7 @@ impl Scene {
         })
     }
 
-    pub const ALL_NAMES: [&'static str; 63] = [
+    pub const ALL_NAMES: [&'static str; 66] = [
         "onboarding-language",
         "onboarding-look",
         "onboarding-look-access",
@@ -343,6 +346,9 @@ impl Scene {
         "home-together",
         "home-theme1",
         "home-theme2",
+        "home-ember",
+        "home-tide",
+        "home-daylight",
         "home-noartwork",
         "home-toolkit",
         "home-toolkit-missing",
@@ -387,6 +393,13 @@ pub struct Options {
     /// `--hover=X,Y`: where the pointer rests, in dp (to screenshot a hover state).
     pub hover: Option<(f32, f32)>,
     pub frames: u32,
+    /// `--time=SECONDS`: where the backdrop's clock stands (a still of any moment of its motion).
+    pub time: Option<f32>,
+    /// `--reduced`: Reduced Motion on (a still frame of the backdrop, fades only).
+    pub reduced: bool,
+    /// `--sequence=COUNT@FPS`: with `--screenshot=dir/frame_%04d.png`, COUNT frames of the backdrop
+    /// at FPS from `--time`, one picture each (the presentation videos are made from them).
+    pub sequence: Option<(u32, f32)>,
     /// Commands fed to the app one after the other (`--script=right,select,wait60`).
     pub script: Vec<Step>,
     /// A real dump whose `icon0.png` and `pic0.png` replace the second game's generated art, for
@@ -465,6 +478,9 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
         intro: false,
         hover: None,
         frames: 100,
+        time: None,
+        reduced: false,
+        sequence: None,
         script: Vec::new(),
         real_art: std::env::var_os("ANYPS5_PREVIEW_REAL_ART").map(PathBuf::from),
         showcase: std::env::var_os("ANYPS5_PREVIEW_GAMES").map(PathBuf::from),
@@ -489,6 +505,14 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Option<Options> {
             if let Some((Ok(x), Ok(y))) = at.split_once(',').map(|(x, y)| (x.parse(), y.parse())) {
                 options.at = Some((x, y));
             }
+        } else if arg == "--reduced" {
+            options.reduced = true;
+        } else if let Some(t) = arg.strip_prefix("--time=") {
+            options.time = t.parse().ok();
+        } else if let Some(spec) = arg.strip_prefix("--sequence=") {
+            options.sequence = spec
+                .split_once('@')
+                .and_then(|(n, fps)| Some((n.parse().ok()?, fps.parse().ok()?)));
         } else if let Some(frames) = arg.strip_prefix("--frames=") {
             options.frames = frames.parse().unwrap_or(100);
         } else if let Some(script) = arg.strip_prefix("--script=") {
@@ -746,12 +770,10 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
         p.sounds = false;
         p.onboarded = !matches!(scene, Scene::Onboarding(_));
         if let Scene::HomeTheme(index) = scene {
-            p.theme = match index {
-                1 => CoreTheme::Aurora,
-                _ => CoreTheme::Sunset,
-            };
+            p.theme = crate::screens::convert::theme_to_core(Theme::from_index(index));
         }
-        p.game_artwork = scene != Scene::HomeNoArtwork;
+        // The three newer looks are shown by their own backdrop: no artwork over it.
+        p.game_artwork = scene != Scene::HomeNoArtwork && !matches!(scene, Scene::HomeTheme(4..));
         // The first start has an online step when there is a cloud to sign in to.
         if let Scene::Onboarding(ob) = scene {
             p.online_cloud = Some("https://anyplaynet.com".to_owned());
@@ -1353,6 +1375,9 @@ struct PreviewApp {
     options: Options,
     frames: u32,
     requested: bool,
+    /// Pictures of a `--sequence` written so far, and the one asked for.
+    sequence_done: Arc<std::sync::atomic::AtomicU32>,
+    sequence_asked: u32,
     script: std::collections::VecDeque<Step>,
     wait: u32,
 }
@@ -1371,14 +1396,14 @@ impl PreviewApp {
         crate::startup::mark("preview games made");
         let demo = options.scene.is_none();
         let theme = options.theme.unwrap_or(match options.scene {
-            Some(Scene::HomeTheme(1)) => Theme::Aurora,
-            Some(Scene::HomeTheme(_)) => Theme::Sunset,
+            Some(Scene::HomeTheme(index)) => Theme::from_index(index),
             _ => Theme::Cosmic,
         });
         let prefs = Preferences {
             language: crate::screens::convert::language_to_core(options.language()),
             onboarded: demo,
             theme: crate::screens::convert::theme_to_core(theme),
+            reduced_motion: options.reduced,
             // `--solid`: the Mac window as it is without the glass (screenshots).
             glass_window: !std::env::args().any(|a| a == "--solid"),
             ..Preferences::default()
@@ -1393,7 +1418,8 @@ impl PreviewApp {
         }
         shell.language = options.language();
         if !demo {
-            let clock = BackgroundClock::starting_at(f64::from(STILL_TIME_FULL));
+            let clock =
+                BackgroundClock::starting_at(f64::from(options.time.unwrap_or(STILL_TIME_FULL)));
             shell.backdrop = Backdrop::with_clock(theme, clock);
         }
         shell.sounds.enabled = demo;
@@ -1475,6 +1501,8 @@ impl PreviewApp {
             inner,
             frames: 0,
             requested: false,
+            sequence_done: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            sequence_asked: 0,
             script: options.script.iter().copied().collect(),
             wait: 0,
             options,
@@ -1483,6 +1511,48 @@ impl PreviewApp {
 }
 
 impl PreviewApp {
+    /// With `--sequence`: the number of the picture to take in this frame, once the page has
+    /// settled and the one before has been written. Sets the backdrop's clock for it.
+    fn next_sequence_frame(&mut self) -> Option<u32> {
+        let (count, fps) = self.options.sequence?;
+        if self.frames < self.options.frames {
+            return None;
+        }
+        let done = self.sequence_done.load(std::sync::atomic::Ordering::SeqCst);
+        if done != self.sequence_asked || done >= count {
+            return None;
+        }
+        let start = self.options.time.unwrap_or(STILL_TIME_FULL);
+        let backdrop = &mut self.inner.shell.backdrop;
+        backdrop.paused = true;
+        backdrop.set_seconds(f64::from(start) + f64::from(done) / f64::from(fps));
+        Some(done)
+    }
+
+    fn ask_sequence_frame(&mut self, ctx: &Context, k: u32) {
+        let (count, _) = self.options.sequence.unwrap_or((0, 0.0));
+        let Some(pattern) = self.options.screenshot.clone() else {
+            return;
+        };
+        let path = PathBuf::from(
+            pattern
+                .to_string_lossy()
+                .replace("%04d", &format!("{k:04}")),
+        );
+        self.sequence_asked = k + 1;
+        let done = self.sequence_done.clone();
+        let close = ctx.clone();
+        ctx.request_screenshot(move |image| {
+            if let Err(error) = save_png(&path, &image) {
+                eprintln!("screenshot failed: {error}");
+            }
+            if done.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1 >= count {
+                println!("{count} pictures written");
+                close.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        });
+    }
+
     /// Feeds the next scripted command, one every few frames.
     fn run_script(&mut self, ctx: &Context) {
         if self.wait > 0 {
@@ -1533,6 +1603,7 @@ impl eframe::App for PreviewApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
         }
         self.run_script(&ctx);
+        let sequence_frame = self.next_sequence_frame();
         self.inner.step(&ctx);
         // With `--pad` the pointer rests where `--hover` says, like a mouse nobody touches: the pad
         // stays the device in use (the injected move would hand it back) and the hover must light
@@ -1543,11 +1614,15 @@ impl eframe::App for PreviewApp {
         self.inner.paint(ui);
         self.inner.finish_frame(&ctx);
         self.frames += 1;
+        if let Some(k) = sequence_frame {
+            self.ask_sequence_frame(&ctx, k);
+        }
         // Scenes and screenshots draw every frame; the demo idles like the launcher does.
         if self.options.scene.is_some() || self.options.screenshot.is_some() {
             ctx.request_repaint();
         }
         if let Some(path) = self.options.screenshot.clone()
+            && self.options.sequence.is_none()
             && self.frames >= self.options.frames
             && !self.requested
         {
