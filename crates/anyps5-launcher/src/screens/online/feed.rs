@@ -672,6 +672,23 @@ fn show_card(
     // The words.
     let x = rect.min.x + text_x;
     let mut y = rect.min.y + PAD_Y;
+    // A cut handle or sentence is read in full while the pointer or the focus is on the card.
+    let mut cut_words = Vec::new();
+    if handle.elided {
+        cut_words.push(card.handle.as_str());
+    }
+    if sentence.elided {
+        cut_words.push(card.sentence.as_str());
+    }
+    crate::ui::reveal::full_text(
+        &ctx,
+        response.id,
+        rect,
+        &cut_words.join("\n"),
+        crate::ui::input::hovered(&ctx, &response)
+            || (card_focused && crate::ui::input::focus_visible(&ctx)),
+        !cut_words.is_empty(),
+    );
     let handle_height = handle.size().y;
     painter.galley(pos2(x, y), handle, fg);
     painter.galley(

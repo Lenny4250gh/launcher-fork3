@@ -1241,6 +1241,7 @@ A second pass over Friends, Messages, Party, Profile, Notifications and Sign In 
 - **A profile the cloud refuses for good** (not found, forbidden: deleted or blocked) is "No profile to show" with no Try Again (`ProfileEntry::gone`); scene `profile-gone`.
 - **A browser sign-in stopped in the browser** toasts "The sign-in was stopped in the browser. Start it again."; a page that cannot be opened toasts too.
 - A reply or edit bar is named "Cancel Reply: ..." / "Cancel Edit: ..."; a failed voice shows "Not working", not "Off"; the feed and profile use the ink levels and `ty::SENTENCE` instead of invented alphas and a 14 px sentence; the Back chip of Friends is `screens::back_button`; the rail bumps at its ends.
+- **Cut text can be read in full**: profile rows (game, trophy, activity) and feed cards use the chip of 3.13 for pointer and focus; the Friends and Profile headers (name, status, page title and note) show it under the pointer, since a header is no stop of the focus and its label already holds the whole text for a screen reader; a quoted message and the reply bar do the same on their bubble and bar. The thread's loading/empty/failed state is the shared state page. Party failures were traced: only the background read of the party is logged, every action toasts.
 - Notification history stays in the language of the day it was written (documented in 9.12); it is not re-translated.
 
 ## 4. Materials and blur on the GPU
