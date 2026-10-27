@@ -19,15 +19,15 @@ use crate::ui::input::InputEvent;
 pub enum QuitKind {
     /// A game is being unlocked (converted and installed), or waits for it.
     Unlocking,
+    /// A game is paused by hand (and maybe others run): closing loses its progress.
+    Paused,
     /// An unlocked copy is being removed.
     Removing,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuitAction {
-    /// Stop the unlocks, remember where they were and close.
-    Pause,
-    /// Cancel the unlocks and close.
+    /// Cancel the unlocks and close (the progress is lost).
     Cancel,
     /// Back to the launcher.
     Stay,
@@ -58,6 +58,17 @@ fn title(kind: QuitKind, language: Language) -> &'static str {
                 "Fechar durante a instalação?",
             ],
         ),
+        QuitKind::Paused => pick(
+            language,
+            [
+                "Close with a paused game?",
+                "Duraklatılmış oyunla kapatılsın mı?",
+                "Mit pausiertem Spiel schließen?",
+                "¿Cerrar con un juego en pausa?",
+                "Fermer avec un jeu en pause ?",
+                "Fechar com um jogo em pausa?",
+            ],
+        ),
         QuitKind::Removing => pick(
             language,
             [
@@ -77,12 +88,23 @@ fn ask(kind: QuitKind, language: Language) -> &'static str {
         QuitKind::Unlocking => pick(
             language,
             [
-                "A game is still being converted. If you pause and close, the progress cannot be kept: after reopening it is marked incomplete and starts again from the beginning.",
-                "Bir oyun hâlâ dönüştürülüyor. Duraklatıp kapatırsan ilerleme korunamaz: yeniden açınca yarım olarak görünür ve baştan başlar.",
-                "Ein Spiel wird noch umgewandelt. Wenn du pausierst und schließt, kann der Fortschritt nicht erhalten bleiben: Nach dem Neustart gilt es als unvollständig und beginnt von vorn.",
-                "Un juego aún se está convirtiendo. Si pausas y cierras, el progreso no se puede conservar: al reabrir aparece como incompleto y empieza desde el principio.",
-                "Un jeu est encore en cours de conversion. Si tu mets en pause et fermes, la progression ne peut pas être conservée : à la réouverture il est marqué incomplet et repart du début.",
-                "Um jogo ainda está sendo convertido. Se você pausar e fechar, o progresso não pode ser mantido: ao reabrir ele aparece como incompleto e recomeça do início.",
+                "A game is still being converted. If you close the launcher, it is cancelled and the progress is lost.",
+                "Bir oyun hâlâ dönüştürülüyor. Başlatıcıyı kapatırsan iptal edilir ve ilerleme kaybolur.",
+                "Ein Spiel wird noch umgewandelt. Wenn du den Launcher schließt, wird es abgebrochen und der Fortschritt geht verloren.",
+                "Un juego aún se está convirtiendo. Si cierras el launcher, se cancela y el progreso se pierde.",
+                "Un jeu est encore en cours de conversion. Si tu fermes le launcher, il est annulé et la progression est perdue.",
+                "Um jogo ainda está sendo convertido. Se você fechar o launcher, ele é cancelado e o progresso é perdido.",
+            ],
+        ),
+        QuitKind::Paused => pick(
+            language,
+            [
+                "A game is paused. Pause only works while the launcher is open: the progress cannot be saved, so if you close it the conversion is cancelled and starts again from the beginning.",
+                "Bir oyun duraklatıldı. Duraklatma yalnızca başlatıcı açıkken çalışır: ilerleme kaydedilemez, kapatırsan dönüştürme iptal edilir ve baştan başlar.",
+                "Ein Spiel ist pausiert. Pause funktioniert nur bei geöffnetem Launcher: Der Fortschritt kann nicht gespeichert werden. Wenn du schließt, wird die Umwandlung abgebrochen und beginnt von vorn.",
+                "Un juego está en pausa. La pausa solo funciona con el launcher abierto: el progreso no se puede guardar, así que si lo cierras la conversión se cancela y empieza desde el principio.",
+                "Un jeu est en pause. La pause ne fonctionne que lorsque le launcher est ouvert : la progression ne peut pas être enregistrée, donc si tu fermes, la conversion est annulée et repart du début.",
+                "Um jogo está em pausa. A pausa só funciona com o launcher aberto: o progresso não pode ser salvo, então se você fechar a conversão é cancelada e recomeça do início.",
             ],
         ),
         QuitKind::Removing => pick(
@@ -99,7 +121,7 @@ fn ask(kind: QuitKind, language: Language) -> &'static str {
     }
 }
 
-/// "Pause and quit" / "Cancel and quit" / "Go back".
+/// "Cancel and quit" / "Go back".
 #[derive(Default)]
 pub struct QuitPanel {
     side: SideState,
@@ -126,9 +148,7 @@ impl QuitPanel {
     fn handle(&mut self, change: &Change, actions: &mut Vec<QuitAction>) {
         if let Change::Run { row } = change {
             self.side.close();
-            actions.push(if *row == "pause" {
-                QuitAction::Pause
-            } else if *row == "cancel" {
+            actions.push(if *row == "cancel" {
                 QuitAction::Cancel
             } else {
                 QuitAction::Stay
@@ -150,22 +170,7 @@ impl QuitPanel {
             return actions;
         }
         let build = || match kind {
-            QuitKind::Unlocking => vec![
-                Row::command(
-                    "pause",
-                    pick(
-                        language,
-                        [
-                            "Pause and quit",
-                            "Duraklat ve çık",
-                            "Pausieren und beenden",
-                            "Pausar y salir",
-                            "Mettre en pause et quitter",
-                            "Pausar e sair",
-                        ],
-                    ),
-                )
-                .icon(Icon::HOURGLASS),
+            QuitKind::Unlocking | QuitKind::Paused => vec![
                 Row::command(
                     "cancel",
                     pick(

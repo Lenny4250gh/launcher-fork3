@@ -974,7 +974,6 @@ impl PanelHost {
         for action in self.quit.show(cx.shell, cx.ctx, &events, kind, language, accent) {
             let model = &mut *cx.model;
             match action {
-                QuitAction::Pause => model.quit_answer(true),
                 QuitAction::Cancel => model.quit_answer(false),
                 QuitAction::Stay => {
                     model.quit_ask = None;

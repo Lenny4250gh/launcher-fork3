@@ -1281,6 +1281,8 @@ impl Model {
         }
         let kind = if !self.uninstalling.is_empty() {
             crate::screens::quit::QuitKind::Removing
+        } else if !self.holding.is_empty() {
+            crate::screens::quit::QuitKind::Paused
         } else if !self.progress.is_empty() || !self.queue.is_empty() {
             crate::screens::quit::QuitKind::Unlocking
         } else {
