@@ -15,7 +15,7 @@ use crate::screens::rows::Change;
 use crate::ui::pad_info::Family;
 
 /// The most rows a step has.
-const MAX_ROWS: usize = 4;
+const MAX_ROWS: usize = 8;
 
 /// A step of the first start. Which of them a player meets is [`Model::onboarding_flow`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -157,10 +157,11 @@ impl Model {
     pub fn onboarding_layout(&self) -> Vec<Vec<Target>> {
         let primary = vec![Target::Primary];
         match self.onboarding.step {
-            Step::Language => vec![
-                (0..Language::ALL.len()).map(Target::Language).collect(),
-                primary,
-            ],
+            // One language to a row: a single column, then Continue.
+            Step::Language => (0..Language::ALL.len())
+                .map(|i| vec![Target::Language(i)])
+                .chain([primary])
+                .collect(),
             Step::Look => vec![
                 (0..Theme::ALL.len()).map(Target::Theme).collect(),
                 vec![
@@ -198,8 +199,13 @@ impl Model {
             .onboarding
             .row
             .unwrap_or(match self.onboarding.step {
+                // The list starts on the language in use, so a pad can try its neighbours at once.
+                Step::Language => Language::ALL
+                    .iter()
+                    .position(|l| *l == self.language())
+                    .unwrap_or(0),
                 // The choices come first here, so a pad can try them at once.
-                Step::Language | Step::Look | Step::Controller => 0,
+                Step::Look | Step::Controller => 0,
                 // The step's button is what a player came for.
                 _ => last,
             })
@@ -213,10 +219,6 @@ impl Model {
     /// Where the focus starts in a row of choices: on the one that is on now.
     fn starting_col(&self, row: usize) -> usize {
         match (self.onboarding.step, row) {
-            (Step::Language, 0) => Language::ALL
-                .iter()
-                .position(|l| *l == self.language())
-                .unwrap_or(0),
             (Step::Look, 0) => Theme::ALL
                 .iter()
                 .position(|t| *t == self.theme())
@@ -526,11 +528,14 @@ mod tests {
     #[test]
     fn language_and_theme_apply_while_the_focus_moves_and_select_goes_on() {
         let mut m = model(false);
-        // The cards are German, English, Turkish or whatever `Language::ALL` says: the focus
+        // The rows are the languages in `Language::ALL` order (by their own names): the focus
         // starts on the language in use.
         assert_eq!(m.onboarding_target(), Target::Language(1));
-        m.handle(Command::Left);
+        m.handle(Command::Up);
         assert_eq!(m.language(), Language::ALL[0]);
+        m.handle(Command::Down);
+        assert_eq!(m.language(), Language::ALL[1]);
+        m.handle(Command::Up);
         m.handle(Command::Select);
         assert_eq!(m.onboarding.step, Step::Look);
         let before = m.theme();
@@ -538,6 +543,39 @@ mod tests {
         assert_ne!(m.theme(), before);
         m.handle(Command::Select);
         assert_eq!(m.onboarding.step, Step::Games);
+    }
+
+    #[test]
+    fn the_language_list_is_one_column_that_starts_on_the_language_in_use() {
+        let mut m = model(false);
+        let layout = m.onboarding_layout();
+        assert_eq!(layout.len(), Language::ALL.len() + 1);
+        assert!(
+            layout.iter().all(|row| row.len() == 1),
+            "one target to a row"
+        );
+        assert_eq!(layout.last(), Some(&vec![Target::Primary]));
+        // English is on: the focus starts there, and Down walks the rest of the list to Continue.
+        assert_eq!(m.onboarding_target(), Target::Language(1));
+        for _ in 1..Language::ALL.len() - 1 {
+            m.handle(Command::Down);
+        }
+        assert_eq!(
+            m.onboarding_target(),
+            Target::Language(Language::ALL.len() - 1)
+        );
+        m.handle(Command::Down);
+        assert_eq!(m.onboarding_target(), Target::Primary);
+        m.handle(Command::Up);
+        assert_eq!(m.language(), Language::ALL[Language::ALL.len() - 1]);
+    }
+
+    #[test]
+    fn the_languages_are_listed_by_their_own_names() {
+        let names: Vec<&str> = Language::ALL.iter().map(|l| l.display_name()).collect();
+        let mut sorted = names.clone();
+        sorted.sort_by_key(|n| n.to_lowercase());
+        assert_eq!(names, sorted);
     }
 
     #[test]

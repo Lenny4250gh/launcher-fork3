@@ -584,7 +584,6 @@ pub mod radius {
     /// The large cards: language and theme cards, the trophy banner.
     pub const LARGE: f32 = 20.0;
     pub const TROPHY_ROW: f32 = CARD;
-    pub const LANGUAGE_CARD: f32 = LARGE;
     pub const THEME_CARD: f32 = LARGE;
     pub const BANNER: f32 = LARGE;
     pub const BOX: f32 = CARD;
@@ -691,7 +690,6 @@ pub mod size {
     pub const KEYCAP_GAP: f32 = 6.0;
     pub const TROPHY_ICON: f32 = 68.0;
     pub const TROPHY_HEADER_ICON: f32 = 112.0;
-    pub const LANGUAGE_CARD: (f32, f32) = (312.0, 176.0);
     pub const THEME_CARD_PREVIEW: (f32, f32) = (330.0, 186.0);
     pub const PROGRESS_HEIGHT: f32 = 4.0;
     pub const HERO_PROGRESS_WIDTH: f32 = 260.0;
@@ -924,7 +922,6 @@ pub mod ty {
     pub const TITLE: TextStyle = TextStyle::new(40.0, Weight::Light);
     pub const HEADING: TextStyle = TextStyle::new(34.0, Weight::Light);
     pub const PANEL_TITLE: TextStyle = TextStyle::new(28.0, Weight::Light);
-    pub const LANGUAGE_NAME: TextStyle = TextStyle::new(28.0, Weight::Medium);
     pub const ITEM_TITLE: TextStyle = TextStyle::new(22.0, Weight::SemiBold);
     pub const STATE_TITLE: TextStyle = TextStyle::new(22.0, Weight::Medium);
     pub const BUTTON: TextStyle = TextStyle::new(19.0, Weight::SemiBold);

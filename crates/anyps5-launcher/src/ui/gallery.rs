@@ -881,7 +881,7 @@ fn panels_page(ui: &mut Ui, shell: &Shell, art: &TextureHandle) {
         .show(&mut col);
     PanelRow::new(language.text(Key::About), RowControl::Info { value: None }).show(&mut col);
 
-    // Glass, toast, language cards, dots.
+    // Glass, toast, language rows, dots.
     let right = area.min.x + 800.0;
     let glass_rect = Rect::from_min_size(pos2(right, area.min.y + 390.0), vec2(300.0, 120.0));
     paint_glass(&ctx, &painter, glass_rect, GlassStyle::card());
@@ -897,11 +897,11 @@ fn panels_page(ui: &mut Ui, shell: &Shell, art: &TextureHandle) {
         pos2(right, area.min.y + 540.0),
         vec2(920.0, 160.0),
     )));
-    cards.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 26.0;
-        chrome::language_card(ui, Language::Turkish, false, false, true);
-        chrome::language_card(ui, Language::English, true, true, true);
-        chrome::language_card(ui, Language::German, false, false, true);
+    cards.vertical(|ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        crate::screens::onboarding::language_row(ui, Language::German, false, false, true);
+        crate::screens::onboarding::language_row(ui, Language::English, true, true, true);
+        crate::screens::onboarding::language_row(ui, Language::Turkish, false, false, true);
     });
     let mut dots = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(
         pos2(right, area.min.y + 740.0),
