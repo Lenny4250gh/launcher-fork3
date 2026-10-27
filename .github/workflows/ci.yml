@@ -183,7 +183,7 @@ jobs:
         if: env.FULL_CI == 'true'
         run: |
           mkdir -p shots
-          for scene in home controls friends home-uninstalling; do
+          for scene in home controls friends home-uninstalling home-unlocking home-paused home-cancelling home-quit home-quit-paused home-quit-removing; do
             xvfb-run -a -s "-screen 0 1920x1080x24" \
               target/release/anyplay-launcher --gallery=$scene --screenshot=shots/$scene.png
           done
