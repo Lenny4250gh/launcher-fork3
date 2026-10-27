@@ -1161,7 +1161,7 @@ Game Colors).
 |---|---|---|---|---|---|
 | Ember (4) | (0.030, 0.011, 0.006) | (0.250, 0.085, 0.030) | (1.000, 0.560, 0.170) | Gold | charcoal and copper, one low hearth, nothing pink |
 | Tide (5) | (0.004, 0.020, 0.036) | (0.010, 0.190, 0.300) | (0.480, 0.930, 1.000) | Violet | deep petrol water, light from the surface |
-| Daylight (6) | (0.640, 0.750, 0.890) | (0.830, 0.890, 0.950) | (1.000, 0.950, 0.820) | Blue | soft daylight, the one **light** look |
+| Daylight (6) | (0.480, 0.640, 0.910) | (0.790, 0.720, 0.950) | (1.000, 0.760, 0.580) | Blue | a morning sky, mid-light and coloured, the one **light** look |
 
 Names (`screens/theme_strings.rs`): Ember / Köz / Glut / Brasa / Braise / Brasa; Tide / Gelgit / Gezeiten / Marea / Marée / Maré;
 Daylight / Gün Işığı / Tageslicht / Luz del Día / Plein Jour / Luz do Dia (EN / TR / DE / ES / FR / PT).
@@ -1178,9 +1178,11 @@ of noise (±0.5/255) before the 8-bit output, so the smooth gradients do not ban
 - **Tide:** light water at the surface to deep below; a net of light threads (the caustic function after Dave Hoskins' public domain
   "Tileable Water Caustic", five steps with whole-turn phases) strong near the surface and gone in the deep; two faint slanted
   shafts; 17 plankton lights that sink slowly.
-- **Daylight:** cool sky high, warm horizon; the sun's bloom upper right (breathes by 6 %); luminous cloud and its soft shade
-  (two octaves of noise on a circle); two slanted bands of window light that drift to and fro; seven out-of-focus lights. No tone
-  map and a light vignette (7 %).
+- **Daylight:** a saturated morning sky, not a pale one: blue high up, lilac across the middle, apricot at the horizon (warmer on
+  the sun's side); the sun's bloom upper right is a gold that tints the sky instead of bleaching it (breathes by 6 %); cloud in
+  rose and cream and its soft shade in blue-violet (two octaves of noise on a circle); two slanted bands of peach window light that
+  drift to and fro; three layers of out-of-focus lights, each its own colour (apricot to rose, aqua to lilac, gold). No tone map and
+  a light vignette (12 %). Nothing on it is near white: the brightest tone is the apricot (0.66 relative luminance at most).
 
 **The light look.** Dark ink on a pale backdrop needs its own token set, and it is one switch, not a second set of pages.
 `theme::light_t()` (0 on the dark looks, 1 on Daylight, eased with the theme change over `Motion::Fade` by the backdrop, and 0 in
@@ -1191,8 +1193,8 @@ the Mac see-through window where the backdrop is dark) turns the building blocks
   and the order of strength stay.
 - `scrim(a)` replaces `black(a)` wherever a layer calms a backdrop behind ink (the shades of Home, the artwork scrims, the
   onboarding scrim, flat glass): `LIGHT_PAPER` (0.965, 0.960, 0.945) there. Shadows and the dark plate behind a picture's own white
-  glyph stay black. Glass panels are the backdrop veiled in paper at 1.1 times the black they replace (at most 0.94) instead of
-  darkened; High Contrast gets a paper plate.
+  glyph stay black. Glass panels are the backdrop veiled in paper at 1.1 times the black they replace (at most `LIGHT_VEIL_MAX` =
+  0.88, so the sky's colour shows through) instead of darkened; High Contrast gets a paper plate.
 - The primary button is ink with a paper label (`on_primary`), the switch knob is the ink, the toast card is paper, the window
   background is paper.
 - Status ink (error, destructive, warning, update) and the accents take deeper forms on the light look (`Accent::on_light`, the
@@ -1201,8 +1203,10 @@ the Mac see-through window where the backdrop is dark) turns the building blocks
 
 **Contrast.** `ui::contrast` measures Daylight like the others, with its ink and its own worst grounds: the deepest tone for the
 panels, a black picture (the worst under dark ink) in place of the white one, and the glass-window grounds with white ink, as the
-window is dark there. Every pair of every theme passes (the weakest on Daylight: focus ring 3.4:1 on its panel, a hint key 4.6:1
-in the glass window).
+window is dark there. Every pair of every theme passes (the weakest on Daylight: the Violet progress line 3.1:1 on the deep tone, an error 4.6:1 on a
+pressed row). Daylight also measures the trophy grades (earned and not, `Grade::dimmed`) and the dimmed trophy ink on its trophy rows;
+the focus ring is the lifted ink (`tx`), where the plain 0.5 ink gave 3.4:1. The dark looks' tables are as they were (their unearned
+grade labels are not measured; a follow-up).
 
 **First start.** The Look page is two rows of three cards (312 × 120 dp), the name in a dark chip on the card (white ink, 0.55
 black: it reads on Daylight too); the focus grid has two rows of cards, then the three switches, then Continue; the focus starts on
