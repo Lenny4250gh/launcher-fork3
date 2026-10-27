@@ -55,7 +55,7 @@ impl ClipsService {
     pub fn frame(&mut self, model: &mut Model, pipeline: &dyn Pipeline) {
         let seconds = clips::length_or_off(model.prefs.clips_seconds);
         let running = model.running.clone();
-        let wanted = !self.simulated && cfg!(windows) && seconds > 0;
+        let wanted = !self.simulated && clips::SUPPORTED && seconds > 0;
         let Some(game) = running.filter(|_| wanted) else {
             self.active = None;
             self.hotkey = None;
@@ -120,6 +120,11 @@ impl ClipsService {
 
     /// The hotkey follows the preference: registered while a game runs with Clips on.
     fn sync_hotkey(&mut self, model: &mut Model) {
+        // No global hotkey here (macOS): the Create button saves, and nothing is said about a key
+        // another program might hold.
+        if !clips::HOTKEY_AVAILABLE {
+            return;
+        }
         let wanted = clips::hotkey_or_default(model.prefs.clips_hotkey.as_deref());
         let wanted_text = wanted.to_string();
         if self
@@ -194,12 +199,15 @@ impl ClipsService {
     fn ended(&mut self, model: &mut Model, reason: &str) {
         let game = self.active.take().map(|a| a.game);
         tracing::info!("clips: the recorder ended: {reason}");
-        let text = match reason {
-            "no_encoder" => ClipsText::NoEncoder,
-            "no_window" => ClipsText::NoWindow,
-            "quit" => return,
-            _ => ClipsText::Stopped,
+        let Some(text) = reason_text(reason) else {
+            return;
         };
+        if reason == clips::NO_PERMISSION {
+            // Take the player to the switch; the toast says what to do there.
+            if let Some(worker) = super::online::share_worker_path(model) {
+                clips::open_screen_settings(&worker);
+            }
+        }
         self.gave_up = game;
         model.toast_failure(text.text(model.language()));
     }
@@ -210,7 +218,7 @@ impl ClipsService {
         let Some(active) = self.active.as_mut() else {
             // Create was pressed in a game with Clips off: say how to turn it on, once the game
             // really runs (the button also means other things before one does).
-            if model.running.is_some() && model.prefs.clips_seconds == 0 && cfg!(windows) {
+            if model.running.is_some() && model.prefs.clips_seconds == 0 && clips::SUPPORTED {
                 model.toast(ClipsText::IsOff.text(language), Icon::CAMERA);
             }
             return;
@@ -232,6 +240,17 @@ impl ClipsService {
     }
 }
 
+/// What to tell the player when the recorder ended for `reason`; none for a quit.
+fn reason_text(reason: &str) -> Option<ClipsText> {
+    match reason {
+        "no_encoder" => Some(ClipsText::NoEncoder),
+        "no_window" => Some(ClipsText::NoWindow),
+        r if r == clips::NO_PERMISSION => Some(ClipsText::NoPermission),
+        "quit" => None,
+        _ => Some(ClipsText::Stopped),
+    }
+}
+
 /// The local time as it goes into a file name: `2026-10-25 18-04-31`.
 fn stamp() -> String {
     let now = time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc());
@@ -242,6 +261,15 @@ fn stamp() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_reason_the_worker_gives_has_its_words() {
+        assert_eq!(reason_text("no_permission"), Some(ClipsText::NoPermission));
+        assert_eq!(reason_text("no_encoder"), Some(ClipsText::NoEncoder));
+        assert_eq!(reason_text("no_window"), Some(ClipsText::NoWindow));
+        assert_eq!(reason_text("quit"), None);
+        assert_eq!(reason_text("encoder_failed: x"), Some(ClipsText::Stopped));
+    }
 
     #[test]
     fn the_stamp_is_a_safe_file_name_part() {

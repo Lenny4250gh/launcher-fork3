@@ -36,6 +36,8 @@ pub enum ClipsText {
     /// Toast: the worker has no hardware video encoder.
     NoEncoder,
     NoWindow,
+    /// Toast (macOS): Screen Recording is not switched on for AnyPlay.
+    NoPermission,
     /// Toast: the recorder stopped in the middle of a game.
     Stopped,
     NoWorker,
@@ -66,6 +68,9 @@ impl ClipsText {
             ClipsText::IsOff => "Clips are off. Turn them on in Settings.",
             ClipsText::NoEncoder => "Clips need a graphics card with a video encoder.",
             ClipsText::NoWindow => "Clips could not find the game's window.",
+            ClipsText::NoPermission => {
+                "Clips need Screen Recording. Turn on AnyPlay in System Settings, then reopen AnyPlay."
+            }
             ClipsText::Stopped => "Clips stopped. Start the game again to record.",
             ClipsText::NoWorker => "Clips are not part of this build.",
             ClipsText::KeyTaken => "Another program uses %@. Choose another clip key.",
@@ -96,6 +101,9 @@ impl ClipsText {
             ClipsText::IsOff => "Klipler kapalı. Ayarlar'dan aç.",
             ClipsText::NoEncoder => "Klipler için video kodlayıcısı olan bir ekran kartı gerekir.",
             ClipsText::NoWindow => "Klipler oyunun penceresini bulamadı.",
+            ClipsText::NoPermission => {
+                "Klipler için Ekran Kaydı gerekir. Sistem Ayarları'nda AnyPlay'i aç, sonra AnyPlay'i yeniden aç."
+            }
             ClipsText::Stopped => "Klipler durdu. Kayıt için oyunu yeniden başlat.",
             ClipsText::NoWorker => "Klipler bu sürümde yok.",
             ClipsText::KeyTaken => {
@@ -132,6 +140,9 @@ impl ClipsText {
             ClipsText::IsOff => "Clips sind aus. Schalte sie in den Einstellungen ein.",
             ClipsText::NoEncoder => "Clips brauchen eine Grafikkarte mit Video-Encoder.",
             ClipsText::NoWindow => "Clips konnten das Spielfenster nicht finden.",
+            ClipsText::NoPermission => {
+                "Clips brauchen Bildschirmaufnahme. Schalte AnyPlay in den Systemeinstellungen ein und öffne AnyPlay dann neu."
+            }
             ClipsText::Stopped => "Clips wurden gestoppt. Starte das Spiel neu, um aufzunehmen.",
             ClipsText::NoWorker => "Clips sind nicht Teil dieser Version.",
             ClipsText::KeyTaken => "Ein anderes Programm nutzt %@. Wähle eine andere Clip-Taste.",
@@ -154,7 +165,7 @@ impl ClipsText {
         substitute(self.text(language), args)
     }
 
-    pub const ALL: [ClipsText; 23] = [
+    pub const ALL: [ClipsText; 24] = [
         ClipsText::Title,
         ClipsText::Detail,
         ClipsText::Off,
@@ -175,6 +186,7 @@ impl ClipsText {
         ClipsText::IsOff,
         ClipsText::NoEncoder,
         ClipsText::NoWindow,
+        ClipsText::NoPermission,
         ClipsText::Stopped,
         ClipsText::NoWorker,
         ClipsText::KeyTaken,
