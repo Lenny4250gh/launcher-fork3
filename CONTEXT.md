@@ -167,7 +167,7 @@ The keyboard and mouse layout of one game: the launcher's default layout with th
 _Avoid_: Keybinds, mapping (the file format is the engine's)
 
 **Community layout**:
-A key layout for one game that players share in `community/layouts/`, listed in the Controls panel as "Community: <name>".
+A key layout for one game that players share in `community/layouts/`, listed in the Controls panel as `Community: <name>`.
 _Avoid_: Config, custom binds, preset
 
 **Pad action**:
