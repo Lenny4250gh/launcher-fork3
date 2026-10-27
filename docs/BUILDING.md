@@ -19,7 +19,7 @@ The launcher builds against one network commit everywhere: the full SHA in [`net
 
 ## The net service
 
-For online play the launcher looks for the net service `anyplay-net` next to itself, or where `ANYPLAY_NET` points. Build it in the network repository with `cargo build --release -p anyplay-net`. Setting `ANYPLAY_NET_EMBED` to a built service at build time carries it inside the launcher, as releases do. A build names AnyPlay's own cloud with `ANYPLAY_DEFAULT_CLOUD`; without it the player enters a cloud.
+For online play the launcher looks for the net service `anyplay-net` next to itself, or where `ANYPLAY_NET` points. Build it in the network repository with `cargo build --release -p anyplay-net`. Setting `ANYPLAY_NET_EMBED` to a built service at build time carries it inside the launcher, as releases do. Share screen and clips use a second program, `anyplay-share` (`cargo build --release -p anyplay-share-worker` in the network repository), found the same way: next to the launcher, where `ANYPLAY_SHARE` points, or embedded with `ANYPLAY_SHARE_EMBED`. A build names AnyPlay's own cloud with `ANYPLAY_DEFAULT_CLOUD`; without it the player enters a cloud.
 
 ## Windows
 
