@@ -1232,7 +1232,7 @@ A second pass over Friends, Messages, Party, Profile, Notifications and Sign In 
 - **Notifications are said in words.** A new entry is announced as "New, ..."; the two buttons of a row carry the entry's text in their
   name, so a list of "Dismiss" is not a list of the same name.
 - **On the light look** the fade under the party page and the plate behind a voice mark use `theme::scrim`, not black.
-- A thread that did not load says how to get out ("Go back and open the conversation again.").
+- A thread that did not load is left to the next pass (a Try Again bar under it); this pass only fixes the states around it.
 
 ## 4. Materials and blur on the GPU
 
