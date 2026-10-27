@@ -422,6 +422,22 @@ pub enum OnlineLook {
     PartyNone,
     /// Every friend request on a page of its own.
     Requests,
+    /// Played With Recently: people in every standing (open, friend, request sent).
+    PlayedWith,
+    /// The list with recording switched off: the note says new people are not added.
+    PlayedWithOff,
+    /// Nobody on the list yet.
+    PlayedWithEmpty,
+    /// Recording off and nobody on the list: the switch stays to be turned on again.
+    PlayedWithOffEmpty,
+    /// The list has not answered yet.
+    PlayedWithLoading,
+    /// The first fetch failed.
+    PlayedWithFailed,
+    /// The question before the list is cleared.
+    PlayedWithClear,
+    /// Asked for while signed out: the sign-in page is what shows.
+    PlayedWithSignedOut,
     /// Add a Friend, nothing typed yet.
     AddFriend,
     /// A name came from a friend link: Send Request has the focus.
@@ -957,6 +973,14 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-rail" => ScreenPage::Online(OnlineLook::FriendsRail),
         "friends-party-none" => ScreenPage::Online(OnlineLook::PartyNone),
         "friends-requests" => ScreenPage::Online(OnlineLook::Requests),
+        "friends-played-with" => ScreenPage::Online(OnlineLook::PlayedWith),
+        "friends-played-with-off" => ScreenPage::Online(OnlineLook::PlayedWithOff),
+        "friends-played-with-empty" => ScreenPage::Online(OnlineLook::PlayedWithEmpty),
+        "friends-played-with-off-empty" => ScreenPage::Online(OnlineLook::PlayedWithOffEmpty),
+        "friends-played-with-loading" => ScreenPage::Online(OnlineLook::PlayedWithLoading),
+        "friends-played-with-failed" => ScreenPage::Online(OnlineLook::PlayedWithFailed),
+        "friends-played-with-clear" => ScreenPage::Online(OnlineLook::PlayedWithClear),
+        "friends-played-with-signed-out" => ScreenPage::Online(OnlineLook::PlayedWithSignedOut),
         "friends-add" => ScreenPage::Online(OnlineLook::AddFriend),
         "friends-add-link" => ScreenPage::Online(OnlineLook::AddFriendLink),
         "friends-add-sent" => ScreenPage::Online(OnlineLook::AddFriendSent),
@@ -1213,7 +1237,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
     state.status = Status::Running;
     state.cloud = Some(Cloud::Online);
     match look {
-        OnlineLook::Start => return state,
+        OnlineLook::Start | OnlineLook::PlayedWithSignedOut => return state,
         OnlineLook::Browser => {
             state.pending = Some(Pending::Browser);
             return state;
@@ -1325,6 +1349,7 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         state.invitations.clear();
     } else {
         sample_social(&mut state);
+        sample_played_with(&mut state, look);
     }
     if matches!(look, OnlineLook::FriendsLong | OnlineLook::PartyLong) {
         long_names(&mut state);
@@ -1676,6 +1701,45 @@ fn long_names(state: &mut anyps5_core::online::Online) {
                 member.account.handle = HANDLE.into();
             }
         }
+    }
+}
+
+/// The people of Played With Recently. Lumen is a friend, Ash has a request out, Nova is a friend
+/// the cloud says so of; the rest can be added. One has no title (a party).
+fn sample_played_with(state: &mut anyps5_core::online::Online, look: OnlineLook) {
+    use anyps5_core::online::api::{Account, AccountId, PlayedWith, PlayedWithList};
+    let at = |ago: u64| (SAMPLE_NOW as u64).saturating_sub(ago);
+    let person = |id: u64, handle: &str, ago: u64, title: Option<&str>, friend: bool| PlayedWith {
+        account: Account {
+            id: AccountId(id),
+            handle: handle.into(),
+        },
+        last: at(ago),
+        title_id: title.map(|_| "TEST00001".into()),
+        title: title.map(Into::into),
+        friend,
+    };
+    let people = vec![
+        person(20, "Pip", 40 * 60, Some(NAMES[1]), false),
+        person(2, "Lumen", 3 * 3600, Some(NAMES[4]), true),
+        person(7, "Ash", 86_400 + 600, Some(NAMES[1]), false),
+        person(22, "Orin", 3 * 86_400, None, false),
+        person(23, "Tess", 12 * 86_400, Some(NAMES[2]), false),
+    ];
+    let remember = !matches!(
+        look,
+        OnlineLook::PlayedWithOff | OnlineLook::PlayedWithOffEmpty
+    );
+    state.played_with.list = match look {
+        OnlineLook::PlayedWithLoading | OnlineLook::PlayedWithFailed => None,
+        OnlineLook::PlayedWithEmpty | OnlineLook::PlayedWithOffEmpty => Some(PlayedWithList {
+            remember,
+            people: Vec::new(),
+        }),
+        _ => Some(PlayedWithList { remember, people }),
+    };
+    if look == OnlineLook::PlayedWithFailed {
+        state.played_with.fetch_failed();
     }
 }
 
@@ -3282,6 +3346,19 @@ impl ScreenGallery {
                 self.friends.open(&data);
                 match look {
                     OnlineLook::Requests => self.friends.show_page(Page::Requests, &data),
+                    OnlineLook::PlayedWith
+                    | OnlineLook::PlayedWithOff
+                    | OnlineLook::PlayedWithEmpty
+                    | OnlineLook::PlayedWithOffEmpty
+                    | OnlineLook::PlayedWithLoading
+                    | OnlineLook::PlayedWithFailed
+                    | OnlineLook::PlayedWithSignedOut => {
+                        self.friends.show_page(Page::PlayedWith, &data);
+                    }
+                    OnlineLook::PlayedWithClear => self.friends.show_page(
+                        Page::Confirm(Ask::ClearPlayedWith, Box::new(Page::PlayedWith)),
+                        &data,
+                    ),
                     OnlineLook::AddFriend => self.friends.show_page(Page::AddFriend, &data),
                     OnlineLook::AddFriendSent => {
                         self.friends.show_page(Page::AddFriend, &data);

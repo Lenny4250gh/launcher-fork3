@@ -12,6 +12,7 @@ use crate::screens::online_confirm_strings::ConfirmText as C;
 use crate::screens::online_screen_strings::ScreenText as X;
 use crate::screens::online_social_strings::SocialText as S;
 use crate::screens::online_strings::OnlineText as T;
+use crate::screens::played_with_strings::PlayedWithText as PW;
 use crate::screens::rows::Row;
 use crate::ui::i18n::{Arg, Key};
 use crate::ui::icons::Icon;
@@ -36,6 +37,8 @@ pub enum Ask {
     },
     LeaveParty,
     RemoveMember(AccountId),
+    /// Empty Played With Recently.
+    ClearPlayedWith,
 }
 
 impl Ask {
@@ -54,6 +57,7 @@ impl Ask {
             } => !social.messages(conversation).iter().any(|m| m.seq == *seq),
             Ask::LeaveParty => social.party.is_none(),
             Ask::RemoveMember(id) => !social.in_party(*id) || !social.leads(OnlinePanel::me(data)),
+            Ask::ClearPlayedWith => online.played_with.count() == 0,
         }
     }
 }
@@ -153,6 +157,12 @@ impl OnlinePanel {
                 S::RemoveFromParty.text(language),
                 Icon::USER_MINUS,
             ),
+            Ask::ClearPlayedWith => (
+                PW::ClearTitle.text(language).to_owned(),
+                PW::ClearNote.text(language).to_owned(),
+                PW::ClearList.text(language),
+                Icon::TRASH,
+            ),
             Ask::LeaveConversation(_) => (
                 C::LeaveConversationTitle.text(language).to_owned(),
                 C::LeaveConversationNote.text(language).to_owned(),
@@ -186,20 +196,35 @@ impl OnlinePanel {
                 self.go(*from, data);
                 self.side.open_at(self.confirm_row);
             }
-            "confirmYes" => self.confirmed(ask, data, actions),
+            "confirmYes" => self.confirmed(ask, &from, data, actions),
             _ => return false,
         }
         true
     }
 
     /// Does what was asked and goes to the page that shows its result.
-    fn confirmed(&mut self, ask: Ask, data: &OnlineData<'_>, actions: &mut Vec<OnlineAction>) {
+    fn confirmed(
+        &mut self,
+        ask: Ask,
+        from: &Page,
+        data: &OnlineData<'_>,
+        actions: &mut Vec<OnlineAction>,
+    ) {
         let me = Self::me(data);
         let social = &data.online.social;
         let next = match ask {
             Ask::Block(id) => {
                 actions.push(OnlineAction::Block(id));
-                Page::Home
+                // Blocked from the list: back to the list, without them.
+                if *from == Page::PlayedWith {
+                    Page::PlayedWith
+                } else {
+                    Page::Home
+                }
+            }
+            Ask::ClearPlayedWith => {
+                actions.push(OnlineAction::PlayedWithClear);
+                Page::PlayedWith
             }
             Ask::RemoveFriend(id) => {
                 actions.push(OnlineAction::RemoveFriend(id));

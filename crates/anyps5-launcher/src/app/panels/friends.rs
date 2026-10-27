@@ -132,6 +132,9 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
         OnlineAction::TrophyAudience(trophies) => {
             online.set_trophy_audience(trophies);
         }
+        OnlineAction::PlayedWithRefresh(force) => online.request_played_with(force),
+        OnlineAction::PlayedWithClear => online.clear_played_with(),
+        OnlineAction::PlayedWithRemember(on) => online.set_remember_played_with(on),
         OnlineAction::FeedRefresh => online.request_feed(),
         OnlineAction::FeedOlder => online.request_older_feed(),
         OnlineAction::Profile(account) => online.request_profile(account),

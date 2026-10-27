@@ -87,6 +87,7 @@ pub mod online_voice_strings;
 pub mod overview;
 pub mod phone;
 pub mod phone_strings;
+pub mod played_with_strings;
 pub mod prepare_strings;
 pub mod profile;
 pub mod profile_strings;
