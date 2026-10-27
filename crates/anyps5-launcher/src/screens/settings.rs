@@ -22,6 +22,7 @@ use crate::app::ludus::LudusState;
 use crate::app::phone::PhoneState;
 use crate::screens::broadcast_strings::BroadcastText;
 use crate::screens::clips_strings::ClipsText;
+use crate::screens::console_strings::ConsoleText;
 use crate::screens::controllers_strings::Pads;
 use crate::screens::convert;
 use crate::screens::dialogs;
@@ -325,6 +326,8 @@ pub struct SettingsEnv<'a> {
     pub default_screenshots: &'a std::path::Path,
     /// Who answers `anyps5://` links on this PC.
     pub links: Handler,
+    /// Whether the launcher opens at sign-in, and on which system (the row's words).
+    pub autostart: AutostartEnv,
     /// Whether the built-in fonts have the Japanese, Chinese and Korean set.
     pub cjk_fonts: CjkState,
     /// What the phone server is doing.
@@ -339,6 +342,33 @@ pub struct SettingsEnv<'a> {
     /// The rows that exist on Windows only (clips, links from websites). The gallery shows them on
     /// every system.
     pub windows_rows: bool,
+}
+
+/// What the start at sign-in is, read from the system's own entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AutostartEnv {
+    pub state: AutostartState,
+    pub os: anyps5_core::platform::Os,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AutostartState {
+    /// This copy has nothing an entry could point at.
+    Unavailable,
+    Off,
+    On,
+    /// On, and the entry starts an AppImage file.
+    OnAppImage,
+}
+
+impl AutostartEnv {
+    pub fn available(self) -> bool {
+        self.state != AutostartState::Unavailable
+    }
+
+    pub fn on(self) -> bool {
+        matches!(self.state, AutostartState::On | AutostartState::OnAppImage)
+    }
 }
 
 /// What the unlocked games location row shows (docs/DESIGN.md 5.7).
@@ -430,6 +460,10 @@ pub enum SettingsAction {
     AddToSteam,
     /// "Add My Games to Steam": one entry for each game.
     AddGamesToSteam,
+    /// "Start with Windows" was switched: write or remove the sign-in entry.
+    SetAutostart(bool),
+    /// "Open in Full Screen" or Console Mode was switched on or off: fill the screen now, or leave it.
+    SetFullscreen(bool),
     /// "Controllers": the full-screen page of the pads.
     OpenControllers,
     /// A row of the Phone as Controller page asks for something.
@@ -461,6 +495,66 @@ fn path_text(path: &Option<PathBuf>) -> String {
     path.as_ref()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "—".to_owned())
+}
+
+/// Console Mode, and what it is made of. On, the mode owns the start at sign-in and the full screen
+/// and offers the way out; off, the two stand as rows of their own.
+fn console_rows(prefs: &Preferences, autostart: AutostartEnv, language: Language) -> Vec<Row> {
+    use anyps5_core::platform::Os;
+    let text = |t: ConsoleText| t.text(language);
+    let detail = if autostart.available() {
+        ConsoleText::ConsoleDetail
+    } else {
+        ConsoleText::ConsoleDetailManual
+    };
+    let mut rows = vec![
+        Row::toggle("console", text(ConsoleText::Console), prefs.console_mode)
+            .detail(text(detail))
+            .icon(Icon::GAME_CONTROLLER),
+    ];
+    if prefs.console_mode {
+        // The way out sits right under the switch, where the pad already is.
+        rows.push(
+            Row::command("desktop", text(ConsoleText::Desktop))
+                .detail(text(ConsoleText::DesktopDetail))
+                .icon(Icon::SIGN_OUT),
+        );
+        return rows;
+    }
+    if autostart.available() {
+        let title = if autostart.os == Os::Windows {
+            ConsoleText::AutostartWindows
+        } else {
+            ConsoleText::AutostartLogin
+        };
+        let detail = if autostart.state == AutostartState::OnAppImage {
+            ConsoleText::AutostartDetailImage
+        } else {
+            ConsoleText::AutostartDetail
+        };
+        rows.push(
+            Row::toggle("autostart", text(title), autostart.on())
+                .detail(text(detail))
+                .icon(Icon::PLAY)
+                .group_start(),
+        );
+    } else {
+        rows.push(Row::info(
+            "autostartNone",
+            text(ConsoleText::AutostartNone),
+            None,
+        ));
+    }
+    rows.push(
+        Row::toggle(
+            "fullscreen",
+            text(ConsoleText::Fullscreen),
+            prefs.fullscreen,
+        )
+        .detail(text(ConsoleText::FullscreenDetail))
+        .icon(Icon::FRAME_CORNERS),
+    );
+    rows
 }
 
 /// The rows of the unlocked games location: the place and its free space, a note that says what
@@ -743,14 +837,16 @@ pub fn build_categories(
     languages.push(Row::info("fontsHint", t(Key::FontsHint), None));
 
     // General: how the launcher starts and behaves around a game, then its updates.
-    let mut general = vec![
+    let mut general = console_rows(prefs, env.autostart, language);
+    general.extend([
         Row::toggle(
             "prepare",
             crate::screens::prepare_strings::setting(language),
             prefs.prepare_games,
         )
         .detail(crate::screens::prepare_strings::setting_detail(language))
-        .icon(Icon::ARROW_CIRCLE_DOWN),
+        .icon(Icon::ARROW_CIRCLE_DOWN)
+        .group_start(),
         Row::toggle("hide", t(Key::HideWhilePlaying), prefs.hide_while_playing)
             .icon(Icon::EYE_SLASH),
         Row::toggle(
@@ -767,7 +863,7 @@ pub fn build_categories(
         )
         .detail(InGameText::SettingDetail.text(language))
         .icon(Icon::GAME_CONTROLLER),
-    ];
+    ]);
     // The switch covers the launcher's own update and the toolkit's; "Check Now" for the toolkit
     // stays on the Toolkit page, next to the channel it depends on.
     general.push(
@@ -1699,6 +1795,16 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             on,
         } => prefs.discord_join_button = *on,
         Change::Toggle { row: "hide", on } => prefs.hide_while_playing = *on,
+        Change::Toggle { row: "console", on } => {
+            prefs.console_mode = *on;
+            if *on {
+                prefs.fullscreen = true;
+            }
+        }
+        Change::Toggle {
+            row: "fullscreen",
+            on,
+        } => prefs.fullscreen = *on,
         Change::Toggle { row: "prepare", on } => prefs.prepare_games = *on,
         Change::Toggle {
             row: "homeButton",
@@ -2245,6 +2351,23 @@ impl SettingsPanel {
                 }
             }
             Change::Toggle { row: "links", on } => out.actions.push(SettingsAction::SetLinks(*on)),
+            Change::Toggle { row: "console", on } => {
+                if *on {
+                    if env.autostart.available() && !env.autostart.on() {
+                        out.actions.push(SettingsAction::SetAutostart(true));
+                    }
+                    out.actions.push(SettingsAction::SetFullscreen(true));
+                }
+            }
+            Change::Toggle {
+                row: "autostart",
+                on,
+            } => out.actions.push(SettingsAction::SetAutostart(*on)),
+            Change::Toggle {
+                row: "fullscreen",
+                on,
+            } => out.actions.push(SettingsAction::SetFullscreen(*on)),
+            Change::Run { row: "desktop" } => out.actions.push(SettingsAction::Quit),
             Change::Run { row: "quit" } => out.actions.push(SettingsAction::Quit),
             _ => {}
         }
@@ -2481,6 +2604,10 @@ mod tests {
             launcher_notes: false,
             default_screenshots: std::path::Path::new("C:\\Users\\me\\Pictures\\AnyPS5"),
             links: Handler::Absent,
+            autostart: AutostartEnv {
+                state: AutostartState::Off,
+                os: anyps5_core::platform::Os::Windows,
+            },
             cjk_fonts: CjkState::Missing,
             phone: Box::leak(Box::new(PhoneState::default())),
             ludus: Box::leak(Box::new(LudusState::default())),
@@ -3385,6 +3512,41 @@ mod tests {
         assert_eq!(has(&e), (true, true));
         e.windows_rows = false;
         assert_eq!(has(&e), (false, false));
+    }
+
+    #[test]
+    fn console_mode_owns_the_start_and_the_full_screen_and_offers_the_way_out() {
+        let general = |prefs: &Preferences, state| {
+            let mut e = env(None, UpdateState::Unknown);
+            e.autostart.state = state;
+            let cats = build_categories(prefs, &e, Language::English);
+            ids(&cats, Category::General)
+        };
+        let mut prefs = Preferences::first_run();
+        assert!(!prefs.console_mode, "off until the player turns it on");
+        let off = general(&prefs, AutostartState::Off);
+        assert_eq!(&off[..3], &["console", "autostart", "fullscreen"]);
+        assert!(!off.contains(&"desktop"));
+        prefs.console_mode = true;
+        let on = general(&prefs, AutostartState::On);
+        assert_eq!(&on[..2], &["console", "desktop"]);
+        assert!(!on.contains(&"autostart") && !on.contains(&"fullscreen"));
+        // A copy with nothing to point an entry at says so instead of offering a dead switch.
+        prefs.console_mode = false;
+        let none = general(&prefs, AutostartState::Unavailable);
+        assert_eq!(&none[..3], &["console", "autostartNone", "fullscreen"]);
+    }
+
+    #[test]
+    fn turning_console_mode_on_fills_the_screen() {
+        let mut prefs = Preferences::first_run();
+        prefs.fullscreen = false;
+        let change = Change::Toggle {
+            row: "console",
+            on: true,
+        };
+        assert!(apply_value(&mut prefs, &change));
+        assert!(prefs.console_mode && prefs.fullscreen);
     }
 
     #[test]

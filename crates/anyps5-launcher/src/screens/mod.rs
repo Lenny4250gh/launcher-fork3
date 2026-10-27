@@ -35,6 +35,7 @@ pub mod captures_strings;
 pub mod clips_strings;
 pub mod compare;
 pub mod compare_strings;
+pub mod console_strings;
 pub mod controllers;
 pub mod controllers_strings;
 pub mod controls;

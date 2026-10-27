@@ -77,6 +77,18 @@ pub fn gaming_mode() -> bool {
     *GAMING.get_or_init(|| anyps5_core::platform::gaming_mode(&anyps5_core::platform::process_vars))
 }
 
+static CONSOLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Console Mode is on (the preference, read at start): the pad is the device in use from the
+/// first frame, as in Gaming Mode, until a key or the pointer says otherwise.
+pub fn set_console_mode(on: bool) {
+    CONSOLE.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn console_mode() -> bool {
+    CONSOLE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Whether text rows open the keyboard instead of the caret: the pad is the device in use, or the
 /// launcher runs in Gaming Mode. Set once a frame by the shell.
 pub fn set_wanted(ctx: &Context, wanted: bool) {

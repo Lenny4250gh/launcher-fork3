@@ -3033,6 +3033,14 @@ Everything the launcher tells the player on its own is kept in one list, so a to
 - **Friends' presence.** A friend who plays in a session of the network reads "Playing <game> · Online" (and "· You can join" when the session is open); a Play Together session reads "Playing <game> together · 2 of 4 players", with "· You can join" while the world has a free place (0.3.3). Presence and the games are the cloud's; no title is special.
 - **Discord.** "Show Game on Discord" stays off by default. A game Discord detects shows with Discord's own art; any other under AnyPlay's mark with the game's name on hover. The start time shows as elapsed time. No game art leaves the PC: an external picture would need a public source of art, which does not exist yet.
 
+### 9.13 Console Mode, start at sign-in and full screen
+
+Settings > General opens with three rows. **Console Mode** (`Preferences::console_mode`, off by default) makes the launcher the home of the PC: the window always fills the screen, the pad counts as the device in use from the first frame (as in Gaming Mode, 5.22) until a key or the pointer says otherwise, and switching it on also writes the sign-in entry and sets full screen. While it is on, the page shows only the switch and **Return to Desktop** right under it (it closes the launcher; the desktop is underneath, nothing is replaced), so the way out is one pad step from the gear on Home. Off, the two parts stand as rows of their own: **Start with Windows** (Linux and macOS: **Start at Login**) and **Open in Full Screen** (`Preferences::fullscreen`, which already defaults to on everywhere but the Mac). Turning Console Mode off leaves both as they were; the player switches them off by hand.
+
+The sign-in entry is `anyps5_core::autostart::Entry`, read from the system on every open of the page and never kept as a preference. Per user, no administrator rights: Windows `HKCU\...\Run` value `AnyPlayLauncher` (`"<exe>" --autostart`; switching on also lifts a Task Manager "disabled" mark), Linux `~/.config/autostart/anyplay-launcher.desktop`, macOS `~/Library/LaunchAgents/net.anyplay.launcher.plist`. An AppImage is started by its own file (`$APPIMAGE`), a Flatpak by `flatpak run net.anyplay.Launcher` through the real `~/.config/autostart` (the manifest already grants the home folder). A copy that runs from an AppImage mount without knowing the file has nothing to point at: the row is replaced by a note, and Console Mode says so. At every start an entry that points at another program is rewritten to this one. macOS uses a launchd agent, not `SMAppService`, which needs an app bundle and a signed build.
+
+Gallery scenes: `settings-console-off`, `settings-console-autostart`, `settings-console`, `settings-console-image`, `settings-console-unavailable`.
+
 ## 10. Asset list
 
 | Asset in the ARM repo | Reuse? | Notes |
