@@ -215,10 +215,14 @@ fn a_stranger_with_nothing_shared_is_private_and_a_friend_is_just_new() {
         Some(Press::AddFriend("Tarn".into())),
         "a private profile offers the request"
     );
-    assert!(matches!(
-        view(&inputs(&online, &local, None, 2)).body,
-        Body::Empty
-    ));
+    let friend = view(&inputs(&online, &local, None, 2));
+    let Body::Ready(friend) = friend.body else {
+        panic!("a friend with nothing shared keeps the header")
+    };
+    assert!(
+        friend.note.is_some(),
+        "one line in place of three empty sections"
+    );
 }
 
 #[test]

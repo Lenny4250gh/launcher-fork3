@@ -1094,7 +1094,10 @@ pub fn failure_text(failure: &Failure, language: Language) -> String {
     } else if code(ErrorCode::Full) {
         T::Full
     } else {
-        return T::Failed.format(language, &[Arg::Str(&failure.message)]);
+        // The service's own sentence is English and unplanned: it goes to the log, the player gets
+        // a line in their language.
+        tracing::warn!("a request failed: {}", failure.message);
+        T::Failed
     };
     text.text(language).to_owned()
 }
@@ -1698,7 +1701,7 @@ mod tests {
                 &Failure::new("limit", "Too many friends."),
                 Language::English
             ),
-            "That did not work: Too many friends."
+            "Could not do that. Try again in a moment."
         );
     }
 

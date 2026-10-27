@@ -230,8 +230,6 @@ pub enum Body {
     Failed,
     /// Another player shows nothing to someone who is not their friend.
     Private,
-    /// A friend with nothing to show yet.
-    Empty,
     Ready(Box<Ready>),
 }
 
@@ -421,7 +419,16 @@ pub fn view(inputs: &Inputs<'_>) -> ProfileView {
                 ..shell(Body::Private)
             };
         }
-        return shell(Body::Empty);
+        if relation == Relation::Requested {
+            // Asked and not answered yet: the profile is private, it is not empty.
+            return shell(Body::Private);
+        }
+        // A friend or a request to answer keeps the header: Accept and Friend Options live there,
+        // so the page is the ready one with a single line in place of three empty sections.
+        ready.games.empty = None;
+        ready.trophies.empty = None;
+        ready.activity.empty = None;
+        ready.note = Some(P::EmptyNote.format(language, &[Arg::Str(&handle)]));
     }
     shell(Body::Ready(Box::new(ready)))
 }

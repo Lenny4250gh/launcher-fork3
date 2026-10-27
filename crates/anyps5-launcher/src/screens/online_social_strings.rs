@@ -94,6 +94,8 @@ pub enum SocialText {
     PinsFull,
     QuickReplies,
     LoadFailed,
+    /// How to get out of a thread that did not load.
+    LoadFailedNote,
     ListFailed,
     /// `%@` = who.
     BlockedNote,
@@ -206,6 +208,7 @@ impl SocialText {
             SocialText::PinsFull => "Unpin another conversation first",
             SocialText::QuickReplies => "Quick Replies",
             SocialText::LoadFailed => "The messages could not be loaded.",
+            SocialText::LoadFailedNote => "Go back and open the conversation again.",
             SocialText::ListFailed => "Your conversations could not be loaded.",
             SocialText::BlockedNote => "You blocked %@. Unblock them to write.",
             SocialText::Keyboard => "On-Screen Keyboard",
@@ -311,6 +314,7 @@ impl SocialText {
             SocialText::PinsFull => "Önce başka bir sohbetin sabitlemesini kaldır",
             SocialText::QuickReplies => "Hızlı Yanıtlar",
             SocialText::LoadFailed => "Mesajlar yüklenemedi.",
+            SocialText::LoadFailedNote => "Geri dön ve sohbeti yeniden aç.",
             SocialText::ListFailed => "Sohbetlerin yüklenemedi.",
             SocialText::BlockedNote => "%@ kişisini engelledin. Yazmak için engeli kaldır.",
             SocialText::Keyboard => "Ekran Klavyesi",
@@ -418,6 +422,7 @@ impl SocialText {
             SocialText::PinsFull => "Löse zuerst eine andere Unterhaltung",
             SocialText::QuickReplies => "Schnellantworten",
             SocialText::LoadFailed => "Die Nachrichten konnten nicht geladen werden.",
+            SocialText::LoadFailedNote => "Gehe zurück und öffne die Unterhaltung noch einmal.",
             SocialText::ListFailed => "Deine Unterhaltungen konnten nicht geladen werden.",
             SocialText::BlockedNote => {
                 "Du hast %@ blockiert. Hebe die Blockierung auf, um zu schreiben."
@@ -528,6 +533,7 @@ impl SocialText {
             SocialText::PinsFull => "Desfija primero otra conversación",
             SocialText::QuickReplies => "Respuestas rápidas",
             SocialText::LoadFailed => "No se pudieron cargar los mensajes.",
+            SocialText::LoadFailedNote => "Vuelve atrás y abre la conversación de nuevo.",
             SocialText::ListFailed => "No se pudieron cargar tus conversaciones.",
             SocialText::BlockedNote => "Has bloqueado a %@. Desbloquéalo para escribir.",
             SocialText::Keyboard => "Teclado en pantalla",
@@ -638,6 +644,7 @@ impl SocialText {
             SocialText::PinsFull => "Désépingle d’abord une autre conversation",
             SocialText::QuickReplies => "Réponses rapides",
             SocialText::LoadFailed => "Impossible de charger les messages.",
+            SocialText::LoadFailedNote => "Reviens en arrière et rouvre la conversation.",
             SocialText::ListFailed => "Impossible de charger tes conversations.",
             SocialText::BlockedNote => "Tu as bloqué %@. Débloque cette personne pour écrire.",
             SocialText::Keyboard => "Clavier à l’écran",
@@ -746,6 +753,7 @@ impl SocialText {
             SocialText::PinsFull => "Desafixe outra conversa primeiro",
             SocialText::QuickReplies => "Respostas rápidas",
             SocialText::LoadFailed => "Não foi possível carregar as mensagens.",
+            SocialText::LoadFailedNote => "Volta atrás e abre a conversa outra vez.",
             SocialText::ListFailed => "Não foi possível carregar suas conversas.",
             SocialText::BlockedNote => "Você bloqueou %@. Desbloqueie para escrever.",
             SocialText::Keyboard => "Teclado na tela",

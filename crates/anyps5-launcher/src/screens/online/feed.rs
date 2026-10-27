@@ -716,7 +716,7 @@ pub(super) fn paint_state(ui: &mut Ui, icon: Icon, title: &str, note: Option<&st
         icon,
         title,
         note,
-        loading: false,
+        loading: icon == Icon::ARROWS_CLOCKWISE,
         action: None,
     };
     let width = ui.available_width();

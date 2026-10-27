@@ -23,6 +23,8 @@ pub enum NotifyText {
     Join,
     Open,
     Dismiss,
+    /// Said before the name of an entry the player has not seen (the dot says it to the eye).
+    EntryNew,
     /// The accessible name of an entry: `%@` = what it is, `%@` = the sentence, `%@` = when.
     EntryName,
     /// The empty state: what lives here and how it fills.
@@ -38,7 +40,7 @@ pub enum NotifyText {
 }
 
 impl NotifyText {
-    pub const ALL: [NotifyText; 23] = [
+    pub const ALL: [NotifyText; 24] = [
         NotifyText::Title,
         NotifyText::BellUnread,
         NotifyText::ClearAll,
@@ -53,6 +55,7 @@ impl NotifyText {
         NotifyText::Join,
         NotifyText::Open,
         NotifyText::Dismiss,
+        NotifyText::EntryNew,
         NotifyText::EntryName,
         NotifyText::EmptyTitle,
         NotifyText::EmptyBody,
@@ -80,6 +83,7 @@ impl NotifyText {
             NotifyText::Join => "Join",
             NotifyText::Open => "Open",
             NotifyText::Dismiss => "Dismiss",
+            NotifyText::EntryNew => "New",
             NotifyText::EntryName => "%@, %@, %@",
             NotifyText::EmptyTitle => "No notifications",
             NotifyText::EmptyBody => {
@@ -114,6 +118,7 @@ impl NotifyText {
             NotifyText::Join => "Katıl",
             NotifyText::Open => "Aç",
             NotifyText::Dismiss => "Kapat",
+            NotifyText::EntryNew => "Yeni",
             NotifyText::EntryName => "%@, %@, %@",
             NotifyText::EmptyTitle => "Bildirim yok",
             NotifyText::EmptyBody => {
@@ -147,6 +152,7 @@ impl NotifyText {
             NotifyText::Join => "Beitreten",
             NotifyText::Open => "Öffnen",
             NotifyText::Dismiss => "Schließen",
+            NotifyText::EntryNew => "Neu",
             NotifyText::EntryName => "%@, %@, %@",
             NotifyText::EmptyTitle => "Keine Benachrichtigungen",
             NotifyText::EmptyBody => {
@@ -185,6 +191,7 @@ impl NotifyText {
             NotifyText::Join => "Unirse",
             NotifyText::Open => "Abrir",
             NotifyText::Dismiss => "Descartar",
+            NotifyText::EntryNew => "Nuevo",
             NotifyText::EntryName => "%@, %@, %@",
             NotifyText::EmptyTitle => "Sin notificaciones",
             NotifyText::EmptyBody => {
@@ -224,6 +231,7 @@ impl NotifyText {
             NotifyText::Join => "Rejoindre",
             NotifyText::Open => "Ouvrir",
             NotifyText::Dismiss => "Ignorer",
+            NotifyText::EntryNew => "Nouveau",
             NotifyText::EntryName => "%@, %@, %@",
             NotifyText::EmptyTitle => "Aucune notification",
             NotifyText::EmptyBody => {
@@ -263,6 +271,7 @@ impl NotifyText {
             NotifyText::Join => "Entrar",
             NotifyText::Open => "Abrir",
             NotifyText::Dismiss => "Dispensar",
+            NotifyText::EntryNew => "Novo",
             NotifyText::EntryName => "%@, %@, %@",
             NotifyText::EmptyTitle => "Nenhuma notificação",
             NotifyText::EmptyBody => {

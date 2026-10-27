@@ -454,7 +454,7 @@ pub fn thread(data: &OnlineData<'_>, local: &Local, id: &str, shown: usize) -> O
             items.push(Item::State(
                 Icon::WARNING,
                 S::LoadFailed.text(language).to_owned(),
-                None,
+                Some(S::LoadFailedNote.text(language).to_owned()),
             ));
         } else if !loaded && conversation.last > 0 {
             items.push(Item::State(
