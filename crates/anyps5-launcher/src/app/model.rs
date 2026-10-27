@@ -224,6 +224,9 @@ pub fn ui_theme(theme: settings::Theme) -> Theme {
         settings::Theme::Aurora => Theme::Aurora,
         settings::Theme::Sunset => Theme::Sunset,
         settings::Theme::GameColors => Theme::GameColors,
+        settings::Theme::Ember => Theme::Ember,
+        settings::Theme::Tide => Theme::Tide,
+        settings::Theme::Daylight => Theme::Daylight,
     }
 }
 
@@ -233,6 +236,9 @@ pub fn core_theme(theme: Theme) -> settings::Theme {
         Theme::Aurora => settings::Theme::Aurora,
         Theme::Sunset => settings::Theme::Sunset,
         Theme::GameColors => settings::Theme::GameColors,
+        Theme::Ember => settings::Theme::Ember,
+        Theme::Tide => settings::Theme::Tide,
+        Theme::Daylight => settings::Theme::Daylight,
     }
 }
 

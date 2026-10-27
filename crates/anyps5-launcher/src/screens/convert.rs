@@ -62,6 +62,9 @@ pub fn theme(value: core::Theme) -> Theme {
         core::Theme::Aurora => Theme::Aurora,
         core::Theme::Sunset => Theme::Sunset,
         core::Theme::GameColors => Theme::GameColors,
+        core::Theme::Ember => Theme::Ember,
+        core::Theme::Tide => Theme::Tide,
+        core::Theme::Daylight => Theme::Daylight,
     }
 }
 
@@ -71,6 +74,9 @@ pub fn theme_to_core(value: Theme) -> core::Theme {
         Theme::Aurora => core::Theme::Aurora,
         Theme::Sunset => core::Theme::Sunset,
         Theme::GameColors => core::Theme::GameColors,
+        Theme::Ember => core::Theme::Ember,
+        Theme::Tide => core::Theme::Tide,
+        Theme::Daylight => core::Theme::Daylight,
     }
 }
 

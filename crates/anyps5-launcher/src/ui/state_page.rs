@@ -6,7 +6,6 @@
 
 use egui::{Align, Align2, Layout, Rect, Role, Sense, Ui, UiBuilder, WidgetInfo, pos2, vec2};
 
-use crate::ui::anim::AnimExt;
 use crate::ui::components::{ConsoleButton, paint_spinner_arc};
 use crate::ui::icons::Icon;
 use crate::ui::theme::{color, size, space, ty};
@@ -108,7 +107,7 @@ pub fn show(ui: &mut Ui, room: Rect, page: &StatePage<'_>, focused: bool) -> boo
 
     let disc = Rect::from_center_size(pos2(centre, top + DISC * 0.5), vec2(DISC, DISC));
     painter.circle_filled(disc.center(), DISC * 0.5, color::surface_row());
-    if page.loading && !ctx.reduced_motion() {
+    if page.loading {
         paint_spinner_arc(
             &painter,
             disc.center(),

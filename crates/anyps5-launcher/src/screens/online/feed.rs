@@ -663,7 +663,7 @@ fn show_card(
         0.0,
         size::FOCUS_RING,
     );
-    let fg = Color32::WHITE;
+    let fg = crate::ui::theme::color::text();
     let dim = |factor: f32| fade(fg, factor);
 
     // The avatar.

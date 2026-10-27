@@ -195,6 +195,155 @@ fn sunset(uv: vec2<f32>, aspect: f32, time: f32) -> vec3<f32> {
     return color;
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// Ember, Tide and Daylight (docs/DESIGN.md 3.16)
+//
+// These three repeat exactly every LOOP seconds: every moving part is either a sine of a whole
+// number of turns per loop, a particle with a life of one loop, or a noise field carried round a
+// circle. A presentation can therefore loop one period without a seam, and a reduced-motion
+// still is a frame like any other.
+// ---------------------------------------------------------------------------------------------
+
+const TAU: f32 = 6.2831853;
+const LOOP: f32 = 10.0;
+
+fn loop_phase(time: f32) -> f32 {
+    return fract(time / LOOP) * TAU;
+}
+
+// A point that goes once round a circle per loop: added to noise coordinates, the field drifts and
+// morphs and is back where it started when the loop ends.
+fn orbit(ph: f32, radius: f32, offset: f32) -> vec2<f32> {
+    return radius * vec2<f32>(cos(ph + offset), sin(ph + offset));
+}
+
+// Soft lights that live one loop each: born at one edge, drift across, fade out at the other, so
+// the wrap is never seen. They are sorted into `cols` columns over `spread` of the width, `slots` to a
+// column, so a pixel only asks the three columns it touches (a light's glow is narrower than one
+// column). `rise` is +1 upwards, -1 downwards; `sway` is the sideways swing in uv units.
+fn drift_layer(p: vec2<f32>, aspect: f32, ph: f32, cols: i32, slots: i32, seed: u32, size: f32,
+               travel: f32, sway: f32, rise: f32, spread: f32, young: vec3<f32>, old: vec3<f32>) -> vec3<f32> {
+    var light = vec3<f32>(0.0);
+    let span = spread * aspect;
+    let left = (0.5 - 0.5 * spread) * aspect;
+    let here = i32(floor((p.x - left) / span * f32(cols)));
+    for (var c = here - 1; c <= here + 1; c++) {
+        if (c < 0 || c >= cols) { continue; }
+        for (var k = 0; k < slots; k++) {
+            let id = vec2<f32>(f32(c), f32(k));
+            let r0 = hash(id, seed);
+            let r1 = hash(id, seed + 1u);
+            let r2 = hash(id, seed + 2u);
+            let r3 = hash(id, seed + 3u);
+            let life = fract(ph / TAU + r1);
+            let x = left + (f32(c) + 0.15 + 0.7 * r0) / f32(cols) * span
+                  + sway * sin(ph * (1.0 + floor(r2 * 2.0)) + r3 * TAU);
+            let y = select(-0.04 + life * travel + r3 * 0.08, 1.04 - life * travel - r3 * 0.08, rise > 0.0);
+            let appear = sstep(0.0, 0.14, life) * sstep(1.0, 0.5, life);
+            let flicker = 0.74 + 0.26 * sin(ph * (2.0 + floor(r1 * 3.0)) + r2 * TAU);
+            let radius = size * (0.55 + 0.9 * r2);
+            let d = p - vec2<f32>(x, y);
+            let d2 = dot(d, d);
+            let glow = exp(-d2 / (radius * radius)) + 0.16 * exp(-d2 / (radius * radius * 20.0));
+            light += mix(young, old, sstep(0.0, 1.0, life)) * glow * appear * flicker * (0.55 + 0.45 * r3);
+        }
+    }
+    return light;
+}
+
+fn ember(uv: vec2<f32>, aspect: f32, time: f32) -> vec3<f32> {
+    let ph = loop_phase(time);
+    let p = vec2<f32>(uv.x * aspect, uv.y);
+    // charcoal above, copper where the hearth is
+    var color = blend(u.deep.rgb * 1.2, u.middle.rgb * 0.85, sstep(0.0, 1.0, uv.y));
+    // the hearth: one low glow that breathes once per loop
+    let breath = 1.0 + 0.10 * sin(ph) + 0.05 * sin(2.0 * ph + 1.3);
+    let hearth = vec2<f32>((uv.x - 0.55) * aspect * 0.55, (uv.y - 1.08) * 1.5);
+    color += u.bright.rgb * 0.55 * breath * exp(-dot(hearth, hearth) * 4.2);
+    // heat haze: warm smoke the fire stirs, carried slowly round
+    let sp = vec2<f32>(p.x * 1.1, p.y * 1.5);
+    let smoke = 0.65 * noise(sp + orbit(ph, 0.35, 0.0)) + 0.35 * noise(sp * 2.3 + vec2<f32>(5.1, 1.7) + orbit(2.0 * ph, 0.12, 2.0));
+    color += u.middle.rgb * 0.9 * sstep(0.42, 0.85, smoke) * sstep(0.10, 0.95, uv.y);
+    // embers in three depths: many small slow ones far away, a few large soft ones near
+    let amber = vec3<f32>(1.0, 0.80, 0.48);
+    let deep_red = u.bright.rgb * vec3<f32>(0.95, 0.42, 0.22);
+    color += drift_layer(p, aspect, ph, 20, 2, 100u, 0.0050, 0.60, 0.010, 1.0, 1.0, amber, deep_red) * 0.85;
+    color += drift_layer(p, aspect, ph, 10, 2, 200u, 0.0085, 0.85, 0.022, 1.0, 0.95, amber, deep_red) * 1.25;
+    color += drift_layer(p, aspect, ph, 5, 1, 300u, 0.0190, 1.00, 0.040, 1.0, 0.80, amber, deep_red) * 0.75;
+    return color;
+}
+
+// One step of the caustic net: the point is pushed round by waves of the given phase and the net's
+// brightness is read where the waves focus (after "Tileable Water Caustic", Dave Hoskins, public domain).
+fn caustic_step(i: vec2<f32>, p: vec2<f32>, t: f32) -> vec3<f32> {
+    let inten = 0.0065;
+    let j = p + vec2<f32>(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x));
+    let c = 1.0 / length(vec2<f32>(p.x / (sin(j.x + t) / inten), p.y / (cos(j.y + t) / inten)));
+    return vec3<f32>(j, c);
+}
+
+fn caustic(p: vec2<f32>, ph: f32) -> f32 {
+    var i = p;
+    var c = 1.0;
+    var s = caustic_step(i, p, -2.0 * ph);
+    i = s.xy; c += s.z;
+    s = caustic_step(i, p, -1.0 * ph);
+    i = s.xy; c += s.z;
+    s = caustic_step(i, p, 1.0 * ph + 0.7);
+    i = s.xy; c += s.z;
+    s = caustic_step(i, p, 0.0 * ph + 2.1);
+    i = s.xy; c += s.z;
+    s = caustic_step(i, p, 1.0 * ph + 4.0);
+    c += s.z;
+    c = 1.17 - pow(c / 5.0, 1.4);
+    return pow(abs(c), 8.0);
+}
+
+fn tide(uv: vec2<f32>, aspect: f32, time: f32) -> vec3<f32> {
+    let ph = loop_phase(time);
+    let p = vec2<f32>(uv.x * aspect, uv.y);
+    // light water at the surface, the dark below
+    var color = blend(u.middle.rgb * 1.25 + u.bright.rgb * 0.05, u.deep.rgb, sstep(0.0, 1.0, uv.y));
+    // slow shafts from the surface, slanted, swaying a little
+    let slant = p.x * 0.9 - p.y * 0.4;
+    let shaft = 0.6 * noise(vec2<f32>(slant * 2.6, 0.5) + orbit(ph, 0.45, 0.0)) + 0.4 * noise(vec2<f32>(slant * 6.1, 2.5) + orbit(ph, 0.3, 3.0));
+    color += u.bright.rgb * 0.07 * sstep(0.50, 0.85, shaft) * exp(-uv.y * 1.8);
+    // caustics: the net of light that water throws, strong near the surface and gone in the deep
+    let net = pow(clamp(caustic(p * 4.0 - vec2<f32>(250.0), ph), 0.0, 1.6), 1.25);
+    color += u.bright.rgb * net * (0.07 + 0.80 * exp(-uv.y * 2.3));
+    // plankton: tiny cold lights that sink very slowly
+    let pale = u.bright.rgb * vec3<f32>(0.75, 1.0, 1.0);
+    color += drift_layer(p, aspect, ph, 14, 1, 400u, 0.0035, 0.45, 0.012, -1.0, 1.0, pale, pale * 0.6) * 0.45;
+    color += drift_layer(p, aspect, ph, 6, 1, 500u, 0.0120, 0.30, 0.020, -1.0, 1.0, pale, pale * 0.6) * 0.18;
+    return color;
+}
+
+fn daylight(uv: vec2<f32>, aspect: f32, time: f32) -> vec3<f32> {
+    let ph = loop_phase(time);
+    let p = vec2<f32>(uv.x * aspect, uv.y);
+    // a cool sky high up, warming toward the bottom
+    var color = blend(u.deep.rgb, u.middle.rgb, sstep(0.0, 0.75, uv.y));
+    color = blend(color, u.bright.rgb, 0.85 * sstep(0.5, 1.1, uv.y));
+    // the sun's bloom, upper right, breathing once per loop
+    let sun = vec2<f32>((uv.x - 0.80) * aspect, (uv.y + 0.06) * 1.25);
+    let breath = 1.0 + 0.06 * sin(ph);
+    color = mix(color, u.bright.rgb, clamp(0.85 * breath * exp(-2.6 * dot(sun, sun)), 0.0, 1.0));
+    // luminous cloud and its soft shade, carried round slowly
+    let cp = vec2<f32>(p.x * 1.05, p.y * 1.7);
+    let cloud = 0.62 * noise(cp + orbit(ph, 0.30, 0.0)) + 0.38 * noise(cp * 2.3 + vec2<f32>(7.3, 2.1) + orbit(ph, 0.16, 2.0));
+    color = mix(color, vec3<f32>(1.0, 0.985, 0.955), 0.62 * sstep(0.50, 0.80, cloud) * sstep(1.05, 0.0, uv.y));
+    color = mix(color, u.deep.rgb * 0.92, 0.45 * sstep(0.45, 0.20, cloud));
+    // a window of light across the room: two slanted bands that drift to and fro
+    let slant = p.x * 0.78 + p.y * 0.62;
+    let band = exp(-pow((slant - 1.15 - 0.10 * sin(ph)) * 3.2, 2.0)) + 0.6 * exp(-pow((slant - 1.65 - 0.08 * sin(ph + 2.0)) * 4.4, 2.0));
+    color = mix(color, u.bright.rgb, 0.55 * band);
+    // out-of-focus lights drifting up
+    let glint = vec3<f32>(1.0, 0.97, 0.90);
+    color = mix(color, glint, clamp(length(drift_layer(p, aspect, ph, 6, 1, 600u, 0.030, 0.32, 0.025, 1.0, 1.0, glint, glint)) * 0.30, 0.0, 0.5));
+    return color;
+}
+
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
     let aspect = u.size.x / max(u.size.y, 1.0);
@@ -203,9 +352,20 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     var color: vec3<f32>;
     if (u.theme == 1u) { color = aurora(uv, aspect, time); }
     else if (u.theme == 2u) { color = sunset(uv, aspect, time); }
+    else if (u.theme == 4u) { color = ember(uv, aspect, time); }
+    else if (u.theme == 5u) { color = tide(uv, aspect, time); }
+    else if (u.theme == 6u) { color = daylight(uv, aspect, time); }
     else { color = cosmic(uv, aspect, time); }
     let centered = (uv - vec2<f32>(0.5)) * vec2<f32>(aspect, 1.0);
-    color = color * (1.0 - 0.4 * sstep(0.35, 1.25, length(centered)));   // vignette
-    color = color / (vec3<f32>(1.0) + color * 0.35);                      // soft tone map
-    return vec4<f32>(color, 1.0);
+    let light_look = u.theme == 6u;
+    // vignette: the dark looks fall off at the edges, the light look only just
+    color = color * (1.0 - select(0.4, 0.07, light_look) * sstep(0.35, 1.25, length(centered)));
+    if (!light_look) {
+        color = color / (vec3<f32>(1.0) + color * 0.35);                  // soft tone map
+    }
+    if (u.theme >= 4u) {
+        // the newer looks are smooth gradients: a pixel of noise keeps the 8-bit steps from banding
+        color += (hash(in.pos.xy, 77u) - 0.5) / 255.0;
+    }
+    return vec4<f32>(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
 }

@@ -23,8 +23,8 @@ use crate::ui::anim::{AnimExt, Motion, lerp};
 use crate::ui::background::{Background, SLOT_CARDS, STILL_TIME_CARD};
 use crate::ui::chrome::{self, onboarding_dots};
 use crate::ui::components::{
-    ConsoleButton, HintSet, PadGlyph, Switch, hint_bar_set_size, interact, paint_focus_stroke,
-    paint_hairline, paint_surface,
+    ConsoleButton, HintSet, PadGlyph, Switch, corner, hint_bar_set_size, interact,
+    paint_focus_stroke, paint_hairline, paint_surface,
 };
 use crate::ui::glass::{GlassStyle, paint_glass};
 use crate::ui::i18n::{Arg, Key, Language};
@@ -48,11 +48,17 @@ const DOTS_TOP: f32 = 48.0;
 /// middle. Every page starts at the same height, so the title never moves between pages.
 const CENTRE_BIAS: f32 = 0.42;
 /// The tallest a page gets, title to last control, in dp (Look, in German).
-const TALLEST: f32 = 500.0;
+const TALLEST: f32 = 540.0;
 /// Neighbouring cards and chips of one group: the control gap.
 const CARD_GAP: f32 = space::M;
+/// The look cards in a row: six looks make two rows of three.
+pub const THEMES_PER_ROW: usize = 3;
 /// The theme cards, and the columns every row of the Look page shares.
-const THEME_CARD: (f32, f32) = (312.0, 176.0);
+const THEME_CARD: (f32, f32) = (312.0, 120.0);
+/// The name chip on a look card: its height, and the dark it lies on (white ink on it reads on
+/// the lightest look too).
+const NAME_CHIP_HEIGHT: f32 = 32.0;
+const NAME_CHIP_FILL: f32 = 0.55;
 /// What the controller page, the games page and the lists are wide: two theme columns and a gap.
 const LIST_WIDTH: f32 = 2.0 * THEME_CARD.0 + CARD_GAP;
 /// The consent sentence wraps wider than the list above it, so it does not end on a lone word.
@@ -62,6 +68,11 @@ const CONFIRM_CARD: (f32, f32) = (THEME_CARD.0, 104.0);
 const FACE_BUTTON: f32 = 44.0;
 const BUTTON_MIN: f32 = 180.0;
 const CHECK_GLYPH: f32 = 20.0;
+/// The language list: its width, a row's height (a comfortable target), and how far a row's lit
+/// shape stands in from the card, so the ring stays inside the card.
+const LANGUAGE_LIST_WIDTH: f32 = 420.0;
+const LANGUAGE_ROW: f32 = 56.0;
+const LANGUAGE_ROW_INSET: f32 = 6.0;
 const ACCENT_DOT: f32 = 6.0;
 const STATUS_GLYPH: f32 = 24.0;
 const ROW_GLYPH: f32 = 22.0;
@@ -243,7 +254,7 @@ fn note_pad(cx: &mut ScreenCx<'_>) {
 /// Black at the top, a little more at the bottom.
 fn paint_scrim(painter: &Painter, rect: Rect) {
     let mut mesh = Mesh::default();
-    let (from, to) = (black(SCRIM.0), black(SCRIM.1));
+    let (from, to) = (theme::scrim(SCRIM.0), theme::scrim(SCRIM.1));
     for (pos, colour) in [
         (rect.left_top(), from),
         (rect.right_top(), from),
@@ -628,31 +639,50 @@ fn list_card(
 fn language_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<Press>) {
     let painter = ui.painter().clone();
     let language = page.language;
-    let mut y = heading(
+    let y = heading(
         &painter,
         page,
         language.text(Key::Welcome),
         language.text(Key::WelcomeSubtitle),
         2,
     );
-    y = caption(&painter, page, y, language.text(Key::ChooseLanguage));
     let focus = cx.model.onboarding_target();
-    let (w, h) = size::LANGUAGE_CARD;
-    // Three cards a row, centred; six languages make two rows.
-    const PER_ROW: usize = 3;
-    let left = row_start(page, PER_ROW, w, CARD_GAP);
-    for (index, card_language) in Language::ALL.iter().enumerate() {
-        let (column, row) = (index % PER_ROW, index / PER_ROW);
-        let at = pos2(
-            left + column as f32 * (w + CARD_GAP),
-            y + row as f32 * (h + CARD_GAP),
+    // One calm list: the languages' own names, one to a row, in a single glass card.
+    let count = Language::ALL.len();
+    let card = Rect::from_min_size(
+        pos2(page.x - LANGUAGE_LIST_WIDTH * 0.5, y),
+        vec2(LANGUAGE_LIST_WIDTH, count as f32 * LANGUAGE_ROW),
+    );
+    paint_glass(
+        cx.ctx,
+        &painter,
+        card,
+        GlassStyle::glass(radius::CARD, GLASS_BLACK),
+    );
+    for (index, row_language) in Language::ALL.iter().enumerate() {
+        let rect = Rect::from_min_size(
+            pos2(card.min.x, card.min.y + index as f32 * LANGUAGE_ROW),
+            vec2(LANGUAGE_LIST_WIDTH, LANGUAGE_ROW),
         );
-        let rect = Rect::from_min_size(at, vec2(w, h));
+        // A hairline between two rows, left out beside the chosen one, whose lit shape is the edge.
+        let beside_chosen = *row_language == language
+            || index
+                .checked_sub(1)
+                .is_some_and(|i| Language::ALL[i] == language);
+        if index > 0 && !beside_chosen {
+            painter.line_segment(
+                [
+                    pos2(rect.min.x + space::XL, rect.min.y),
+                    pos2(rect.max.x - space::XL, rect.min.y),
+                ],
+                egui::Stroke::new(1.0, color::hairline_glass()),
+            );
+        }
         let response = place(ui, rect, |ui| {
-            chrome::language_card(
+            language_row(
                 ui,
-                *card_language,
-                *card_language == language,
+                *row_language,
+                *row_language == language,
                 focus == Target::Language(index),
                 page.active,
             )
@@ -661,6 +691,65 @@ fn language_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut V
             presses.push(Press::Tap(Target::Language(index)));
         }
     }
+}
+
+/// One row of the language list: the language's own name, and a check at the trailing edge when
+/// it is the chosen one. The chosen row is lit (`surface_hover`, name in full ink) so the choice
+/// never rests on tone alone; the ring shows only for keys and the pad.
+pub(crate) fn language_row(
+    ui: &mut Ui,
+    language: Language,
+    chosen: bool,
+    focused: bool,
+    active: bool,
+) -> egui::Response {
+    let name = language.display_name();
+    let it = interact(
+        ui,
+        vec2(LANGUAGE_LIST_WIDTH, LANGUAGE_ROW),
+        focused && active,
+        active,
+        None,
+    );
+    it.response
+        .widget_info(|| WidgetInfo::selected(Role::RadioButton, true, chosen, name));
+    let painter = ui.painter();
+    let t = ui.ctx().choice_t((it.response.id, "chosen"), chosen);
+    // Concentric with the card: its radius less the inset.
+    let lit = it.painted(painter).shrink(LANGUAGE_ROW_INSET);
+    paint_surface(
+        painter,
+        lit,
+        radius::CARD - LANGUAGE_ROW_INSET,
+        fade(color::surface_hover(), t),
+        it.hover,
+        it.focus,
+        it.press,
+        size::FOCUS_RING,
+    );
+    let ink = mix(color::text_label(), color::text(), t);
+    text::paint(
+        painter,
+        pos2(lit.min.x + space::XL - LANGUAGE_ROW_INSET, lit.center().y),
+        Align2::LEFT_CENTER,
+        ty::THEME_CARD_NAME,
+        name,
+        ink,
+    );
+    if t > 0.01 {
+        let icon = Icon::CHECK_CIRCLE;
+        painter.text(
+            pos2(
+                lit.max.x - space::XL + LANGUAGE_ROW_INSET - CHECK_GLYPH * 0.5,
+                lit.center().y,
+            ),
+            Align2::CENTER_CENTER,
+            icon.glyph(),
+            icon.font(CHECK_GLYPH, true),
+            fade(color::text(), t),
+        );
+    }
+    it.response
 }
 
 fn look_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<Press>) {
@@ -678,14 +767,18 @@ fn look_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<P
     let current = cx.model.theme();
     let opacity = painter.opacity();
     let (width, preview_height) = THEME_CARD;
-    let name_style = ty::THEME_CARD_NAME_FOCUSED;
-    let column_height = preview_height + space::M + name_style.line_height();
-    let left = row_start(page, Theme::ALL.len(), width, CARD_GAP);
+    let column_height = preview_height;
+    let per_row = THEMES_PER_ROW;
+    let left = row_start(page, per_row, width, CARD_GAP);
+    let rows = Theme::ALL.len().div_ceil(per_row);
+    let top = y;
     for (index, theme) in Theme::ALL.iter().enumerate() {
+        let (column_index, row_index) = (index % per_row, index / per_row);
+        let y = top + row_index as f32 * (column_height + CARD_GAP);
         let focused = page.active && focus == Target::Theme(index);
         let chosen = current == *theme;
         let t = ctx.choice_t(("onboarding-theme", index), chosen);
-        let resting_left = left + index as f32 * (width + CARD_GAP);
+        let resting_left = left + column_index as f32 * (width + CARD_GAP);
         let column = Rect::from_min_size(pos2(resting_left, y), vec2(width, column_height));
         let preview = Rect::from_min_size(column.min, vec2(width, preview_height));
         let card_radius = radius::THEME_CARD;
@@ -706,25 +799,43 @@ fn look_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<P
             ctx.request_repaint();
         }
 
-        let name_y = y + preview_height + space::M + name_style.line_height() * 0.5;
+        // The name sits on the card in a dark chip, so it reads on the bright looks too.
         let style = if chosen {
             ty::THEME_CARD_NAME_FOCUSED
         } else {
             ty::THEME_CARD_NAME
         };
-        let ink = fade(color::text(), lerp(UNCHOSEN, 1.0, t));
+        let shown = lerp(UNCHOSEN, 1.0, t) * opacity;
+        let title = theme.title(language);
+        let name_width = text::width(&painter, style, title);
+        let chip = Rect::from_min_size(
+            pos2(
+                preview.min.x + space::M,
+                preview.max.y - space::M - NAME_CHIP_HEIGHT,
+            ),
+            vec2(
+                space::M + name_width + space::M + 2.0 * ACCENT_DOT + space::M,
+                NAME_CHIP_HEIGHT,
+            ),
+        );
+        painter.rect_filled(
+            chip,
+            corner(NAME_CHIP_HEIGHT * 0.5),
+            fade(black(NAME_CHIP_FILL), shown),
+        );
+        let name_y = chip.center().y;
         let name = text::paint(
             &painter,
-            pos2(resting_left, name_y),
+            pos2(chip.min.x + space::M, name_y),
             Align2::LEFT_CENTER,
             style,
-            theme.title(language),
-            ink,
+            title,
+            fade(egui::Color32::WHITE, shown),
         );
         painter.circle_filled(
             pos2(name.max.x + space::M + ACCENT_DOT, name_y),
             ACCENT_DOT,
-            fade(theme.default_accent().color(), lerp(UNCHOSEN, 1.0, t)),
+            fade(theme.default_accent().color(), shown),
         );
         // The check sits on the card, like the language cards', over a dark disc so it reads on
         // the bright themes too.
@@ -740,7 +851,7 @@ fn look_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<P
                 Align2::CENTER_CENTER,
                 icon.glyph(),
                 icon.font(CHECK_GLYPH, true),
-                fade(color::text(), t),
+                fade(egui::Color32::WHITE, t),
             );
         }
 
@@ -761,7 +872,7 @@ fn look_step(ui: &mut Ui, cx: &mut ScreenCx<'_>, page: Page, presses: &mut Vec<P
             }
         }
     }
-    y += column_height + space::XXL;
+    y = top + rows as f32 * column_height + (rows - 1) as f32 * CARD_GAP + space::XXL;
 
     // Three switches under the cards, in the same columns.
     y = caption(&painter, page, y, OT::Accessibility.text(language));
