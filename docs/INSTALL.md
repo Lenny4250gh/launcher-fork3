@@ -26,14 +26,21 @@ Releases up to v0.1.3 were made under the old name and call their files `AnyPS5-
 
 - `AnyPlay-Launcher-<version>-linux-x86_64.tar.gz` holds the executable, a `.desktop` file and the icon. Unpack it anywhere; copy the `.desktop` file to `~/.local/share/applications` and the icon to `~/.local/share/icons` for a menu entry. Coming from AnyPS5 Launcher: replace `anyps5-launcher.desktop` and `anyps5-launcher.png` with the new files and pin the launcher again.
 
-- `AnyPlay-Launcher-<version>-x86_64.flatpak`: a Flatpak bundle (app ID `net.anyplay.Launcher`). Install and start it with:
+- `AnyPlay-Launcher-<version>-x86_64.flatpak`: a Flatpak bundle (app ID `com.anyplaynet.Launcher`). Install and start it with:
 
   ```sh
   flatpak install --user AnyPlay-Launcher-*-x86_64.flatpak
-  flatpak run net.anyplay.Launcher
+  flatpak run com.anyplaynet.Launcher
   ```
 
   It needs the Freedesktop runtime 26.08 from Flathub. The permissions it asks for, and why, are in [packaging/flatpak/README.md](../packaging/flatpak/README.md). Flatpak updates the launcher; see [Updates](#updates).
+
+  Bundles up to 0.3.3 had the app ID `net.anyplay.Launcher`. To keep your settings, remove that one and move its folder before the first start of the new one:
+
+  ```sh
+  flatpak uninstall --user net.anyplay.Launcher
+  mv ~/.var/app/net.anyplay.Launcher ~/.var/app/com.anyplaynet.Launcher
+  ```
 
 The AppImage updates itself. The tar.gz does not: download a new version from the releases page. Starting a game with the network bridge is untested on Linux.
 

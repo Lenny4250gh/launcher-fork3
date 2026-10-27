@@ -2160,7 +2160,7 @@ Not verified on hardware: a DualSense or DualShock over USB and Bluetooth throug
 
 *Linked copies across drives.* When the unlocked copy lives on another drive than the dump, hard links are impossible. The unlock then makes a symbolic link to each unchanged file of the dump instead of copying it, when the system lets the launcher create symbolic links (Linux: always; Windows: Developer Mode or an elevated launcher; probed once in the space check with a file that is removed again). Without that, files are copied as before. Only the dump's files are linked this way, never the toolkit's. The dump is only read: removing a copy removes the links, the read-only flags of a linked file are never touched, and the finished copy replaces the old one through the same swap as before. The log says how many files were linked, symbolically linked and copied. The space check counts a symbolically linked dump like a hard-linked one.
 
-*Flatpak.* `packaging/flatpak/` holds the manifest of `net.anyplay.Launcher` (freedesktop runtime, network, display, audio, all devices for pads, home for the games). The release workflow builds the `.flatpak` bundle as an extra asset; a failure of that job never blocks a release.
+*Flatpak.* `packaging/flatpak/` holds the manifest of `com.anyplaynet.Launcher` (freedesktop runtime, network, display, audio, all devices for pads, home for the games). The release workflow builds the `.flatpak` bundle as an extra asset; a failure of that job never blocks a release.
 
 ## 7. Sounds and media
 

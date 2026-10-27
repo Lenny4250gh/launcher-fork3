@@ -15,7 +15,7 @@ out=$(mkdir -p "${4:?output folder}" && realpath "$4")
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/packaging/flatpak"
-app=net.anyplay.Launcher
+app=com.anyplaynet.Launcher
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
