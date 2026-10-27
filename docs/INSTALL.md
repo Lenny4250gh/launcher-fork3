@@ -79,3 +79,25 @@ How updates are signed and checked: [How it works](HOW-IT-WORKS.md#self-update) 
 ## Where your data lives
 
 Settings live in `%APPDATA%\AnyPS5` and the toolkit, logs and caches in `%LOCALAPPDATA%\AnyPS5`. On Linux they are in `~/.config/anyps5` and `~/.local/share/anyps5`, or where `XDG_CONFIG_HOME` and `XDG_DATA_HOME` point. On macOS they are in `~/Library/Application Support/AnyPlay Launcher`. Uninstalling leaves them in place. The Windows and Linux folders keep the old name on purpose, so an upgrade finds your data.
+
+## Logs and reports
+
+When something goes wrong, you may need the launcher's logs or a generated report. The `Logs` folder sits inside your data folder:
+
+- **Windows:** `%LOCALAPPDATA%\AnyPS5\Logs`
+- **Linux:** `~/.local/share/anyps5/Logs` (or `$XDG_DATA_HOME/anyps5/Logs`)
+- **macOS:** `~/Library/Application Support/AnyPlay Launcher/Logs`
+
+The main files and folders inside `Logs` are:
+
+- `launcher.log`: The launcher's own log, including startup checks and panics.
+- `launcher.log.1`: The log from the previous run of the launcher.
+- `<TITLEID>.log`: One game's console output (e.g. `CUSA00123.log`); only the last start is kept.
+- `network.log`: The AnyPlay net service log.
+- `Reports/`: Diagnostic reports generated with **Make a Report** (see [docs/DESIGN.md](DESIGN.md)).
+
+### What is safe to share
+
+- **Safe to attach:** `launcher.log`, `network.log` and reports from `Reports/` are safe to attach to an issue after reading them.
+- **Review before sharing:** A game's log (`<TITLEID>.log`) can hold the game's own output; cut it down to the lines and errors that matter.
+- **Never share:** Never attach game files, decrypted dumps, saves, firmware or encryption keys.
