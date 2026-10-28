@@ -179,6 +179,10 @@ pub enum Scene {
     /// The Notification Center with a message longer than two lines: the sentence is cut and the
     /// chip reads it whole once the focus has rested on the entry.
     NotificationsLong,
+    /// The Notification Center with a share play invitation on top of the older entries.
+    NotificationsShare,
+    /// An empty library with a share play invitation waiting: the bell carries the badge.
+    HomeEmptyShare,
     /// Signed in, the session just ended: the question "How did it run?" below the facts.
     HomeAsk,
     /// Signed in, enough players reported: the Runs fact.
@@ -281,6 +285,8 @@ impl Scene {
             "notifications" => Scene::Notifications,
             "notifications-empty" => Scene::NotificationsEmpty,
             "notifications-long" => Scene::NotificationsLong,
+            "notifications-share" => Scene::NotificationsShare,
+            "home-empty-share" => Scene::HomeEmptyShare,
             "home-ask" => Scene::HomeAsk,
             "home-runs" => Scene::HomeRuns,
             "home-friends-playing" => Scene::HomeFriendsPlaying,
@@ -315,7 +321,7 @@ impl Scene {
         })
     }
 
-    pub const ALL_NAMES: [&'static str; 67] = [
+    pub const ALL_NAMES: [&'static str; 69] = [
         "onboarding-language",
         "onboarding-look",
         "onboarding-look-access",
@@ -362,6 +368,8 @@ impl Scene {
         "notifications",
         "notifications-empty",
         "notifications-long",
+        "notifications-share",
+        "home-empty-share",
         "home-ask",
         "home-runs",
         "home-friends-playing",
@@ -829,7 +837,7 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
 
     let with_games = !matches!(
         scene,
-        Scene::HomeEmpty | Scene::HomeScanning | Scene::HomeNoFolder
+        Scene::HomeEmpty | Scene::HomeEmptyShare | Scene::HomeScanning | Scene::HomeNoFolder
     ) && !matches!(scene, Scene::Onboarding(ob) if ob.no_games());
     if matches!(scene, Scene::HomeNoFolder) {
         m.edit_prefs(|p| p.games_folder = None);
@@ -839,6 +847,9 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
         Scene::HomeScanning | Scene::Onboarding(Ob::GamesScanning)
     );
     if !with_games {
+        if matches!(scene, Scene::HomeEmptyShare) {
+            share_invitation_sample(m);
+        }
         return;
     }
 
@@ -1100,6 +1111,11 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
             );
             m.switch_overlay(crate::app::overlay::Overlay::Notifications);
         }
+        Scene::NotificationsShare => {
+            notify_sample(m, &ids[at(1)], 2);
+            share_invitation_sample(m);
+            m.switch_overlay(crate::app::overlay::Overlay::Notifications);
+        }
         Scene::HomeMessages => {
             use anyps5_core::online::api::{
                 Account, AccountId, Conversation, ConversationKind, Conversations,
@@ -1268,6 +1284,37 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
 /// Signs the preview in as Mira, the cloud answering.
 /// The newest `count` of six made-up notifications, each with something to do: a request that
 /// waits, a Play Together invitation, a message, a trophy, an update and a missed call.
+/// Lumen invites the player to share play: the invitation waits and its entry is unread.
+fn share_invitation_sample(m: &mut crate::app::model::Model) {
+    use anyps5_core::notifications::{Act, Kind};
+    use anyps5_core::online::api::{Account, AccountId, ShareInvitation, ShareMode};
+    use anyps5_core::online::control::Event;
+    use anyps5_core::online::{Line, Output};
+    sign_in(m);
+    m.online
+        .apply(Line::Output(Output::Event(Event::ShareInvitation {
+            invitation: ShareInvitation {
+                id: "share-1".into(),
+                from: Account {
+                    id: AccountId(4),
+                    handle: "Lumen".into(),
+                },
+                share: "s1".into(),
+                title_id: "PPSA00001".into(),
+                title: "Astro Bot".into(),
+                mode: ShareMode::Watch,
+                expires: 0,
+            },
+        })));
+    let now = u64::try_from(crate::app::clock::unix_seconds()).unwrap_or(0);
+    m.notes.push(
+        Kind::Invitation,
+        "Lumen invites you to share play".to_owned(),
+        Act::JoinShare("share-1".into()),
+        now,
+    );
+}
+
 fn notify_sample(m: &mut crate::app::model::Model, game: &GameId, count: usize) {
     use anyps5_core::notifications::{Act, Kind};
     use anyps5_core::online::api::{Account, AccountId, Invitation, Request, SessionKind};

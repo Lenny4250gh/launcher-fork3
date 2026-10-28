@@ -321,3 +321,17 @@ fn a_stalled_picture_is_said_in_words() {
         Some("The picture has stopped")
     );
 }
+
+#[test]
+fn an_invitation_shows_on_home_even_before_the_player_is_in_a_party() {
+    let mut online = online();
+    online.social.apply_party(None);
+    invite(&mut online, "i1", ShareMode::Watch);
+    let mut rows = Vec::new();
+    home_row(&data(&online), &mut rows);
+    assert_eq!(ids(&rows), ["sharePlay"]);
+    assert_eq!(
+        rows[0].detail.as_deref(),
+        Some("Lumen invites you to watch Astro Bot")
+    );
+}

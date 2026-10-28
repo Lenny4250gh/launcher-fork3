@@ -26,7 +26,7 @@ mod compare;
 mod friends;
 mod hub;
 pub(crate) mod lfg;
-mod notifications;
+pub(crate) mod notifications;
 mod profile;
 
 use std::collections::HashMap;
