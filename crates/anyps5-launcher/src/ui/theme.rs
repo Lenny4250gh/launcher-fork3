@@ -94,8 +94,8 @@ pub fn scrim(alpha: f32) -> Color32 {
     )
 }
 
-/// The ink for text or a glyph on `bg` (opaque): white, or the dark `on_primary` when that reads
-/// better. Whichever is better reaches 4.49:1 at worst, on any colour.
+/// The ink for text or a glyph on `bg` (opaque): the look's light ink (white, paper on Daylight), or
+/// the dark `on_primary` when that reads better. Whichever is better reaches 4.4:1 at worst, on any colour.
 pub fn readable_ink(bg: Color32) -> Color32 {
     let lum = |c: Color32| {
         let lin = |v: u8| {
@@ -109,9 +109,15 @@ pub fn readable_ink(bg: Color32) -> Color32 {
         0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b())
     };
     let dark = DARK_INK;
-    let (l, ld) = (lum(bg) + 0.05, lum(dark) + 0.05);
-    if 1.05 / l >= l / ld {
+    // The light ink is the look's: white, or the warm paper on the light look (as `on_primary` is).
+    let light = if light_t() > 0.5 {
+        color::paper()
+    } else {
         Color32::WHITE
+    };
+    let (l, ld) = (lum(bg) + 0.05, lum(dark) + 0.05);
+    if (lum(light) + 0.05) / l >= l / ld {
+        light
     } else {
         dark
     }
@@ -461,7 +467,7 @@ impl Grade {
             Grade::Platinum => rgb(0.74, 0.84, 0.97),
             Grade::Gold => rgb(0.97, 0.78, 0.34),
             Grade::Silver => rgb(0.80, 0.82, 0.86),
-            Grade::Bronze => rgb(0.83, 0.55, 0.36),
+            Grade::Bronze => rgb(0.92, 0.65, 0.47),
         };
         let t = light_t();
         if t <= 0.0 {
@@ -477,10 +483,10 @@ impl Grade {
         mix(dark, light, t)
     }
 
-    /// The grade of a trophy not earned yet: the colour dimmed. Dimmed less on the light look,
-    /// where a pale label on pale paper is gone (`ui::contrast` measures it).
+    /// The grade of a trophy not earned yet: the colour dimmed, but never below the floor of small
+    /// text on a trophy row (`ui::contrast` measures it on every look).
     pub fn dimmed(self) -> Color32 {
-        fade(self.color(), 0.55 + 0.45 * light_t())
+        fade(self.color(), 0.92 + 0.06 * light_t())
     }
 
     pub const fn points(self) -> u32 {
@@ -1283,7 +1289,7 @@ mod tests {
         for (accent, want) in Accent::ALL.iter().zip(accents) {
             assert_eq!(hex(accent.color()), want, "{accent:?}");
         }
-        let grades = ["BDD6F7", "F7C757", "CCD1DB", "D48C5C"];
+        let grades = ["BDD6F7", "F7C757", "CCD1DB", "EBA678"];
         for (grade, want) in Grade::ALL.iter().zip(grades) {
             assert_eq!(hex(grade.color()), want, "{grade:?}");
         }

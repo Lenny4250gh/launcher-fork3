@@ -593,6 +593,8 @@ pub enum Notice {
     SignedIn,
     /// The browser sign-in ran out of time.
     SignInTimedOut,
+    /// The browser sign-in was stopped in the browser (the player turned it down or closed it).
+    SignInStopped,
     /// A Play Together session closed, or took the player out, while the game runs.
     SessionEnded {
         session: String,
@@ -871,6 +873,9 @@ impl Online {
                 // A page that is shown stays; only a profile without one is a failure.
                 let entry = self.profiles.entry(*account).or_default();
                 entry.failed = entry.page.is_none();
+                entry.gone = entry.failed
+                    && (failure.is(api::ErrorCode::NotFound)
+                        || failure.is(api::ErrorCode::Forbidden));
             }
             Purpose::Compare(key) => {
                 let entry = self.compares.entry(key.clone()).or_default();
@@ -1001,6 +1006,7 @@ impl Online {
                         ProfileEntry {
                             page: Some(page),
                             failed: false,
+                            gone: false,
                         },
                     );
                 }
@@ -2147,6 +2153,8 @@ impl Online {
                     notices.push(Notice::HostFailed(message));
                 } else if code == "sign_in_timed_out" {
                     notices.push(Notice::SignInTimedOut);
+                } else if code == "sign_in_stopped" {
+                    notices.push(Notice::SignInStopped);
                 } else if code == "voice_device" {
                     notices.push(self.voice_failed(&message));
                 }

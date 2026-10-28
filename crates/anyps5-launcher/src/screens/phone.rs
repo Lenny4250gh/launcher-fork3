@@ -42,9 +42,14 @@ fn date_of(stamp: &str) -> &str {
 
 pub fn rows(prefs: &Preferences, phone: &PhoneState, language: Language) -> Vec<Row> {
     let t = |text: PhoneText| text.text(language).to_owned();
+    let detail = if prefs.phone_remote && !phone.paired.is_empty() {
+        t(PhoneText::RemoveToTurnOff)
+    } else {
+        t(PhoneText::SwitchDetail)
+    };
     let mut rows = vec![
         Row::toggle("phone", t(PhoneText::Title), prefs.phone_remote)
-            .detail(t(PhoneText::SwitchDetail))
+            .detail(detail)
             .icon(Icon::DEVICE_MOBILE),
     ];
     if !prefs.phone_remote {
@@ -546,5 +551,26 @@ mod tests {
     #[test]
     fn the_driver_page_is_a_fixed_address() {
         assert!(driver_page().starts_with("https://github.com/"));
+    }
+
+    #[test]
+    fn turning_off_is_explained_when_controllers_are_paired() {
+        let phone_with_paired = PhoneState {
+            paired: vec![device("p1", "Pixel 8")],
+            ..PhoneState::default()
+        };
+        let rows_paired = rows(&on(), &phone_with_paired, Language::English);
+        assert_eq!(rows_paired[0].id, "phone");
+        assert_eq!(
+            rows_paired[0].detail.as_deref().unwrap(),
+            PhoneText::RemoveToTurnOff.english()
+        );
+
+        let rows_empty = rows(&on(), &PhoneState::default(), Language::English);
+        assert_eq!(rows_empty[0].id, "phone");
+        assert_eq!(
+            rows_empty[0].detail.as_deref().unwrap(),
+            PhoneText::SwitchDetail.english()
+        );
     }
 }

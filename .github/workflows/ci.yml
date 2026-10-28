@@ -182,7 +182,7 @@ jobs:
         if: env.FULL_CI == 'true'
         run: |
           mkdir -p shots
-          for scene in home controls friends home-uninstalling; do
+          for scene in home controls friends home-uninstalling home-unlocking home-paused home-cancelling home-quit home-quit-paused home-quit-removing; do
             xvfb-run -a -s "-screen 0 1920x1080x24" \
               target/release/anyplay-launcher --gallery=$scene --screenshot=shots/$scene.png
           done
@@ -351,13 +351,20 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace --no-fail-fast
+      - name: Build the native net service
+        working-directory: network
+        run: |
+          cargo build --release --locked -p anyplay-net --features devices
+          echo "ANYPLAY_NET_EMBED=$PWD/target/release/anyplay-net" >> "$GITHUB_ENV"
+      - name: Test the embedded net service
+        run: cargo test --locked -p anyps5-launcher the_embedded_service_answers_over_the_real_process_pipe
       - name: Release build
         if: env.FULL_CI == 'true'
-        run: cargo build --release
-      - name: Native licence tool on Intel
-        if: env.FULL_CI == 'true' && runner.arch == 'X64'
+        run: cargo build --release --locked
+      - name: Build the native licence tool
+        if: env.FULL_CI == 'true'
         run: |
-          cargo install cargo-about --version 0.9.2 --locked
+          cargo install cargo-about --version 0.9.2 --locked --features cli
           echo "CARGO_ABOUT=$(command -v cargo-about)" >> "$GITHUB_ENV"
       - name: Third-party licences
         if: env.FULL_CI == 'true'

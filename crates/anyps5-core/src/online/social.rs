@@ -337,6 +337,11 @@ impl Social {
         self.failed.contains(id) && !self.is_loaded(id)
     }
 
+    /// The cloud has answered with the list of conversations at least once.
+    pub fn is_listed(&self) -> bool {
+        self.listed
+    }
+
     /// The list of conversations could not be loaded.
     pub fn list_has_failed(&self) -> bool {
         self.list_failed && !self.listed

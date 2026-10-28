@@ -301,6 +301,10 @@ pub struct ClipsEnv {
     pub capturing: bool,
     /// A stream key is kept for Broadcast (the key itself never reaches the settings).
     pub broadcast_key: bool,
+    /// The desktop asks for the game's window each time the recorder starts (Linux).
+    pub portal: bool,
+    /// No clip key on this system (macOS, Linux): Create saves.
+    pub no_key: bool,
 }
 
 /// What the settings show that is not a preference.
@@ -339,9 +343,11 @@ pub struct SettingsEnv<'a> {
     /// Linux with share screen on: Cisco's OpenH264 and what the share worker made of it. `None`
     /// shows no codec row.
     pub openh264: Option<Openh264Env>,
-    /// The rows that exist on Windows only (clips, links from websites). The gallery shows them on
-    /// every system.
+    /// The rows that exist on Windows only (links from websites, Broadcast). The gallery shows them
+    /// on every system.
     pub windows_rows: bool,
+    /// The Clips rows: Windows, macOS and Linux.
+    pub clips_rows: bool,
 }
 
 /// What the start at sign-in is, read from the system's own entry.
@@ -466,6 +472,8 @@ pub enum SettingsAction {
     SetFullscreen(bool),
     /// "Controllers": the full-screen page of the pads.
     OpenControllers,
+    /// The phone switch was pressed off while phones are paired: it stays on, and a toast says why.
+    PhoneStaysOn,
     /// A row of the Phone as Controller page asks for something.
     Phone(PhoneAction),
     /// A LudusCtrl row of the same page asks for something.
@@ -495,6 +503,47 @@ fn path_text(path: &Option<PathBuf>) -> String {
     path.as_ref()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "—".to_owned())
+}
+
+/// The steps for using AnyPlay as the home of the PC, for the system the launcher runs on: only
+/// claims that were checked against the vendors' own pages (docs/DESIGN.md 9.13).
+fn home_guide_rows(os: anyps5_core::platform::Os, language: Language) -> Vec<Row> {
+    use crate::screens::home_guide_strings::HomeGuide as G;
+    use anyps5_core::platform::Os;
+    let steam = SteamText::Add.text(language);
+    let console = [
+        Arg::Str(ConsoleText::Console.text(language)),
+        Arg::Str(Category::General.title(language)),
+    ];
+    let steps: Vec<(&str, String)> = match os {
+        Os::Windows => vec![
+            ("homeStep1", G::ConsoleWindows.format(language, &console)),
+            (
+                "homeStep2",
+                G::BigPicture.format(language, &[Arg::Str(steam)]),
+            ),
+            ("homeStep3", G::Xbox.format(language, &[])),
+        ],
+        Os::Linux => vec![
+            ("homeStep1", G::ConsoleLogin.format(language, &console)),
+            ("homeStep2", G::Deck.format(language, &[Arg::Str(steam)])),
+            ("homeStep3", G::Session.format(language, &[])),
+        ],
+        Os::Macos => vec![
+            ("homeStep1", G::ConsoleLogin.format(language, &console)),
+            (
+                "homeStep2",
+                G::BigPicture.format(language, &[Arg::Str(steam)]),
+            ),
+        ],
+    };
+    let mut rows = vec![Row::info("homeGuide", G::Caption.text(language), None).group_start()];
+    rows.extend(
+        steps
+            .into_iter()
+            .map(|(id, text)| Row::info(id, text, None)),
+    );
+    rows
 }
 
 /// Console Mode, and what it is made of. On, the mode owns the start at sign-in and the full screen
@@ -1022,6 +1071,7 @@ pub fn build_categories(
             );
         }
     }
+    apps.extend(home_guide_rows(env.autostart.os, language));
     // A page is never empty: on a system with no app to connect it says so.
     if apps.is_empty() {
         apps.push(Row::info("appsNone", words::NoApps.text(language), None));
@@ -1251,8 +1301,8 @@ pub fn build_categories(
             );
         }
     }
-    // The recorder is the share worker, which captures windows on Windows only.
-    if env.windows_rows {
+    // The recorder is the share worker, which captures windows on Windows, macOS and Linux.
+    if env.clips_rows {
         let first = captures.len();
         push_clips_rows(&mut captures, prefs, env, language);
         if first > 0 {
@@ -1486,10 +1536,20 @@ fn push_clips_rows(
             clips_options(language),
             selected,
         )
-        .detail(ClipsText::Detail.text(language))
+        .detail(
+            if env.clips.portal {
+                ClipsText::DetailPicker
+            } else {
+                ClipsText::Detail
+            }
+            .text(language),
+        )
         .icon(Icon::CAMERA),
     );
-    if seconds > 0 {
+    if seconds > 0 && env.clips.no_key {
+        // No global key here (macOS, Linux): say so where the key would be, and what saves instead.
+        rows.push(Row::info("clipsNoKey", ClipsText::NoKey.text(language), None).attached());
+    } else if seconds > 0 {
         let hotkey = anyps5_core::clips::hotkey_or_default(prefs.clips_hotkey.as_deref());
         let sources = hotkey.parts().iter().map(|p| format!("KEY:{p}")).collect();
         // A detail line both ways, so that the rows below do not move when the row starts waiting.
@@ -1722,6 +1782,15 @@ pub fn apply_preferences(shell: &mut Shell, ctx: &Context, prefs: &Preferences) 
 /// Writes one change into the preferences. Dialogs (a picture, a folder) are the caller's
 /// business: this covers the plain values. Returns whether anything changed.
 pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
+    apply_value_with_phone(prefs, change, None)
+}
+
+/// The same, but with the phone server state to guard against turning off while controllers are paired.
+pub fn apply_value_with_phone(
+    prefs: &mut Preferences,
+    change: &Change,
+    phone: Option<&PhoneState>,
+) -> bool {
     let before = prefs.clone();
     match change {
         Change::Choice {
@@ -1838,7 +1907,12 @@ pub fn apply_value(prefs: &mut Preferences, change: &Change) -> bool {
             index: 0,
         } => prefs.backdrop = Backdrop::Theme,
         Change::Run { row: "fontsReset" } => prefs.fonts_folder = None,
-        Change::Toggle { row: "phone", on } => prefs.phone_remote = *on,
+        Change::Toggle { row: "phone", on } => {
+            if !*on && phone.is_some_and(|p| !p.paired.is_empty()) {
+                return false;
+            }
+            prefs.phone_remote = *on;
+        }
         Change::Toggle {
             row: "ludusctrl",
             on,
@@ -2122,7 +2196,18 @@ impl SettingsPanel {
         out: &mut Output<SettingsAction>,
     ) {
         let language = convert::language(prefs.language);
-        let mut changed = apply_value(prefs, change);
+        let mut changed = apply_value_with_phone(prefs, change, Some(env.phone));
+        if matches!(
+            change,
+            Change::Toggle {
+                row: "phone",
+                on: false
+            }
+        ) && !changed
+            && prefs.phone_remote
+        {
+            out.actions.push(SettingsAction::PhoneStaysOn);
+        }
         if let Change::Stepper {
             row: row @ ("volInterface" | "volMusic" | "volGameMusic" | "volNotif"),
             ..
@@ -2615,6 +2700,7 @@ mod tests {
             location: LocationEnv::default(),
             openh264: None,
             windows_rows: true,
+            clips_rows: true,
         }
     }
 
@@ -3511,7 +3597,36 @@ mod tests {
         };
         assert_eq!(has(&e), (true, true));
         e.windows_rows = false;
+        // The Clips rows follow their own switch: macOS and Linux have them too.
+        assert_eq!(has(&e), (true, false));
+        e.clips_rows = false;
         assert_eq!(has(&e), (false, false));
+    }
+
+    #[test]
+    fn without_a_clip_key_the_row_says_what_saves_and_the_detail_names_the_dialog() {
+        let mut prefs = Preferences::first_run();
+        prefs.clips_seconds = 30;
+        let mut e = env(None, UpdateState::Unknown);
+        let rows = |e: &SettingsEnv<'_>| {
+            build_categories(&prefs, e, Language::English)
+                .into_iter()
+                .find(|c| c.category == Category::Captures)
+                .unwrap()
+                .rows
+        };
+        let ids = |rows: &[Row]| rows.iter().map(|r| r.id).collect::<Vec<_>>();
+        assert!(ids(&rows(&e)).contains(&"clipsKey"));
+        e.clips.no_key = true;
+        e.clips.portal = true;
+        let rows = rows(&e);
+        let ids = ids(&rows);
+        assert!(!ids.contains(&"clipsKey") && ids.contains(&"clipsNoKey"));
+        let clips = rows.iter().find(|r| r.id == "clips").unwrap();
+        assert_eq!(
+            clips.detail.as_deref(),
+            Some(ClipsText::DetailPicker.text(Language::English))
+        );
     }
 
     #[test]
@@ -3614,5 +3729,56 @@ mod tests {
         panel.focus_row_id("homeButton");
         panel.apply_focus_id(&cats);
         assert_eq!(panel.nav.row, want);
+    }
+
+    #[test]
+    fn phone_switch_cannot_be_turned_off_while_controllers_are_paired() {
+        let mut prefs = Preferences {
+            phone_remote: true,
+            ..Preferences::first_run()
+        };
+        let phone_with_paired = PhoneState {
+            paired: vec![anyps5_core::remote::PairedDevice {
+                added: "2026-10-24T18:14:03Z".into(),
+                id: "p1".into(),
+                key: "k".into(),
+                name: "Pixel 8".into(),
+            }],
+            ..PhoneState::default()
+        };
+        let phone_empty = PhoneState::default();
+
+        // Turning off while paired is blocked and leaves the setting on.
+        assert!(!apply_value_with_phone(
+            &mut prefs,
+            &Change::Toggle {
+                row: "phone",
+                on: false
+            },
+            Some(&phone_with_paired),
+        ));
+        assert!(prefs.phone_remote);
+
+        // Turning off with no paired controllers succeeds.
+        assert!(apply_value_with_phone(
+            &mut prefs,
+            &Change::Toggle {
+                row: "phone",
+                on: false
+            },
+            Some(&phone_empty),
+        ));
+        assert!(!prefs.phone_remote);
+
+        // Turning on is always allowed.
+        assert!(apply_value_with_phone(
+            &mut prefs,
+            &Change::Toggle {
+                row: "phone",
+                on: true
+            },
+            Some(&phone_with_paired),
+        ));
+        assert!(prefs.phone_remote);
     }
 }

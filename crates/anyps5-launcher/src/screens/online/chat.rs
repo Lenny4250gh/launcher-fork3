@@ -301,6 +301,9 @@ pub enum Composer {
     Request,
     /// Offline: writing and answering need the cloud; the bar says so and offers Try Again.
     Offline,
+    /// The messages did not load: the bar offers Try Again (a thread with no way to ask again
+    /// would be a dead end for the keyboard and the pad).
+    LoadFailed,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -505,6 +508,9 @@ pub fn composer(data: &OnlineData<'_>, id: &str) -> Option<Composer> {
     let me = online.account.as_ref().map_or(AccountId(0), |a| a.id);
     if !online.is_online() {
         return Some(Composer::Offline);
+    }
+    if social.has_failed(id) {
+        return Some(Composer::LoadFailed);
     }
     if conversation.request {
         return Some(Composer::Request);
@@ -1107,6 +1113,7 @@ impl OnlinePanel {
                     self.run("pausedSend", data, actions);
                 }
                 Composer::Offline => actions.push(A::Reconnect),
+                Composer::LoadFailed => actions.push(A::RetryMessages(Some(id.to_owned()))),
                 Composer::Blocked { .. } => {
                     let me = super::OnlinePanel::me(data);
                     if let Some(other) = data
@@ -1916,36 +1923,19 @@ fn typing_view(ui: &mut Ui, who: Option<&Face>, line: &str) {
     }
 }
 
+/// The thread says it is loading, empty or failed with the shared state page, like every other
+/// page without cards (docs/DESIGN.md 5.21).
 fn state_view(ui: &mut Ui, icon: Icon, title: &str, note: Option<&str>) {
-    let painter = ui.painter().clone();
-    let (rect, response) =
-        ui.allocate_exact_size(vec2(ui.available_width(), 160.0), Sense::hover());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, title));
-    painter.text(
-        pos2(rect.center().x, rect.center().y - space::XL),
-        Align2::CENTER_CENTER,
-        icon.glyph(),
-        icon.font(36.0, false),
-        color::text_note(),
-    );
-    text::paint(
-        &painter,
-        pos2(rect.center().x, rect.center().y + space::M),
-        Align2::CENTER_CENTER,
-        ty::LABEL,
+    let page = crate::ui::state_page::StatePage {
+        icon,
         title,
-        color::text_detail(),
-    );
-    if let Some(note) = note {
-        text::paint(
-            &painter,
-            pos2(rect.center().x, rect.center().y + space::XL + space::S),
-            Align2::CENTER_CENTER,
-            ty::DETAIL,
-            note,
-            color::text_note(),
-        );
-    }
+        note,
+        loading: icon == Icon::ARROWS_CLOCKWISE,
+        action: None,
+    };
+    let height = crate::ui::state_page::height(ui.painter(), &page) + 2.0 * space::XL;
+    let (room, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
+    crate::ui::state_page::show(ui, room, &page, false);
 }
 
 /// A message that was taken back: a small line of words in the middle, not a bubble. It stays a
@@ -2032,12 +2022,12 @@ fn paint_preview(painter: &egui::Painter, rect: Rect, media: &BubbleMedia) {
             painter.rect_stroke(
                 shown,
                 egui::CornerRadius::ZERO,
-                egui::Stroke::new(1.0, fade(color::text(), 0.10)),
+                egui::Stroke::new(1.0, color::hairline_control()),
                 egui::StrokeKind::Inside,
             );
         }
         _ => {
-            painter.rect_filled(rect, corner(radius::KEYCAP), fade(color::text(), 0.08));
+            painter.rect_filled(rect, corner(radius::KEYCAP), color::surface_row());
             let icon = if media.unavailable {
                 Icon::WARNING
             } else if media.clip {
@@ -2199,6 +2189,17 @@ fn bubble_view(
         painter.rect_filled(bar, corner(QUOTE_BAR * 0.5), color::text_note());
         let x = bubble.min.x + BUBBLE_PAD_X + QUOTE_INSET;
         let who_h = who.size().y;
+        // A quote cut to two lines is read in full on the bubble (DESIGN.md 3.13).
+        if let Some((_, full)) = &b.quote {
+            crate::ui::reveal::full_text(
+                &ctx,
+                response.id.with("quote"),
+                bubble,
+                full,
+                hovered || (focused && input::focus_visible(&ctx)),
+                text.elided,
+            );
+        }
         painter.galley(pos2(x, y), who, color::text_label());
         painter.galley(pos2(x, y + who_h), text, color::text_detail());
         y += quote_h;
@@ -2252,8 +2253,15 @@ fn composer_view(
                 let response = ui.interact(rect, ui.make_persistent_id("note"), Sense::click());
                 let focused = focus == Some(ThreadFocus::Note);
                 crate::ui::a11y::follow(&ctx, response.id, focused);
+                // The bar cancels the reply or the edit: the name says so, then what it quotes.
+                let name = if note.editing {
+                    S::CancelEditName
+                } else {
+                    S::CancelReplyName
+                }
+                .format(language, &[Arg::Str(&note.text)]);
                 response.widget_info(|| {
-                    egui::WidgetInfo::labeled(egui::Role::Button, true, note.text.as_str())
+                    egui::WidgetInfo::labeled(egui::Role::Button, true, name.as_str())
                 });
                 if response.clicked() {
                     events.push(Mouse::Press(ThreadFocus::Note));
@@ -2266,6 +2274,14 @@ fn composer_view(
                     ty::LABEL,
                     &note.text,
                     rect.width() - 2.0 * space::XXL,
+                );
+                crate::ui::reveal::full_text(
+                    &ctx,
+                    response.id,
+                    rect,
+                    &note.text,
+                    input::hovered(&ctx, &response) || (focused && input::focus_visible(&ctx)),
+                    line.elided,
                 );
                 painter.galley(
                     pos2(
@@ -2433,6 +2449,16 @@ fn composer_view(
                 inner,
                 crate::screens::friends_strings::FriendsText::TryAgain.text(language),
                 crate::screens::friends_strings::FriendsText::ComposerOffline.text(language),
+                focus == Some(ThreadFocus::Bar),
+                events,
+            );
+        }
+        Composer::LoadFailed => {
+            button_bar(
+                ui,
+                inner,
+                crate::screens::friends_strings::FriendsText::TryAgain.text(language),
+                S::LoadFailedBar.text(language),
                 focus == Some(ThreadFocus::Bar),
                 events,
             );

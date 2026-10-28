@@ -14,7 +14,7 @@ use crate::ui::chrome::{RowAvatar, paint_row_avatar};
 use crate::ui::components::{self, corner, paint_capsule};
 use crate::ui::icons::Icon;
 use crate::ui::text;
-use crate::ui::theme::{TextStyle, color, fade, radius, size, space, ty};
+use crate::ui::theme::{TextStyle, color, radius, size, space, ty};
 
 /// The width of the rail (dp).
 pub const RAIL_WIDTH: f32 = 248.0;
@@ -76,6 +76,19 @@ pub fn header(ui: &mut Ui, at: egui::Pos2, width: f32, header: &Header<'_>) {
     let block = name.size().y + 4.0 + status.size().y;
     let top = avatar.center().y - block * 0.5;
     let name_h = name.size().y;
+    // A cut handle or status is read in full under the pointer (the header is no stop of the
+    // focus; the screen reader has the whole of it in the label below).
+    let ctx = ui.ctx().clone();
+    let pointer = ctx.pointer_hover_pos();
+    let name_rect = Rect::from_min_size(pos2(x, top), name.size());
+    crate::ui::reveal::full_text(
+        &ctx,
+        ui.make_persistent_id("friends-header-name"),
+        name_rect,
+        header.handle,
+        pointer.is_some_and(|p| name_rect.contains(p)),
+        name.elided,
+    );
     painter.galley(pos2(x, top), name, color::text());
     let dot = if header.connected { 18.0 } else { 0.0 };
     let line_y = top + name_h + 4.0;
@@ -86,6 +99,15 @@ pub fn header(ui: &mut Ui, at: egui::Pos2, width: f32, header: &Header<'_>) {
             header.accent,
         );
     }
+    let status_rect = Rect::from_min_size(pos2(x + dot, line_y), status.size());
+    crate::ui::reveal::full_text(
+        &ctx,
+        ui.make_persistent_id("friends-header-status"),
+        status_rect,
+        header.status,
+        pointer.is_some_and(|p| status_rect.contains(p)),
+        status.elided,
+    );
     painter.galley(pos2(x + dot, line_y), status, color::text_subtitle());
     // The header reads as one thing.
     let rect = Rect::from_min_size(at, vec2(width.min(AVATAR + AVATAR_GAP + 640.0), AVATAR));
@@ -165,7 +187,7 @@ pub fn rail(ui: &mut Ui, at: egui::Pos2, entries: &[Entry], focus: Option<usize>
             Align2::CENTER_CENTER,
             entry.icon.glyph(),
             entry.icon.font(size::ROW_ICON, false),
-            fade(ink, 0.9),
+            ink,
         );
         let label_x = rect.min.x + 18.0 + size::ROW_ICON_BOX + 14.0;
         let badge_room = if entry.waiting > 0 { 34.0 } else { 0.0 };
@@ -235,6 +257,17 @@ pub fn page_title(
         Sense::hover(),
     )
     .widget_info(|| WidgetInfo::labeled(Role::Heading, true, title.text()));
+    let ctx = ui.ctx().clone();
+    let pointer = ctx.pointer_hover_pos();
+    let title_rect = Rect::from_min_size(at, title.size());
+    crate::ui::reveal::full_text(
+        &ctx,
+        ui.make_persistent_id("friends-page-title-reveal"),
+        title_rect,
+        title.text(),
+        pointer.is_some_and(|p| title_rect.contains(p)),
+        title.elided,
+    );
     painter.galley(at, title, color::text());
     if let Some(note) = note {
         height += space::S;
@@ -248,9 +281,16 @@ pub fn page_title(
         )
         .widget_info(|| WidgetInfo::labeled(Role::Label, true, note.text()));
         let line = Rect::from_min_size(pos2(at.x, at.y + height), note.size());
+        crate::ui::reveal::full_text(
+            &ctx,
+            ui.make_persistent_id("friends-page-note-reveal"),
+            line,
+            note.text(),
+            pointer.is_some_and(|p| line.contains(p)),
+            note.elided,
+        );
         painter.galley(line.min, note, color::text_detail());
         if waiting {
-            let ctx = ui.ctx().clone();
             let time = ctx.input(|i| i.time);
             crate::ui::components::paint_spinner_arc(
                 &painter,

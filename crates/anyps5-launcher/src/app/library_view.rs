@@ -128,6 +128,8 @@ fn status_rank(state: &GameState) -> u8 {
         GameState::Installed { .. } => 1,
         GameState::Installing { .. }
         | GameState::Uninstalling { .. }
+        | GameState::Cancelling { .. }
+        | GameState::Paused { .. }
         | GameState::Preparing { .. }
         | GameState::Queued => 2,
         GameState::Locked => 3,

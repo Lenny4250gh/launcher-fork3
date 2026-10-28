@@ -294,10 +294,11 @@ pub fn state_name(state: &GameState) -> &'static str {
         GameState::Unreadable | GameState::Failed(_) | GameState::Uninstalling { .. } => {
             "unavailable"
         }
-        GameState::Locked => "locked",
-        GameState::Queued | GameState::Installing { .. } | GameState::Preparing { .. } => {
-            "installing"
-        }
+        GameState::Locked | GameState::Paused { .. } => "locked",
+        GameState::Queued
+        | GameState::Installing { .. }
+        | GameState::Cancelling { .. }
+        | GameState::Preparing { .. } => "installing",
         GameState::Installed { outdated: true } => "update",
         GameState::Installed { outdated: false } => "installed",
         GameState::Starting => "starting",

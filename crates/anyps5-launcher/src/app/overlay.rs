@@ -65,6 +65,12 @@ pub enum Overlay {
     InGame,
     /// The question before the running game is closed (a panel of the game frame).
     ConfirmCloseGame,
+    /// The question before the window closes while games are unlocked or removed (a panel of the
+    /// game frame).
+    ConfirmQuit,
+    /// The question before one unlock is cancelled with the small Cancel button (a panel of the
+    /// game frame).
+    ConfirmCancelUnlock,
     /// "Update required": this version is retired, so the update comes before the online area.
     /// Offline play stays open (a full-screen panel, docs/DESIGN.md 9.5.1).
     Required,
@@ -88,6 +94,8 @@ impl Overlay {
                 | Overlay::ToolkitMissing
                 | Overlay::InGame
                 | Overlay::ConfirmCloseGame
+                | Overlay::ConfirmQuit
+                | Overlay::ConfirmCancelUnlock
                 | Overlay::FindPlayers
                 | Overlay::SendCapture
                 | Overlay::LibrarySearch

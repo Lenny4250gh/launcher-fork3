@@ -17,6 +17,7 @@ impl Icon {
     pub const PLAY: Icon = Icon('\u{e3d0}');
     pub const PLAY_CIRCLE: Icon = Icon('\u{e3d2}');
     pub const X: Icon = Icon('\u{e4f6}');
+    pub const PAUSE: Icon = Icon('\u{e39e}');
     pub const TROPHY: Icon = Icon('\u{e67e}');
     pub const DOTS_THREE: Icon = Icon('\u{e1fe}');
     pub const CIRCLE_DASHED: Icon = Icon('\u{e602}');

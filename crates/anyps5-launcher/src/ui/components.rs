@@ -21,7 +21,7 @@ use crate::ui::nav_bindings::{self, Bindings, Role as NavRole};
 use crate::ui::pad_info;
 use crate::ui::text;
 use crate::ui::theme::{
-    self, TextStyle, black, color, fade, mix, radius, shadows, size, space, ty, white,
+    self, TextStyle, black, color, fade, mix, radius, scrim, shadows, size, space, ty, white,
 };
 
 /// Forces a visual state so galleries and tests can show hover or press without a pointer.
@@ -92,18 +92,19 @@ pub fn paint_focus_stroke(painter: &Painter, rect: Rect, radius: f32, width: f32
         let rect = rect.translate(crate::ui::nudge::offset(painter.ctx()) * t);
         let width = snap_width(painter, width);
         // A hairline of shade in the gap keeps the ring apart from a light fill and one outside it keeps
-        // it visible on a light picture.
+        // it visible on a light picture. On the light look the ring is dark ink, so the edges turn over:
+        // paper keeps it apart from a dark fill and visible on a dark picture (`edge_shade`).
         painter.add(RectShape::stroke(
             snap_rect(painter, rect.expand(1.0)),
             corner(radius + 1.0),
-            Stroke::new(snap_width(painter, 1.0), black(0.22 * t)),
+            Stroke::new(snap_width(painter, 1.0), edge_shade(0.22, 0.30, t)),
             StrokeKind::Inside,
         ));
         let outer = width * 1.6 + 1.0;
         painter.add(RectShape::stroke(
             snap_rect(painter, rect.expand(outer)),
             corner(radius + outer),
-            Stroke::new(snap_width(painter, 1.0), black(0.26 * t)),
+            Stroke::new(snap_width(painter, 1.0), edge_shade(0.26, 0.55, t)),
             StrokeKind::Inside,
         ));
         painter.add(RectShape::stroke(
@@ -113,6 +114,13 @@ pub fn paint_focus_stroke(painter: &Painter, rect: Rect, radius: f32, width: f32
             StrokeKind::Inside,
         ));
     }
+}
+
+/// The shade beside a focus ring, `t` of the way in: black at `dark` alpha on the dark looks (the ring is
+/// white), the paper at `light` alpha on the light one (the ring is dark ink).
+fn edge_shade(dark: f32, light: f32, t: f32) -> Color32 {
+    let k = crate::ui::theme::light_t();
+    scrim((dark + (light - dark) * k) * t)
 }
 
 /// 1 px hairline drawn inside the shape (SwiftUI `strokeBorder`).
@@ -1395,9 +1403,19 @@ impl HintSet {
 }
 
 /// `enter` is what Enter does where the focus makes it say more than "Select" (a field edits, a
-/// composer sends).
-fn hint_list(language: Language, set: HintSet, enter: Option<&'static str>) -> Vec<Hint<'static>> {
+/// composer sends). A pad cannot press a Back button on screen, so with a pad in use the Back
+/// hint stays whatever the set says.
+fn hint_list(
+    language: Language,
+    set: HintSet,
+    enter: Option<&'static str>,
+    device: input::Device,
+) -> Vec<Hint<'static>> {
     let options = set.options;
+    let set = HintSet {
+        back: set.back || device == input::Device::Gamepad,
+        ..set
+    };
     let mut hints = vec![Hint {
         action: HintAction::Select,
         label: enter.unwrap_or_else(|| language.text(Key::HintSelect)),
@@ -1439,7 +1457,7 @@ pub fn hint_bar_set(ui: &mut Ui, language: Language, set: HintSet) {
 pub fn hint_bar_enter(ui: &mut Ui, language: Language, set: HintSet, enter: Option<&'static str>) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = size::HINT_BAR_GAP;
-        for hint in hint_list(language, set, enter) {
+        for hint in hint_list(language, set, enter, input::device(ui.ctx())) {
             hint.show(ui);
         }
     });
@@ -1470,7 +1488,7 @@ pub fn hint_bar_enter_size(
     enter: Option<&'static str>,
 ) -> (f32, f32) {
     let device = input::device(painter.ctx());
-    let hints = hint_list(language, set, enter);
+    let hints = hint_list(language, set, enter, device);
     let width = hints.iter().map(|h| h.width(painter, device)).sum::<f32>()
         + size::HINT_BAR_GAP * hints.len().saturating_sub(1) as f32;
     (width, size::HINT_CAP.max(ty::HINT_LABEL.line_height()))
@@ -1518,6 +1536,26 @@ mod hint_tests {
         assert_eq!(HintAction::Select.key_in(&b), "Enter");
         assert_eq!(HintAction::Back.key_in(&b), "Esc");
         assert_eq!(HintAction::Options.key_in(&b), "O");
+    }
+
+    #[test]
+    fn a_pad_keeps_the_back_hint_beside_a_back_button_it_cannot_press() {
+        let actions = |device| {
+            hint_list(
+                Language::English,
+                HintSet::BASIC.without_back(),
+                None,
+                device,
+            )
+            .iter()
+            .map(|h| h.action)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(actions(input::Device::Keyboard), [HintAction::Select]);
+        assert_eq!(
+            actions(input::Device::Gamepad),
+            [HintAction::Select, HintAction::Back]
+        );
     }
 
     #[test]

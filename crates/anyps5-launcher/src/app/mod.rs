@@ -1329,7 +1329,17 @@ impl eframe::App for App {
         if self.start_fullscreen && self.frames == 2 {
             ctx.send_viewport_cmd(ViewportCommand::Fullscreen(true));
         }
+        // Closing the window while games are unlocked or removed asks first.
+        if ctx.input(|i| i.viewport().close_requested()) && self.app.model.ask_before_quit() {
+            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+        }
         self.app.step(&ctx);
+        if self.app.model.quit_by.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        if self.app.model.quit_ready() {
+            ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
         self.app.paint(ui);
         self.app.broadcast.paint(&ctx, &self.app.model);
         self.app.finish_frame(&ctx);

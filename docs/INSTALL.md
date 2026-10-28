@@ -26,14 +26,21 @@ Releases up to v0.1.3 were made under the old name and call their files `AnyPS5-
 
 - `AnyPlay-Launcher-<version>-linux-x86_64.tar.gz` holds the executable, a `.desktop` file and the icon. Unpack it anywhere; copy the `.desktop` file to `~/.local/share/applications` and the icon to `~/.local/share/icons` for a menu entry. Coming from AnyPS5 Launcher: replace `anyps5-launcher.desktop` and `anyps5-launcher.png` with the new files and pin the launcher again.
 
-- `AnyPlay-Launcher-<version>-x86_64.flatpak`: a Flatpak bundle (app ID `net.anyplay.Launcher`). Install and start it with:
+- `AnyPlay-Launcher-<version>-x86_64.flatpak`: a Flatpak bundle (app ID `com.anyplaynet.Launcher`). Install and start it with:
 
   ```sh
   flatpak install --user AnyPlay-Launcher-*-x86_64.flatpak
-  flatpak run net.anyplay.Launcher
+  flatpak run com.anyplaynet.Launcher
   ```
 
   It needs the Freedesktop runtime 26.08 from Flathub. The permissions it asks for, and why, are in [packaging/flatpak/README.md](../packaging/flatpak/README.md). Flatpak updates the launcher; see [Updates](#updates).
+
+  Bundles up to 0.3.5 had the app ID `net.anyplay.Launcher`. To keep your settings, remove that one and move its folder before the first start of the new one:
+
+  ```sh
+  flatpak uninstall --user net.anyplay.Launcher
+  mv ~/.var/app/net.anyplay.Launcher ~/.var/app/com.anyplaynet.Launcher
+  ```
 
 The AppImage updates itself. The tar.gz does not: download a new version from the releases page. Starting a game with the network bridge is untested on Linux.
 
@@ -81,3 +88,25 @@ How updates are signed and checked: [How it works](HOW-IT-WORKS.md#self-update) 
 ## Where your data lives
 
 Settings live in `%APPDATA%\AnyPS5` and the toolkit, logs and caches in `%LOCALAPPDATA%\AnyPS5`. On Linux they are in `~/.config/anyps5` and `~/.local/share/anyps5`, or where `XDG_CONFIG_HOME` and `XDG_DATA_HOME` point. On macOS they are in `~/Library/Application Support/AnyPlay Launcher`. Uninstalling leaves them in place. The Windows and Linux folders keep the old name on purpose, so an upgrade finds your data.
+
+## Logs and reports
+
+When something goes wrong, you may need the launcher's logs or a generated report. The `Logs` folder sits inside your data folder:
+
+- **Windows:** `%LOCALAPPDATA%\AnyPS5\Logs`
+- **Linux:** `~/.local/share/anyps5/Logs` (or `$XDG_DATA_HOME/anyps5/Logs`)
+- **macOS:** `~/Library/Application Support/AnyPlay Launcher/Logs`
+
+The main files and folders inside `Logs` are:
+
+- `launcher.log`: The launcher's own log, including startup checks and panics.
+- `launcher.log.1`: The previous launcher log, kept when the current one fills up.
+- `<TITLEID>.log`: One game's console output (e.g. `CUSA00123.log`); only the last start is kept.
+- `network.log`: The AnyPlay net service log.
+- `Reports/`: Diagnostic reports generated with **Make a Report** (see [docs/DESIGN.md](DESIGN.md)).
+
+### What is safe to share
+
+- **Safe to attach:** `launcher.log` and reports from `Reports/` are safe to attach to an issue after reading them.
+- **Review before sharing:** A game's log (`<TITLEID>.log`) can hold the game's own output; cut it down to the lines and errors that matter. Read `network.log` before attaching it too.
+- **Never share:** Never attach game files, decrypted dumps, saves, firmware or encryption keys.

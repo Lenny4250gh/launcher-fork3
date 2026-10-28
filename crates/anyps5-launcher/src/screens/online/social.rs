@@ -475,6 +475,12 @@ impl OnlinePanel {
                         Row::command("retryList", FD::TryAgain.text(language))
                             .icon(Icon::ARROW_CLOCKWISE),
                     );
+                } else if rows.is_empty() && !social.is_listed() {
+                    // Not answered yet is not empty: the page waits, or says the cloud is out.
+                    self.connection_rows(data, rows);
+                    if rows.is_empty() {
+                        rows.push(Row::info("none", t(S::Loading), None));
+                    }
                 } else if rows.is_empty() {
                     rows.push(Row::info("none", t(S::NoConversations), None));
                     rows.push(
@@ -1539,9 +1545,13 @@ mod tests {
 
     #[test]
     fn an_empty_inbox_says_how_to_start() {
-        let online = online();
+        let mut online = online();
+        // Not answered yet is not empty: the page waits.
         let mut panel = OnlinePanel::default();
         panel.go(Page::Messages, &data(&online));
+        assert_eq!(ids(&panel.rows(&data(&online)).2), ["none"]);
+        // The cloud answered with nothing: now it says how to start.
+        list(&mut online, vec![], vec![]);
         let (_, subtitle, rows) = panel.rows(&data(&online));
         assert_eq!(subtitle, None);
         assert_eq!(ids(&rows), ["none", "openFriends"]);
@@ -2224,6 +2234,7 @@ mod tests {
                 "talkKey",
                 "talkPad",
                 "voiceNoise",
+                "voiceEcho",
                 "voiceInput",
                 "voiceOutput",
                 "refreshDevices",

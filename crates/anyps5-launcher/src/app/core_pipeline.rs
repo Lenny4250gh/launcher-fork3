@@ -578,6 +578,8 @@ impl Pipeline for CorePipeline {
                 self.queue.promote(&game);
             }
             PipelineCommand::Cancel(game) => self.queue.cancel(&game),
+            PipelineCommand::Pause(game) => self.queue.hold(&game, true),
+            PipelineCommand::Resume(game) => self.queue.hold(&game, false),
             PipelineCommand::Play(game_id) => {
                 if let (Some(game), Some(root)) = (cx.game, cx.root) {
                     self.play(game, root, cx.prefs, cx.extra_env);

@@ -12,6 +12,7 @@ pub enum VoiceText {
     /// The toggle.
     PartyVoice,
     StatusOff,
+    StatusFailed,
     StatusNoParty,
     StatusConnecting,
     StatusOn,
@@ -50,6 +51,9 @@ pub enum VoiceText {
     // Noise
     NoiseReduction,
     NoiseNote,
+    // Echo
+    EchoCancellation,
+    EchoNote,
     // Devices
     Speakers,
     SystemDefault,
@@ -86,6 +90,7 @@ impl VoiceText {
             VoiceText::Voice => "Voice",
             VoiceText::VoiceSubtitle => "Talk with your party",
             VoiceText::PartyVoice => "Party Voice",
+            VoiceText::StatusFailed => "Not working",
             VoiceText::StatusOff => "Off",
             VoiceText::StatusNoParty => "Starts when you are in a party",
             VoiceText::StatusConnecting => "Connecting…",
@@ -132,6 +137,10 @@ impl VoiceText {
             VoiceText::NoiseNote => {
                 "Takes keyboard clicks, fans and other steady noise out of your microphone."
             }
+            VoiceText::EchoCancellation => "Echo Cancellation",
+            VoiceText::EchoNote => {
+                "For speakers. Turn off with a headset if your voice sounds cut off."
+            }
             VoiceText::Speakers => "Speakers",
             VoiceText::SystemDefault => "System Default",
             VoiceText::InUse => "In use",
@@ -166,6 +175,7 @@ impl VoiceText {
             VoiceText::Voice => "Ses",
             VoiceText::VoiceSubtitle => "Partinle konuş",
             VoiceText::PartyVoice => "Parti Sesi",
+            VoiceText::StatusFailed => "Çalışmıyor",
             VoiceText::StatusOff => "Kapalı",
             VoiceText::StatusNoParty => "Bir partiye girince başlar",
             VoiceText::StatusConnecting => "Bağlanıyor…",
@@ -212,6 +222,8 @@ impl VoiceText {
             VoiceText::NoiseNote => {
                 "Klavye tıkırtılarını, fan sesini ve diğer sabit gürültüleri mikrofonundan temizler."
             }
+            VoiceText::EchoCancellation => "Yankı Giderme",
+            VoiceText::EchoNote => "Hoparlör için. Kulaklıkla sesin kesiliyorsa kapat.",
             VoiceText::Speakers => "Hoparlör",
             VoiceText::SystemDefault => "Sistem Varsayılanı",
             VoiceText::InUse => "Kullanımda",
@@ -250,6 +262,7 @@ impl VoiceText {
             VoiceText::Voice => "Sprache",
             VoiceText::VoiceSubtitle => "Sprich mit deiner Party",
             VoiceText::PartyVoice => "Party-Sprachchat",
+            VoiceText::StatusFailed => "Funktioniert nicht",
             VoiceText::StatusOff => "Aus",
             VoiceText::StatusNoParty => "Startet, sobald du in einer Party bist",
             VoiceText::StatusConnecting => "Verbindet…",
@@ -296,6 +309,10 @@ impl VoiceText {
             VoiceText::NoiseNote => {
                 "Filtert Tastaturklicken, Lüfter und andere gleichmäßige Geräusche aus deinem Mikrofon."
             }
+            VoiceText::EchoCancellation => "Echounterdrückung",
+            VoiceText::EchoNote => {
+                "Für Lautsprecher. Mit Headset ausschalten, wenn deine Stimme abgehackt klingt."
+            }
             VoiceText::Speakers => "Lautsprecher",
             VoiceText::SystemDefault => "Systemstandard",
             VoiceText::InUse => "In Verwendung",
@@ -335,6 +352,7 @@ impl VoiceText {
             VoiceText::Voice => "Voz",
             VoiceText::VoiceSubtitle => "Habla con tu party",
             VoiceText::PartyVoice => "Voz de la party",
+            VoiceText::StatusFailed => "No funciona",
             VoiceText::StatusOff => "Desactivada",
             VoiceText::StatusNoParty => "Se inicia cuando estás en una party",
             VoiceText::StatusConnecting => "Conectando…",
@@ -381,6 +399,10 @@ impl VoiceText {
             VoiceText::NoiseNote => {
                 "Quita de tu micrófono los clics del teclado, los ventiladores y otros ruidos constantes."
             }
+            VoiceText::EchoCancellation => "Cancelación de eco",
+            VoiceText::EchoNote => {
+                "Para altavoces. Desactívala con auriculares si tu voz suena cortada."
+            }
             VoiceText::Speakers => "Altavoces",
             VoiceText::SystemDefault => "Predeterminado del sistema",
             VoiceText::InUse => "En uso",
@@ -422,6 +444,7 @@ impl VoiceText {
             VoiceText::Voice => "Voix",
             VoiceText::VoiceSubtitle => "Parle avec ta party",
             VoiceText::PartyVoice => "Voix de la party",
+            VoiceText::StatusFailed => "Ne fonctionne pas",
             VoiceText::StatusOff => "Désactivée",
             VoiceText::StatusNoParty => "Démarre quand tu es dans une party",
             VoiceText::StatusConnecting => "Connexion…",
@@ -468,6 +491,10 @@ impl VoiceText {
             VoiceText::NoiseNote => {
                 "Retire de ton micro les clics de clavier, les ventilateurs et autres bruits constants."
             }
+            VoiceText::EchoCancellation => "Annulation d'écho",
+            VoiceText::EchoNote => {
+                "Pour les haut-parleurs. Désactive-la avec un casque si ta voix est coupée."
+            }
             VoiceText::Speakers => "Haut-parleurs",
             VoiceText::SystemDefault => "Par défaut du système",
             VoiceText::InUse => "Utilisé",
@@ -509,6 +536,7 @@ impl VoiceText {
             VoiceText::Voice => "Voz",
             VoiceText::VoiceSubtitle => "Fale com sua party",
             VoiceText::PartyVoice => "Voz da party",
+            VoiceText::StatusFailed => "Não funciona",
             VoiceText::StatusOff => "Desativada",
             VoiceText::StatusNoParty => "Começa quando você está em uma party",
             VoiceText::StatusConnecting => "Conectando…",
@@ -554,6 +582,10 @@ impl VoiceText {
             VoiceText::NoiseReduction => "Reduzir ruído de fundo",
             VoiceText::NoiseNote => {
                 "Tira do seu microfone cliques de teclado, ventoinhas e outros ruídos constantes."
+            }
+            VoiceText::EchoCancellation => "Cancelamento de eco",
+            VoiceText::EchoNote => {
+                "Para alto-falantes. Desative com fone de ouvido se a sua voz soar cortada."
             }
             VoiceText::Speakers => "Alto-falantes",
             VoiceText::SystemDefault => "Padrão do sistema",
@@ -648,6 +680,7 @@ mod tests {
             VoiceText::TalkKey,
             VoiceText::TalkButton,
             VoiceText::NoiseReduction,
+            VoiceText::EchoCancellation,
             VoiceText::SystemDefault,
             VoiceText::RefreshDevices,
             VoiceText::VoiceSettings,

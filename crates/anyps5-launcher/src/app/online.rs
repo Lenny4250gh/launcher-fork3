@@ -70,6 +70,10 @@ pub struct OnlineService {
     relay_only_later: bool,
     /// The player was online in the last frame: coming online syncs the trophies.
     was_online: bool,
+    /// The system browser has the sign-in page and the player was sent there: when it ends, the
+    /// launcher comes back to the front by itself, because a pad cannot reach this window from a
+    /// browser (Windows hands a pad to the focused window only).
+    browser_wait: bool,
 }
 
 /// A game ready to start, with the variables it gets beyond its settings.
@@ -91,6 +95,7 @@ impl OnlineService {
             started: None,
             relay_only_later: false,
             was_online: false,
+            browser_wait: false,
         }
     }
 
@@ -498,8 +503,13 @@ impl OnlineService {
             }
             Notice::SignedIn => self.signed_in(model),
             Notice::SignInTimedOut => {
+                self.browser_returns(model);
                 let text = T::SignInTimedOut.text(language).to_owned();
-                model.toast(text, Icon::CLOCK);
+                model.toast_failure(text);
+            }
+            Notice::SignInStopped => {
+                let text = T::SignInStopped.text(language).to_owned();
+                model.toast(text, Icon::WARNING);
             }
             Notice::Ended => {
                 self.process = None;
@@ -598,6 +608,7 @@ impl OnlineService {
                 }
             }
             (Purpose::BrowserSignIn { .. }, Ok(_)) => {
+                self.browser_wait = true;
                 if let Some(url) = model.online.sign_in_url.clone() {
                     Self::open_cloud_page(model, &url);
                 }
@@ -613,7 +624,7 @@ impl OnlineService {
                     .to_owned();
                 model.toast(text, Icon::CHECK);
             }
-            (Purpose::CancelSignIn, _) => {}
+            (Purpose::CancelSignIn, _) => self.browser_wait = false,
             (Purpose::SignOut, _) => {
                 model.edit_prefs(|p| p.online = false);
                 let text = T::SignedOut.text(language).to_owned();
@@ -829,12 +840,26 @@ impl OnlineService {
                     Some(restriction) => restriction_text::toast(restriction, what, None, language),
                     None => failure_text(&failure, language),
                 };
-                model.toast(text, Icon::WARNING);
+                // A sign-in that failed stays up until dismissed: the pad has Back for that.
+                if matches!(purpose, Purpose::BrowserSignIn { .. }) {
+                    self.browser_wait = false;
+                    model.toast_failure(text);
+                } else {
+                    model.toast(text, Icon::WARNING);
+                }
             }
         }
     }
 
+    /// The browser part of a sign-in is over: bring the launcher back to the front.
+    fn browser_returns(&mut self, model: &mut Model) {
+        if std::mem::take(&mut self.browser_wait) {
+            model.effects.push(Effect::RestoreWindow);
+        }
+    }
+
     fn signed_in(&mut self, model: &mut Model) {
+        self.browser_returns(model);
         model.edit_prefs(|p| p.online = true);
         if let Some(account) = &model.online.account {
             let text = T::Welcome.format(model.language(), &[Arg::Str(&account.handle)]);
@@ -844,9 +869,16 @@ impl OnlineService {
 
     /// Opens a page of the cloud in the system browser: the sign-in page or the account web. Only
     /// an address under the cloud the player uses is opened, whatever the net service says.
-    pub fn open_cloud_page(model: &Model, url: &str) {
+    pub fn open_cloud_page(model: &mut Model, url: &str) {
+        if !Self::try_open_cloud_page(model, url) {
+            let text = T::OpenPageFailed.text(model.language()).to_owned();
+            model.toast(text, Icon::WARNING);
+        }
+    }
+
+    fn try_open_cloud_page(model: &Model, url: &str) -> bool {
         let Some(cloud) = net::cloud(model.prefs.online_cloud.as_deref()) else {
-            return;
+            return false;
         };
         let base = format!("{}/", cloud.trim_end_matches('/'));
         if !url.starts_with(&base) || url.chars().any(|c| c.is_whitespace() || c.is_control()) {
@@ -854,11 +886,15 @@ impl OnlineService {
                 "not opening a page outside the cloud: {}",
                 loggable_url(url)
             );
-            return;
+            return false;
         }
-        if let Err(error) = anyps5_core::platform::open_url(url) {
+        // The page opens in the language the launcher speaks (the web reads `lang`).
+        let url = with_language(url, model.language());
+        if let Err(error) = anyps5_core::platform::open_url(&url) {
             tracing::warn!("cannot open the cloud's page: {error}");
+            return false;
         }
+        true
     }
 
     /// A join failed before its game started: the splash goes away.
@@ -1102,6 +1138,39 @@ pub fn failure_text(failure: &Failure, language: Language) -> String {
     text.text(language).to_owned()
 }
 
+/// The address with `lang=<code>` added, so the cloud's web (sign-in, account settings) shows the
+/// language the launcher is set to. An address that already names a language keeps it, and the
+/// fragment stays last.
+fn with_language(url: &str, language: Language) -> String {
+    let (head, fragment) = match url.split_once('#') {
+        Some((head, fragment)) => (head, Some(fragment)),
+        None => (url, None),
+    };
+    let query = head.split_once('?').map_or("", |(_, query)| query);
+    if query
+        .split('&')
+        .any(|pair| pair.split('=').next() == Some("lang"))
+    {
+        return url.to_string();
+    }
+    let separator = match head.split_once('?') {
+        None => '?',
+        Some((_, "")) => ' ',
+        Some(_) => '&',
+    };
+    let mut out = head.to_string();
+    if separator != ' ' {
+        out.push(separator);
+    }
+    out.push_str("lang=");
+    out.push_str(language.code());
+    if let Some(fragment) = fragment {
+        out.push('#');
+        out.push_str(fragment);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -1113,6 +1182,34 @@ mod tests {
     use anyps5_core::settings::Preferences;
 
     use super::*;
+
+    #[test]
+    fn a_cloud_page_opens_in_the_launchers_language() {
+        assert_eq!(
+            with_language("https://cloud.example/sign-in", Language::Turkish),
+            "https://cloud.example/sign-in?lang=tr"
+        );
+        assert_eq!(
+            with_language("https://cloud.example/sign-in?state=abc", Language::German),
+            "https://cloud.example/sign-in?state=abc&lang=de"
+        );
+        assert_eq!(
+            with_language("https://cloud.example/account?", Language::French),
+            "https://cloud.example/account?lang=fr"
+        );
+        assert_eq!(
+            with_language("https://cloud.example/link#code=1", Language::Portuguese),
+            "https://cloud.example/link?lang=pt#code=1"
+        );
+        assert_eq!(
+            with_language("https://cloud.example/a?lang=es&x=1", Language::English),
+            "https://cloud.example/a?lang=es&x=1"
+        );
+        assert_eq!(
+            with_language("https://cloud.example/a?language=x", Language::Spanish),
+            "https://cloud.example/a?language=x&lang=es"
+        );
+    }
 
     #[test]
     fn a_logged_address_loses_query_and_fragment() {
@@ -2029,5 +2126,64 @@ mod tests {
         );
         // No card: Back is the home screen's again.
         assert!(!crate::app::together::escape(&mut model));
+    }
+}
+
+/// A build with ANYPLAY_NET_EMBED must exercise the embedded executable, not a sidecar or
+/// ANYPLAY_NET override. The real process pipe is observed; invalid hello avoids touching any
+/// credentials or contacting a cloud. Network integration tests cover signed-in operations.
+#[cfg(all(test, embedded_net))]
+mod embedded_process_test {
+    use super::*;
+
+    #[test]
+    fn the_embedded_service_answers_over_the_real_process_pipe() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = anyps5_core::paths::AppPaths::under(root.path());
+        let binary = bundled(&paths).expect("embedded service must extract");
+        assert_eq!(bundled(&paths).as_ref(), Some(&binary));
+        let version = std::process::Command::new(&binary)
+            .arg("--version")
+            .output()
+            .unwrap();
+        assert!(version.status.success());
+        assert!(String::from_utf8_lossy(&version.stdout).starts_with("anyplay-net "));
+        let (wake, received) = std::sync::mpsc::channel();
+        let notify: Notifier = std::sync::Arc::new(move || {
+            let _ = wake.send(());
+        });
+        let mut service = NetProcess::spawn(
+            &binary,
+            &paths.network_dir(),
+            false,
+            &paths.network_log(),
+            notify,
+        )
+        .unwrap();
+        let line = net::control::command_line(
+            19,
+            &Command::Hello {
+                launcher: env!("CARGO_PKG_VERSION").into(),
+                cloud: String::new(),
+            },
+        );
+        service.write(&[line]).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            received
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .expect("embedded service did not answer");
+            for line in service.drain() {
+                match line {
+                    net::Line::Output(net::control::Output::Answer(answer)) if answer.id == 19 => {
+                        let error = answer.into_result::<net::control::Hello>().unwrap_err();
+                        assert_eq!(error.code, "bad_request");
+                        return;
+                    }
+                    net::Line::Ended => panic!("embedded service ended before answering"),
+                    _ => {}
+                }
+            }
+        }
     }
 }

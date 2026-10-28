@@ -8,7 +8,7 @@
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
 //!                           game-hub|game-hub-running|game-hub-empty|trophies-all|
 //!                           find-players|find-players-mine|find-players-empty|post-listing|send-to-friend|
-//!                           about-update|behavior-links|settings-console-off|settings-console-autostart|settings-console|settings-console-image|settings-console-unavailable|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|
+//!                           about-update|behavior-links|settings-home-windows|settings-home-linux|settings-home-mac|settings-console-off|settings-console-autostart|settings-console|settings-console-image|settings-console-unavailable|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|behavior-clips-linux|
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
 //!                           update-required|update-required-downloading|update-required-failed|
@@ -237,6 +237,8 @@ pub enum ScreenPage {
     Required(RequiredLook),
     /// General with Console Mode and the start at sign-in.
     SettingsConsole(ConsoleLook),
+    /// Connected Apps scrolled to the steps for using AnyPlay as the console home, per system.
+    SettingsHome(anyps5_core::platform::Os),
     /// Behavior with the AnyPlay links registered to this launcher.
     BehaviourLinks,
     /// Advanced on Linux with share screen on: the OpenH264 row turned on (and downloaded), or off.
@@ -247,6 +249,9 @@ pub enum ScreenPage {
     BehaviourClipsOff,
     BehaviourClips,
     BehaviourClipsKey,
+    /// Behavior with Clips on at 30 seconds as it reads on Linux: the desktop's window dialog
+    /// and no clip key.
+    BehaviourClipsLinux,
     /// Behavior scrolled to the Add to Steam rows.
     BehaviourSteam,
     Recommended,
@@ -326,6 +331,8 @@ pub enum ProfileLook {
     Private,
     Loading,
     Error,
+    /// The profile of an account the cloud does not show (deleted or blocked): no Try Again.
+    Gone,
     Offline,
 }
 
@@ -342,6 +349,7 @@ impl ProfileLook {
             | ProfileLook::FriendCompare
             | ProfileLook::Loading
             | ProfileLook::Error
+            | ProfileLook::Gone
             | ProfileLook::Offline => 2,
             ProfileLook::FriendHidden => 3,
             ProfileLook::NewFriend => 4,
@@ -481,6 +489,8 @@ pub enum OnlineLook {
     AddFriendMissing,
     Friend,
     Account,
+    /// The account page while the cloud is out: the note and Try Again on top.
+    AccountOffline,
     Picker,
     /// The party of three, over its chat and a session the leader could take it into.
     Party,
@@ -502,6 +512,10 @@ pub enum OnlineLook {
     Conversation,
     /// No conversation yet.
     MessagesEmpty,
+    /// The list of conversations has not answered yet.
+    MessagesLoading,
+    /// The cloud is out and no list ever came: the note and Try Again, not "No conversations".
+    MessagesOffline,
     /// A thread with a message in the middle of a run focused.
     ConversationFocus,
     /// A group: names and pictures beside the bubbles, runs of messages, answers.
@@ -948,6 +962,9 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "update-required-packaged-long" => ScreenPage::Required(RequiredLook::PackagedLong),
         "update-required-offline" => ScreenPage::Required(RequiredLook::OnlineClosed),
         "behavior-links" => ScreenPage::BehaviourLinks,
+        "settings-home-windows" => ScreenPage::SettingsHome(anyps5_core::platform::Os::Windows),
+        "settings-home-linux" => ScreenPage::SettingsHome(anyps5_core::platform::Os::Linux),
+        "settings-home-mac" => ScreenPage::SettingsHome(anyps5_core::platform::Os::Macos),
         "settings-console-off" => ScreenPage::SettingsConsole(ConsoleLook::Off),
         "settings-console-autostart" => ScreenPage::SettingsConsole(ConsoleLook::Autostart),
         "settings-console" => ScreenPage::SettingsConsole(ConsoleLook::On),
@@ -968,6 +985,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "behavior-clips-off" => ScreenPage::BehaviourClipsOff,
         "behavior-clips" => ScreenPage::BehaviourClips,
         "behavior-clips-key" => ScreenPage::BehaviourClipsKey,
+        "behavior-clips-linux" => ScreenPage::BehaviourClipsLinux,
         "behavior-steam" => ScreenPage::BehaviourSteam,
         "phone-off" => ScreenPage::Phone(PhoneLook::Off),
         "phone-waiting" => ScreenPage::Phone(PhoneLook::Waiting),
@@ -1038,6 +1056,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-add-missing" => ScreenPage::Online(OnlineLook::AddFriendMissing),
         "friends-friend" => ScreenPage::Online(OnlineLook::Friend),
         "friends-settings" => ScreenPage::Online(OnlineLook::Account),
+        "friends-settings-offline" => ScreenPage::Online(OnlineLook::AccountOffline),
         "friends-settings-appearing" => ScreenPage::Online(OnlineLook::AccountAppearing),
         "friends-settings-public" => ScreenPage::Online(OnlineLook::AccountPublic),
         "friends-picker" => ScreenPage::Online(OnlineLook::Picker),
@@ -1051,6 +1070,8 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-message" => ScreenPage::Online(OnlineLook::Message),
         "friends-conversation" => ScreenPage::Online(OnlineLook::Conversation),
         "friends-messages-empty" => ScreenPage::Online(OnlineLook::MessagesEmpty),
+        "friends-messages-loading" => ScreenPage::Online(OnlineLook::MessagesLoading),
+        "friends-messages-offline" => ScreenPage::Online(OnlineLook::MessagesOffline),
         "friends-conversation-focus" => ScreenPage::Online(OnlineLook::ConversationFocus),
         "friends-conversation-group" => ScreenPage::Online(OnlineLook::ConversationGroup),
         "friends-conversation-short" => ScreenPage::Online(OnlineLook::ConversationShort),
@@ -1104,6 +1125,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "profile-request" => ScreenPage::Profile(ProfileLook::Request),
         "profile-new" => ScreenPage::Profile(ProfileLook::New),
         "profile-new-friend" => ScreenPage::Profile(ProfileLook::NewFriend),
+        "profile-gone" => ScreenPage::Profile(ProfileLook::Gone),
         "profile-private" => ScreenPage::Profile(ProfileLook::Private),
         "profile-loading" => ScreenPage::Profile(ProfileLook::Loading),
         "profile-error" => ScreenPage::Profile(ProfileLook::Error),
@@ -1401,9 +1423,21 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         }
         _ => {}
     }
-    if matches!(look, OnlineLook::FriendsEmpty | OnlineLook::MessagesEmpty) {
+    if matches!(
+        look,
+        OnlineLook::FriendsEmpty
+            | OnlineLook::MessagesEmpty
+            | OnlineLook::MessagesLoading
+            | OnlineLook::MessagesOffline
+    ) {
         state.friends = FriendLists::default();
         state.invitations.clear();
+        if look == OnlineLook::MessagesEmpty {
+            // The cloud answered: there are no conversations.
+            state
+                .social
+                .set_conversations(anyps5_core::online::api::Conversations::default());
+        }
     } else {
         sample_social(&mut state);
         sample_played_with(&mut state, look);
@@ -1416,6 +1450,8 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         | OnlineLook::FriendOffline
         | OnlineLook::ConversationOffline
         | OnlineLook::PlayedWithOffline
+        | OnlineLook::AccountOffline
+        | OnlineLook::MessagesOffline
         | OnlineLook::PartyOffline => state.cloud = Some(Cloud::Offline),
         OnlineLook::FriendsConnecting => state.cloud = None,
         OnlineLook::PartyNone => {
@@ -3127,6 +3163,10 @@ impl ScreenGallery {
             default_screenshots: std::path::Path::new("C:\\Users\\mira\\Pictures\\AnyPS5"),
             autostart: match self.page {
                 ScreenPage::SettingsConsole(look) => look.env(),
+                ScreenPage::SettingsHome(os) => crate::screens::settings::AutostartEnv {
+                    state: crate::screens::settings::AutostartState::Off,
+                    os,
+                },
                 _ => ConsoleLook::Off.env(),
             },
             links: if matches!(self.page, ScreenPage::BehaviourLinks) {
@@ -3142,10 +3182,13 @@ impl ScreenGallery {
                 _ => None,
             },
             windows_rows: true,
+            clips_rows: true,
             clips: crate::screens::settings::ClipsEnv {
                 count: if self.prefs.clips_seconds > 0 { 3 } else { 0 },
                 capturing: matches!(self.page, ScreenPage::BehaviourClipsKey),
                 broadcast_key: false,
+                portal: matches!(self.page, ScreenPage::BehaviourClipsLinux),
+                no_key: matches!(self.page, ScreenPage::BehaviourClipsLinux),
             },
             location: match self.page {
                 ScreenPage::UnlockedLocation(look) => look.env(),
@@ -3540,7 +3583,9 @@ impl ScreenGallery {
                     OnlineLook::Friend => self
                         .friends
                         .show_page(Page::Friend(anyps5_core::online::api::AccountId(2)), &data),
-                    OnlineLook::Account | OnlineLook::AccountAppearing => {
+                    OnlineLook::Account
+                    | OnlineLook::AccountOffline
+                    | OnlineLook::AccountAppearing => {
                         self.friends.show_page(Page::Account, &data);
                     }
                     OnlineLook::AccountPublic => {
@@ -3590,9 +3635,10 @@ impl ScreenGallery {
                         Page::VoiceDevices(anyps5_core::online::DeviceKind::Input),
                         &data,
                     ),
-                    OnlineLook::Messages | OnlineLook::MessagesEmpty => {
-                        self.friends.show_page(Page::Messages, &data)
-                    }
+                    OnlineLook::Messages
+                    | OnlineLook::MessagesEmpty
+                    | OnlineLook::MessagesLoading
+                    | OnlineLook::MessagesOffline => self.friends.show_page(Page::Messages, &data),
                     OnlineLook::ConversationGroup => self
                         .friends
                         .show_page(Page::Conversation("c-raid".into()), &data),
@@ -3788,6 +3834,10 @@ impl ScreenGallery {
             ScreenPage::WhatsNewLauncher => {
                 self.whats_new.open_showcase();
             }
+            ScreenPage::SettingsHome(_) => {
+                self.settings.open_at(Category::ConnectedApps.index(), true);
+                self.settings.focus_row_id("homeStep1");
+            }
             ScreenPage::SettingsConsole(look) => {
                 self.prefs.console_mode = look == ConsoleLook::On;
                 self.settings.open_at(Category::General.index(), true);
@@ -3821,7 +3871,9 @@ impl ScreenGallery {
                 self.settings.open_at(Category::Captures.index(), true);
                 self.settings.focus_row_id("clips");
             }
-            ScreenPage::BehaviourClips | ScreenPage::BehaviourClipsKey => {
+            ScreenPage::BehaviourClips
+            | ScreenPage::BehaviourClipsKey
+            | ScreenPage::BehaviourClipsLinux => {
                 self.prefs.clips_seconds = 30;
                 self.settings.open_at(Category::Captures.index(), true);
                 self.settings

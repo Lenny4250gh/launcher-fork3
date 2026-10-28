@@ -73,6 +73,7 @@ fn set(online: &mut Online, page: ProfilePage) {
         ProfileEntry {
             page: Some(page),
             failed: false,
+            gone: false,
         },
     );
 }
@@ -179,6 +180,7 @@ fn a_profile_that_is_not_there_is_loading_offline_or_failed() {
         ProfileEntry {
             page: None,
             failed: true,
+            gone: false,
         },
     );
     assert!(matches!(body(&online), Body::Failed));
@@ -196,6 +198,7 @@ fn a_profile_that_is_not_there_is_loading_offline_or_failed() {
         ProfileEntry {
             page: Some(known),
             failed: true,
+            gone: false,
         },
     );
     assert!(matches!(body(&online), Body::Ready(_)));

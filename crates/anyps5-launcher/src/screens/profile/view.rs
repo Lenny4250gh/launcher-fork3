@@ -228,6 +228,8 @@ pub enum Body {
     Loading,
     Offline,
     Failed,
+    /// The cloud knows no such profile, or it is closed to the player: no Try Again.
+    Gone,
     /// Another player shows nothing to someone who is not their friend.
     Private,
     Ready(Box<Ready>),
@@ -354,7 +356,10 @@ pub fn view(inputs: &Inputs<'_>) -> ProfileView {
 
     if !own && page.is_none() {
         let failed = entry.is_some_and(|e| e.failed);
-        let body = if failed {
+        let gone = failed && entry.is_some_and(|e| e.gone);
+        let body = if gone {
+            Body::Gone
+        } else if failed {
             Body::Failed
         } else if !online.is_online() {
             Body::Offline
@@ -362,7 +367,7 @@ pub fn view(inputs: &Inputs<'_>) -> ProfileView {
             Body::Loading
         };
         return ProfileView {
-            state_action: failed.then(|| Action {
+            state_action: (failed && !gone).then(|| Action {
                 press: Press::Retry,
                 label: F::TryAgain.text(language).to_owned(),
             }),

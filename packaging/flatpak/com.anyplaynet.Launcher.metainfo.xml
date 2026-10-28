@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>net.anyplay.Launcher</id>
+  <id>com.anyplaynet.Launcher</id>
   <name>AnyPlay Launcher</name>
   <summary>Play PS5 games with AnyPS5</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0-only</project_license>
-  <developer id="net.anyplay">
+  <developer id="com.anyplaynet">
     <name>AnyPlay</name>
   </developer>
   <description>
     <p>The AnyPlay Launcher is the home for AnyPS5 on your computer. It installs and updates AnyPS5, keeps your games in one place, starts them, and connects you to the AnyPlay network.</p>
   </description>
-  <launchable type="desktop-id">net.anyplay.Launcher.desktop</launchable>
+  <launchable type="desktop-id">com.anyplaynet.Launcher.desktop</launchable>
   <provides>
     <binary>anyplay-launcher</binary>
   </provides>

@@ -19,7 +19,7 @@ use egui::{Color32, Pos2, Rect, pos2, vec2};
 use crate::ui::artwork;
 use crate::ui::shade;
 use crate::ui::theme::{
-    self, Accent, TextStyle, Theme, Weight, color, mix, scrim, ty, white, with_light,
+    self, Accent, TextStyle, Theme, Weight, color, fade, mix, scrim, ty, white, with_light,
 };
 
 /// sRGB channel (0..=255) to linear light.
@@ -474,15 +474,9 @@ fn panel(report: &mut Report) {
                 report.add(what, &format!("{name} card"), ink, card, need);
             }
             // A trophy row: the grade label earned and not yet, and the dimmed ink of an unearned row.
-            // (Measured on the light look only: the dark looks' tables stay as they were.)
             let trophy = over(color::surface_trophy_row(), panel);
             let trophy_hover = over(color::surface_hover(), panel);
-            let trophy_surfaces: &[(&str, Color32)] = if theme.is_light() && !glass {
-                &[("trophy row", trophy), ("trophy row hover", trophy_hover)]
-            } else {
-                &[]
-            };
-            for &(surface, bg) in trophy_surfaces {
+            for (surface, bg) in [("trophy row", trophy), ("trophy row hover", trophy_hover)] {
                 for grade in theme::Grade::ALL {
                     let t = grade.title(crate::ui::i18n::Language::English);
                     report.add(
@@ -509,6 +503,44 @@ fn panel(report: &mut Report) {
                         Need::Text,
                     );
                 }
+            }
+            // The glyph of a grade on its own tile (a row of the profile): the grade at 16 % under it.
+            for grade in theme::Grade::ALL {
+                let t = grade.title(crate::ui::i18n::Language::English);
+                report.add(
+                    &format!("grade glyph {t}"),
+                    &format!("{name} profile row"),
+                    grade.color(),
+                    over(fade(grade.color(), 0.16), row),
+                    Need::Glyph,
+                );
+            }
+            // A feed card (the activity list): the time, the sentence and the fact, each at its alpha.
+            for (what, alpha) in [
+                ("feed time", 0.55),
+                ("feed sentence", 0.85),
+                ("feed fact", 0.72),
+            ] {
+                report.add(
+                    what,
+                    &format!("{name} row"),
+                    color::ink_at(alpha),
+                    row,
+                    Need::Text,
+                );
+            }
+            // The online dot beside a name: the accent, a glyph on the panel.
+            for accent in Accent::ALL {
+                report.add(
+                    &format!(
+                        "online dot, {}",
+                        accent.title(crate::ui::i18n::Language::English)
+                    ),
+                    &format!("{name} panel"),
+                    accent.color(),
+                    panel,
+                    Need::Glyph,
+                );
             }
             // Buttons: the label on the primary in every state, the focus ring on the panel.
             for (state, fill) in [
@@ -564,18 +596,26 @@ fn panel(report: &mut Report) {
 
 /// The initial in the avatar of the profile button: on the middle of the accent's gradient.
 fn avatars(report: &mut Report) {
-    for accent in Accent::ALL {
-        let bg = crate::screens::home::avatar_middle(accent.color());
-        report.add(
-            &format!(
-                "avatar initial, {}",
-                accent.title(crate::ui::i18n::Language::English)
-            ),
-            "profile button",
-            theme::readable_ink(bg),
-            bg,
-            Need::Text,
-        );
+    // On the dark looks and on the light one (deeper accents, the paper as the light ink).
+    for (look, light) in [
+        ("profile button", false),
+        ("profile button, Daylight", true),
+    ] {
+        with_light(light, || {
+            for accent in Accent::ALL {
+                let bg = crate::screens::home::avatar_middle(accent.color());
+                report.add(
+                    &format!(
+                        "avatar initial, {}",
+                        accent.title(crate::ui::i18n::Language::English)
+                    ),
+                    look,
+                    theme::readable_ink(bg),
+                    bg,
+                    Need::Text,
+                );
+            }
+        });
     }
     // The first letter on the calm colours of a person without a picture (rows, cards, the
     // Friends header and the profile): one measure for every size the letter grows to.
