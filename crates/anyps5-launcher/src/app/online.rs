@@ -856,7 +856,9 @@ impl OnlineService {
             );
             return;
         }
-        if let Err(error) = anyps5_core::platform::open_url(url) {
+        // The page opens in the language the launcher speaks (the web reads `lang`).
+        let url = with_language(url, model.language());
+        if let Err(error) = anyps5_core::platform::open_url(&url) {
             tracing::warn!("cannot open the cloud's page: {error}");
         }
     }
@@ -1102,6 +1104,39 @@ pub fn failure_text(failure: &Failure, language: Language) -> String {
     text.text(language).to_owned()
 }
 
+/// The address with `lang=<code>` added, so the cloud's web (sign-in, account settings) shows the
+/// language the launcher is set to. An address that already names a language keeps it, and the
+/// fragment stays last.
+fn with_language(url: &str, language: Language) -> String {
+    let (head, fragment) = match url.split_once('#') {
+        Some((head, fragment)) => (head, Some(fragment)),
+        None => (url, None),
+    };
+    let query = head.split_once('?').map_or("", |(_, query)| query);
+    if query
+        .split('&')
+        .any(|pair| pair.split('=').next() == Some("lang"))
+    {
+        return url.to_string();
+    }
+    let separator = match head.split_once('?') {
+        None => '?',
+        Some((_, "")) => ' ',
+        Some(_) => '&',
+    };
+    let mut out = head.to_string();
+    if separator != ' ' {
+        out.push(separator);
+    }
+    out.push_str("lang=");
+    out.push_str(language.code());
+    if let Some(fragment) = fragment {
+        out.push('#');
+        out.push_str(fragment);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -1113,6 +1148,34 @@ mod tests {
     use anyps5_core::settings::Preferences;
 
     use super::*;
+
+    #[test]
+    fn a_cloud_page_opens_in_the_launchers_language() {
+        assert_eq!(
+            with_language("https://cloud.example/sign-in", Language::Turkish),
+            "https://cloud.example/sign-in?lang=tr"
+        );
+        assert_eq!(
+            with_language("https://cloud.example/sign-in?state=abc", Language::German),
+            "https://cloud.example/sign-in?state=abc&lang=de"
+        );
+        assert_eq!(
+            with_language("https://cloud.example/account?", Language::French),
+            "https://cloud.example/account?lang=fr"
+        );
+        assert_eq!(
+            with_language("https://cloud.example/link#code=1", Language::Portuguese),
+            "https://cloud.example/link?lang=pt#code=1"
+        );
+        assert_eq!(
+            with_language("https://cloud.example/a?lang=es&x=1", Language::English),
+            "https://cloud.example/a?lang=es&x=1"
+        );
+        assert_eq!(
+            with_language("https://cloud.example/a?language=x", Language::Spanish),
+            "https://cloud.example/a?language=x&lang=es"
+        );
+    }
 
     #[test]
     fn a_logged_address_loses_query_and_fragment() {
