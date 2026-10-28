@@ -131,17 +131,25 @@ fn decode(kind: Kind, report: &[u8]) -> Option<State> {
         (Kind::DualSense, 0x01, 64) => (1, Shape::DualSense),
         (Kind::DualSense, 0x31, 78) if crc_ok(report) => (2, Shape::DualSense),
         (Kind::DualShock4, 0x01, 64..) => (1, Shape::DualShock),
-        (Kind::DualShock4, 0x11..=0x19, 78..)
-            if report[1] & 0x80 != 0 && crc_ok(&report[..78]) =>
-        {
+        (Kind::DualShock4, 0x11..=0x19, 78..) if report[1] & 0x80 != 0 && crc_ok(&report[..78]) => {
             (3, Shape::DualShock)
         }
         _ => return None,
     };
     let (b0, b1, b2, triggers) = match shape {
         Shape::Short => (start + 4, start + 5, start + 6, None),
-        Shape::DualSense => (start + 7, start + 8, start + 9, Some((start + 4, start + 5))),
-        Shape::DualShock => (start + 4, start + 5, start + 6, Some((start + 7, start + 8))),
+        Shape::DualSense => (
+            start + 7,
+            start + 8,
+            start + 9,
+            Some((start + 4, start + 5)),
+        ),
+        Shape::DualShock => (
+            start + 4,
+            start + 5,
+            start + 6,
+            Some((start + 7, start + 8)),
+        ),
     };
     let at = |i: usize| report.get(i).copied();
     let (b0, b1, b2) = (at(b0)?, at(b1)?, at(b2)?);
@@ -462,11 +470,7 @@ mod io {
                 thread::sleep(Duration::from_millis(100));
                 continue;
             }
-            let every = if open.is_empty() {
-                RESCAN
-            } else {
-                RESCAN_OPEN
-            };
+            let every = if open.is_empty() { RESCAN } else { RESCAN_OPEN };
             if last_scan.is_none_or(|at| at.elapsed() >= every) {
                 last_scan = Some(Instant::now());
                 let before = open.len();
@@ -528,7 +532,10 @@ mod io {
                 }
             });
             if republish {
-                if active.id.is_some_and(|id| !open.iter().any(|p| p.slot == id)) {
+                if active
+                    .id
+                    .is_some_and(|id| !open.iter().any(|p| p.slot == id))
+                {
                     active = ActivePad::default();
                     feed.dirs = Directions::default();
                     feed.last = None;
