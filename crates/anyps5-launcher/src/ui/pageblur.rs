@@ -32,7 +32,7 @@ const READY_FADE: f32 = 0.15;
 /// How bright the blurred page shows through the card itself (the page around it is dimmed to
 /// `DIM`, so the card reads as a lighter frosted pane).
 const CARD_BRIGHT: f32 = 0.92;
-/// How much of the card's blue tint lies over the blurred page (0 = clear glass, 1 = opaque).
+/// How much of the card's tint (the look's own colour) lies over the blurred page (0 = clear glass, 1 = opaque).
 const CARD_TINT: f32 = 0.38;
 
 /// Where the screenshot callback drops the capture (egui 0.37 answers with a one-shot callback,
@@ -141,11 +141,12 @@ pub fn paint_card(
     // Premultiplied: the page fades in and dims at once, rounded like the card.
     let tint = Color32::from_rgba_premultiplied(k, k, k, a as u8);
     painter.add(RectShape::filled(rect, corner, tint).with_texture(texture.id(), uv));
-    // The card's blue, left see-through.
+    // The card's tint, left see-through: the colour of the look on screen, not a fixed blue.
     let wash = if theme::is_light() {
         theme::scrim(CARD_TINT * alpha)
     } else {
-        Color32::from_rgba_unmultiplied(12, 26, 58, (CARD_TINT * alpha * 255.0).round() as u8)
+        let [r, g, b] = theme::card_wash().map(|c| (c * 255.0).round() as u8);
+        Color32::from_rgba_unmultiplied(r, g, b, (CARD_TINT * alpha * 255.0).round() as u8)
     };
     painter.rect_filled(rect, corner, wash);
     painter.add(RectShape::stroke(
