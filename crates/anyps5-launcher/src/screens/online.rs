@@ -3178,8 +3178,8 @@ mod tests {
         assert_eq!(rows[choice + 1].id, "scoreAudienceNote");
         assert_eq!(rows[choice].title, "Leaderboard Scores");
         assert_eq!(
-            rows[choice + 1].control,
-            Control::Info(Some("Friends see your entry and your rank.".into()))
+            rows[choice + 1].title,
+            "Friends see your entry and your rank."
         );
         online.score_privacy = Some(Audience::Nobody);
         let rows = panel.rows(&data(&online)).2;
@@ -3191,8 +3191,8 @@ mod tests {
             }
         );
         assert_eq!(
-            rows[choice + 1].control,
-            Control::Info(Some("Only you see your entry.".into())),
+            rows[choice + 1].title,
+            "Only you see your entry.",
             "the note follows the choice"
         );
         let mut actions = Vec::new();
