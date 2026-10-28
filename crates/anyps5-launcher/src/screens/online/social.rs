@@ -2234,6 +2234,7 @@ mod tests {
                 "talkKey",
                 "talkPad",
                 "voiceNoise",
+                "voiceEcho",
                 "voiceInput",
                 "voiceOutput",
                 "refreshDevices",

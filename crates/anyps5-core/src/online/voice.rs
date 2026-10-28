@@ -78,6 +78,10 @@ pub struct VoicePrefs {
     /// the player switched it off.
     #[serde(default = "yes")]
     pub noise_reduction: bool,
+    /// "Echo Cancellation": what the speakers play is taken out of the microphone, so the party
+    /// does not hear itself back. On unless the player switched it off.
+    #[serde(default = "yes")]
+    pub echo_cancellation: bool,
     /// Members whose volume or mute is not the default.
     #[serde(default)]
     pub peers: Vec<PeerPrefs>,
@@ -99,6 +103,7 @@ impl Default for VoicePrefs {
             key: None,
             pad: None,
             noise_reduction: true,
+            echo_cancellation: true,
             peers: Vec::new(),
         }
     }
@@ -380,6 +385,10 @@ impl Online {
             // A new service starts with the suppressor on.
             self.send(Purpose::Voice, Command::VoiceNoise { enabled: false });
         }
+        if !prefs.echo_cancellation {
+            // So does the echo canceller.
+            self.send(Purpose::Voice, Command::VoiceEcho { enabled: false });
+        }
         for (kind, name) in [
             (DeviceKind::Input, prefs.input.clone()),
             (DeviceKind::Output, prefs.output.clone()),
@@ -505,6 +514,15 @@ impl Online {
             self.voice.changed = true;
         }
         self.send(Purpose::Voice, Command::VoiceNoise { enabled: on });
+    }
+
+    /// "Echo Cancellation" on or off.
+    pub fn set_echo_cancellation(&mut self, on: bool) {
+        if self.voice.prefs.echo_cancellation != on {
+            self.voice.prefs.echo_cancellation = on;
+            self.voice.changed = true;
+        }
+        self.send(Purpose::Voice, Command::VoiceEcho { enabled: on });
     }
 
     /// Chooses a microphone or speakers by name; `None` is the system's default.
@@ -646,6 +664,29 @@ mod tests {
         online.voice_hello();
         let out = lines(&mut online);
         assert_eq!(out.iter().filter(|l| l.contains("voice_noise")).count(), 1);
+    }
+
+    #[test]
+    fn echo_cancellation_is_on_by_default_kept_and_sent() {
+        let mut online = Online::default();
+        assert!(online.voice.prefs().echo_cancellation);
+        let old: VoicePrefs = serde_json::from_str("{\"enabled\":true}").unwrap();
+        assert!(old.echo_cancellation, "a file from before has it on");
+        // On by default, so a new service needs to hear nothing.
+        online.voice_hello();
+        assert!(!lines(&mut online).iter().any(|l| l.contains("voice_echo")));
+        online.set_echo_cancellation(false);
+        assert!(online.voice.take_changed());
+        assert!(!online.voice.prefs().echo_cancellation);
+        let out = lines(&mut online);
+        assert!(out[0].contains("voice_echo") && out[0].contains("\"enabled\":false"));
+        // A new service starts with it on, so the off choice goes out again after a hello.
+        online.voice_hello();
+        assert!(lines(&mut online).iter().any(|l| l.contains("voice_echo")));
+        online.set_echo_cancellation(true);
+        online.voice_hello();
+        let out = lines(&mut online);
+        assert_eq!(out.iter().filter(|l| l.contains("voice_echo")).count(), 1);
     }
 
     #[test]
@@ -806,6 +847,7 @@ mod tests {
             provider: VoiceProvider::default(),
             pad: None,
             noise_reduction: true,
+            echo_cancellation: true,
         });
         assert!(!online.voice.take_changed());
         let id = online.send(
@@ -945,6 +987,7 @@ mod tests {
             provider: VoiceProvider::default(),
             pad: Some("rb".into()),
             noise_reduction: false,
+            echo_cancellation: false,
         };
         let text = serde_json::to_string(&prefs).unwrap();
         assert_eq!(serde_json::from_str::<VoicePrefs>(&text).unwrap(), prefs);
