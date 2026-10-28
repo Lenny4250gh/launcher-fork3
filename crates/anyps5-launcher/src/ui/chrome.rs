@@ -1781,7 +1781,16 @@ pub fn fullscreen_panel<R>(
     add_contents: impl FnOnce(&mut Ui, f32) -> R,
 ) -> Option<R> {
     let id = Id::unique(id);
-    let v = ctx.animate_to((id, "open"), if open { 1.0 } else { 0.0 }, Motion::Overlay);
+    // `animate_from_to`, not `animate_to`: a panel is only drawn while it is active, so its tracker
+    // is born on the very frame it opens, and `animate_to` starts a new tracker at its target (no
+    // entrance). The first opening (the "..." of a game, say) then appeared at once; from the
+    // second on the tracker existed, parked at 0, and the spring played.
+    let v = ctx.animate_from_to(
+        (id, "open"),
+        0.0,
+        if open { 1.0 } else { 0.0 },
+        Motion::Overlay,
+    );
     if v <= 0.001 && !open {
         return None;
     }
