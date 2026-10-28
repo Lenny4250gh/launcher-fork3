@@ -341,10 +341,14 @@ fn paint(
                     ..shadows::toast()
                 },
             );
-            let mut style = GlassStyle::glass(radius::LARGE, 0.6);
-            style.black *= v;
-            style.alpha = v;
-            paint_glass(ctx, &painter, rect, style);
+            // The card is a translucent pane over the blurred page; until that page has been
+            // captured (and under High Contrast) it is the usual glass panel.
+            if !pageblur::paint_card(ctx, &painter, rect, radius::LARGE, id, v) {
+                let mut style = GlassStyle::glass(radius::LARGE, 0.6);
+                style.black *= v;
+                style.alpha = v;
+                paint_glass(ctx, &painter, rect, style);
+            }
 
             let mut y = rect.min.y + CARD_PADDING;
             let x = rect.min.x + CARD_PADDING;

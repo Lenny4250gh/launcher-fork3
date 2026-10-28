@@ -12,10 +12,13 @@
 
 use std::sync::{Arc, Mutex};
 
+use egui::epaint::RectShape;
 use egui::{
-    Color32, ColorImage, Context, Id, Painter, Rect, ScreenshotCallback, TextureHandle,
-    TextureOptions, ViewportCommand, pos2,
+    Color32, ColorImage, Context, Id, Painter, Rect, ScreenshotCallback, Stroke, StrokeKind,
+    TextureHandle, TextureOptions, ViewportCommand, pos2,
 };
+
+use crate::ui::theme::{self, color};
 
 /// How much the page is shrunk before it is blurred (the blur's strength grows with it).
 const SHRINK: usize = 8;
@@ -26,6 +29,11 @@ const PASSES: usize = 2;
 const DIM: f32 = 0.60;
 /// Seconds for the blur to fade in once the capture has arrived.
 const READY_FADE: f32 = 0.15;
+/// How bright the blurred page shows through the card itself (the page around it is dimmed to
+/// `DIM`, so the card reads as a lighter frosted pane).
+const CARD_BRIGHT: f32 = 0.92;
+/// How much of the card's blue tint lies over the blurred page (0 = clear glass, 1 = opaque).
+const CARD_TINT: f32 = 0.38;
 
 /// Where the screenshot callback drops the capture (egui 0.37 answers with a one-shot callback,
 /// not with an event, so each request has its own slot and no other screenshot is mistaken for it).
@@ -89,6 +97,67 @@ pub fn paint(ctx: &Context, painter: &Painter, rect: Rect, id: Id, open: bool, v
         Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
         tint,
     );
+}
+
+/// Paints the card's own pane: the blurred page behind it, seen through a translucent blue tint.
+/// Call after [`paint`] in the same frame. Returns `false` when there is no blurred page to show
+/// yet (or under High Contrast), so the caller draws its usual panel instead.
+pub fn paint_card(
+    ctx: &Context,
+    painter: &Painter,
+    rect: Rect,
+    corner: f32,
+    id: Id,
+    v: f32,
+) -> bool {
+    if theme::high_contrast() {
+        return false;
+    }
+    let key = id.with("page-blur");
+    let Some(held) = ctx.data(|d| d.get_temp::<Held>(key)) else {
+        return false;
+    };
+    let Some(texture) = &held.texture else {
+        return false;
+    };
+    let ready = ctx.animate_bool_with_time(key.with("ready"), true, READY_FADE);
+    let alpha = (v * ready).clamp(0.0, 1.0);
+    if alpha <= 0.0 {
+        return true;
+    }
+    let screen = ctx.content_rect();
+    let uv = Rect::from_min_max(
+        pos2(
+            (rect.min.x - screen.min.x) / screen.width(),
+            (rect.min.y - screen.min.y) / screen.height(),
+        ),
+        pos2(
+            (rect.max.x - screen.min.x) / screen.width(),
+            (rect.max.y - screen.min.y) / screen.height(),
+        ),
+    );
+    let a = (alpha * 255.0).round();
+    let k = (a * CARD_BRIGHT).round() as u8;
+    // Premultiplied: the page fades in and dims at once, rounded like the card.
+    let tint = Color32::from_rgba_premultiplied(k, k, k, a as u8);
+    painter.add(RectShape::filled(rect, corner, tint).with_texture(texture.id(), uv));
+    // The card's blue, left see-through.
+    let wash = if theme::is_light() {
+        theme::scrim(CARD_TINT * alpha)
+    } else {
+        Color32::from_rgba_unmultiplied(12, 26, 58, (CARD_TINT * alpha * 255.0).round() as u8)
+    };
+    painter.rect_filled(rect, corner, wash);
+    painter.add(RectShape::stroke(
+        rect,
+        corner,
+        Stroke::new(
+            1.0 / ctx.pixels_per_point(),
+            theme::fade(color::hairline_glass(), alpha),
+        ),
+        StrokeKind::Inside,
+    ));
+    true
 }
 
 /// Drops what the card kept (call once its exit is over).
