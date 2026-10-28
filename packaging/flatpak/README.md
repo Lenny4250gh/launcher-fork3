@@ -1,6 +1,6 @@
 # Flatpak
 
-`net.anyplay.Launcher.yml` packs the launcher as a Flatpak. It compiles nothing: it installs the
+`com.anyplaynet.Launcher.yml` packs the launcher as a Flatpak. It compiles nothing: it installs the
 release binary the release workflow already built, so the Flatpak runs the same code as the
 AppImage. The release workflow's `flatpak` job builds it and adds
 `AnyPlay-Launcher-<version>-x86_64.flatpak` to the release. The file is not part of the signed
@@ -12,7 +12,7 @@ On Linux with `flatpak` and `flatpak-builder` installed, from the repository roo
 
     tools/linux/flatpak.sh <version> <launcher binary> <THIRD-PARTY-LICENSES.txt> <output folder>
     flatpak install --user <output folder>/AnyPlay-Launcher-<version>-x86_64.flatpak
-    flatpak run net.anyplay.Launcher
+    flatpak run com.anyplaynet.Launcher
 
 The runtime and SDK (`org.freedesktop.Platform` and `Sdk` 26.08) come from Flathub.
 

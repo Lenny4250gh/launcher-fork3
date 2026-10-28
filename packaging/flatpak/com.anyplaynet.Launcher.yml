@@ -1,7 +1,7 @@
 # Flatpak manifest of the AnyPlay Launcher. It compiles nothing: it installs the release binary that
 # the release workflow already built (the same one as in the AppImage). Build it with
 # tools/linux/flatpak.sh, which stages the files in ./stage beside this manifest.
-app-id: net.anyplay.Launcher
+app-id: com.anyplaynet.Launcher
 runtime: org.freedesktop.Platform
 runtime-version: '26.08'
 sdk: org.freedesktop.Sdk
@@ -26,13 +26,13 @@ modules:
       # replaces its own files and tells the player to update with Flatpak (docs/UPDATES.md).
       - printf 'Flatpak\n' > package-manager
       - install -Dm644 package-manager /app/share/anyplay-launcher/package-manager
-      - sed 's/^Icon=.*/Icon=net.anyplay.Launcher/' anyplay-launcher.desktop > net.anyplay.Launcher.desktop
-      - install -Dm644 net.anyplay.Launcher.desktop /app/share/applications/net.anyplay.Launcher.desktop
+      - sed 's/^Icon=.*/Icon=com.anyplaynet.Launcher/' anyplay-launcher.desktop > com.anyplaynet.Launcher.desktop
+      - install -Dm644 com.anyplaynet.Launcher.desktop /app/share/applications/com.anyplaynet.Launcher.desktop
       # The icon is 64x64, so it goes in the 64x64 folder (a 256x256 folder would hold a scaled-up lie).
-      - install -Dm644 anyplay-launcher.png /app/share/icons/hicolor/64x64/apps/net.anyplay.Launcher.png
-      - install -Dm644 net.anyplay.Launcher.metainfo.xml /app/share/metainfo/net.anyplay.Launcher.metainfo.xml
-      - install -Dm644 LICENSE /app/share/licenses/net.anyplay.Launcher/LICENSE
-      - install -Dm644 THIRD-PARTY-LICENSES.txt /app/share/licenses/net.anyplay.Launcher/THIRD-PARTY-LICENSES.txt
+      - install -Dm644 anyplay-launcher.png /app/share/icons/hicolor/64x64/apps/com.anyplaynet.Launcher.png
+      - install -Dm644 com.anyplaynet.Launcher.metainfo.xml /app/share/metainfo/com.anyplaynet.Launcher.metainfo.xml
+      - install -Dm644 LICENSE /app/share/licenses/com.anyplaynet.Launcher/LICENSE
+      - install -Dm644 THIRD-PARTY-LICENSES.txt /app/share/licenses/com.anyplaynet.Launcher/THIRD-PARTY-LICENSES.txt
     sources:
       - type: dir
         path: stage
