@@ -4,6 +4,10 @@
 //! update-sign keygen --secret-out <file> [--public-out <file>] [--label <text>]
 //! update-sign manifest --version <v> --exe <file> --out <latest.json>
 //!                      [--appimage <file>] [--macos-arm64 <zip>] [--minimum <v>] [--supported-file <MIN_SUPPORTED_VERSION>] [--days 30] [--base-url <url>]
+//! update-sign reissue --from <latest.json> --sig <latest.json.sig> --keys <file> --out <latest.json>
+//!                     [--offer-from <latest.json> --offer-sig <latest.json.sig>]
+//!                     [--yank <v,v>] [--unyank <v,v>] [--rollout <0-100>]
+//!                     [--supported-file <MIN_SUPPORTED_VERSION>] [--minimum <v>] [--days 30]
 //! update-sign sign --manifest <latest.json> --out <latest.json.sig>
 //!                  (--key-env <NAME> | --key-file <file>)
 //! update-sign verify --manifest <latest.json> --sig <latest.json.sig> --keys <file>
@@ -24,9 +28,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyplay_update_manifest::{
-    Artifact, LINUX_X64, MACOS_ARM64, MAX_VALIDITY_DAYS, Manifest, SCHEMA, TrustedKeys, Version,
-    WINDOWS_X64, format_time, generate_signing_key, key_line, parse_supported_file, seed_hex, sign,
-    signing_key_from_hex, to_hex, verify,
+    Artifact, LINUX_X64, MACOS_ARM64, MAX_VALIDITY_DAYS, Manifest, PolicyChange, SCHEMA,
+    TrustedKeys, Version, WINDOWS_X64, format_time, generate_signing_key, key_line,
+    parse_supported_file, reissue, seed_hex, sign, signing_key_from_hex, to_hex, verify,
+    verify_signed,
 };
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime};
@@ -55,6 +60,7 @@ fn run(args: &[String]) -> Result<()> {
     match command.as_str() {
         "keygen" => keygen(&flags),
         "manifest" => manifest(&flags),
+        "reissue" => reissue_command(&flags),
         "sign" => sign_command(&flags),
         "verify" => verify_command(&flags),
         _ => Err(usage()),
@@ -62,7 +68,7 @@ fn run(args: &[String]) -> Result<()> {
 }
 
 fn usage() -> String {
-    "usage: update-sign keygen|manifest|sign|verify (see the header of crates/update-manifest/src/bin/update-sign.rs)
+    "usage: update-sign keygen|manifest|reissue|sign|verify (see the header of crates/update-manifest/src/bin/update-sign.rs)
      keygen: on Windows the secret file inherits the ACL of its folder; write it to a private folder"
         .into()
 }
@@ -198,6 +204,8 @@ fn manifest(flags: &Flags) -> Result<()> {
         expires: format_time(now + Duration::days(days)),
         minimum_version: minimum,
         min_supported_version: supported,
+        yanked: Vec::new(),
+        rollout_percent: None,
         platforms,
     };
     manifest.validate().map_err(|e| e.to_string())?;
@@ -205,6 +213,92 @@ fn manifest(flags: &Flags) -> Result<()> {
     text.push('\n');
     fs::write(&out, text).map_err(|e| format!("cannot write {}: {e}", out.display()))?;
     eprintln!("wrote {} (expires {})", out.display(), manifest.expires);
+    Ok(())
+}
+
+/// Reads a manifest and its signature and checks them against the key list. The clock is not
+/// asked: the point of a reissue is often to replace a manifest that has expired.
+fn read_signed(manifest: &str, sig: &str, keys: &TrustedKeys) -> Result<Manifest> {
+    let bytes = fs::read(manifest).map_err(|e| format!("cannot read {manifest}: {e}"))?;
+    let signature = fs::read_to_string(sig).map_err(|e| format!("cannot read {sig}: {e}"))?;
+    verify_signed(&bytes, &signature, keys).map_err(|e| format!("{manifest}: {e}"))
+}
+
+fn version_list(text: Option<&str>) -> Vec<String> {
+    text.map(|t| {
+        t.split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_owned())
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+/// Makes the next manifest of a release that is already out, without rebuilding anything (the
+/// kill switch, ADR 0002): the signed one now live supplies files and policy, the flags change
+/// the policy, and the validity window starts again. Signing is a separate step, as always.
+fn reissue_command(flags: &Flags) -> Result<()> {
+    let keys =
+        TrustedKeys::parse(&fs::read_to_string(flags.need("keys")?).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    if keys.is_empty() {
+        return Err("the key list holds no key".into());
+    }
+    let live = read_signed(flags.need("from")?, flags.need("sig")?, &keys)?;
+    let offer = match (flags.get("offer-from"), flags.get("offer-sig")) {
+        (Some(manifest), Some(sig)) => Some(read_signed(manifest, sig, &keys)?),
+        (None, None) => None,
+        _ => return Err("give --offer-from and --offer-sig together".into()),
+    };
+    let rollout = match flags.get("rollout") {
+        Some(text) => {
+            let percent: u8 = text
+                .parse()
+                .ok()
+                .filter(|p| *p <= 100)
+                .ok_or("--rollout must be a whole number from 0 to 100")?;
+            Some(percent)
+        }
+        None => None,
+    };
+    let supported = match flags.get("supported-file") {
+        Some(file) => {
+            let text = fs::read_to_string(file).map_err(|e| format!("cannot read {file}: {e}"))?;
+            Some(parse_supported_file(&text).map_err(|e| e.to_string())?)
+        }
+        None => None,
+    };
+    let change = PolicyChange {
+        yank: version_list(flags.get("yank")),
+        unyank: version_list(flags.get("unyank")),
+        rollout_percent: rollout,
+        min_supported_version: supported,
+        minimum_version: flags.get("minimum").map(str::to_owned),
+    };
+    let days: i64 = flags
+        .get("days")
+        .unwrap_or("30")
+        .parse()
+        .map_err(|_| "--days is not a number".to_owned())?;
+    let next = reissue(
+        &live,
+        offer.as_ref(),
+        &change,
+        OffsetDateTime::now_utc(),
+        days,
+    )
+    .map_err(|e| e.to_string())?;
+    let out = flags.need("out")?;
+    let mut text = serde_json::to_string_pretty(&next).map_err(|e| e.to_string())?;
+    text.push('\n');
+    fs::write(out, text).map_err(|e| format!("cannot write {out}: {e}"))?;
+    eprintln!(
+        "wrote {out}: offers {}, yanked [{}], rollout {}%, expires {}",
+        next.version,
+        next.yanked.join(", "),
+        next.rollout_percent.unwrap_or(100),
+        next.expires
+    );
     Ok(())
 }
 

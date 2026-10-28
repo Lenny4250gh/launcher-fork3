@@ -47,6 +47,8 @@ Every release carries two extra assets next to the binaries: `latest.json` and `
 | `published`, `expires` | RFC 3339, UTC. After `expires` the manifest is void. The release workflow sets 30 days; the tool refuses more than 90. |
 | `minimum_version` | The oldest running version that may update from this manifest. A launcher below it refuses (it needs an intermediate release or the installer). The workflow takes it from the repository variable `UPDATE_MINIMUM_VERSION`, default `0.1.0`. |
 | `min_supported_version` | **Optional.** The oldest running version that may keep going online. A launcher below it, which has verified this manifest, treats the update as *required* ([Retiring a version](#retiring-a-version)). Absent means every version may; launchers that do not know the field ignore it. Plain semver, not above `version`. It is a different thing from `minimum_version` (which versions can take *this* update) and has its own name because launchers up to v0.2.x read `minimum_version` as "may not update from here". The workflow takes it from the file `MIN_SUPPORTED_VERSION` of the repository, empty by default. |
+| `yanked` | **Optional.** Versions that must no longer be offered ([The kill switch](#the-kill-switch)). Plain semver, at most 64, none of them `version`. A launcher that runs one is offered `version` even when it is older. Launchers that do not know the field ignore it. |
+| `rollout_percent` | **Optional**, 0 to 100, absent means 100. The share of installs that see the update yet ([The kill switch](#the-kill-switch)). A required update and a yanked running version ignore it. Launchers that do not know the field show the update at once. |
 | `platforms` | Per platform the download's `name`, `url`, `sha256` and `size`: `windows-x86_64` (the portable exe), `linux-x86_64` (the AppImage) and `macos-arm64` (the Apple silicon app zip). A manifest without a Linux or macOS entry (no Linux entry up to v0.2.4, no macOS entry before the first release with the Mac zip) offers that platform nothing, quietly: it is no error. A launcher that does not know a platform key ignores the entry (v0.2.5 and older read only their own). Windows always needs its entry. |
 
 `latest.json.sig` is one line: the Ed25519 signature in hex over `anyplay-launcher-update-manifest-v1\n` followed by the exact bytes of `latest.json`. The prefix means a signature made for this purpose is good for nothing else. The bytes are verified before they are parsed; nothing is canonicalised.
@@ -59,14 +61,15 @@ Once a key is trusted ([Migration](#migration)), an update is taken only when al
 2. The signature is valid (strict Ed25519) for one of the trusted keys.
 3. The manifest is well formed: schema `1`, plain versions, `minimum_version` not above `version`, `expires` after `published`, lower-case hex hash, a size above zero.
 4. It has not expired.
-5. `version` is newer than the running version (semver, pre-releases below their release). An equal or older version offers nothing: this is the rollback check.
+5. `version` is newer than the running version (semver, pre-releases below their release). An equal or older version offers nothing: this is the rollback check. The one exception is a running version the signed manifest itself lists in `yanked`: it is offered `version` although that is older, and `version` is never one the manifest yanks.
 6. The running version is not below `minimum_version`. (A launcher that is below it *and* below `min_supported_version` is told to install the new version by hand from the releases page, on the same "Update required" screen, instead of getting a quiet refusal.)
-7. The download's `name` is exactly `AnyPlay-Launcher-<version>-x64.exe` (or the old `AnyPS5-Launcher-<version>-x64.exe`) on Windows, `AnyPlay-Launcher-<version>-x86_64.AppImage` on Linux and `AnyPlay-Launcher-<version>-macos-arm64.zip` on macOS, and its `url` is https.
-8. The download's SHA-256 **and** size are the manifest's. The file gets its final name only after that, and a `.verified` marker holding the hash is written beside it.
+7. The staged rollout has reached this install, unless the update is required or the running version is yanked ([The kill switch](#the-kill-switch)). Otherwise nothing is offered yet, and the log says so.
+8. The download's `name` is exactly `AnyPlay-Launcher-<version>-x64.exe` (or the old `AnyPS5-Launcher-<version>-x64.exe`) on Windows, `AnyPlay-Launcher-<version>-x86_64.AppImage` on Linux and `AnyPlay-Launcher-<version>-macos-arm64.zip` on macOS, and its `url` is https.
+9. The download's SHA-256 **and** size are the manifest's. The file gets its final name only after that, and a `.verified` marker holding the hash is written beside it.
 
 A staged exe from an earlier run is offered again only if it has its marker and still hashes to it; what an unsigned launcher left in the updates folder is ignored.
 
-Offline, the check fails with a network error and the launcher runs as it is. A refused update never touches the installed exe: the swap only ever sees a file that passed 8.
+Offline, the check fails with a network error and the launcher runs as it is. A refused update never touches the installed exe: the swap only ever sees a file that passed 9.
 
 ### What this does not stop
 
@@ -112,6 +115,49 @@ A player who turned *Check for Updates* off does not read the manifest; the clou
 **Switch 2: the cloud** (online services only). On the cloud, set `min_launcher_version` (environment `ANYPLAY_CLOUD_MIN_LAUNCHER_VERSION`, see the cloud's docs/configuration.md) to the version and redeploy. A launcher below it, which sends `X-AnyPlay-Client: launcher/<version>` through the net service, gets `client_too_old` and shows the same screen. Launchers that send no header, the web and other clients are not affected. To switch it off, empty the variable and redeploy.
 
 Order for a retirement: release, set the file (switch 1), and only some days later the cloud floor (switch 2), so players who update on their own are not caught by the cloud first.
+
+## The kill switch
+
+A bad release used to be fixable only by another release. Three fields of the signed manifest, and the workflow *resign*, take a version out of circulation or release it slowly without a build. The reasoning, and what was left out on purpose (a `channel` field, a server counter), is in [ADR 0002](adr/0002-the-manifest-carries-the-kill-switch.md).
+
+| Control | Field | What a launcher does |
+|---|---|---|
+| Yank a version | `yanked` | Never offers a listed version. A launcher that runs one is offered the manifest's version, also when it is older (the walk back), and is not held by a rollout. |
+| Release slowly | `rollout_percent` | Shows the update only if the install's bucket is below the percentage. 0 pauses, 100 or no field is everyone. |
+| Require an update | `min_supported_version` | The existing "update required" screen ([Retiring a version](#retiring-a-version)); it ignores the rollout. Offline play stays. |
+
+**The bucket.** The first four bytes of `SHA-256("anyplay-launcher-rollout-v1\n" + install_id + 0x00 + version)` as a number, modulo 100. The same install has the same bucket for a version on every check; raising the percentage only adds installs; the next version shuffles the order. The **install id** is 128 random bits, made once at the first check and kept in the file `install-id` of the launcher's data folder. It is tied to nothing about the player or the PC, never sent anywhere, and used for nothing else. If it cannot be stored the install is never held back.
+
+**What a hold is.** Only the update notice waits. The release page and its files are public, so a player who goes there can still install by hand. A hold is for staging a good release; a yank is for a bad one.
+
+### Operating it
+
+Everything runs as the workflow [resign.yml](../.github/workflows/resign.yml) (Actions, resign, Run workflow, or the `gh` command below). It takes the manifest that is live on the latest release, applies the inputs, signs in the environment `release-signing`-less `release-resigning` and replaces `latest.json` and `latest.json.sig`. No build of the launcher takes place; compiling the small signing tool is most of the 2 to 3 minutes. Its inputs are all optional:
+
+| Input | Meaning |
+|---|---|
+| `yank` | Versions to add to `yanked`, comma separated. |
+| `unyank` | Versions to take off again. |
+| `rollout_percent` | 0 to 100. Empty keeps the current value; 100 ends the rollout. |
+| `offer_tag` | A tag such as `v0.3.8`: offer that release's files (taken from its own signed `latest.json`) instead. Empty keeps the live version. |
+
+Recipes, with `gh` as AlxcBTW:
+
+- **Release 0.4.0 slowly.** After the release: `gh workflow run resign.yml --repo anyplaynet/launcher -f rollout_percent=10`. Then 50, then 100.
+- **Pause it.** `gh workflow run resign.yml --repo anyplaynet/launcher -f rollout_percent=0`
+- **Yank 0.4.0, walk everyone back to 0.3.8.** `gh workflow run resign.yml --repo anyplaynet/launcher -f yank=0.4.0 -f offer_tag=v0.3.8`. The latest release then offers 0.3.8; a launcher on 0.4.0 takes it, launchers already on 0.3.8 see nothing new, older ones are offered 0.3.8. Launchers from before the kill switch ignore `yanked` and stay where they are.
+- **Yank 0.4.0 when 0.4.1 is the latest.** `gh workflow run resign.yml --repo anyplaynet/launcher -f yank=0.4.0`. A launcher on 0.4.0 is offered 0.4.1 at once, whatever the rollout of 0.4.1.
+- **Take a yank back.** `-f unyank=0.4.0`.
+
+Check: `gh release download --repo anyplaynet/launcher --pattern latest.json -O - | grep -E '"(version|yanked|rollout_percent)"'`, and look at the run.
+
+The weekly renewal runs the same code with no inputs, so a yank or a rollout in force is kept. A **new release** starts with a clean policy (nothing yanked, 100 percent): apply the yank or the rollout again after it. `MIN_SUPPORTED_VERSION` still comes from the repository on every run.
+
+### Limits
+
+- Launchers from before the kill switch ignore `yanked` and `rollout_percent`. They are not harmed, only not protected.
+- A genuine older manifest that yanks a version, replayed until it expires, can walk a launcher on that version back to the older release. The window is the expiry (30 days at most), and the target is a signed release.
+- A staged download that was fetched before a yank is not removed by it; it is offered again from the manifest stored beside it, until the next check offers the manifest's version.
 
 ## Provenance of a release
 
@@ -217,18 +263,19 @@ A workflow edited on a branch cannot get the key: a run from a branch or started
 
 ## Renewing the manifest
 
-A manifest expires after 30 days, and a launcher refuses an expired one, so a month without a release would end the update channel. The workflow [resign.yml](../.github/workflows/resign.yml) runs every Monday (and by hand): it takes the latest release, checks that its exe still has the hash in `SHA256SUMS.txt`, makes a new manifest with a fresh `published` and `expires` for the same version, signs it in the environment `release-resigning` and replaces `latest.json` and `latest.json.sig` of that release. Nothing else about the release changes. It does nothing while the latest release has no signed manifest. If the secret is missing there, the run fails and GitHub mails the maintainers: fix it within the weeks the old manifest still has left.
+A manifest expires after 30 days, and a launcher refuses an expired one, so a month without a release would end the update channel. The workflow [resign.yml](../.github/workflows/resign.yml) runs every Monday (and by hand): it takes the signed manifest that is live on the latest release (its signature is checked against the key list), makes a new one with a fresh `published` and `expires` and the same files and policy, signs it in the environment `release-resigning` and replaces `latest.json` and `latest.json.sig` of that release. Nothing else about the release changes. It does nothing while the latest release has no signed manifest. If the secret is missing there, the run fails and GitHub mails the maintainers: fix it within the weeks the old manifest still has left.
 
 The new manifest has its own attestation, made by `resign.yml`; `gh attestation verify` on `latest.json` therefore names that workflow, not `release.yml` (see [Provenance of a release](#provenance-of-a-release)). What launchers trust is the Ed25519 signature, not the attestation.
 
 ## The tool
 
-`update-sign` (crate `anyplay-update-manifest`) does the four jobs of the ceremony and of the workflow:
+`update-sign` (crate `anyplay-update-manifest`) does the jobs of the ceremony and of the workflow:
 
 | Command | Does |
 |---|---|
 | `keygen --secret-out <file> [--public-out <file>] [--label <text>]` | Makes a key pair. Prints only the public line. |
 | `manifest --version <v> --exe <file> --out <file> [--appimage <file>] [--macos-arm64 <zip>] [--minimum <v>] [--supported-file <MIN_SUPPORTED_VERSION>] [--days 30] [--base-url <url>]` | Hashes the exe (and the AppImage and the Mac zip, when given) and writes the manifest. The exe must be named `AnyPlay-Launcher-<v>-x64.exe`, the AppImage `AnyPlay-Launcher-<v>-x86_64.AppImage`, the Mac zip `AnyPlay-Launcher-<v>-macos-arm64.zip`. Without `--appimage` and `--macos-arm64` the manifest is Windows-only. `--supported-file` reads the repository's `MIN_SUPPORTED_VERSION` into `min_supported_version`; a file with only comments leaves the field out, and anything but one plain version (not above `--version`) is an error. `release.yml` always passes it; `resign.yml` only when the release it renews has an AppImage, and it adds the Mac zip the same way. |
+| `reissue --from <latest.json> --sig <file> --keys <file> --out <file> [--offer-from <latest.json> --offer-sig <file>] [--yank <v,v>] [--unyank <v,v>] [--rollout <0-100>] [--supported-file <file>] [--minimum <v>] [--days 30]` | Makes the next manifest of a release that is out, with no rebuild ([The kill switch](#the-kill-switch)). Checks the signature of `--from` (and of `--offer-from`) against the key list, not the clock. Keeps files and policy, applies the flags, starts the validity window again and validates the result. |
 | `sign --manifest <file> --out <file> (--key-env <NAME> \| --key-file <file>)` | Signs, after checking that the manifest is well formed, and verifies the new signature before writing it. Never prints the key. |
 | `verify --manifest <file> --sig <file> --keys <file> [--current <v>]` | What the launcher does, for a release candidate. |
 

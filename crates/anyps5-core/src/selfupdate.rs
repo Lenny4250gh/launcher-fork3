@@ -453,7 +453,8 @@ pub fn check_with(
     platform: Platform,
 ) -> Result<Option<Release>, SelfUpdateError> {
     let json = toolkit::latest_release_json(api_base, repo)?;
-    evaluate(&json, current, platform, keys)
+    // No install, no bucket: a plain check is never held back by a staged rollout.
+    evaluate(&json, current, platform, keys, "")
 }
 
 /// [`check`] for the running launcher: the same rules, but the release data is asked for with the
@@ -503,7 +504,7 @@ fn check_cached_with(
         let _ = fs::remove_file(feeds.join("launcher-latest.json.etag"));
         return Err(SelfUpdateError::Network("bad release data".into()));
     }
-    evaluate(&document.body, current, platform, keys)
+    evaluate(&document.body, current, platform, keys, &install_id(paths))
 }
 
 /// The rules on the JSON of `releases/latest`: with no trusted key the unsigned flow, else the
@@ -513,6 +514,7 @@ fn evaluate(
     current: &str,
     platform: Platform,
     keys: &TrustedKeys,
+    install_id: &str,
 ) -> Result<Option<Release>, SelfUpdateError> {
     if keys.is_empty() {
         // Only Windows has an unsigned flow.
@@ -521,14 +523,46 @@ fn evaluate(
             Platform::Linux | Platform::MacosArm64 => Ok(None),
         };
     }
-    parse_signed(
+    parse_signed_for(
         json,
         current,
         platform,
         keys,
         OffsetDateTime::now_utc(),
+        install_id,
         &mut get_small,
     )
+}
+
+/// The random id of this install, made once and kept in `install-id` in the data folder: 32 hex
+/// digits from the system random source, tied to nothing about the player or the PC. It exists only
+/// to put the install into a rollout bucket (`rollout_bucket`) and is never sent anywhere. A
+/// missing or damaged file is made again; if it cannot be written the result is empty, which
+/// means "not held back by a rollout".
+pub fn install_id(paths: &AppPaths) -> String {
+    let file = paths.data.join("install-id");
+    let valid = |text: &str| text.len() == 32 && text.bytes().all(|b| b.is_ascii_hexdigit());
+    if let Ok(text) = fs::read_to_string(&file) {
+        let text = text.trim();
+        if valid(text) {
+            return text.to_owned();
+        }
+    }
+    let mut bytes = [0u8; 16];
+    if getrandom::fill(&mut bytes).is_err() {
+        return String::new();
+    }
+    let id = anyplay_update_manifest::to_hex(&bytes);
+    let written = fs::create_dir_all(&paths.data).is_ok()
+        && fs::write(
+            &file,
+            format!(
+                "{id}
+"
+            ),
+        )
+        .is_ok();
+    if written { id } else { String::new() }
 }
 
 /// Downloads at most `max` bytes (the manifest and its signature).
@@ -562,12 +596,27 @@ type Fetch<'a> = &'a mut dyn FnMut(&str, u64) -> Result<Vec<u8>, SelfUpdateError
 /// release the manifest offers. `Ok(None)` when the manifest is genuine but not newer than
 /// `current` (nothing to update, or an older release served as "latest"); every other refusal is
 /// an error. The tag and the other assets of the release are not trusted and not used.
+#[cfg(test)]
 fn parse_signed(
     json: &str,
     current: &str,
     platform: Platform,
     keys: &TrustedKeys,
     now: OffsetDateTime,
+    fetch: Fetch,
+) -> Result<Option<Release>, SelfUpdateError> {
+    parse_signed_for(json, current, platform, keys, now, "", fetch)
+}
+
+/// [`parse_signed`] for the install `install_id`, which decides whether a staged rollout has
+/// reached it (`Manifest::held_back`). An empty id is never held back.
+fn parse_signed_for(
+    json: &str,
+    current: &str,
+    platform: Platform,
+    keys: &TrustedKeys,
+    now: OffsetDateTime,
+    install_id: &str,
     fetch: Fetch,
 ) -> Result<Option<Release>, SelfUpdateError> {
     let value: serde_json::Value = serde_json::from_str(json)
@@ -608,6 +657,14 @@ fn parse_signed(
         Err(other) => return Err(other.into()),
     }
     manifest.check_time(now)?;
+    if manifest.held_back(current, install_id) {
+        tracing::info!(
+            "update {} is in a staged rollout ({}%) that has not reached this install yet",
+            manifest.version,
+            manifest.rollout_percent.unwrap_or(100)
+        );
+        return Ok(None);
+    }
     // A manifest from before the AppImage was signed has no Linux file: nothing, and no error.
     let Some(artifact) = signed_artifact(&manifest, platform)? else {
         return Ok(None);

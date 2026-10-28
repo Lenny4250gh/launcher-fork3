@@ -46,6 +46,8 @@ fn manifest_for(version: &str, program: &[u8], base: &str) -> Manifest {
         expires: anyplay_update_manifest::format_time(now + Span::days(29)),
         minimum_version: "0.1.0".into(),
         min_supported_version: None,
+        yanked: Vec::new(),
+        rollout_percent: None,
         platforms: BTreeMap::from([(
             WINDOWS_X64.into(),
             Artifact {
@@ -138,13 +140,24 @@ fn signed_check(
     current: &str,
     edit: impl FnOnce(&mut Manifest),
 ) -> (Result<Option<Release>, SelfUpdateError>, Arc<AtomicBool>) {
+    signed_check_for(signer, trusted, current, "", edit)
+}
+
+fn signed_check_for(
+    signer: &SigningKey,
+    trusted: &TrustedKeys,
+    current: &str,
+    install_id: &str,
+    edit: impl FnOnce(&mut Manifest),
+) -> (Result<Option<Release>, SelfUpdateError>, Arc<AtomicBool>) {
     let (base, stop, json) = serve_signed(signer, PROGRAM, edit);
-    let result = parse_signed(
+    let result = parse_signed_for(
         &json,
         current,
         Platform::Windows,
         trusted,
         OffsetDateTime::now_utc(),
+        install_id,
         &mut |url, max| {
             assert!(url.starts_with(&base));
             get_small(url, max)
@@ -1068,4 +1081,121 @@ fn nothing_is_required_on_an_expired_or_forged_manifest() {
         ),
         "{result:?}"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The kill switch: yanked versions and the staged rollout (docs/adr/0002)
+
+fn trusted() -> (SigningKey, TrustedKeys) {
+    let key = generate_signing_key();
+    let keys = TrustedKeys::of(key.verifying_key());
+    (key, keys)
+}
+
+/// An install id that the rollout of `percent` holds back, and one it lets through.
+fn ids_around(percent: u8) -> (String, String) {
+    let ids: Vec<String> = (0..400).map(|n| format!("{n:032x}")).collect();
+    let held = ids
+        .iter()
+        .find(|id| anyplay_update_manifest::rollout_bucket(id, "0.2.0") >= percent)
+        .unwrap();
+    let seen = ids
+        .iter()
+        .find(|id| anyplay_update_manifest::rollout_bucket(id, "0.2.0") < percent)
+        .unwrap();
+    (held.clone(), seen.clone())
+}
+
+#[test]
+fn a_staged_rollout_holds_back_only_the_installs_beyond_it() {
+    let (key, keys) = trusted();
+    let (held, seen) = ids_around(50);
+    let at_half = |m: &mut Manifest| m.rollout_percent = Some(50);
+    let (result, stop) = signed_check_for(&key, &keys, "0.1.3", &held, at_half);
+    stop.store(true, AtomicOrdering::SeqCst);
+    assert!(result.unwrap().is_none(), "an install beyond 50% waits");
+    let (result, stop) = signed_check_for(&key, &keys, "0.1.3", &seen, at_half);
+    stop.store(true, AtomicOrdering::SeqCst);
+    assert_eq!(result.unwrap().expect("inside 50%").version(), "0.2.0");
+    // Nothing to bucket (no id): never held back.
+    let (result, stop) =
+        signed_check_for(&key, &keys, "0.1.3", "", |m| m.rollout_percent = Some(0));
+    stop.store(true, AtomicOrdering::SeqCst);
+    assert!(result.unwrap().is_some());
+    // 100 and an absent field: nobody is held back.
+    for percent in [Some(100), None] {
+        let (result, stop) =
+            signed_check_for(&key, &keys, "0.1.3", &held, |m| m.rollout_percent = percent);
+        stop.store(true, AtomicOrdering::SeqCst);
+        assert!(result.unwrap().is_some(), "{percent:?}");
+    }
+    // Paused: nobody sees it.
+    let (result, stop) =
+        signed_check_for(&key, &keys, "0.1.3", &seen, |m| m.rollout_percent = Some(0));
+    stop.store(true, AtomicOrdering::SeqCst);
+    assert!(result.unwrap().is_none());
+}
+
+#[test]
+fn a_required_update_ignores_the_rollout() {
+    let (key, keys) = trusted();
+    let (held, _) = ids_around(10);
+    let (result, stop) = signed_check_for(&key, &keys, "0.1.3", &held, |m| {
+        m.rollout_percent = Some(10);
+        m.min_supported_version = Some("0.2.0".into());
+    });
+    stop.store(true, AtomicOrdering::SeqCst);
+    let release = result.unwrap().expect("required beats the rollout");
+    assert!(release.required());
+}
+
+#[test]
+fn a_yanked_running_version_is_walked_back_and_never_held() {
+    let (key, keys) = trusted();
+    let (held, _) = ids_around(10);
+    // Running 0.2.1 (yanked), the manifest offers the good 0.2.0: not newer, still offered.
+    let (result, stop) = signed_check_for(&key, &keys, "0.2.1", &held, |m| {
+        m.rollout_percent = Some(10);
+        m.yanked = vec!["0.2.1".into()];
+    });
+    stop.store(true, AtomicOrdering::SeqCst);
+    assert_eq!(result.unwrap().expect("walk back").version(), "0.2.0");
+    // A running version the manifest does not yank, and that is newer: stays put.
+    let (result, stop) = signed_check(&key, &keys, "0.2.1", |m| m.yanked = vec!["0.2.5".into()]);
+    stop.store(true, AtomicOrdering::SeqCst);
+    assert!(result.unwrap().is_none());
+}
+
+#[test]
+fn a_manifest_that_offers_a_yanked_version_is_refused() {
+    let (key, keys) = trusted();
+    let (result, stop) = signed_check(&key, &keys, "0.1.3", |m| m.yanked = vec!["0.2.0".into()]);
+    stop.store(true, AtomicOrdering::SeqCst);
+    assert!(
+        matches!(
+            result,
+            Err(SelfUpdateError::Manifest(ManifestError::Malformed(_)))
+        ),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn the_install_id_is_made_once_and_repaired_when_damaged() {
+    let root = tempfile::tempdir().unwrap();
+    let paths = AppPaths::under(root.path());
+    let id = install_id(&paths);
+    assert_eq!(id.len(), 32);
+    assert!(id.bytes().all(|b| b.is_ascii_hexdigit()));
+    assert_eq!(install_id(&paths), id, "stable across calls");
+    let other = tempfile::tempdir().unwrap();
+    assert_ne!(
+        install_id(&AppPaths::under(other.path())),
+        id,
+        "random per install"
+    );
+    fs::write(paths.data.join("install-id"), "not an id").unwrap();
+    let again = install_id(&paths);
+    assert_eq!(again.len(), 32);
+    assert_eq!(install_id(&paths), again);
 }
