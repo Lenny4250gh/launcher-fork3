@@ -21,13 +21,14 @@ enum Event {
     Pairing(PairingRequest),
     Connected(String),
     Request(Message),
+    Disconnected,
 }
 
 struct Recorder(Mutex<Sender<Event>>);
 
 impl Recorder {
     fn push(&self, event: Event) {
-        let _ = self.0.lock().unwrap().send(event);
+        let _ = self.0.lock().unwrap_or_else(|e| e.into_inner()).send(event);
     }
 }
 
@@ -40,7 +41,9 @@ impl RemoteEvents for Recorder {
     fn connected(&self, name: String) {
         self.push(Event::Connected(name));
     }
-    fn disconnected(&self) {}
+    fn disconnected(&self) {
+        self.push(Event::Disconnected);
+    }
     fn latency(&self, _: f64) {}
     fn request(&self, message: Message) {
         self.push(Event::Request(message));
@@ -76,12 +79,14 @@ fn rig() -> Rig {
 }
 
 /// What a run of the binary and the server's side of it came to.
+#[derive(Debug)]
 struct Outcome {
     success: bool,
     output: String,
     pairings: usize,
     connected: Vec<String>,
     requests: Vec<Message>,
+    disconnected: usize,
 }
 
 /// Runs `fake-phone phone` with a script and answers its pairing questions with `answer`
@@ -113,6 +118,7 @@ fn run(rig: &Rig, key_file: &Path, id: &str, script: &str, answer: Option<bool>)
         pairings: 0,
         connected: vec![],
         requests: vec![],
+        disconnected: 0,
     };
     let until = Instant::now() + Duration::from_secs(20);
     let status = loop {
@@ -126,6 +132,7 @@ fn run(rig: &Rig, key_file: &Path, id: &str, script: &str, answer: Option<bool>)
                 }
                 Event::Connected(name) => outcome.connected.push(name),
                 Event::Request(message) => outcome.requests.push(message),
+                Event::Disconnected => outcome.disconnected += 1,
             }
         }
         if let Some(status) = child.try_wait().unwrap() {
@@ -137,13 +144,25 @@ fn run(rig: &Rig, key_file: &Path, id: &str, script: &str, answer: Option<bool>)
         }
         std::thread::sleep(Duration::from_millis(20));
     };
-    // Whatever the server heard before the phone left.
-    std::thread::sleep(Duration::from_millis(100));
+    // The server reports a phone's requests before it reports that the phone is gone (one
+    // thread, in order), so once every welcomed phone is reported gone nothing is on its way.
+    let until = Instant::now() + Duration::from_secs(20);
+    while outcome.disconnected < outcome.connected.len() {
+        let left = until.saturating_duration_since(Instant::now());
+        match rig.events.recv_timeout(left) {
+            Ok(Event::Pairing(_)) => outcome.pairings += 1,
+            Ok(Event::Connected(name)) => outcome.connected.push(name),
+            Ok(Event::Request(message)) => outcome.requests.push(message),
+            Ok(Event::Disconnected) => outcome.disconnected += 1,
+            Err(_) => panic!("the server never reported the phone gone; heard {outcome:?}"),
+        }
+    }
     while let Ok(event) = rig.events.try_recv() {
         match event {
             Event::Pairing(_) => outcome.pairings += 1,
             Event::Connected(name) => outcome.connected.push(name),
             Event::Request(message) => outcome.requests.push(message),
+            Event::Disconnected => outcome.disconnected += 1,
         }
     }
     let output = child.wait_with_output().unwrap();
@@ -257,14 +276,24 @@ fn nobody_answering_means_nothing_gets_through() {
         .stdout(Stdio::null())
         .spawn()
         .unwrap();
-    std::thread::sleep(Duration::from_millis(800));
     let mut requests = 0;
     let mut pairings = 0;
-    while let Ok(event) = rig.events.try_recv() {
-        match event {
-            Event::Request(_) => requests += 1,
-            Event::Pairing(_) => pairings += 1,
-            Event::Connected(_) => panic!("welcomed without a question"),
+    // The question must arrive (a deadline, not a guess); only then does "nothing else comes"
+    // get a short window, which can only hide a bug, never invent one.
+    let mut quiet_until = None;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let limit = quiet_until.unwrap_or(deadline);
+        let left = limit.saturating_duration_since(Instant::now());
+        match rig.events.recv_timeout(left) {
+            Ok(Event::Request(_)) => requests += 1,
+            Ok(Event::Pairing(_)) => {
+                pairings += 1;
+                quiet_until.get_or_insert(Instant::now() + Duration::from_millis(500));
+            }
+            Ok(Event::Connected(_)) => panic!("welcomed without a question"),
+            Ok(Event::Disconnected) => panic!("a phone nobody welcomed was reported gone"),
+            Err(_) => break,
         }
     }
     let _ = child.kill();
