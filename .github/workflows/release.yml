@@ -892,8 +892,8 @@ jobs:
 
   # The signed update manifest (docs/UPDATES.md): latest.json and latest.json.sig. The only job
   # that can read UPDATE_SIGNING_KEY, and only for a pushed tag: the secret lives in the GitHub
-  # Environment "release-signing", which the operator restricts to the tags v* and to required
-  # reviewers (docs/UPDATES.md). A run from a branch or by hand never reaches it. Within the job
+  # Environment "release-signing", which the operator restricts to the tags v*
+  # (docs/UPDATES.md, docs/adr/0001). A run from a branch or by hand never reaches it. Within the job
   # only the step that signs has the secret in its environment, and the tool it runs was built
   # in the job before, not here.
   sign:

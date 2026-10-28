@@ -177,7 +177,7 @@ Open a pull request that adds the line from `update-keys.line` to `data/update-k
 
 ### 4. Release
 
-Tag the release as usual. The job `sign` waits for a reviewer to approve the environment `release-signing`, signs the manifest with the secret, checks the signature against `data/update-keys.txt` (a mismatch fails the release) and hands `latest.json` and `latest.json.sig` to the job that publishes. Check that both are among the release's assets. Test once with a launcher built from the commit that carries the key, against that release, before announcing.
+Tag the release as usual. The job `sign` runs in the environment `release-signing` (no reviewer to wait for, see [ADR 0001](adr/0001-signing-needs-a-tag-not-an-approval.md)), signs the manifest with the secret, checks the signature against `data/update-keys.txt` (a mismatch fails the release) and hands `latest.json` and `latest.json.sig` to the job that publishes. Check that both are among the release's assets. Test once with a launcher built from the commit that carries the key, against that release, before announcing.
 
 To try the signing without publishing, run the release workflow by hand (it keeps all files as workflow artifacts and publishes nothing). A run by hand never reaches the real key: it signs with a key made in the job and thrown away, and checks the result with its public half, so `latest.json` and `latest.json.sig` among the artifacts are only a test. Locally:
 
@@ -206,14 +206,14 @@ If the secret is **lost** (not leaked), nothing can be signed with the old key a
 
 The release workflow signs in one job, `sign`, which runs only for a pushed tag `v*` and uses the Environment **`release-signing`**. The signing tool is built in an earlier job that has no secret; only the one step that runs `update-sign sign` has the secret in its environment. All of this is worthless if anyone with write access can still reach the secret, so the operator sets up, once, in Settings of anyplaynet/launcher:
 
-1. **Environment `release-signing`.** Deployment branches and tags: *Selected branches and tags*, add the tag rule `v*` and nothing else. Required reviewers: the admins (today AlxcBTW and TideOPL). *Prevent self-review* is off, because only admins can push a `v*` tag (step 3): the review is the last look before signing, not a second key holder. Turn it on once the project has enough maintainers that the person who tags is never the only one around. The secret `UPDATE_SIGNING_KEY` goes here.
+1. **Environment `release-signing`.** Deployment branches and tags: *Selected branches and tags*, add the tag rule `v*` and nothing else. No required reviewers: the tag ruleset (step 3) decides who can start a release, and an approval by the person who tagged protected nothing ([ADR 0001](adr/0001-signing-needs-a-tag-not-an-approval.md)). The secret `UPDATE_SIGNING_KEY` goes here.
 2. **Environment `release-resigning`** for the weekly renewal below: deployment branches *Selected branches*, only `main`; no reviewers (a weekly run must not wait for a person). The same secret goes here. Because it is bound to `main`, protect `main` too: a ruleset that requires a pull request with one approval and blocks force pushes, so nothing reaches `main` that was not reviewed.
-3. **Protect the tags.** Settings, Rules, Rulesets, new tag ruleset for `v*`: restrict creations, updates and deletions to the maintainers, block force pushes. Whoever can push a `v*` tag can start a release.
+3. **Protect the tags.** Settings, Rules, Rulesets, new tag ruleset for `v*`: restrict creations, updates and deletions to the organization admins, block force pushes. Whoever can push a `v*` tag can start a release, and with no reviewer on the environment that is the whole gate.
 4. **Delete the repository-level secret** `UPDATE_SIGNING_KEY` if one exists, and every other copy outside the two environments.
 
 Until step 1 is done, the environment does not exist yet and GitHub creates it unprotected on the first run: do it before the first signed release.
 
-A workflow edited on a branch cannot get the key: a run from a branch or started by hand is refused by the environment's rules, and the dry run uses a throwaway key. What remains is anyone who can merge to `main` (hence the ruleset and its required approval) and the admins, who can both push a tag and approve the signing.
+A workflow edited on a branch cannot get the key: a run from a branch or started by hand is refused by the environment's rules, and the dry run uses a throwaway key. What remains is anyone who can merge to `main` (hence the ruleset and its required approval) and the admins, who can push a tag and so start the signing.
 
 ## Renewing the manifest
 
