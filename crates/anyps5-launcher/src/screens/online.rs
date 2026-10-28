@@ -523,22 +523,30 @@ impl OnlinePanel {
                 icon: Icon::USERS,
                 title: FX::NoFriendsTitle.text(language).to_owned(),
                 note: Some(FX::NoFriendsNote.text(language).to_owned()),
-                label: label("addFriend")?,
-                action: "addFriend",
+                label: Some(label("addFriend")?),
+                action: Some("addFriend"),
             }),
             (Page::Messages, ["none", "openFriends"]) => Some(EmptyPage {
                 icon: Icon::ENVELOPE_SIMPLE,
                 title: FX::NoConversationsTitle.text(language).to_owned(),
                 note: Some(FX::NoConversationsNote.text(language).to_owned()),
-                label: label("openFriends")?,
-                action: "openFriends",
+                label: Some(label("openFriends")?),
+                action: Some("openFriends"),
             }),
             (Page::Messages, ["none", "retryList"]) => Some(EmptyPage {
                 icon: Icon::CLOUD,
                 title: rows.first()?.title.clone(),
                 note: None,
-                label: label("retryList")?,
-                action: "retryList",
+                label: Some(label("retryList")?),
+                action: Some("retryList"),
+            }),
+            // The list has not answered yet: the page waits, with the spinner and no button.
+            (Page::Messages, ["none"]) if !data.online.social.is_listed() => Some(EmptyPage {
+                icon: Icon::ARROWS_CLOCKWISE,
+                title: rows.first()?.title.clone(),
+                note: None,
+                label: None,
+                action: None,
             }),
             // The activity feed that failed to load, or a player with no friends: the same page as
             // the others, the button inside the block and not a row at the foot of the list.
@@ -565,8 +573,8 @@ impl OnlinePanel {
             icon,
             title: title.text(language).to_owned(),
             note: note.map(|n| n.text(language).to_owned()),
-            label,
-            action,
+            label: Some(label),
+            action: Some(action),
         })
     }
 
@@ -941,7 +949,10 @@ impl OnlinePanel {
         let list_id = ("online-rows", std::mem::discriminant(&self.page));
         let empty = self.empty_page(data, &rows);
         let events = if let Some(state) = empty {
-            let at = rows::position(&rows, state.action).unwrap_or(0);
+            let at = state
+                .action
+                .and_then(|action| rows::position(&rows, action))
+                .unwrap_or(0);
             let room = ui.available_rect_before_wrap();
             let clicked = crate::ui::state_page::show(
                 ui,
@@ -951,9 +962,9 @@ impl OnlinePanel {
                     title: &state.title,
                     note: state.note.as_deref(),
                     loading: state.icon == Icon::ARROWS_CLOCKWISE,
-                    action: Some(&state.label),
+                    action: state.label.as_deref(),
                 },
-                focused && self.side.nav.row == at,
+                focused && state.action.is_some() && self.side.nav.row == at,
             );
             if clicked {
                 vec![
@@ -2139,8 +2150,9 @@ struct EmptyPage {
     icon: Icon,
     title: String,
     note: Option<String>,
-    label: String,
-    action: RowId,
+    /// The button inside the block; a page that only waits has none.
+    label: Option<String>,
+    action: Option<RowId>,
 }
 
 /// How many friend requests the friends list answers in place; the rest wait behind a row.
