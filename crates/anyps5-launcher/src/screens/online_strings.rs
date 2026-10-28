@@ -180,6 +180,12 @@ pub enum OnlineText {
     AudienceEveryone,
     AudienceOnlyYou,
     TrophyAudienceNote,
+    // Leaderboard scores: the words follow the account web's Privacy page.
+    ScoresTitle,
+    ScoresDetail,
+    ScoresFriends,
+    ScoresEveryone,
+    ScoresNobody,
 }
 
 impl OnlineText {
@@ -346,6 +352,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "The players you choose see how many trophies you have of each grade. Only each trophy's number, grade and date leave this PC."
             }
+            OnlineText::ScoresTitle => "Leaderboard Scores",
+            OnlineText::ScoresDetail => {
+                "Who sees your best score on a game’s leaderboard. You always see your own."
+            }
+            OnlineText::ScoresFriends => "Friends see your entry and your rank.",
+            OnlineText::ScoresEveryone => {
+                "Anyone sees your entry, including people who are not signed in: they see your handle, score and date on the board’s public page."
+            }
+            OnlineText::ScoresNobody => "Only you see your entry.",
         }
     }
 
@@ -507,6 +522,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "Seçtiğin oyuncular her dereceden kaç kupan olduğunu görür. Bilgisayarından yalnızca her kupanın numarası, derecesi ve tarihi çıkar."
             }
+            OnlineText::ScoresTitle => "Sıralama Skorları",
+            OnlineText::ScoresDetail => {
+                "Bir oyunun sıralama tablosundaki en iyi skorunu kimlerin gördüğü. Kendi skorunu her zaman sen görürsün."
+            }
+            OnlineText::ScoresFriends => "Arkadaşların kaydını ve yerini görür.",
+            OnlineText::ScoresEveryone => {
+                "Herkes kaydını görür, giriş yapmamış kişiler de: kullanıcı adını, skorunu ve tarihini sıralama tablosunun herkese açık sayfasında görürler."
+            }
+            OnlineText::ScoresNobody => "Kaydını yalnızca sen görürsün.",
         }
     }
 
@@ -690,6 +714,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "Die Spieler, die du wählst, sehen, wie viele Trophäen du pro Stufe hast. Nur Nummer, Stufe und Datum jeder Trophäe verlassen diesen PC."
             }
+            OnlineText::ScoresTitle => "Ergebnisse in Bestenlisten",
+            OnlineText::ScoresDetail => {
+                "Wer dein bestes Ergebnis auf der Bestenliste eines Spiels sieht. Dein eigenes siehst immer du."
+            }
+            OnlineText::ScoresFriends => "Freunde sehen deinen Eintrag und deinen Rang.",
+            OnlineText::ScoresEveryone => {
+                "Alle sehen deinen Eintrag, auch Personen, die nicht angemeldet sind: Sie sehen deinen Namen, dein Ergebnis und das Datum auf der öffentlichen Seite der Bestenliste."
+            }
+            OnlineText::ScoresNobody => "Nur du siehst deinen Eintrag.",
             _ => return None,
         })
     }
@@ -874,6 +907,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "Los jugadores que elijas ven cuántos trofeos tienes de cada grado. Solo el número, el grado y la fecha de cada trofeo salen de este PC."
             }
+            OnlineText::ScoresTitle => "Puntuaciones de la clasificación",
+            OnlineText::ScoresDetail => {
+                "Quién ve tu mejor puntuación en la clasificación de un juego. La tuya siempre la ves tú."
+            }
+            OnlineText::ScoresFriends => "Tus amigos ven tu entrada y tu posición.",
+            OnlineText::ScoresEveryone => {
+                "Todos ven tu entrada, también quien no ha iniciado sesión: ven tu nombre de usuario, tu puntuación y la fecha en la página pública de la clasificación."
+            }
+            OnlineText::ScoresNobody => "Solo tú ves tu entrada.",
             _ => return None,
         })
     }
@@ -1052,6 +1094,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "Les joueurs que tu choisis voient combien de trophées tu as de chaque rang. Seuls le numéro, le rang et la date de chaque trophée quittent ce PC."
             }
+            OnlineText::ScoresTitle => "Scores du classement",
+            OnlineText::ScoresDetail => {
+                "Qui voit ton meilleur score dans le classement d’un jeu. Tu vois toujours le tien."
+            }
+            OnlineText::ScoresFriends => "Tes amis voient ton entrée et ton rang.",
+            OnlineText::ScoresEveryone => {
+                "Tout le monde voit ton entrée, y compris les personnes non connectées : elles voient ton nom, ton score et la date sur la page publique du classement."
+            }
+            OnlineText::ScoresNobody => "Toi seul vois ton entrée.",
             _ => return None,
         })
     }
@@ -1228,6 +1279,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "Os jogadores que você escolher veem quantos troféus você tem de cada grau. Só o número, o grau e a data de cada troféu saem deste PC."
             }
+            OnlineText::ScoresTitle => "Pontuações do ranking",
+            OnlineText::ScoresDetail => {
+                "Quem vê sua melhor pontuação no ranking de um jogo. Você sempre vê a sua."
+            }
+            OnlineText::ScoresFriends => "Seus amigos veem sua entrada e sua posição.",
+            OnlineText::ScoresEveryone => {
+                "Todos veem sua entrada, inclusive quem não entrou na conta: veem seu nome, sua pontuação e a data na página pública do ranking."
+            }
+            OnlineText::ScoresNobody => "Só você vê sua entrada.",
             _ => return None,
         })
     }
