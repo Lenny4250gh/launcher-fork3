@@ -35,9 +35,9 @@ const SCROLL_MARGIN: f32 = 8.0;
 const HINT_ROOM: f32 = BACK_ROW;
 const SECTION_GAP: f32 = 40.0;
 const CAPTION_HEIGHT: f32 = 28.0;
-const CAPTION_GAP: f32 = 14.0;
+const CAPTION_GAP: f32 = space::M;
 const ROW_GAP: f32 = 8.0;
-const ROW_PAD: f32 = 14.0;
+const ROW_PAD: f32 = space::M;
 const GAME_HEIGHT: f32 = 72.0;
 const GAME_ART: f32 = 52.0;
 const TROPHY_HEIGHT: f32 = 64.0;
@@ -47,7 +47,7 @@ const BUTTON_HEIGHT: f32 = 54.0;
 const BUTTON_GAP: f32 = 12.0;
 const STAT_GAP: f32 = 44.0;
 const BOTTOM: f32 = 64.0;
-const BODY_GAP: f32 = 28.0;
+const BODY_GAP: f32 = space::XL;
 const NAME: TextStyle = ty::SCREEN_TITLE;
 const ABOUT: TextStyle = ty::BODY;
 const SECTION: TextStyle = ty::CATEGORY_SELECTED;
@@ -470,6 +470,11 @@ fn paint_state_page(
             P::FailedTitle.text(language).to_owned(),
             Some(P::FailedNote.text(language).to_owned()),
         ),
+        Body::Gone => (
+            Icon::PROHIBIT,
+            P::GoneTitle.text(language).to_owned(),
+            Some(P::GoneNote.text(language).to_owned()),
+        ),
         Body::Private => (
             Icon::LOCK,
             P::PrivateTitle.text(language).to_owned(),
@@ -566,6 +571,14 @@ fn paint_page(
 
 /// The header: the avatar, the name, the line under it, the text, the figures and the buttons.
 /// The buttons are the first slots of the focus.
+/// The status line of a ready profile, whole.
+fn ready_status_text(model: &ProfileView) -> Option<&str> {
+    match &model.body {
+        Body::Ready(ready) => ready.status.as_ref().map(|s| s.text.as_str()),
+        _ => None,
+    }
+}
+
 fn paint_header(
     ui: &mut Ui,
     origin: egui::Pos2,
@@ -580,11 +593,21 @@ fn paint_header(
     let at = |p: egui::Pos2| p + origin.to_vec2();
     let avatar = Rect::from_min_size(origin, vec2(AVATAR, AVATAR));
     paint_avatar(&painter, avatar, model.avatar, model.account, &model.handle);
-    painter.galley(
-        at(pos2(header.identity_x, 0.0)),
-        header.name.clone(),
-        color::text(),
+    let ctx = painter.ctx().clone();
+    let pointer = ctx.pointer_hover_pos();
+    // The header is no stop of the focus, so a cut name or status is read in full under the
+    // pointer; a screen reader has the whole of it in the header's label (below).
+    let name_at = at(pos2(header.identity_x, 0.0));
+    let name_rect = Rect::from_min_size(name_at, header.name.size());
+    crate::ui::reveal::full_text(
+        &ctx,
+        ui.make_persistent_id("profile-name"),
+        name_rect,
+        &model.handle,
+        pointer.is_some_and(|p| name_rect.contains(p)),
+        header.name.elided,
     );
+    painter.galley(name_at, header.name.clone(), color::text());
     if let Some((rect, galley)) = &header.chip {
         let rect = rect.translate(origin.to_vec2());
         painter.rect_filled(rect, corner(rect.height() * 0.5), color::surface());
@@ -601,6 +624,17 @@ fn paint_header(
                 pos2(pos.x - 11.0, pos.y + galley.size().y * 0.5),
                 4.0,
                 settings.accent,
+            );
+        }
+        if let Some(ready_status) = ready_status_text(model) {
+            let rect = Rect::from_min_size(pos, galley.size());
+            crate::ui::reveal::full_text(
+                &ctx,
+                ui.make_persistent_id("profile-status"),
+                rect,
+                ready_status,
+                pointer.is_some_and(|p| rect.contains(p)),
+                galley.elided,
             );
         }
         painter.galley(pos, galley.clone(), color::text_subtitle());
@@ -825,12 +859,6 @@ struct Surface {
     t: f32,
 }
 
-impl Surface {
-    fn dim(&self, factor: f32) -> Color32 {
-        fade(self.ink, factor)
-    }
-}
-
 fn surface(
     ui: &mut Ui,
     ctx: &egui::Context,
@@ -886,6 +914,25 @@ fn surface(
         ink: color::text(),
         t,
     }
+}
+
+/// A value the row cut short is read in full while the pointer is on the row or the focus has
+/// rested on it (DESIGN.md 3.13): the name, the detail and the sentence are never out of reach.
+fn reveal_cut(ctx: &egui::Context, s: &Surface, rect: Rect, focused: bool, parts: &[(&str, bool)]) {
+    let full: Vec<&str> = parts
+        .iter()
+        .filter(|(_, cut)| *cut)
+        .map(|(text, _)| *text)
+        .collect();
+    crate::ui::reveal::full_text(
+        ctx,
+        s.response.id,
+        rect,
+        &full.join("\n"),
+        crate::ui::input::hovered(ctx, &s.response)
+            || (focused && crate::ui::input::focus_visible(ctx)),
+        !full.is_empty(),
+    );
 }
 
 fn paint_game(
@@ -949,10 +996,25 @@ fn paint_game(
         };
     let top = rect.center().y - block * 0.5;
     let name_h = name.size().y;
-    let ink = if row.owned { s.ink } else { s.dim(0.78) };
+    reveal_cut(
+        ctx,
+        &s,
+        rect,
+        focused,
+        &[(&row.name, name.elided), (&row.detail, detail.elided)],
+    );
+    let ink = if row.owned {
+        s.ink
+    } else {
+        color::text_detail()
+    };
     painter.galley(pos2(text_x, top), name, ink);
     if has_detail {
-        painter.galley(pos2(text_x, top + name_h + 3.0), detail, s.dim(0.68));
+        painter.galley(
+            pos2(text_x, top + name_h + 3.0),
+            detail,
+            color::text_detail(),
+        );
     }
     if let Some((label, width)) = trailing {
         let x = rect.max.x - ROW_PAD - width;
@@ -1052,8 +1114,19 @@ fn paint_trophy(
     let block = title.size().y + 3.0 + detail.size().y;
     let top = rect.center().y - block * 0.5;
     let title_h = title.size().y;
+    reveal_cut(
+        ctx,
+        &s,
+        rect,
+        focused,
+        &[(&row.title, title.elided), (&row.detail, detail.elided)],
+    );
     painter.galley(pos2(text_x, top), title, s.ink);
-    painter.galley(pos2(text_x, top + title_h + 3.0), detail, s.dim(0.68));
+    painter.galley(
+        pos2(text_x, top + title_h + 3.0),
+        detail,
+        color::text_detail(),
+    );
     if let Some(galley) = trailing_galley {
         let h = galley.size().y;
         painter.galley(
@@ -1062,7 +1135,7 @@ fn paint_trophy(
                 rect.center().y - h * 0.5,
             ),
             galley,
-            s.dim(0.68),
+            color::text_detail(),
         );
     }
     s.response
@@ -1102,6 +1175,7 @@ fn paint_activity(
         1.4,
     );
     let sentence_h = sentence.size().y;
+    reveal_cut(ctx, &s, rect, focused, &[(&row.text, sentence.elided)]);
     painter.galley(pos2(text_x, rect.min.y + ROW_PAD), sentence, s.ink);
     let meta = clamped(
         &painter,
@@ -1114,7 +1188,7 @@ fn paint_activity(
     painter.galley(
         pos2(text_x, rect.min.y + ROW_PAD + sentence_h + 4.0),
         meta,
-        s.dim(0.66),
+        color::text_note(),
     );
     s.response
 }

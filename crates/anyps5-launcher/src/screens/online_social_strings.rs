@@ -32,6 +32,12 @@ pub enum SocialText {
     /// `%@` = who.
     RemoveDetail,
     PickFirst,
+    /// Beside Try Again, under a thread that did not load.
+    LoadFailedBar,
+    /// `%@` = the quoted message. The accessible name of the bar above the field while a reply is drafted.
+    CancelReplyName,
+    /// `%@` = the message being edited.
+    CancelEditName,
     PartyFull,
     // Messages
     Messages,
@@ -152,6 +158,9 @@ impl SocialText {
             SocialText::NobodyToInvite => "None of your friends is online and free to invite.",
             SocialText::MakeLeaderDetail => "%@ will lead the party",
             SocialText::RemoveDetail => "%@ is taken out of the party",
+            SocialText::CancelReplyName => "Cancel Reply: %@",
+            SocialText::CancelEditName => "Cancel Edit: %@",
+            SocialText::LoadFailedBar => "Load this conversation again.",
             SocialText::PickFirst => "Pick a friend first",
             SocialText::PartyFull => "The party is full",
             SocialText::Messages => "Messages",
@@ -256,6 +265,9 @@ impl SocialText {
             SocialText::PartyInvitationDetail => "%@ kişilik parti",
             SocialText::MakeLeaderDetail => "%@ partiyi yönetecek",
             SocialText::RemoveDetail => "%@ partiden çıkarılır",
+            SocialText::CancelReplyName => "Yanıtı İptal Et: %@",
+            SocialText::CancelEditName => "Düzenlemeyi İptal Et: %@",
+            SocialText::LoadFailedBar => "Bu sohbeti yeniden yükle.",
             SocialText::PickFirst => "Önce bir arkadaş seç",
             SocialText::PartyFull => "Parti dolu",
             SocialText::NobodyToInvite => {
@@ -364,6 +376,9 @@ impl SocialText {
             SocialText::NobodyToInvite => "Keiner deiner Freunde ist online und frei zum Einladen.",
             SocialText::MakeLeaderDetail => "%@ führt die Party an",
             SocialText::RemoveDetail => "%@ wird aus der Party entfernt",
+            SocialText::CancelReplyName => "Antwort abbrechen: %@",
+            SocialText::CancelEditName => "Bearbeitung abbrechen: %@",
+            SocialText::LoadFailedBar => "Lade diese Unterhaltung noch einmal.",
             SocialText::PickFirst => "Wähle zuerst einen Freund",
             SocialText::PartyFull => "Die Party ist voll",
             SocialText::Messages => "Nachrichten",
@@ -474,6 +489,9 @@ impl SocialText {
             SocialText::NobodyToInvite => "Ningún amigo está en línea y libre para invitar.",
             SocialText::MakeLeaderDetail => "%@ dirigirá la party",
             SocialText::RemoveDetail => "%@ saldrá de la party",
+            SocialText::CancelReplyName => "Cancelar respuesta: %@",
+            SocialText::CancelEditName => "Cancelar edición: %@",
+            SocialText::LoadFailedBar => "Carga esta conversación de nuevo.",
             SocialText::PickFirst => "Elige primero a un amigo",
             SocialText::PartyFull => "La party está llena",
             SocialText::Messages => "Mensajes",
@@ -584,6 +602,9 @@ impl SocialText {
             }
             SocialText::MakeLeaderDetail => "%@ dirigera la party",
             SocialText::RemoveDetail => "%@ quittera la party",
+            SocialText::CancelReplyName => "Annuler la réponse : %@",
+            SocialText::CancelEditName => "Annuler la modification : %@",
+            SocialText::LoadFailedBar => "Recharge cette conversation.",
             SocialText::PickFirst => "Choisis d’abord un ami",
             SocialText::PartyFull => "La party est complète",
             SocialText::Messages => "Messages",
@@ -692,6 +713,9 @@ impl SocialText {
             SocialText::NobodyToInvite => "Nenhum amigo seu está online e livre para convidar.",
             SocialText::MakeLeaderDetail => "%@ vai liderar a party",
             SocialText::RemoveDetail => "%@ será removido da party",
+            SocialText::CancelReplyName => "Cancelar resposta: %@",
+            SocialText::CancelEditName => "Cancelar edição: %@",
+            SocialText::LoadFailedBar => "Carregue esta conversa de novo.",
             SocialText::PickFirst => "Escolha um amigo primeiro",
             SocialText::PartyFull => "A party está cheia",
             SocialText::Messages => "Mensagens",

@@ -329,6 +329,8 @@ pub enum ProfileLook {
     Private,
     Loading,
     Error,
+    /// The profile of an account the cloud does not show (deleted or blocked): no Try Again.
+    Gone,
     Offline,
 }
 
@@ -345,6 +347,7 @@ impl ProfileLook {
             | ProfileLook::FriendCompare
             | ProfileLook::Loading
             | ProfileLook::Error
+            | ProfileLook::Gone
             | ProfileLook::Offline => 2,
             ProfileLook::FriendHidden => 3,
             ProfileLook::NewFriend => 4,
@@ -484,6 +487,8 @@ pub enum OnlineLook {
     AddFriendMissing,
     Friend,
     Account,
+    /// The account page while the cloud is out: the note and Try Again on top.
+    AccountOffline,
     Picker,
     /// The party of three, over its chat and a session the leader could take it into.
     Party,
@@ -505,6 +510,10 @@ pub enum OnlineLook {
     Conversation,
     /// No conversation yet.
     MessagesEmpty,
+    /// The list of conversations has not answered yet.
+    MessagesLoading,
+    /// The cloud is out and no list ever came: the note and Try Again, not "No conversations".
+    MessagesOffline,
     /// A thread with a message in the middle of a run focused.
     ConversationFocus,
     /// A group: names and pictures beside the bubbles, runs of messages, answers.
@@ -1042,6 +1051,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-add-missing" => ScreenPage::Online(OnlineLook::AddFriendMissing),
         "friends-friend" => ScreenPage::Online(OnlineLook::Friend),
         "friends-settings" => ScreenPage::Online(OnlineLook::Account),
+        "friends-settings-offline" => ScreenPage::Online(OnlineLook::AccountOffline),
         "friends-settings-appearing" => ScreenPage::Online(OnlineLook::AccountAppearing),
         "friends-settings-public" => ScreenPage::Online(OnlineLook::AccountPublic),
         "friends-picker" => ScreenPage::Online(OnlineLook::Picker),
@@ -1055,6 +1065,8 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-message" => ScreenPage::Online(OnlineLook::Message),
         "friends-conversation" => ScreenPage::Online(OnlineLook::Conversation),
         "friends-messages-empty" => ScreenPage::Online(OnlineLook::MessagesEmpty),
+        "friends-messages-loading" => ScreenPage::Online(OnlineLook::MessagesLoading),
+        "friends-messages-offline" => ScreenPage::Online(OnlineLook::MessagesOffline),
         "friends-conversation-focus" => ScreenPage::Online(OnlineLook::ConversationFocus),
         "friends-conversation-group" => ScreenPage::Online(OnlineLook::ConversationGroup),
         "friends-conversation-short" => ScreenPage::Online(OnlineLook::ConversationShort),
@@ -1108,6 +1120,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "profile-request" => ScreenPage::Profile(ProfileLook::Request),
         "profile-new" => ScreenPage::Profile(ProfileLook::New),
         "profile-new-friend" => ScreenPage::Profile(ProfileLook::NewFriend),
+        "profile-gone" => ScreenPage::Profile(ProfileLook::Gone),
         "profile-private" => ScreenPage::Profile(ProfileLook::Private),
         "profile-loading" => ScreenPage::Profile(ProfileLook::Loading),
         "profile-error" => ScreenPage::Profile(ProfileLook::Error),
@@ -1405,9 +1418,21 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         }
         _ => {}
     }
-    if matches!(look, OnlineLook::FriendsEmpty | OnlineLook::MessagesEmpty) {
+    if matches!(
+        look,
+        OnlineLook::FriendsEmpty
+            | OnlineLook::MessagesEmpty
+            | OnlineLook::MessagesLoading
+            | OnlineLook::MessagesOffline
+    ) {
         state.friends = FriendLists::default();
         state.invitations.clear();
+        if look == OnlineLook::MessagesEmpty {
+            // The cloud answered: there are no conversations.
+            state
+                .social
+                .set_conversations(anyps5_core::online::api::Conversations::default());
+        }
     } else {
         sample_social(&mut state);
         sample_played_with(&mut state, look);
@@ -1420,6 +1445,8 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
         | OnlineLook::FriendOffline
         | OnlineLook::ConversationOffline
         | OnlineLook::PlayedWithOffline
+        | OnlineLook::AccountOffline
+        | OnlineLook::MessagesOffline
         | OnlineLook::PartyOffline => state.cloud = Some(Cloud::Offline),
         OnlineLook::FriendsConnecting => state.cloud = None,
         OnlineLook::PartyNone => {
@@ -3547,7 +3574,9 @@ impl ScreenGallery {
                     OnlineLook::Friend => self
                         .friends
                         .show_page(Page::Friend(anyps5_core::online::api::AccountId(2)), &data),
-                    OnlineLook::Account | OnlineLook::AccountAppearing => {
+                    OnlineLook::Account
+                    | OnlineLook::AccountOffline
+                    | OnlineLook::AccountAppearing => {
                         self.friends.show_page(Page::Account, &data);
                     }
                     OnlineLook::AccountPublic => {
@@ -3597,9 +3626,10 @@ impl ScreenGallery {
                         Page::VoiceDevices(anyps5_core::online::DeviceKind::Input),
                         &data,
                     ),
-                    OnlineLook::Messages | OnlineLook::MessagesEmpty => {
-                        self.friends.show_page(Page::Messages, &data)
-                    }
+                    OnlineLook::Messages
+                    | OnlineLook::MessagesEmpty
+                    | OnlineLook::MessagesLoading
+                    | OnlineLook::MessagesOffline => self.friends.show_page(Page::Messages, &data),
                     OnlineLook::ConversationGroup => self
                         .friends
                         .show_page(Page::Conversation("c-raid".into()), &data),

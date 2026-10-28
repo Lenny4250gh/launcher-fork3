@@ -26,19 +26,19 @@ use crate::ui::input::{self, Command};
 use crate::ui::sound::Cue;
 use crate::ui::state_page::{self, StatePage};
 use crate::ui::text;
-use crate::ui::theme::{self, TextStyle, Weight, black, color, fade, mix, radius, size, space, ty};
+use crate::ui::theme::{self, TextStyle, black, color, mix, radius, size, space, ty};
 
 /// Items from the end at which the next older page is fetched.
 const PREFETCH: usize = 3;
 /// Card padding and the avatar.
 const PAD_X: f32 = 16.0;
-const PAD_Y: f32 = 14.0;
+const PAD_Y: f32 = space::M;
 const AVATAR: f32 = 40.0;
-const AVATAR_GAP: f32 = 14.0;
+const AVATAR_GAP: f32 = space::M;
 const HANDLE: TextStyle = ty::ROW_TITLE;
-const SENTENCE: TextStyle = TextStyle::new(14.0, Weight::Regular);
+const SENTENCE: TextStyle = ty::SENTENCE;
 const WHEN: TextStyle = ty::DETAIL;
-const FACT: TextStyle = TextStyle::new(14.0, Weight::Medium);
+const FACT: TextStyle = ty::LABEL;
 
 /// Where the focus stands in the list.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -664,7 +664,6 @@ fn show_card(
         size::FOCUS_RING,
     );
     let fg = crate::ui::theme::color::text();
-    let dim = |factor: f32| fade(fg, factor);
 
     // The avatar.
     let avatar = Rect::from_min_size(rect.min + vec2(PAD_X, PAD_Y), vec2(AVATAR, AVATAR));
@@ -673,6 +672,23 @@ fn show_card(
     // The words.
     let x = rect.min.x + text_x;
     let mut y = rect.min.y + PAD_Y;
+    // A cut handle or sentence is read in full while the pointer or the focus is on the card.
+    let mut cut_words = Vec::new();
+    if handle.elided {
+        cut_words.push(card.handle.as_str());
+    }
+    if sentence.elided {
+        cut_words.push(card.sentence.as_str());
+    }
+    crate::ui::reveal::full_text(
+        &ctx,
+        response.id,
+        rect,
+        &cut_words.join("\n"),
+        crate::ui::input::hovered(&ctx, &response)
+            || (card_focused && crate::ui::input::focus_visible(&ctx)),
+        !cut_words.is_empty(),
+    );
     let handle_height = handle.size().y;
     painter.galley(pos2(x, y), handle, fg);
     painter.galley(
@@ -681,11 +697,11 @@ fn show_card(
             y + (handle_height - when.size().y) * 0.5,
         ),
         when,
-        dim(0.55),
+        color::text_note(),
     );
     y += handle_height + 3.0;
     let sentence_height = sentence.size().y;
-    painter.galley(pos2(x, y), sentence, dim(0.85));
+    painter.galley(pos2(x, y), sentence, color::text_label());
     y += sentence_height;
     if let Some((fact, grade)) = &card.fact {
         y += 6.0;
@@ -702,7 +718,7 @@ fn show_card(
             Align2::LEFT_CENTER,
             fact,
             FACT.font(),
-            dim(0.72),
+            color::text_detail(),
         );
     }
 
