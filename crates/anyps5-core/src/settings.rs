@@ -650,6 +650,10 @@ pub struct Preferences {
     /// Games that appeared and still wait for their preparation.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub prepare_pending: BTreeSet<String>,
+    /// Unlocks the player paused by closing the launcher, by game, with how far they were in
+    /// percent. The game shows "Resume" until it is unlocked.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub paused_unlocks: BTreeMap<String, u8>,
     /// The Home button (PS button) of a controller or the phone switches between a running game
     /// and the launcher.
     #[serde(default = "yes")]
@@ -830,6 +834,7 @@ impl Default for Preferences {
             library_filter: String::new(),
             new_games: Vec::new(),
             prepare_pending: BTreeSet::new(),
+            paused_unlocks: BTreeMap::new(),
             ps_button: true,
             vibration: Vibration::Medium,
             pad_deadzone: default_pad_deadzone(),

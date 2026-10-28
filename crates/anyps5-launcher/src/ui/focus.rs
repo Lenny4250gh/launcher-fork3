@@ -49,6 +49,9 @@ pub struct HomeContext {
     pub has_trophies: bool,
     /// The selected game can be played together: a Play Together button sits after Play.
     pub together: bool,
+    /// An unlock of the selected game is under way or waiting: a small cancel button sits
+    /// after the primary one (Pause).
+    pub cancellable: bool,
     /// "How did it run?" is on screen.
     pub asking: bool,
     /// Buttons of the launcher update notice (0 = no notice).
@@ -60,10 +63,12 @@ pub struct HomeContext {
 }
 
 impl HomeContext {
-    /// Number of buttons in the action row: primary, Play Together (optional), trophies
-    /// (optional), the Game Hub, "...".
+    /// Number of buttons in the action row: primary, cancel (while unlocking), Play Together
+    /// (optional), trophies (optional), the Game Hub, "...".
     pub fn action_count(&self) -> usize {
-        3 + usize::from(self.has_trophies) + usize::from(self.together)
+        3 + usize::from(self.has_trophies)
+            + usize::from(self.together)
+            + usize::from(self.cancellable)
     }
 
     /// What a press on button `index` of the action row does.
@@ -71,6 +76,12 @@ impl HomeContext {
         let mut slot = 1;
         if index == 0 {
             return HomeIntent::PrimaryAction;
+        }
+        if self.cancellable {
+            if index == slot {
+                return HomeIntent::CancelUnlock;
+            }
+            slot += 1;
         }
         if self.together {
             if index == slot {
@@ -94,8 +105,10 @@ impl HomeContext {
 /// What a command on the home screen leads to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HomeIntent {
-    /// Run the selected game's primary action (play / unlock / retry / cancel / activate window).
+    /// Run the selected game's primary action (play / unlock / retry / pause / activate window).
     PrimaryAction,
+    /// Cancel the selected game's unlock for good (the small button beside Pause).
+    CancelUnlock,
     /// Start the selected game with a Play Together session.
     PlayTogether,
     /// Open the trophy list.
@@ -534,6 +547,7 @@ mod tests {
             selected,
             has_trophies,
             together: false,
+            cancellable: false,
             asking: false,
             notice: 0,
             card: 0,
