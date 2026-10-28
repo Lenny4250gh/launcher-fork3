@@ -1799,6 +1799,10 @@ pub fn fullscreen_panel<R>(
                 black: style.black * v.clamp(0.0, 1.0),
                 overlay: fade(style.overlay, v),
                 material_mix: lerp(0.0, style.material_mix, v.clamp(0.0, 1.0)),
+                // The glass covers the page it opens over in the first half of the opening and
+                // lets it show again on the way out; before, it was opaque from the first frame,
+                // so the page vanished in one frame and the panel seemed to cut in.
+                alpha: style.alpha * (v * 2.0).clamp(0.0, 1.0),
                 ..style
             };
             paint_glass(ctx, &painter, screen, faded);
@@ -1810,7 +1814,9 @@ pub fn fullscreen_panel<R>(
             };
             let area = scale_rect(screen, scale);
             let mut child = ui.new_child(UiBuilder::new().max_rect(area));
-            child.set_opacity(v.clamp(0.0, 1.0));
+            // The contents come in once the glass has mostly covered the page, so the two pages'
+            // texts never overlap.
+            child.set_opacity(((v - 0.25) / 0.75).clamp(0.0, 1.0));
             result = Some(add_contents(&mut child, v));
         });
     result

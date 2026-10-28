@@ -27,20 +27,15 @@ use crate::ui::glass::{GlassStyle, paint_glass};
 use crate::ui::i18n::Language;
 use crate::ui::icons::Icon;
 use crate::ui::input::Command;
+use crate::ui::pageblur;
 use crate::ui::sound::Cue;
 use crate::ui::text;
 use crate::ui::theme::{self, TextStyle, color, radius, shadows, size, space, ty};
 
 /// The card's width; it narrows to the screen minus a margin on a small window.
 const CARD_WIDTH: f32 = 560.0;
-/// How dark the page behind the card is at rest. Light: the frosted veil below does most of the
-/// work, this only keeps the page calm where the veil is not drawn (High Contrast, no GPU).
-const SCRIM: f32 = 0.18;
-/// The frosted veil over the page: the blurred backdrop (the game's art and colours) in place of
-/// the sharp page, so the card sits on a soft blur of what is behind it. One full-screen glass
-/// draw while the card is open, nothing when it is closed.
-const VEIL_BLACK: f32 = 0.28;
-const VEIL_ALPHA: f32 = 0.9;
+/// How dark the page behind the card is at rest.
+const SCRIM: f32 = 0.55;
 /// The room between the card's edge and its content.
 const CARD_PADDING: f32 = space::XL;
 /// The card rises this far while it opens (a transform, not a reflow); none under "Reduced".
@@ -275,6 +270,7 @@ fn paint(
         Motion::Overlay,
     );
     if v <= 0.001 && !open {
+        pageblur::release(ctx, id);
         return None;
     }
     let v = v.clamp(0.0, 1.0);
@@ -292,11 +288,10 @@ fn paint(
             // Text carries explicit colours, so only the painter's opacity fades it with the card.
             let mut text_painter = painter.clone();
             text_painter.set_opacity(v);
+            // The flat dim holds until the blurred page arrives (a frame or two) and stays under
+            // High Contrast; the blur then fades in over it.
             paint_scrim(&painter, screen, SCRIM * v);
-            let mut veil = GlassStyle::fullscreen_panel();
-            veil.black = VEIL_BLACK * v;
-            veil.alpha = VEIL_ALPHA * v;
-            paint_glass(ctx, &painter, screen, veil);
+            pageblur::paint(ctx, &painter, screen, id, open, v);
 
             let width = card_width(screen.width());
             let inner = width - 2.0 * CARD_PADDING;

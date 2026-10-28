@@ -51,6 +51,7 @@ pub mod nav_bindings;
 pub mod nudge;
 pub mod os_emoji;
 pub mod osk;
+pub mod pageblur;
 pub mod pad_hub;
 pub mod pad_info;
 pub mod press;
