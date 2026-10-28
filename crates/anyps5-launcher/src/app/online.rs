@@ -2031,3 +2031,62 @@ mod tests {
         assert!(!crate::app::together::escape(&mut model));
     }
 }
+
+/// A build with ANYPLAY_NET_EMBED must exercise the embedded executable, not a sidecar or
+/// ANYPLAY_NET override. The real process pipe is observed; invalid hello avoids touching any
+/// credentials or contacting a cloud. Network integration tests cover signed-in operations.
+#[cfg(all(test, embedded_net))]
+mod embedded_process_test {
+    use super::*;
+
+    #[test]
+    fn the_embedded_service_answers_over_the_real_process_pipe() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = anyps5_core::paths::AppPaths::under(root.path());
+        let binary = bundled(&paths).expect("embedded service must extract");
+        assert_eq!(bundled(&paths).as_ref(), Some(&binary));
+        let version = std::process::Command::new(&binary)
+            .arg("--version")
+            .output()
+            .unwrap();
+        assert!(version.status.success());
+        assert!(String::from_utf8_lossy(&version.stdout).starts_with("anyplay-net "));
+        let (wake, received) = std::sync::mpsc::channel();
+        let notify: Notifier = std::sync::Arc::new(move || {
+            let _ = wake.send(());
+        });
+        let mut service = NetProcess::spawn(
+            &binary,
+            &paths.network_dir(),
+            false,
+            &paths.network_log(),
+            notify,
+        )
+        .unwrap();
+        let line = net::control::command_line(
+            19,
+            &Command::Hello {
+                launcher: env!("CARGO_PKG_VERSION").into(),
+                cloud: String::new(),
+            },
+        );
+        service.write(&[line]).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            received
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .expect("embedded service did not answer");
+            for line in service.drain() {
+                match line {
+                    net::Line::Output(net::control::Output::Answer(answer)) if answer.id == 19 => {
+                        let error = answer.into_result::<net::control::Hello>().unwrap_err();
+                        assert_eq!(error.code, "bad_request");
+                        return;
+                    }
+                    net::Line::Ended => panic!("embedded service ended before answering"),
+                    _ => {}
+                }
+            }
+        }
+    }
+}
