@@ -357,14 +357,12 @@ pub(super) fn rows(data: &OnlineData<'_>, rows: &mut Vec<Row>) {
     rows.extend(group);
 }
 
-/// The line on Home: only while there is something to say, and only in a party.
+/// The line on Home: only while there is something to say. An invitation shows even before
+/// the player is in a party: it must be seen.
 pub(super) fn home_row(data: &OnlineData<'_>, rows: &mut Vec<Row>) {
     let online = data.online;
     let play = &online.share_play;
     let language = data.language;
-    if online.social.party.is_none() {
-        return;
-    }
     let detail = if let Some(share) = play.share() {
         let name = share.peer.handle.as_str();
         match share.role {

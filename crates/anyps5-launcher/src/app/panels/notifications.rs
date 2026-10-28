@@ -5,6 +5,7 @@
 
 use anyps5_core::links::SettingsPage;
 use anyps5_core::notifications::Act;
+use anyps5_core::online::SharePlayCommand;
 use anyps5_core::online::api::AccountId;
 
 use super::PanelHost;
@@ -40,6 +41,12 @@ pub(crate) fn primary_of(act: &Act, model: &Model) -> Option<NT> {
             .iter()
             .any(|i| i.id == *id)
             .then_some(NT::Join),
+        Act::JoinShare(id) => online
+            .share_play
+            .invitations()
+            .iter()
+            .any(|i| i.id == *id)
+            .then_some(NT::Accept),
         Act::OpenTrophies(game) => model
             .games
             .iter()
@@ -160,6 +167,17 @@ impl PanelHost {
                         id: invitation,
                         accept: true,
                     },
+                );
+                model.notes.remove(id);
+            }
+            // The same command as the Accept row on the party page.
+            Act::JoinShare(invitation) => {
+                online_action(
+                    model,
+                    OnlineAction::SharePlay(SharePlayCommand::Answer {
+                        id: invitation,
+                        accept: true,
+                    }),
                 );
                 model.notes.remove(id);
             }
