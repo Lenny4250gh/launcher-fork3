@@ -770,6 +770,7 @@ impl OnlineService {
                 | Purpose::Secrets { .. }
                 | Purpose::Privacy
                 | Purpose::PublicProfile
+                | Purpose::ScorePrivacy
                 | Purpose::Party
                 | Purpose::JoinCode
                 | Purpose::JoinCodeRevoke
@@ -832,6 +833,12 @@ impl OnlineService {
                                 .find(|library| library.name == "openh264")
                         })
                         .map(|library| (library.state, library.detail));
+                // The row says it in plain words; the reason is for the log.
+                if let Some((state, Some(detail))) = &model.share_codec
+                    && state != "ready"
+                {
+                    tracing::warn!("OpenH264 is {state}: {detail}");
+                }
             }
             (_, Ok(_)) => {}
             (purpose, Err(failure)) => {

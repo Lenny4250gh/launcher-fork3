@@ -155,11 +155,11 @@ pub enum OnlineText {
     Openh264Downloading,
     Openh264Ready,
     Openh264Missing,
-    /// `%@`: why the download failed.
+    /// The download failed; the reason is in the log.
     Openh264Failed,
     /// The share worker found a file that is not Cisco's build.
     Openh264Refused,
-    /// `%@`: why the share worker could not load it.
+    /// The share worker could not load it; the reason is in the log.
     Openh264NotLoaded,
     /// Cisco's licence asks for this text, unchanged, where the player turns the codec on and off.
     Openh264Notice,
@@ -180,6 +180,12 @@ pub enum OnlineText {
     AudienceEveryone,
     AudienceOnlyYou,
     TrophyAudienceNote,
+    // Leaderboard scores: the words follow the account web's Privacy page.
+    ScoresTitle,
+    ScoresDetail,
+    ScoresFriends,
+    ScoresEveryone,
+    ScoresNobody,
 }
 
 impl OnlineText {
@@ -331,11 +337,15 @@ impl OnlineText {
             OnlineText::Openh264Downloading => "Downloading from Cisco",
             OnlineText::Openh264Ready => "Downloaded from Cisco",
             OnlineText::Openh264Missing => "Not downloaded yet",
-            OnlineText::Openh264Failed => "The download failed: %@",
+            OnlineText::Openh264Failed => {
+                "The download failed. Check your connection, then turn it off and on to try again."
+            }
             OnlineText::Openh264Refused => {
                 "The file is not Cisco's build. Turn it off and on to download it again."
             }
-            OnlineText::Openh264NotLoaded => "It did not load: %@",
+            OnlineText::Openh264NotLoaded => {
+                "It could not be used on this PC. The log has the reason."
+            }
             OnlineText::Openh264Notice => "OpenH264 Video Codec provided by Cisco Systems, Inc.",
             OnlineText::TrophiesHidden => "Hidden",
             OnlineText::TrophiesNone => "None yet",
@@ -346,6 +356,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "The players you choose see how many trophies you have of each grade. Only each trophy's number, grade and date leave this PC."
             }
+            OnlineText::ScoresTitle => "Leaderboard Scores",
+            OnlineText::ScoresDetail => {
+                "Who sees your best score on a game’s leaderboard. You always see your own."
+            }
+            OnlineText::ScoresFriends => "Friends see your entry and your rank.",
+            OnlineText::ScoresEveryone => {
+                "Anyone sees your entry, including people who are not signed in: they see your handle, score and date on the board’s public page."
+            }
+            OnlineText::ScoresNobody => "Only you see your entry.",
         }
     }
 
@@ -491,11 +510,15 @@ impl OnlineText {
             OnlineText::Openh264Downloading => "Cisco'dan indiriliyor",
             OnlineText::Openh264Ready => "Cisco'dan indirildi",
             OnlineText::Openh264Missing => "Henüz indirilmedi",
-            OnlineText::Openh264Failed => "İndirme başarısız oldu: %@",
+            OnlineText::Openh264Failed => {
+                "İndirme başarısız oldu. Bağlantını kontrol et, sonra yeniden denemek için kapatıp aç."
+            }
             OnlineText::Openh264Refused => {
                 "Dosya Cisco'nun derlemesi değil. Yeniden indirmek için kapatıp aç."
             }
-            OnlineText::Openh264NotLoaded => "Yüklenemedi: %@",
+            OnlineText::Openh264NotLoaded => {
+                "Bu bilgisayarda kullanılamadı. Nedeni günlükte yazıyor."
+            }
             // Cisco's text stays in English in every language.
             OnlineText::Openh264Notice => "OpenH264 Video Codec provided by Cisco Systems, Inc.",
             OnlineText::TrophiesHidden => "Gizli",
@@ -507,6 +530,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "Seçtiğin oyuncular her dereceden kaç kupan olduğunu görür. Bilgisayarından yalnızca her kupanın numarası, derecesi ve tarihi çıkar."
             }
+            OnlineText::ScoresTitle => "Sıralama Skorları",
+            OnlineText::ScoresDetail => {
+                "Bir oyunun sıralama tablosundaki en iyi skorunu kimlerin gördüğü. Kendi skorunu her zaman sen görürsün."
+            }
+            OnlineText::ScoresFriends => "Arkadaşların kaydını ve yerini görür.",
+            OnlineText::ScoresEveryone => {
+                "Herkes kaydını görür, giriş yapmamış kişiler de: kullanıcı adını, skorunu ve tarihini sıralama tablosunun herkese açık sayfasında görürler."
+            }
+            OnlineText::ScoresNobody => "Kaydını yalnızca sen görürsün.",
         }
     }
 
@@ -674,11 +706,15 @@ impl OnlineText {
             OnlineText::Openh264Downloading => "Wird von Cisco heruntergeladen",
             OnlineText::Openh264Ready => "Von Cisco heruntergeladen",
             OnlineText::Openh264Missing => "Noch nicht heruntergeladen",
-            OnlineText::Openh264Failed => "Der Download ist fehlgeschlagen: %@",
+            OnlineText::Openh264Failed => {
+                "Der Download ist fehlgeschlagen. Prüfe deine Verbindung, dann schalte aus und wieder ein, um es erneut zu versuchen."
+            }
             OnlineText::Openh264Refused => {
                 "Die Datei ist nicht der Build von Cisco. Schalte aus und wieder ein, um sie erneut zu laden."
             }
-            OnlineText::Openh264NotLoaded => "Es wurde nicht geladen: %@",
+            OnlineText::Openh264NotLoaded => {
+                "Es konnte auf diesem PC nicht verwendet werden. Der Grund steht im Protokoll."
+            }
             // Cisco's text stays in English in every language.
             OnlineText::Openh264Notice => "OpenH264 Video Codec provided by Cisco Systems, Inc.",
             OnlineText::TrophiesHidden => "Versteckt",
@@ -690,6 +726,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "Die Spieler, die du wählst, sehen, wie viele Trophäen du pro Stufe hast. Nur Nummer, Stufe und Datum jeder Trophäe verlassen diesen PC."
             }
+            OnlineText::ScoresTitle => "Ergebnisse in Bestenlisten",
+            OnlineText::ScoresDetail => {
+                "Wer dein bestes Ergebnis auf der Bestenliste eines Spiels sieht. Dein eigenes siehst immer du."
+            }
+            OnlineText::ScoresFriends => "Freunde sehen deinen Eintrag und deinen Rang.",
+            OnlineText::ScoresEveryone => {
+                "Alle sehen deinen Eintrag, auch Personen, die nicht angemeldet sind: Sie sehen deinen Namen, dein Ergebnis und das Datum auf der öffentlichen Seite der Bestenliste."
+            }
+            OnlineText::ScoresNobody => "Nur du siehst deinen Eintrag.",
             _ => return None,
         })
     }
@@ -858,11 +903,15 @@ impl OnlineText {
             OnlineText::Openh264Downloading => "Descargando de Cisco",
             OnlineText::Openh264Ready => "Descargado de Cisco",
             OnlineText::Openh264Missing => "Aún sin descargar",
-            OnlineText::Openh264Failed => "Falló la descarga: %@",
+            OnlineText::Openh264Failed => {
+                "Falló la descarga. Revisa tu conexión y luego desactiva y activa de nuevo para reintentar."
+            }
             OnlineText::Openh264Refused => {
                 "El archivo no es la compilación de Cisco. Desactiva y activa de nuevo para descargarlo otra vez."
             }
-            OnlineText::Openh264NotLoaded => "No se cargó: %@",
+            OnlineText::Openh264NotLoaded => {
+                "No se pudo usar en este PC. El motivo está en el registro."
+            }
             // Cisco's text stays in English in every language.
             OnlineText::Openh264Notice => "OpenH264 Video Codec provided by Cisco Systems, Inc.",
             OnlineText::TrophiesHidden => "Ocultos",
@@ -874,6 +923,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "Los jugadores que elijas ven cuántos trofeos tienes de cada grado. Solo el número, el grado y la fecha de cada trofeo salen de este PC."
             }
+            OnlineText::ScoresTitle => "Puntuaciones de la clasificación",
+            OnlineText::ScoresDetail => {
+                "Quién ve tu mejor puntuación en la clasificación de un juego. La tuya siempre la ves tú."
+            }
+            OnlineText::ScoresFriends => "Tus amigos ven tu entrada y tu posición.",
+            OnlineText::ScoresEveryone => {
+                "Todos ven tu entrada, también quien no ha iniciado sesión: ven tu nombre de usuario, tu puntuación y la fecha en la página pública de la clasificación."
+            }
+            OnlineText::ScoresNobody => "Solo tú ves tu entrada.",
             _ => return None,
         })
     }
@@ -1036,11 +1094,15 @@ impl OnlineText {
             OnlineText::Openh264Downloading => "Téléchargement depuis Cisco",
             OnlineText::Openh264Ready => "Téléchargé depuis Cisco",
             OnlineText::Openh264Missing => "Pas encore téléchargé",
-            OnlineText::Openh264Failed => "Échec du téléchargement\u{a0}: %@",
+            OnlineText::Openh264Failed => {
+                "Échec du téléchargement. Vérifie ta connexion, puis désactive et réactive pour réessayer."
+            }
             OnlineText::Openh264Refused => {
                 "Le fichier n’est pas le build de Cisco. Désactive puis réactive pour le télécharger de nouveau."
             }
-            OnlineText::Openh264NotLoaded => "Chargement impossible\u{a0}: %@",
+            OnlineText::Openh264NotLoaded => {
+                "Utilisation impossible sur ce PC. La raison figure dans le journal."
+            }
             // Cisco's text stays in English in every language.
             OnlineText::Openh264Notice => "OpenH264 Video Codec provided by Cisco Systems, Inc.",
             OnlineText::TrophiesHidden => "Masqués",
@@ -1052,6 +1114,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "Les joueurs que tu choisis voient combien de trophées tu as de chaque rang. Seuls le numéro, le rang et la date de chaque trophée quittent ce PC."
             }
+            OnlineText::ScoresTitle => "Scores du classement",
+            OnlineText::ScoresDetail => {
+                "Qui voit ton meilleur score dans le classement d’un jeu. Tu vois toujours le tien."
+            }
+            OnlineText::ScoresFriends => "Tes amis voient ton entrée et ton rang.",
+            OnlineText::ScoresEveryone => {
+                "Tout le monde voit ton entrée, y compris les personnes non connectées : elles voient ton nom, ton score et la date sur la page publique du classement."
+            }
+            OnlineText::ScoresNobody => "Toi seul vois ton entrée.",
             _ => return None,
         })
     }
@@ -1212,11 +1283,15 @@ impl OnlineText {
             OnlineText::Openh264Downloading => "Baixando da Cisco",
             OnlineText::Openh264Ready => "Baixado da Cisco",
             OnlineText::Openh264Missing => "Ainda não baixado",
-            OnlineText::Openh264Failed => "O download falhou: %@",
+            OnlineText::Openh264Failed => {
+                "O download falhou. Verifique sua conexão e depois desative e ative de novo para tentar outra vez."
+            }
             OnlineText::Openh264Refused => {
                 "O arquivo não é o build da Cisco. Desative e ative de novo para baixá-lo outra vez."
             }
-            OnlineText::Openh264NotLoaded => "Não foi possível carregar: %@",
+            OnlineText::Openh264NotLoaded => {
+                "Não foi possível usar neste PC. O motivo está no registro."
+            }
             // Cisco's text stays in English in every language.
             OnlineText::Openh264Notice => "OpenH264 Video Codec provided by Cisco Systems, Inc.",
             OnlineText::TrophiesHidden => "Ocultos",
@@ -1228,6 +1303,15 @@ impl OnlineText {
             OnlineText::TrophyAudienceNote => {
                 "Os jogadores que você escolher veem quantos troféus você tem de cada grau. Só o número, o grau e a data de cada troféu saem deste PC."
             }
+            OnlineText::ScoresTitle => "Pontuações do ranking",
+            OnlineText::ScoresDetail => {
+                "Quem vê sua melhor pontuação no ranking de um jogo. Você sempre vê a sua."
+            }
+            OnlineText::ScoresFriends => "Seus amigos veem sua entrada e sua posição.",
+            OnlineText::ScoresEveryone => {
+                "Todos veem sua entrada, inclusive quem não entrou na conta: veem seu nome, sua pontuação e a data na página pública do ranking."
+            }
+            OnlineText::ScoresNobody => "Só você vê sua entrada.",
             _ => return None,
         })
     }
@@ -1286,8 +1370,6 @@ mod tests {
         OnlineText::NotOwned,
         OnlineText::NotUnlocked,
         OnlineText::VersionMismatch,
-        OnlineText::Openh264Failed,
-        OnlineText::Openh264NotLoaded,
     ];
 
     #[test]
