@@ -10,9 +10,11 @@
 //! Until the capture arrives (one or two frames) and under High Contrast the caller keeps its flat
 //! scrim.
 
+use std::sync::{Arc, Mutex};
+
 use egui::{
-    Color32, ColorImage, Context, Event, Id, Painter, Rect, TextureHandle, TextureOptions,
-    UserData, ViewportCommand, pos2,
+    Color32, ColorImage, Context, Id, Painter, Rect, ScreenshotCallback, TextureHandle,
+    TextureOptions, ViewportCommand, pos2,
 };
 
 /// How much the page is shrunk before it is blurred (the blur's strength grows with it).
@@ -25,13 +27,15 @@ const DIM: f32 = 0.60;
 /// Seconds for the blur to fade in once the capture has arrived.
 const READY_FADE: f32 = 0.15;
 
-/// Marks the capture this module asked for, so no other screenshot is taken for its own.
-struct Tag;
+/// Where the screenshot callback drops the capture (egui 0.37 answers with a one-shot callback,
+/// not with an event, so each request has its own slot and no other screenshot is mistaken for it).
+type Slot = Arc<Mutex<Option<Arc<ColorImage>>>>;
 
 #[derive(Clone, Default)]
 struct Held {
     texture: Option<TextureHandle>,
     asked: bool,
+    slot: Slot,
 }
 
 /// Paints the blurred page over `rect` for the card `id`; `v` is the card's openness.
@@ -44,20 +48,20 @@ pub fn paint(ctx: &Context, painter: &Painter, rect: Rect, id: Id, open: bool, v
     if open && !held.asked {
         // The card is at about 0 on its first frame, so the capture shows the page alone.
         held.asked = true;
-        ctx.send_viewport_cmd(ViewportCommand::Screenshot(UserData::new(Tag)));
+        let slot = held.slot.clone();
+        let repaint = ctx.clone();
+        ctx.send_viewport_cmd(ViewportCommand::Screenshot(ScreenshotCallback::new(
+            move |image| {
+                if let Ok(mut guard) = slot.lock() {
+                    *guard = Some(image);
+                }
+                repaint.request_repaint();
+            },
+        )));
         ctx.request_repaint();
     }
     if held.asked && held.texture.is_none() {
-        let shot = ctx.input(|i| {
-            i.events.iter().find_map(|event| match event {
-                Event::Screenshot {
-                    user_data, image, ..
-                } if user_data.data.as_ref().is_some_and(|d| d.is::<Tag>()) => {
-                    Some(image.clone())
-                }
-                _ => None,
-            })
-        });
+        let shot = held.slot.lock().ok().and_then(|mut guard| guard.take());
         if let Some(image) = shot {
             held.texture = Some(ctx.load_texture(
                 "page-blur",
