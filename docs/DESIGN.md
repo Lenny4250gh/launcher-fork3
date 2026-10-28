@@ -3072,6 +3072,16 @@ The sign-in entry is `anyps5_core::autostart::Entry`, read from the system on ev
 
 Gallery scenes: `settings-console-off`, `settings-console-autostart`, `settings-console`, `settings-console-image`, `settings-console-unavailable`.
 
+### 9.14 Pad-only sign-in and updates, and the home-app steps
+
+*Pad audit (2026-10-27).* Every step of the first start, the sign-in and the update flows is reachable with a pad; what was not:
+- **Back hint.** A screen that draws a Back button leaves "Back" out of its bar (3.12), but a pad cannot press that button. With a pad as the device in use the bar keeps the Back hint whatever the set says (`hint_list`).
+- **Browser sign-in.** The system browser holds the sign-in page, and Windows hands a pad to the focused window only, so the pad is dead there. The Browser page says so (one more line under the note, `SignInText::BrowserPad`), keeps *Open the Page Again* and *Cancel* as rows, and the launcher comes to the front by itself when the sign-in ends, fails, or runs out of time (`OnlineService::browser_wait`: only after the player was sent to the browser, never for a background reconnect). A sign-in that fails or times out is a sticky failure toast; Back puts it away.
+- **Cloud address.** Done on the on-screen keyboard (or Enter) uses the address (`Change::Submit` on `cloud`).
+- **Open, by decision.** The native folder dialog of the Games step (onboarding) cannot be driven by a pad; *Not Now* and *Continue* stay reachable. The What's New panel has no hint bar of its own and its *Open Release* button is mouse-only.
+
+*Home-app steps* (Settings > Connected Apps, last group, per system; `HomeGuide`). Claims and their sources: Windows Xbox mode is at Start > Settings > Gaming > Xbox mode, offers a *Choose home app* list of supported apps, and is left with Win + F11 (Microsoft Support, KB5070297); only OEMs can set a dedicated home app (Microsoft GDK, Handheld Launchers), so the text says AnyPlay is not one of the choices and does not promise otherwise. Steam: Big Picture is entered from its top-right button or the controller's Home button and left through Menu > Power > Exit Big Picture Mode; *Run Steam when my computer starts* and *Start Steam in Big Picture Mode* are on Steam > Settings > Interface (Steam Support, Steam community guides). Steam Deck and Bazzite Deck: *Add a Non-Steam Game* in Desktop Mode, *Return to Gaming Mode* on the desktop, the entry under Non-Steam in the Library (Steam Support, Steam Deck desktop FAQ). Menu names of Steam and Windows stay in English in every language, and the text says so.
+
 ## 10. Asset list
 
 | Asset in the ARM repo | Reuse? | Notes |

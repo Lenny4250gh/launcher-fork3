@@ -8,7 +8,7 @@
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
 //!                           game-hub|game-hub-running|game-hub-empty|trophies-all|
 //!                           find-players|find-players-mine|find-players-empty|post-listing|send-to-friend|
-//!                           about-update|behavior-links|settings-console-off|settings-console-autostart|settings-console|settings-console-image|settings-console-unavailable|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|behavior-clips-linux|
+//!                           about-update|behavior-links|settings-home-windows|settings-home-linux|settings-home-mac|settings-console-off|settings-console-autostart|settings-console|settings-console-image|settings-console-unavailable|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|behavior-clips-linux|
 //!                           toolkit-unused|game-toolkit|
 //!                           recommended|recommended-warning|whats-new|whats-new-loading|
 //!                           update-required|update-required-downloading|update-required-failed|
@@ -237,6 +237,8 @@ pub enum ScreenPage {
     Required(RequiredLook),
     /// General with Console Mode and the start at sign-in.
     SettingsConsole(ConsoleLook),
+    /// Connected Apps scrolled to the steps for using AnyPlay as the console home, per system.
+    SettingsHome(anyps5_core::platform::Os),
     /// Behavior with the AnyPlay links registered to this launcher.
     BehaviourLinks,
     /// Advanced on Linux with share screen on: the OpenH264 row turned on (and downloaded), or off.
@@ -960,6 +962,9 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "update-required-packaged-long" => ScreenPage::Required(RequiredLook::PackagedLong),
         "update-required-offline" => ScreenPage::Required(RequiredLook::OnlineClosed),
         "behavior-links" => ScreenPage::BehaviourLinks,
+        "settings-home-windows" => ScreenPage::SettingsHome(anyps5_core::platform::Os::Windows),
+        "settings-home-linux" => ScreenPage::SettingsHome(anyps5_core::platform::Os::Linux),
+        "settings-home-mac" => ScreenPage::SettingsHome(anyps5_core::platform::Os::Macos),
         "settings-console-off" => ScreenPage::SettingsConsole(ConsoleLook::Off),
         "settings-console-autostart" => ScreenPage::SettingsConsole(ConsoleLook::Autostart),
         "settings-console" => ScreenPage::SettingsConsole(ConsoleLook::On),
@@ -3158,6 +3163,10 @@ impl ScreenGallery {
             default_screenshots: std::path::Path::new("C:\\Users\\mira\\Pictures\\AnyPS5"),
             autostart: match self.page {
                 ScreenPage::SettingsConsole(look) => look.env(),
+                ScreenPage::SettingsHome(os) => crate::screens::settings::AutostartEnv {
+                    state: crate::screens::settings::AutostartState::Off,
+                    os,
+                },
                 _ => ConsoleLook::Off.env(),
             },
             links: if matches!(self.page, ScreenPage::BehaviourLinks) {
@@ -3824,6 +3833,10 @@ impl ScreenGallery {
             }
             ScreenPage::WhatsNewLauncher => {
                 self.whats_new.open_showcase();
+            }
+            ScreenPage::SettingsHome(_) => {
+                self.settings.open_at(Category::ConnectedApps.index(), true);
+                self.settings.focus_row_id("homeStep1");
             }
             ScreenPage::SettingsConsole(look) => {
                 self.prefs.console_mode = look == ConsoleLook::On;

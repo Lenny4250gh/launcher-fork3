@@ -70,6 +70,10 @@ pub struct OnlineService {
     relay_only_later: bool,
     /// The player was online in the last frame: coming online syncs the trophies.
     was_online: bool,
+    /// The system browser has the sign-in page and the player was sent there: when it ends, the
+    /// launcher comes back to the front by itself, because a pad cannot reach this window from a
+    /// browser (Windows hands a pad to the focused window only).
+    browser_wait: bool,
 }
 
 /// A game ready to start, with the variables it gets beyond its settings.
@@ -91,6 +95,7 @@ impl OnlineService {
             started: None,
             relay_only_later: false,
             was_online: false,
+            browser_wait: false,
         }
     }
 
@@ -498,8 +503,9 @@ impl OnlineService {
             }
             Notice::SignedIn => self.signed_in(model),
             Notice::SignInTimedOut => {
+                self.browser_returns(model);
                 let text = T::SignInTimedOut.text(language).to_owned();
-                model.toast(text, Icon::CLOCK);
+                model.toast_failure(text);
             }
             Notice::SignInStopped => {
                 let text = T::SignInStopped.text(language).to_owned();
@@ -602,6 +608,7 @@ impl OnlineService {
                 }
             }
             (Purpose::BrowserSignIn { .. }, Ok(_)) => {
+                self.browser_wait = true;
                 if let Some(url) = model.online.sign_in_url.clone() {
                     Self::open_cloud_page(model, &url);
                 }
@@ -617,7 +624,7 @@ impl OnlineService {
                     .to_owned();
                 model.toast(text, Icon::CHECK);
             }
-            (Purpose::CancelSignIn, _) => {}
+            (Purpose::CancelSignIn, _) => self.browser_wait = false,
             (Purpose::SignOut, _) => {
                 model.edit_prefs(|p| p.online = false);
                 let text = T::SignedOut.text(language).to_owned();
@@ -833,12 +840,26 @@ impl OnlineService {
                     Some(restriction) => restriction_text::toast(restriction, what, None, language),
                     None => failure_text(&failure, language),
                 };
-                model.toast(text, Icon::WARNING);
+                // A sign-in that failed stays up until dismissed: the pad has Back for that.
+                if matches!(purpose, Purpose::BrowserSignIn { .. }) {
+                    self.browser_wait = false;
+                    model.toast_failure(text);
+                } else {
+                    model.toast(text, Icon::WARNING);
+                }
             }
         }
     }
 
+    /// The browser part of a sign-in is over: bring the launcher back to the front.
+    fn browser_returns(&mut self, model: &mut Model) {
+        if std::mem::take(&mut self.browser_wait) {
+            model.effects.push(Effect::RestoreWindow);
+        }
+    }
+
     fn signed_in(&mut self, model: &mut Model) {
+        self.browser_returns(model);
         model.edit_prefs(|p| p.online = true);
         if let Some(account) = &model.online.account {
             let text = T::Welcome.format(model.language(), &[Arg::Str(&account.handle)]);

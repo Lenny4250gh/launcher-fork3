@@ -1150,6 +1150,8 @@ impl OnlinePanel {
                 self.social_toggle("pickParty", *on, data);
             }
             Change::Submit { row: "friend" } => self.run("sendRequest", data, actions),
+            // Done on the keyboard of the pad (or Enter) uses the address: no hunt for the button below.
+            Change::Submit { row: "cloud" } => self.run("useCloud", data, actions),
             Change::Toggle { row: "pick", on } => {
                 let index = self.nth(data, "pick");
                 if let Some(friend) = picker_friends(online).get(index) {
@@ -1448,6 +1450,11 @@ impl OnlinePanel {
                 rows.push(Row::command("openAgain", t(T::OpenAgain)).icon(Icon::GLOBE));
                 rows.push(Row::command("cancelSignIn", language.text(Key::Cancel)).icon(Icon::X));
                 rows.push(Row::info("note", t(T::BrowserNote), None).group_start());
+                rows.push(Row::info(
+                    "notePad",
+                    crate::screens::signin_strings::SignInText::BrowserPad.text(language),
+                    None,
+                ));
                 (
                     t(T::Online).to_owned(),
                     Some(t(T::ContinueInBrowser).to_owned()),
@@ -2452,7 +2459,7 @@ mod tests {
         assert_eq!(panel.page, Page::Browser);
         let (_, subtitle, rows) = panel.rows(&data(&online));
         assert_eq!(subtitle.as_deref(), Some("Continue in your browser"));
-        assert_eq!(ids(&rows), ["openAgain", "cancelSignIn", "note"]);
+        assert_eq!(ids(&rows), ["openAgain", "cancelSignIn", "note", "notePad"]);
         let mut actions = Vec::new();
         panel.run("openAgain", &data(&online), &mut actions);
         assert_eq!(actions, [OnlineAction::OpenSignInPage]);

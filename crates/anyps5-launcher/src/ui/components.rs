@@ -1395,9 +1395,19 @@ impl HintSet {
 }
 
 /// `enter` is what Enter does where the focus makes it say more than "Select" (a field edits, a
-/// composer sends).
-fn hint_list(language: Language, set: HintSet, enter: Option<&'static str>) -> Vec<Hint<'static>> {
+/// composer sends). A pad cannot press a Back button on screen, so with a pad in use the Back
+/// hint stays whatever the set says.
+fn hint_list(
+    language: Language,
+    set: HintSet,
+    enter: Option<&'static str>,
+    device: input::Device,
+) -> Vec<Hint<'static>> {
     let options = set.options;
+    let set = HintSet {
+        back: set.back || device == input::Device::Gamepad,
+        ..set
+    };
     let mut hints = vec![Hint {
         action: HintAction::Select,
         label: enter.unwrap_or_else(|| language.text(Key::HintSelect)),
@@ -1439,7 +1449,7 @@ pub fn hint_bar_set(ui: &mut Ui, language: Language, set: HintSet) {
 pub fn hint_bar_enter(ui: &mut Ui, language: Language, set: HintSet, enter: Option<&'static str>) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = size::HINT_BAR_GAP;
-        for hint in hint_list(language, set, enter) {
+        for hint in hint_list(language, set, enter, input::device(ui.ctx())) {
             hint.show(ui);
         }
     });
@@ -1470,7 +1480,7 @@ pub fn hint_bar_enter_size(
     enter: Option<&'static str>,
 ) -> (f32, f32) {
     let device = input::device(painter.ctx());
-    let hints = hint_list(language, set, enter);
+    let hints = hint_list(language, set, enter, device);
     let width = hints.iter().map(|h| h.width(painter, device)).sum::<f32>()
         + size::HINT_BAR_GAP * hints.len().saturating_sub(1) as f32;
     (width, size::HINT_CAP.max(ty::HINT_LABEL.line_height()))
@@ -1518,6 +1528,26 @@ mod hint_tests {
         assert_eq!(HintAction::Select.key_in(&b), "Enter");
         assert_eq!(HintAction::Back.key_in(&b), "Esc");
         assert_eq!(HintAction::Options.key_in(&b), "O");
+    }
+
+    #[test]
+    fn a_pad_keeps_the_back_hint_beside_a_back_button_it_cannot_press() {
+        let actions = |device| {
+            hint_list(
+                Language::English,
+                HintSet::BASIC.without_back(),
+                None,
+                device,
+            )
+            .iter()
+            .map(|h| h.action)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(actions(input::Device::Keyboard), [HintAction::Select]);
+        assert_eq!(
+            actions(input::Device::Gamepad),
+            [HintAction::Select, HintAction::Back]
+        );
     }
 
     #[test]

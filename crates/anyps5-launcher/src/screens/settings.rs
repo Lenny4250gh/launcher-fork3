@@ -505,6 +505,47 @@ fn path_text(path: &Option<PathBuf>) -> String {
         .unwrap_or_else(|| "—".to_owned())
 }
 
+/// The steps for using AnyPlay as the home of the PC, for the system the launcher runs on: only
+/// claims that were checked against the vendors' own pages (docs/DESIGN.md 9.13).
+fn home_guide_rows(os: anyps5_core::platform::Os, language: Language) -> Vec<Row> {
+    use crate::screens::home_guide_strings::HomeGuide as G;
+    use anyps5_core::platform::Os;
+    let steam = SteamText::Add.text(language);
+    let console = [
+        Arg::Str(ConsoleText::Console.text(language)),
+        Arg::Str(Category::General.title(language)),
+    ];
+    let steps: Vec<(&str, String)> = match os {
+        Os::Windows => vec![
+            ("homeStep1", G::ConsoleWindows.format(language, &console)),
+            (
+                "homeStep2",
+                G::BigPicture.format(language, &[Arg::Str(steam)]),
+            ),
+            ("homeStep3", G::Xbox.format(language, &[])),
+        ],
+        Os::Linux => vec![
+            ("homeStep1", G::ConsoleLogin.format(language, &console)),
+            ("homeStep2", G::Deck.format(language, &[Arg::Str(steam)])),
+            ("homeStep3", G::Session.format(language, &[])),
+        ],
+        Os::Macos => vec![
+            ("homeStep1", G::ConsoleLogin.format(language, &console)),
+            (
+                "homeStep2",
+                G::BigPicture.format(language, &[Arg::Str(steam)]),
+            ),
+        ],
+    };
+    let mut rows = vec![Row::info("homeGuide", G::Caption.text(language), None).group_start()];
+    rows.extend(
+        steps
+            .into_iter()
+            .map(|(id, text)| Row::info(id, text, None)),
+    );
+    rows
+}
+
 /// Console Mode, and what it is made of. On, the mode owns the start at sign-in and the full screen
 /// and offers the way out; off, the two stand as rows of their own.
 fn console_rows(prefs: &Preferences, autostart: AutostartEnv, language: Language) -> Vec<Row> {
@@ -1030,6 +1071,7 @@ pub fn build_categories(
             );
         }
     }
+    apps.extend(home_guide_rows(env.autostart.os, language));
     // A page is never empty: on a system with no app to connect it says so.
     if apps.is_empty() {
         apps.push(Row::info("appsNone", words::NoApps.text(language), None));
