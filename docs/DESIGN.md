@@ -132,7 +132,7 @@ theme's default accent).
 | Platinum | (0.74, 0.84, 0.97) | `#BDD6F7` | 300 |
 | Gold | (0.97, 0.78, 0.34) | `#F7C757` | 90 |
 | Silver | (0.80, 0.82, 0.86) | `#CCD1DB` | 30 |
-| Bronze | (0.83, 0.55, 0.36) | `#D48C5C` | 15 |
+| Bronze | (0.92, 0.65, 0.47) | `#EBA678` | 15 |
 
 Percent = `unlocked points * 100 / total points` (integer division, 0 when total is 0).
 
