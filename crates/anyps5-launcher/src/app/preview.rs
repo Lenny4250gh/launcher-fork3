@@ -847,6 +847,9 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
         Scene::HomeScanning | Scene::Onboarding(Ob::GamesScanning)
     );
     if !with_games {
+        if matches!(scene, Scene::HomeEmptyShare) {
+            share_invitation_sample(m);
+        }
         return;
     }
 
@@ -1113,7 +1116,6 @@ pub fn apply_scene(m: &mut crate::app::model::Model, scene: Scene, games: Vec<Ga
             share_invitation_sample(m);
             m.switch_overlay(crate::app::overlay::Overlay::Notifications);
         }
-        Scene::HomeEmptyShare => share_invitation_sample(m),
         Scene::HomeMessages => {
             use anyps5_core::online::api::{
                 Account, AccountId, Conversation, ConversationKind, Conversations,
