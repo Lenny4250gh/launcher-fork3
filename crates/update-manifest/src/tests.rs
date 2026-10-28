@@ -15,6 +15,8 @@ fn manifest(version: &str, expires_in: Duration) -> Manifest {
         expires: format_time(now() + expires_in),
         minimum_version: "0.1.0".into(),
         min_supported_version: None,
+        yanked: Vec::new(),
+        rollout_percent: None,
         platforms: BTreeMap::from([(
             WINDOWS_X64.into(),
             Artifact {
@@ -531,4 +533,240 @@ fn the_supported_version_file_is_a_version_a_comment_or_an_error() {
             "{bad:?}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The kill switch (docs/adr/0002)
+
+/// The manifest struct of a launcher from before the kill switch: exactly the old fields and no
+/// `deny_unknown_fields`. New manifests must still parse as this.
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct OldManifest {
+    schema: u32,
+    version: String,
+    published: String,
+    expires: String,
+    minimum_version: String,
+    #[serde(default)]
+    min_supported_version: Option<String>,
+    platforms: BTreeMap<String, Artifact>,
+}
+
+#[test]
+fn an_old_launcher_reads_a_manifest_with_the_new_fields() {
+    let mut m = manifest("0.3.0", Duration::days(30));
+    m.yanked = vec!["0.2.9".into()];
+    m.rollout_percent = Some(25);
+    let old: OldManifest = serde_json::from_slice(&bytes(&m)).unwrap();
+    assert_eq!(old.version, "0.3.0");
+    assert_eq!(old.platforms.len(), 1);
+}
+
+#[test]
+fn a_new_launcher_reads_a_manifest_from_before_the_new_fields() {
+    let key = generate_signing_key();
+    let keys = TrustedKeys::of(key.verifying_key());
+    let value = serde_json::to_value(manifest("0.3.0", Duration::days(30))).unwrap();
+    let object = value.as_object().unwrap();
+    assert!(!object.contains_key("yanked") && !object.contains_key("rollout_percent"));
+    let bytes = serde_json::to_vec(&value).unwrap();
+    let got = verify(&bytes, &sign(&bytes, &key), &keys, now()).unwrap();
+    assert!(got.yanked.is_empty());
+    assert_eq!(got.rollout_percent, None);
+    assert!(!got.held_back("0.2.0", "abcd"), "absent means 100");
+    assert_eq!(got.allows_update_from("0.2.0"), Ok(()));
+}
+
+#[test]
+fn the_new_fields_are_signed_with_the_rest() {
+    let key = generate_signing_key();
+    let keys = TrustedKeys::of(key.verifying_key());
+    let mut m = manifest("0.3.0", Duration::days(30));
+    m.rollout_percent = Some(10);
+    let (bytes, signature) = signed(&m, &key);
+    let tampered = String::from_utf8(bytes.clone())
+        .unwrap()
+        .replace("\"rollout_percent\": 10", "\"rollout_percent\": 99");
+    assert_ne!(tampered.as_bytes(), &bytes[..]);
+    assert_eq!(
+        verify(tampered.as_bytes(), &signature, &keys, now()),
+        Err(ManifestError::Signature)
+    );
+    assert!(verify(&bytes, &signature, &keys, now()).is_ok());
+}
+
+#[test]
+fn the_bucket_is_stable_in_range_and_even() {
+    assert_eq!(rollout_bucket("aa", "0.3.0"), rollout_bucket("aa", "0.3.0"));
+    // Pinned: a change of the function would reshuffle every install in a running rollout.
+    assert_eq!(
+        rollout_bucket("0123456789abcdef0123456789abcdef", "0.3.0"),
+        PINNED_BUCKET
+    );
+    let mut counts = [0u32; 100];
+    for n in 0..20_000u32 {
+        counts[rollout_bucket(&format!("{n:032x}"), "0.3.0") as usize] += 1;
+    }
+    // 200 per bucket on average.
+    assert!(counts.iter().all(|c| (110..=290).contains(c)), "{counts:?}");
+    let below_half: u32 = counts[..50].iter().sum();
+    assert!((9_000..=11_000).contains(&below_half), "{below_half}");
+    // The version reshuffles who is first.
+    let same = (0..1000u32)
+        .filter(|n| {
+            let id = format!("{n:032x}");
+            (rollout_bucket(&id, "0.3.0") < 10) == (rollout_bucket(&id, "0.3.1") < 10)
+        })
+        .count();
+    assert!(same < 950, "{same}");
+}
+
+const PINNED_BUCKET: u8 = 29;
+
+#[test]
+fn raising_the_rollout_only_adds_installs() {
+    let mut m = manifest("0.3.0", Duration::days(30));
+    let ids: Vec<String> = (0..500u32).map(|n| format!("{n:032x}")).collect();
+    let mut seen_before: Vec<bool> = vec![false; ids.len()];
+    for percent in [0u8, 1, 10, 25, 50, 90, 100] {
+        m.rollout_percent = Some(percent);
+        for (i, id) in ids.iter().enumerate() {
+            let sees = !m.held_back("0.2.0", id);
+            assert!(
+                sees || !seen_before[i],
+                "install {i} lost the update at {percent}%"
+            );
+            seen_before[i] = sees;
+        }
+    }
+    assert!(seen_before.iter().all(|s| *s), "100% reaches everyone");
+}
+
+#[test]
+fn a_rollout_never_holds_a_required_update_a_yanked_version_or_an_unknown_install() {
+    let mut m = manifest("0.3.0", Duration::days(30));
+    m.rollout_percent = Some(0);
+    assert!(m.held_back("0.2.0", "abcd"), "0% pauses");
+    assert!(!m.held_back("0.2.0", ""), "no id: fail open");
+    m.min_supported_version = Some("0.3.0".into());
+    assert!(!m.held_back("0.2.0", "abcd"), "required");
+    m.min_supported_version = None;
+    m.yanked = vec!["0.2.0".into()];
+    assert!(!m.held_back("0.2.0", "abcd"), "running a yanked version");
+}
+
+#[test]
+fn yanked_versions_are_never_offered_and_walk_a_launcher_back() {
+    let mut m = manifest("0.3.0", Duration::days(30));
+    m.yanked = vec!["0.3.1".into(), "0.3.2".into()];
+    assert_eq!(m.allows_update_from("0.2.0"), Ok(()));
+    // Newer than the offer and not yanked: nothing.
+    assert!(matches!(
+        m.allows_update_from("0.3.3"),
+        Err(ManifestError::NotNewer { .. })
+    ));
+    // Newer than the offer but yanked: walked back to the offer.
+    assert_eq!(m.allows_update_from("0.3.2"), Ok(()));
+    assert_eq!(m.allows_update_from("v0.3.1"), Ok(()));
+    // Already on the offer: nothing.
+    assert!(matches!(
+        m.allows_update_from("0.3.0"),
+        Err(ManifestError::NotNewer { .. })
+    ));
+    // The walk back still respects minimum_version.
+    m.minimum_version = "0.3.0".into();
+    assert!(matches!(
+        m.allows_update_from("0.2.0"),
+        Err(ManifestError::RunningTooOld { .. })
+    ));
+    // A manifest cannot offer what it yanks.
+    let mut bad = manifest("0.3.0", Duration::days(30));
+    bad.yanked = vec!["0.3.0".into()];
+    assert!(bad.validate().is_err());
+    assert!(matches!(
+        bad.allows_update_from("0.2.0"),
+        Err(ManifestError::Yanked(_))
+    ));
+}
+
+#[test]
+fn the_new_fields_are_validated() {
+    let mut m = manifest("0.3.0", Duration::days(30));
+    m.rollout_percent = Some(101);
+    assert!(m.validate().is_err());
+    m.rollout_percent = Some(100);
+    assert!(m.validate().is_ok());
+    for bad in ["v0.2.0", "0.2.0+x", "nope", ""] {
+        m.yanked = vec![bad.into()];
+        assert!(m.validate().is_err(), "{bad:?}");
+    }
+    m.yanked = (0..=MAX_YANKED).map(|n| format!("0.1.{n}")).collect();
+    assert!(m.validate().is_err(), "too many");
+    // A percentage that does not fit is refused when read, before it can be signed.
+    let key = generate_signing_key();
+    let keys = TrustedKeys::of(key.verifying_key());
+    let mut value = serde_json::to_value(manifest("0.3.0", Duration::days(30))).unwrap();
+    value["rollout_percent"] = serde_json::json!(300);
+    let bytes = serde_json::to_vec(&value).unwrap();
+    assert!(matches!(
+        verify(&bytes, &sign(&bytes, &key), &keys, now()),
+        Err(ManifestError::Malformed(_))
+    ));
+}
+
+#[test]
+fn reissue_changes_only_the_policy_and_the_window() {
+    let mut live = manifest("0.3.0", Duration::days(1));
+    live.yanked = vec!["0.2.0".into()];
+    live.rollout_percent = Some(20);
+    let later = now() + Duration::days(10);
+    let change = PolicyChange {
+        yank: vec!["0.2.5".into(), "0.2.0".into()],
+        ..PolicyChange::default()
+    };
+    let next = reissue(&live, None, &change, later, 30).unwrap();
+    assert_eq!(next.platforms, live.platforms, "files are the signed ones");
+    assert_eq!(next.version, "0.3.0");
+    assert_eq!(next.yanked, vec!["0.2.0", "0.2.5"], "sorted, no duplicates");
+    assert_eq!(next.rollout_percent, Some(20), "carried");
+    assert_eq!(next.published, format_time(later));
+    assert_eq!(next.expires, format_time(later + Duration::days(30)));
+    // Unyank, new rollout; 100 is stored as absent.
+    let change = PolicyChange {
+        unyank: vec!["v0.2.0".into()],
+        rollout_percent: Some(100),
+        ..PolicyChange::default()
+    };
+    let next = reissue(&next, None, &change, later, 30).unwrap();
+    assert_eq!(next.yanked, vec!["0.2.5"]);
+    assert_eq!(next.rollout_percent, None);
+    // A renewal with no change keeps everything.
+    let renewed = reissue(&next, None, &PolicyChange::default(), later, 30).unwrap();
+    assert_eq!(renewed.yanked, next.yanked);
+}
+
+#[test]
+fn reissue_can_offer_another_release_and_refuses_what_a_launcher_would() {
+    let mut live = manifest("0.3.9", Duration::days(1));
+    live.rollout_percent = Some(5);
+    let good = manifest("0.3.8", Duration::days(1));
+    let change = PolicyChange {
+        yank: vec!["0.3.9".into()],
+        ..PolicyChange::default()
+    };
+    let next = reissue(&live, Some(&good), &change, now(), 30).unwrap();
+    assert_eq!(next.version, "0.3.8");
+    assert_eq!(next.platforms, good.platforms);
+    assert_eq!(next.yanked, vec!["0.3.9"]);
+    assert_eq!(next.rollout_percent, None, "another version starts at 100");
+    assert_eq!(next.allows_update_from("0.3.9"), Ok(()), "walk back");
+    // Yanking the version being offered is refused.
+    assert!(reissue(&live, None, &change, now(), 30).is_err());
+    assert!(reissue(&live, None, &PolicyChange::default(), now(), 91).is_err());
+    let change = PolicyChange {
+        rollout_percent: Some(150),
+        ..PolicyChange::default()
+    };
+    assert!(reissue(&live, None, &change, now(), 30).is_err());
 }

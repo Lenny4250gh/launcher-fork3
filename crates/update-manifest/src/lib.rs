@@ -12,6 +12,12 @@
 //! - names a version newer than the running one ([`ManifestError::NotNewer`]; this stops a
 //!   rollback to an old, vulnerable release),
 //! - allows the running version to update from it ([`ManifestError::RunningTooOld`]),
+//! - does not offer a version the manifest itself yanks ([`Manifest::yanked`]),
+//!
+//! and, before a launcher shows an update, [`Manifest::held_back`] may keep a staged rollout from
+//! reaching this install yet ([`Manifest::rollout_percent`]). The fields of the kill switch
+//! (`yanked`, `rollout_percent`, `min_supported_version`) are signed with the rest, and every one
+//! is optional, so old launchers ignore them and new launchers read old manifests (ADR 0002).
 //!
 //! and then a download only when its SHA-256 and size are the manifest's (the caller checks that;
 //! [`Artifact`] carries both).
@@ -26,6 +32,7 @@ use std::collections::BTreeMap;
 
 use ed25519_dalek::{Signature, Signer as _, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -42,6 +49,10 @@ pub const LINUX_X64: &str = "linux-x86_64";
 pub const MACOS_ARM64: &str = "macos-arm64";
 /// Prefixed to the manifest bytes before signing.
 pub const DOMAIN: &[u8] = b"anyplay-launcher-update-manifest-v1\n";
+/// Prefixed to the install id and the version when an install is put into a rollout bucket.
+const ROLLOUT_DOMAIN: &[u8] = b"anyplay-launcher-rollout-v1\n";
+/// The most versions a manifest may yank. A manifest is a few hundred bytes; this keeps it so.
+pub const MAX_YANKED: usize = 64;
 /// A manifest is a few hundred bytes; the client reads at most this much.
 pub const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 /// A signature file is 128 hex digits and a line break.
@@ -69,6 +80,8 @@ pub enum ManifestError {
     NotNewer { offered: String, current: String },
     #[error("this manifest updates only from {minimum} or newer, this is {current}")]
     RunningTooOld { minimum: String, current: String },
+    #[error("the manifest offers {0}, which it also yanks")]
+    Yanked(String),
 }
 
 /// One downloadable file.
@@ -102,6 +115,18 @@ pub struct Manifest {
     /// Launchers that do not know the field ignore it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_supported_version: Option<String>,
+    /// Versions that must no longer be offered (ADR 0002). A launcher that runs one of them is
+    /// offered the version this manifest names even when it is not newer, and is never held back
+    /// by [`Manifest::rollout_percent`]: that is how a bad release is walked back. The manifest
+    /// cannot offer a version it yanks. Launchers that do not know the field ignore it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub yanked: Vec<String>,
+    /// How many of 100 installs may see this update yet, 0 to 100 (see [`rollout_bucket`]).
+    /// Absent means 100. A required update ([`Manifest::requires_update_from`]) and a yanked
+    /// running version ignore it. Launchers that do not know the field ignore it and see the
+    /// update at once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rollout_percent: Option<u8>,
     /// Per platform ([`WINDOWS_X64`], [`LINUX_X64`]).
     pub platforms: BTreeMap<String, Artifact>,
 }
@@ -135,7 +160,14 @@ impl Manifest {
     /// version must be newer, and `current` must not be older than `minimum_version`. A running
     /// version that is not a version at all is never updated.
     pub fn allows_update_from(&self, current: &str) -> Result<(), ManifestError> {
-        if !is_newer(&self.version, current) {
+        if self.is_yanked(&self.version) {
+            return Err(ManifestError::Yanked(self.version.clone()));
+        }
+        // A running version the manifest yanks may move to the offered one even when it is not
+        // newer: the only downgrade a manifest can grant, and only away from a version it names.
+        let walk_back =
+            self.is_yanked(current) && Version::parse(&self.version) != Version::parse(current);
+        if !walk_back && !is_newer(&self.version, current) {
             return Err(ManifestError::NotNewer {
                 offered: self.version.clone(),
                 current: current.to_owned(),
@@ -150,6 +182,29 @@ impl Manifest {
                 current: current.to_owned(),
             }),
         }
+    }
+
+    /// Whether `version` is one this manifest yanks (compared as versions, so `v0.3.9` matches).
+    pub fn is_yanked(&self, version: &str) -> bool {
+        let Some(version) = Version::parse(version) else {
+            return false;
+        };
+        self.yanked
+            .iter()
+            .any(|y| Version::parse(y).is_some_and(|y| y == version))
+    }
+
+    /// Whether the staged rollout keeps this update from the install `install_id` for now. Call it
+    /// after [`Manifest::allows_update_from`] succeeded. Never for a required update, never for a
+    /// running version the manifest yanks, never without an install id (nothing to bucket: fail
+    /// open, an update is more useful than a hold), and never at 100 or when the field is absent.
+    pub fn held_back(&self, current: &str, install_id: &str) -> bool {
+        let percent = self.rollout_percent.unwrap_or(100);
+        percent < 100
+            && !install_id.is_empty()
+            && !self.requires_update_from(current)
+            && !self.is_yanked(current)
+            && rollout_bucket(install_id, &self.version) >= percent
     }
 
     /// The checks against the clock: `published` may lie at most [`MAX_FUTURE_SKEW_DAYS`] ahead
@@ -197,6 +252,20 @@ impl Manifest {
                 }
                 Some(_) => {}
             }
+        }
+        if self.rollout_percent.is_some_and(|p| p > 100) {
+            return bad("rollout_percent is above 100");
+        }
+        if self.yanked.len() > MAX_YANKED {
+            return bad("too many yanked versions");
+        }
+        for yanked in &self.yanked {
+            if yanked.starts_with('v') || yanked.contains('+') || Version::parse(yanked).is_none() {
+                return bad("a yanked entry is not a plain version");
+            }
+        }
+        if self.is_yanked(&self.version) {
+            return bad("the manifest offers a version it yanks");
         }
         let published = parse_time("published", &self.published)?;
         let expires = self.expires_at()?;
@@ -247,6 +316,21 @@ pub fn parse_supported_file(text: &str) -> Result<Option<String>, ManifestError>
         return Err(bad("expected plain semver such as 0.3.0"));
     }
     Ok(Some(line.to_owned()))
+}
+
+/// The bucket, 0 to 99, an install falls into for the update to `version`: the first four bytes of
+/// a SHA-256 over the install id and the version, modulo 100. It depends on nothing else, so it is
+/// the same on every check, and an install is in a rollout of `p` percent exactly when its bucket
+/// is below `p`: raising the percentage only ever adds installs. The version is in the hash so the
+/// same installs are not always first in line.
+pub fn rollout_bucket(install_id: &str, version: &str) -> u8 {
+    let mut hash = Sha256::new();
+    hash.update(ROLLOUT_DOMAIN);
+    hash.update(install_id.as_bytes());
+    hash.update([0]);
+    hash.update(version.as_bytes());
+    let digest = hash.finalize();
+    (u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) % 100) as u8
 }
 
 fn parse_time(field: &str, text: &str) -> Result<OffsetDateTime, ManifestError> {
@@ -426,6 +510,79 @@ pub fn from_hex(text: &str) -> Option<Vec<u8>> {
         .step_by(2)
         .map(|i| u8::from_str_radix(&text[i..i + 2], 16).ok())
         .collect()
+}
+
+// ---------------------------------------------------------------------------------------------
+// The kill switch
+
+/// What an operator changes about a release that is already out (`update-sign reissue`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PolicyChange {
+    /// Versions to add to [`Manifest::yanked`].
+    pub yank: Vec<String>,
+    /// Versions to take out of it again.
+    pub unyank: Vec<String>,
+    /// A new [`Manifest::rollout_percent`]. `None` keeps the current one, unless a different
+    /// version is offered, which starts at 100 again.
+    pub rollout_percent: Option<u8>,
+    /// A new [`Manifest::min_supported_version`] (`Some(None)` removes it). `None` keeps it.
+    pub min_supported_version: Option<Option<String>>,
+    /// A new [`Manifest::minimum_version`]. `None` keeps it.
+    pub minimum_version: Option<String>,
+}
+
+/// The manifest the operator publishes next, without a rebuild: everything the launcher trusts
+/// about files (version, names, urls, hashes, sizes) is taken as signed, and only the policy and
+/// the validity window change. `live` is the manifest now on the latest release and supplies the
+/// policy; `offer`, when given, is the manifest of another release whose files are offered
+/// instead (the walk back to a good version, with the bad one in `change.yank`). Both must have
+/// been verified by the caller. The result is validated, so it never offers a version it yanks.
+pub fn reissue(
+    live: &Manifest,
+    offer: Option<&Manifest>,
+    change: &PolicyChange,
+    now: OffsetDateTime,
+    days: i64,
+) -> Result<Manifest, ManifestError> {
+    let bad = |what: &str| Err(ManifestError::Malformed(what.to_owned()));
+    if !(1..=MAX_VALIDITY_DAYS).contains(&days) {
+        return bad("days must be 1 to 90");
+    }
+    let mut manifest = offer.unwrap_or(live).clone();
+    let key = |v: &str| Version::parse(v);
+    let mut yanked: Vec<String> = live.yanked.clone();
+    for version in &change.yank {
+        if key(version).is_none() {
+            return bad("a version to yank is not a version");
+        }
+        yanked.push(version.clone());
+    }
+    for version in &change.unyank {
+        let Some(version) = key(version) else {
+            return bad("a version to unyank is not a version");
+        };
+        yanked.retain(|y| key(y).as_ref() != Some(&version));
+    }
+    yanked.sort_by_key(|y| key(y));
+    yanked.dedup_by(|a, b| key(a) == key(b));
+    manifest.yanked = yanked;
+    manifest.rollout_percent = match (change.rollout_percent, offer.is_some()) {
+        (Some(percent), _) => Some(percent),
+        (None, true) => None,
+        (None, false) => live.rollout_percent,
+    }
+    .filter(|p| *p != 100);
+    manifest.min_supported_version = match &change.min_supported_version {
+        Some(supported) => supported.clone(),
+        None => live.min_supported_version.clone(),
+    };
+    if let Some(minimum) = &change.minimum_version {
+        manifest.minimum_version.clone_from(minimum);
+    }
+    manifest.published = format_time(now);
+    manifest.expires = format_time(now + time::Duration::days(days));
+    manifest.validate()?;
+    Ok(manifest)
 }
 
 #[cfg(test)]

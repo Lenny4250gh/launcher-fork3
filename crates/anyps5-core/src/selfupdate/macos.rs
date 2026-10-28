@@ -376,6 +376,8 @@ mod integration {
             expires: format_time(now + time::Duration::days(30)),
             minimum_version: "0.1.0".into(),
             min_supported_version: None,
+            yanked: Vec::new(),
+            rollout_percent: None,
             platforms: BTreeMap::from([(
                 MACOS_ARM64.into(),
                 Artifact {
