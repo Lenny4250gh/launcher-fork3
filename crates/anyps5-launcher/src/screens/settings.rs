@@ -714,13 +714,14 @@ fn openh264_detail(on: bool, codec: &Openh264Env, language: Language) -> String 
     match &codec.state {
         CodecState::Downloading => OnlineText::Openh264Downloading.text(language).to_owned(),
         CodecState::Missing => OnlineText::Openh264Missing.text(language).to_owned(),
-        CodecState::Failed(why) => OnlineText::Openh264Failed.format(language, &[Arg::Str(why)]),
+        CodecState::Failed(_) => OnlineText::Openh264Failed.text(language).to_owned(),
         CodecState::Ready => match &codec.worker {
             Some((state, _)) if state == "refused" => {
                 OnlineText::Openh264Refused.text(language).to_owned()
             }
-            Some((state, detail)) if state == "failed" => OnlineText::Openh264NotLoaded
-                .format(language, &[Arg::Str(detail.as_deref().unwrap_or_default())]),
+            Some((state, _)) if state == "failed" => {
+                OnlineText::Openh264NotLoaded.text(language).to_owned()
+            }
             _ => OnlineText::Openh264Ready.text(language).to_owned(),
         },
     }
@@ -3045,7 +3046,7 @@ mod tests {
         assert_eq!(detail(CodecState::Missing, None), "Not downloaded yet");
         assert_eq!(
             detail(CodecState::Failed("timed out".into()), None),
-            "The download failed: timed out"
+            "The download failed. Check your connection, then turn it off and on to try again."
         );
         assert_eq!(
             detail(CodecState::Ready, Some(("ready", None))),
@@ -3057,7 +3058,7 @@ mod tests {
         );
         assert_eq!(
             detail(CodecState::Ready, Some(("failed", Some("no such symbol")))),
-            "It did not load: no such symbol"
+            "It could not be used on this PC. The log has the reason."
         );
     }
 
