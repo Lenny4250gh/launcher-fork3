@@ -49,6 +49,8 @@ fn manifest(base: &str, image: &[u8], windows: bool) -> Manifest {
         expires: format_time(now + Span::days(29)),
         minimum_version: "0.1.0".into(),
         min_supported_version: None,
+        yanked: Vec::new(),
+        rollout_percent: None,
         platforms,
     }
 }

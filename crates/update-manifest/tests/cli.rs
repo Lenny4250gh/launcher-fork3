@@ -359,3 +359,226 @@ fn a_macos_archive_joins_the_same_signed_manifest_as_windows_and_linux() {
     );
     assert!(!out.status.success());
 }
+
+#[test]
+fn the_kill_switch_yanks_and_lowers_the_rollout_without_a_rebuild() {
+    let dir = tempfile::tempdir().unwrap();
+    let secret = dir.path().join("secret.key");
+    let keys = dir.path().join("update-keys.txt");
+    assert!(
+        tool(
+            &[
+                "keygen",
+                "--secret-out",
+                path(&secret),
+                "--public-out",
+                path(&keys)
+            ],
+            &[]
+        )
+        .status
+        .success()
+    );
+    // Two releases: 0.3.8 is good, 0.3.9 is the latest and bad.
+    let mut manifests = Vec::new();
+    for version in ["0.3.8", "0.3.9"] {
+        let exe = dir
+            .path()
+            .join(format!("AnyPlay-Launcher-{version}-x64.exe"));
+        fs::write(&exe, format!("exe {version}")).unwrap();
+        let json = dir.path().join(format!("{version}.json"));
+        let sig = dir.path().join(format!("{version}.sig"));
+        let made = tool(
+            &[
+                "manifest",
+                "--version",
+                version,
+                "--exe",
+                path(&exe),
+                "--out",
+                path(&json),
+            ],
+            &[],
+        );
+        assert!(made.status.success(), "{}", text(&made.stderr));
+        let signed = tool(
+            &[
+                "sign",
+                "--manifest",
+                path(&json),
+                "--out",
+                path(&sig),
+                "--key-file",
+                path(&secret),
+            ],
+            &[],
+        );
+        assert!(signed.status.success(), "{}", text(&signed.stderr));
+        manifests.push((json, sig));
+    }
+    let (live, live_sig) = &manifests[1];
+    let (good, good_sig) = &manifests[0];
+
+    // Lower the rollout of the live release: same files, new policy, then sign and verify.
+    let next = dir.path().join("next.json");
+    let next_sig = dir.path().join("next.sig");
+    let out = tool(
+        &[
+            "reissue",
+            "--from",
+            path(live),
+            "--sig",
+            path(live_sig),
+            "--keys",
+            path(&keys),
+            "--rollout",
+            "10",
+            "--out",
+            path(&next),
+        ],
+        &[],
+    );
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let value: serde_json::Value = serde_json::from_slice(&fs::read(&next).unwrap()).unwrap();
+    assert_eq!(value["version"], "0.3.9");
+    assert_eq!(value["rollout_percent"], 10);
+    assert!(value.get("yanked").is_none());
+    let signed = tool(
+        &[
+            "sign",
+            "--manifest",
+            path(&next),
+            "--out",
+            path(&next_sig),
+            "--key-file",
+            path(&secret),
+        ],
+        &[],
+    );
+    assert!(signed.status.success(), "{}", text(&signed.stderr));
+    let verified = tool(
+        &[
+            "verify",
+            "--manifest",
+            path(&next),
+            "--sig",
+            path(&next_sig),
+            "--keys",
+            path(&keys),
+        ],
+        &[],
+    );
+    assert!(verified.status.success(), "{}", text(&verified.stderr));
+
+    // Walk back: offer 0.3.8 on the latest release and yank 0.3.9. A launcher on 0.3.9 takes it.
+    let back = dir.path().join("back.json");
+    let back_sig = dir.path().join("back.sig");
+    let out = tool(
+        &[
+            "reissue",
+            "--from",
+            path(&next),
+            "--sig",
+            path(&next_sig),
+            "--keys",
+            path(&keys),
+            "--offer-from",
+            path(good),
+            "--offer-sig",
+            path(good_sig),
+            "--yank",
+            "0.3.9",
+            "--out",
+            path(&back),
+        ],
+        &[],
+    );
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        tool(
+            &[
+                "sign",
+                "--manifest",
+                path(&back),
+                "--out",
+                path(&back_sig),
+                "--key-file",
+                path(&secret)
+            ],
+            &[],
+        )
+        .status
+        .success()
+    );
+    let ok = tool(
+        &[
+            "verify",
+            "--manifest",
+            path(&back),
+            "--sig",
+            path(&back_sig),
+            "--keys",
+            path(&keys),
+            "--current",
+            "0.3.9",
+        ],
+        &[],
+    );
+    assert!(ok.status.success(), "{}", text(&ok.stderr));
+    // Whoever runs 0.3.10 (not yanked) gets nothing.
+    let no = tool(
+        &[
+            "verify",
+            "--manifest",
+            path(&back),
+            "--sig",
+            path(&back_sig),
+            "--keys",
+            path(&keys),
+            "--current",
+            "0.3.10",
+        ],
+        &[],
+    );
+    assert!(!no.status.success());
+
+    // Refusals: yanking the version on offer, a bad percentage, a manifest with a wrong signature.
+    for args in [
+        vec!["--yank", "0.3.9"],
+        vec!["--rollout", "101"],
+        vec!["--rollout", "ten"],
+        vec!["--yank", "v0.3.9x"],
+    ] {
+        let mut full = vec![
+            "reissue",
+            "--from",
+            path(live),
+            "--sig",
+            path(live_sig),
+            "--keys",
+            path(&keys),
+            "--out",
+            path(&next),
+        ];
+        full.extend(args.iter().copied());
+        assert!(!tool(&full, &[]).status.success(), "{args:?}");
+    }
+    let wrong = tool(
+        &[
+            "reissue",
+            "--from",
+            path(live),
+            "--sig",
+            path(good_sig),
+            "--keys",
+            path(&keys),
+            "--out",
+            path(&next),
+        ],
+        &[],
+    );
+    assert!(
+        !wrong.status.success(),
+        "a manifest that does not match its signature"
+    );
+}

@@ -141,12 +141,28 @@ _Avoid_: Per-game version
 ### Launcher updates
 
 **Update manifest**:
-The file `latest.json` of a release, signed by `latest.json.sig`: the version, the address, SHA-256 and size of the exe per platform, an expiry and the oldest version that may update from it. Once the launcher trusts a key, it updates only through one.
+The file `latest.json` of a release, signed by `latest.json.sig`: the version, the address, SHA-256 and size of the exe per platform, an expiry, the oldest version that may update from it, the oldest version that may keep going online (a required update) and, optionally, yanked versions and a staged rollout. Once the launcher trusts a key, it updates only through one.
 _Avoid_: Release notes, version file
 
 **Trusted update key**:
 A public key in `data/update-keys.txt` whose signature the launcher accepts on an update manifest. The file may hold several, so the next key ships before the current one retires. With none, signing is not switched on and the launcher updates unsigned as before.
 _Avoid_: Certificate, code-signing key (the exe itself is not code-signed)
+
+**Yanked version**:
+A launcher version the signed manifest lists in `yanked` because it must no longer be offered or kept. A launcher that runs one is offered the manifest's version even when that is older, and is never held back by a staged rollout. The manifest cannot offer a version it yanks.
+_Avoid_: Revoked, blocked, recalled
+
+**Staged rollout**:
+The share of installs, `rollout_percent`, that may see an update yet. Each install has a fixed bucket from 0 to 99 for each version; the update shows when the bucket is below the share, so raising the share only adds installs. 100, or no field, means everyone. A required update and a yanked running version ignore it.
+_Avoid_: Phased release, canary
+
+**Install id**:
+A random 128-bit number made once on first check and kept in `install-id` in the data folder. It only decides the bucket of a staged rollout. It is tied to nothing about the player or the PC and is never sent anywhere.
+_Avoid_: Device id, user id, telemetry id
+
+**Kill switch**:
+Publishing a changed, re-signed `latest.json` to the latest release without a build, to yank a version, change the staged rollout or offer an earlier release again. It is the `resign` workflow started by hand.
+_Avoid_: Hotfix (a hotfix is a new release)
 
 ### Playing
 
