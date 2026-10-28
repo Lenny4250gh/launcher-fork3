@@ -128,7 +128,11 @@ pub(super) fn online_action(model: &mut Model, action: OnlineAction) {
         }
         OnlineAction::AppearOffline(on) => online.set_appear_offline(on),
         OnlineAction::PublicProfile(on) => online.set_public_profile(on),
-        OnlineAction::PublicProfileRefresh => online.request_public_profile(),
+        OnlineAction::PublicProfileRefresh => {
+            online.request_public_profile();
+            online.request_score_privacy();
+        }
+        OnlineAction::ScoreAudience(scores) => online.set_score_privacy(scores),
         OnlineAction::TrophyAudience(trophies) => {
             online.set_trophy_audience(trophies);
         }

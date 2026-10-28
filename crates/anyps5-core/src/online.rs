@@ -418,6 +418,13 @@ pub enum Purpose {
         on: bool,
         before: bool,
     },
+    /// Who sees the player's scores on boards.
+    ScorePrivacy,
+    /// The scores audience changed; `before` is what it was.
+    SetScorePrivacy {
+        scores: api::Audience,
+        before: api::Audience,
+    },
     /// The people the player played with recently.
     PlayedWith,
     /// The list emptied; `before` is what it held, to put back on a refusal.
@@ -699,6 +706,8 @@ pub struct Online {
     pub privacy: Option<api::Privacy>,
     /// Whether the page at `/u/<handle>` is shown to everyone; `None` until the cloud said.
     pub public_profile: Option<bool>,
+    /// Who sees the player's scores on boards; `None` until the cloud said.
+    pub score_privacy: Option<api::Audience>,
     /// Played with recently: the private list of people from shared parties and sessions.
     pub played_with: played_with::PlayedWithState,
     /// What players found per title (run reports).
@@ -893,6 +902,10 @@ impl Online {
                 // The same: the switch showed the choice at once.
                 self.public_profile = Some(*before);
             }
+            Purpose::SetScorePrivacy { before, .. } => {
+                // The same: the choice showed at once.
+                self.score_privacy = Some(*before);
+            }
             Purpose::AppearOffline { before, .. } => {
                 // The choice showed at once; the refusal takes it back.
                 if let Some(account) = self.account.as_mut() {
@@ -1046,6 +1059,11 @@ impl Online {
             Purpose::PublicProfile | Purpose::SetPublicProfile { .. } => {
                 if let Ok(now) = serde_json::from_value::<api::PublicProfile>(value.clone()) {
                     self.public_profile = Some(now.public_profile);
+                }
+            }
+            Purpose::ScorePrivacy | Purpose::SetScorePrivacy { .. } => {
+                if let Ok(now) = serde_json::from_value::<api::ScorePrivacy>(value.clone()) {
+                    self.score_privacy = Some(now.scores);
                 }
             }
             Purpose::PlayedWith => {
@@ -2038,6 +2056,38 @@ impl Online {
         );
     }
 
+    /// Asks the cloud who sees the player's scores on boards, unless it is known. This works
+    /// while the cloud's leaderboards are off.
+    pub fn request_score_privacy(&mut self) {
+        if self.is_signed_in()
+            && self.score_privacy.is_none()
+            && !self.is_waiting(|p| matches!(p, Purpose::ScorePrivacy))
+        {
+            self.send(Purpose::ScorePrivacy, Command::ScorePrivacy);
+        }
+    }
+
+    /// Changes who sees the player's scores on boards. The choice shows at once, the cloud's
+    /// answer settles it and a refusal takes it back. Before the cloud said what it is now there
+    /// is nothing to compare with: the launcher asks first.
+    pub fn set_score_privacy(&mut self, scores: api::Audience) {
+        if !self.is_signed_in() {
+            return;
+        }
+        let Some(before) = self.score_privacy else {
+            self.request_score_privacy();
+            return;
+        };
+        if before == scores || self.is_waiting(|p| matches!(p, Purpose::SetScorePrivacy { .. })) {
+            return;
+        }
+        self.score_privacy = Some(scores);
+        self.send(
+            Purpose::SetScorePrivacy { scores, before },
+            Command::SetScorePrivacy { scores },
+        );
+    }
+
     /// Changes who sees the player's trophies. The cloud replaces the whole setting, so the other
     /// parts go back as the cloud last said; before it said anything, the launcher asks again
     /// instead of guessing them. The choice shows at once and comes back with the answer.
@@ -2087,6 +2137,7 @@ impl Online {
                     self.compares.clear();
                     self.privacy = None;
                     self.public_profile = None;
+                    self.score_privacy = None;
                     self.played_with.reset();
                     self.uploaded.clear();
                     self.secrets_sent.clear();
@@ -3658,6 +3709,58 @@ mod tests {
             Some(false),
             "refused: back to what it was"
         );
+    }
+
+    #[test]
+    fn the_scores_audience_waits_for_the_cloud_shows_at_once_and_goes_back_on_a_refusal() {
+        use api::Audience::{Everyone, Friends, Nobody};
+        let mut online = Online::default();
+        signed_in(&mut online);
+        online.take_outbox();
+        // Not known yet: a choice asks and sends no change.
+        online.set_score_privacy(Nobody);
+        let lines = online.take_outbox();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::ScorePrivacy
+        );
+        assert_eq!(online.score_privacy, None);
+        let id = online.next;
+        answer(&mut online, id, api::ScorePrivacy::default());
+        assert_eq!(
+            online.score_privacy,
+            Some(Friends),
+            "friends for a new account"
+        );
+        online.set_score_privacy(Everyone);
+        assert_eq!(
+            online.score_privacy,
+            Some(Everyone),
+            "the choice shows at once"
+        );
+        let lines = online.take_outbox();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            control::parse_command(&lines[0]).unwrap().1,
+            Command::SetScorePrivacy { scores: Everyone }
+        );
+        // A second choice while the first waits sends nothing.
+        online.set_score_privacy(Nobody);
+        assert!(online.take_outbox().is_empty());
+        refuse_last(&mut online, Failure::new(Failure::OFFLINE, "x"));
+        assert_eq!(
+            online.score_privacy,
+            Some(Friends),
+            "refused: back to what it was"
+        );
+        // Signing out forgets it.
+        online.apply(event(Event::State {
+            cloud: Cloud::Online,
+            account: None,
+            pending: None,
+        }));
+        assert_eq!(online.score_privacy, None);
     }
 
     fn met(id: u64, handle: &str, friend: bool) -> api::PlayedWith {

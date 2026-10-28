@@ -770,6 +770,7 @@ impl OnlineService {
                 | Purpose::Secrets { .. }
                 | Purpose::Privacy
                 | Purpose::PublicProfile
+                | Purpose::ScorePrivacy
                 | Purpose::Party
                 | Purpose::JoinCode
                 | Purpose::JoinCodeRevoke

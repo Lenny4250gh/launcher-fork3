@@ -433,6 +433,8 @@ pub enum OnlineLook {
     AccountAppearing,
     /// The account page with the public profile switch on and focused.
     AccountPublic,
+    /// The account page with the scores audience set to Everyone and focused.
+    AccountScores,
     /// Five friend requests wait (three are answered in place), friends play, one is online.
     FriendsBusy,
     /// Signed in with nobody yet.
@@ -1059,6 +1061,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "friends-settings-offline" => ScreenPage::Online(OnlineLook::AccountOffline),
         "friends-settings-appearing" => ScreenPage::Online(OnlineLook::AccountAppearing),
         "friends-settings-public" => ScreenPage::Online(OnlineLook::AccountPublic),
+        "friends-settings-scores" => ScreenPage::Online(OnlineLook::AccountScores),
         "friends-picker" => ScreenPage::Online(OnlineLook::Picker),
         "friends-party" => ScreenPage::Online(OnlineLook::Party),
         "friends-party-picker" => ScreenPage::Online(OnlineLook::PartyPicker),
@@ -1384,6 +1387,11 @@ fn sample_online(look: OnlineLook) -> anyps5_core::online::Online {
     ]);
     state.privacy = Some(Privacy::default());
     state.public_profile = Some(look == OnlineLook::AccountPublic);
+    state.score_privacy = Some(if look == OnlineLook::AccountScores {
+        anyps5_core::online::api::Audience::Everyone
+    } else {
+        anyps5_core::online::api::Audience::Friends
+    });
     if look == OnlineLook::AccountAppearing
         && let Some(account) = state.account.as_mut()
     {
@@ -3587,6 +3595,10 @@ impl ScreenGallery {
                     | OnlineLook::AccountOffline
                     | OnlineLook::AccountAppearing => {
                         self.friends.show_page(Page::Account, &data);
+                    }
+                    OnlineLook::AccountScores => {
+                        self.friends.show_page(Page::Account, &data);
+                        self.friends.focus_row("scoreAudience", 0, &data);
                     }
                     OnlineLook::AccountPublic => {
                         self.friends.show_page(Page::Account, &data);

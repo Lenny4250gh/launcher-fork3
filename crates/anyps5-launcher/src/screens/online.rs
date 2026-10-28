@@ -163,10 +163,13 @@ pub enum OnlineAction {
     AppearOffline(bool),
     /// Show the player's page on the web to everyone, or only to friends again.
     PublicProfile(bool),
-    /// The account page opened: read the public profile switch if it is not known.
+    /// The account page opened: read the public profile switch and the scores audience if they
+    /// are not known.
     PublicProfileRefresh,
     /// Who sees the player's trophies.
     TrophyAudience(Audience),
+    /// Who sees the player's scores on boards.
+    ScoreAudience(Audience),
     /// Played With Recently opened or asks again: read the list (`true` even when it is fresh).
     PlayedWithRefresh(bool),
     /// Empty the list.
@@ -1175,6 +1178,14 @@ impl OnlinePanel {
                 }
             }
             Change::Choice {
+                row: "scoreAudience",
+                index,
+            } => {
+                if let Some(audience) = AUDIENCES.get(*index) {
+                    actions.push(OnlineAction::ScoreAudience(*audience));
+                }
+            }
+            Change::Choice {
                 row: "requestRow",
                 index,
             } => self.request_answer = *index,
@@ -1680,6 +1691,29 @@ impl OnlinePanel {
                     None,
                 ));
                 // Unknown until the cloud answers: the row is not drawn on a guess.
+                if let Some(scores) = online.score_privacy {
+                    let state = match scores {
+                        Audience::Friends => T::ScoresFriends,
+                        Audience::Everyone => T::ScoresEveryone,
+                        Audience::Nobody => T::ScoresNobody,
+                    };
+                    let audiences = [T::AudienceFriends, T::AudienceEveryone, T::AudienceOnlyYou]
+                        .iter()
+                        .map(|a| t(*a).to_owned())
+                        .collect();
+                    rows.push(
+                        Row::choice(
+                            "scoreAudience",
+                            t(T::ScoresTitle),
+                            audiences,
+                            AUDIENCES.iter().position(|a| *a == scores).unwrap_or(0),
+                        )
+                        .icon(Icon::TROPHY)
+                        .detail(t(T::ScoresDetail))
+                        .group_start(),
+                    );
+                    rows.push(Row::info("scoreAudienceNote", t(state), None));
+                }
                 if let Some(public) = online.public_profile {
                     rows.push(
                         Row::toggle("publicProfile", t(T::PublicProfile), public)
@@ -3123,6 +3157,59 @@ mod tests {
         };
         panel.handle(&Context::default(), &change, &data(&online), &mut actions);
         assert_eq!(actions, [OnlineAction::TrophyAudience(Audience::Everyone)]);
+    }
+
+    #[test]
+    fn the_account_page_picks_who_sees_the_scores_once_the_cloud_said() {
+        let mut online = signed_in();
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::Account, &data(&online));
+        assert!(
+            panel
+                .rows(&data(&online))
+                .2
+                .iter()
+                .all(|r| r.id != "scoreAudience"),
+            "not drawn on a guess"
+        );
+        online.score_privacy = Some(Audience::Friends);
+        let rows = panel.rows(&data(&online)).2;
+        let choice = rows.iter().position(|r| r.id == "scoreAudience").unwrap();
+        assert_eq!(rows[choice + 1].id, "scoreAudienceNote");
+        assert_eq!(rows[choice].title, "Leaderboard Scores");
+        assert_eq!(
+            rows[choice + 1].control,
+            Control::Info(Some("Friends see your entry and your rank.".into()))
+        );
+        online.score_privacy = Some(Audience::Nobody);
+        let rows = panel.rows(&data(&online)).2;
+        assert_eq!(
+            rows[choice].control,
+            Control::Choice {
+                options: vec!["Friends".to_owned(), "Everyone".into(), "Only You".into()],
+                selected: 2
+            }
+        );
+        assert_eq!(
+            rows[choice + 1].control,
+            Control::Info(Some("Only you see your entry.".into())),
+            "the note follows the choice"
+        );
+        let mut actions = Vec::new();
+        let change = Change::Choice {
+            row: "scoreAudience",
+            index: 1,
+        };
+        panel.handle(&Context::default(), &change, &data(&online), &mut actions);
+        assert_eq!(actions, [OnlineAction::ScoreAudience(Audience::Everyone)]);
+    }
+
+    #[test]
+    fn opening_the_account_page_asks_for_the_scores_audience() {
+        let online = signed_in();
+        let mut panel = OnlinePanel::default();
+        panel.go(Page::Account, &data(&online));
+        assert!(panel.queued.contains(&OnlineAction::PublicProfileRefresh));
     }
 
     #[test]
