@@ -41,6 +41,8 @@ pub enum Act {
     JoinInvitation(String),
     /// Join the party this invitation (its ID) is for.
     JoinParty(String),
+    /// Accept the share play invitation (its ID) from a party member.
+    JoinShare(String),
     /// Open the friends list on its first page.
     OpenFriends,
     /// Open the party page.
