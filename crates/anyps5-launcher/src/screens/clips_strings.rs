@@ -40,6 +40,14 @@ pub enum ClipsText {
     NoWindow,
     /// Toast (macOS): Screen Recording is not switched on for AnyPlay.
     NoPermission,
+    /// Settings detail under Clips (Linux): the desktop asks for the game's window each time.
+    DetailPicker,
+    /// Settings row (macOS, Linux): there is no clip key, Create saves.
+    NoKey,
+    /// Notice (Linux): the desktop's window dialog opens now.
+    PickWindow,
+    /// Notice (Linux): no window was chosen, so the recorder is off for this game.
+    NoPick,
     /// Toast: the recorder stopped in the middle of a game.
     Stopped,
     NoWorker,
@@ -76,6 +84,18 @@ impl ClipsText {
             ClipsText::NoPermission => {
                 "Clips need Screen Recording. Turn on AnyPlay in System Settings, then reopen AnyPlay."
             }
+            ClipsText::DetailPicker => {
+                "Keeps the last seconds of a running game, without sound. Your desktop asks you to choose the game's window each time a game starts"
+            }
+            ClipsText::NoKey => {
+                "Press Create on your controller to save a clip. This system has no clip key yet"
+            }
+            ClipsText::PickWindow => {
+                "Choose the game's window in the dialog so Clips can record it."
+            }
+            ClipsText::NoPick => {
+                "No window was chosen, so Clips are off for this game. Start the game again to choose one."
+            }
             ClipsText::Stopped => "Clips stopped. Start the game again to record.",
             ClipsText::NoWorker => "Clips are not part of this build.",
             ClipsText::KeyTaken => "Another program uses %@. Choose another clip key.",
@@ -111,6 +131,18 @@ impl ClipsText {
             ClipsText::NoWindow => "Klipler oyunun penceresini bulamadı.",
             ClipsText::NoPermission => {
                 "Klipler için Ekran Kaydı gerekir. Sistem Ayarları'nda AnyPlay'i aç, sonra AnyPlay'i yeniden aç."
+            }
+            ClipsText::DetailPicker => {
+                "Çalışan oyunun son saniyelerini sessiz olarak tutar. Masaüstün, oyun her başladığında oyunun penceresini seçmeni ister"
+            }
+            ClipsText::NoKey => {
+                "Klip kaydetmek için kumandada Create'e bas. Bu sistemde henüz klip tuşu yok"
+            }
+            ClipsText::PickWindow => {
+                "Klipler kaydedebilsin diye açılan pencerede oyunun penceresini seç."
+            }
+            ClipsText::NoPick => {
+                "Pencere seçilmedi, bu yüzden bu oyun için Klipler kapalı. Seçmek için oyunu yeniden başlat."
             }
             ClipsText::Stopped => "Klipler durdu. Kayıt için oyunu yeniden başlat.",
             ClipsText::NoWorker => "Klipler bu sürümde yok.",
@@ -154,6 +186,18 @@ impl ClipsText {
             ClipsText::NoPermission => {
                 "Clips brauchen Bildschirmaufnahme. Schalte AnyPlay in den Systemeinstellungen ein und öffne AnyPlay dann neu."
             }
+            ClipsText::DetailPicker => {
+                "Behält die letzten Sekunden eines laufenden Spiels, ohne Ton. Dein Desktop fragt bei jedem Spielstart nach dem Spielfenster"
+            }
+            ClipsText::NoKey => {
+                "Drücke Create am Controller, um einen Clip zu speichern. Eine Clip-Taste gibt es auf diesem System noch nicht"
+            }
+            ClipsText::PickWindow => {
+                "Wähle im Dialog das Spielfenster, damit Clips es aufnehmen können."
+            }
+            ClipsText::NoPick => {
+                "Es wurde kein Fenster gewählt, daher sind Clips für dieses Spiel aus. Starte das Spiel neu, um eines zu wählen."
+            }
             ClipsText::Stopped => "Clips wurden gestoppt. Starte das Spiel neu, um aufzunehmen.",
             ClipsText::NoWorker => "Clips sind nicht Teil dieser Version.",
             ClipsText::KeyTaken => "Ein anderes Programm nutzt %@. Wähle eine andere Clip-Taste.",
@@ -194,6 +238,18 @@ impl ClipsText {
             ClipsText::NoWindow => "Los clips no encontraron la ventana del juego.",
             ClipsText::NoPermission => {
                 "Los clips necesitan Grabación de pantalla. Activa AnyPlay en Ajustes del Sistema y vuelve a abrir AnyPlay."
+            }
+            ClipsText::DetailPicker => {
+                "Guarda los últimos segundos de un juego en ejecución, sin sonido. Tu escritorio te pide elegir la ventana del juego cada vez que empieza uno"
+            }
+            ClipsText::NoKey => {
+                "Pulsa Create en tu mando para guardar un clip. Este sistema aún no tiene tecla de clip"
+            }
+            ClipsText::PickWindow => {
+                "Elige la ventana del juego en el cuadro de diálogo para que los clips puedan grabarla."
+            }
+            ClipsText::NoPick => {
+                "No se eligió ninguna ventana, así que los clips están desactivados para este juego. Reinicia el juego para elegir una."
             }
             ClipsText::Stopped => "Los clips se detuvieron. Reinicia el juego para grabar.",
             ClipsText::NoWorker => "Los clips no forman parte de esta versión.",
@@ -238,6 +294,18 @@ impl ClipsText {
             ClipsText::NoPermission => {
                 "Les clips nécessitent l’Enregistrement de l’écran. Active AnyPlay dans Réglages Système, puis rouvre AnyPlay."
             }
+            ClipsText::DetailPicker => {
+                "Garde les dernières secondes d’un jeu en cours, sans le son. Ton bureau te demande de choisir la fenêtre du jeu à chaque lancement"
+            }
+            ClipsText::NoKey => {
+                "Appuie sur Create de ta manette pour enregistrer un clip. Ce système n’a pas encore de touche de clip"
+            }
+            ClipsText::PickWindow => {
+                "Choisis la fenêtre du jeu dans la boîte de dialogue pour que les clips puissent l’enregistrer."
+            }
+            ClipsText::NoPick => {
+                "Aucune fenêtre n’a été choisie, les clips sont donc désactivés pour ce jeu. Relance le jeu pour en choisir une."
+            }
             ClipsText::Stopped => "Les clips se sont arrêtés. Relance le jeu pour enregistrer.",
             ClipsText::NoWorker => "Les clips ne sont pas inclus dans cette version.",
             ClipsText::KeyTaken => {
@@ -281,6 +349,18 @@ impl ClipsText {
             ClipsText::NoPermission => {
                 "Os clipes precisam de Gravação de Tela. Ative o AnyPlay em Ajustes do Sistema e abra o AnyPlay de novo."
             }
+            ClipsText::DetailPicker => {
+                "Guarda os últimos segundos de um jogo em execução, sem som. Sua área de trabalho pede para você escolher a janela do jogo toda vez que um começa"
+            }
+            ClipsText::NoKey => {
+                "Pressione Create no controle para salvar um clipe. Este sistema ainda não tem tecla de clipe"
+            }
+            ClipsText::PickWindow => {
+                "Escolha a janela do jogo na caixa de diálogo para que os clipes possam gravá-la."
+            }
+            ClipsText::NoPick => {
+                "Nenhuma janela foi escolhida, então os clipes estão desativados para este jogo. Reinicie o jogo para escolher uma."
+            }
             ClipsText::Stopped => "Os clipes pararam. Reinicie o jogo para gravar.",
             ClipsText::NoWorker => "Os clipes não fazem parte desta versão.",
             ClipsText::KeyTaken => "Outro programa usa %@. Escolha outra tecla de clipe.",
@@ -315,7 +395,7 @@ impl ClipsText {
         substitute(self.text(language), args)
     }
 
-    pub const ALL: [ClipsText; 25] = [
+    pub const ALL: [ClipsText; 29] = [
         ClipsText::Title,
         ClipsText::Detail,
         ClipsText::Off,
@@ -338,6 +418,10 @@ impl ClipsText {
         ClipsText::NoEncoder,
         ClipsText::NoWindow,
         ClipsText::NoPermission,
+        ClipsText::DetailPicker,
+        ClipsText::NoKey,
+        ClipsText::PickWindow,
+        ClipsText::NoPick,
         ClipsText::Stopped,
         ClipsText::NoWorker,
         ClipsText::KeyTaken,

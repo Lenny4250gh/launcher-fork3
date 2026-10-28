@@ -301,6 +301,10 @@ pub struct ClipsEnv {
     pub capturing: bool,
     /// A stream key is kept for Broadcast (the key itself never reaches the settings).
     pub broadcast_key: bool,
+    /// The desktop asks for the game's window each time the recorder starts (Linux).
+    pub portal: bool,
+    /// No clip key on this system (macOS, Linux): Create saves.
+    pub no_key: bool,
 }
 
 /// What the settings show that is not a preference.
@@ -339,9 +343,11 @@ pub struct SettingsEnv<'a> {
     /// Linux with share screen on: Cisco's OpenH264 and what the share worker made of it. `None`
     /// shows no codec row.
     pub openh264: Option<Openh264Env>,
-    /// The rows that exist on Windows only (clips, links from websites). The gallery shows them on
-    /// every system.
+    /// The rows that exist on Windows only (links from websites, Broadcast). The gallery shows them
+    /// on every system.
     pub windows_rows: bool,
+    /// The Clips rows: Windows, macOS and Linux.
+    pub clips_rows: bool,
 }
 
 /// What the start at sign-in is, read from the system's own entry.
@@ -1251,8 +1257,8 @@ pub fn build_categories(
             );
         }
     }
-    // The recorder is the share worker, which captures windows on Windows only.
-    if env.windows_rows {
+    // The recorder is the share worker, which captures windows on Windows, macOS and Linux.
+    if env.clips_rows {
         let first = captures.len();
         push_clips_rows(&mut captures, prefs, env, language);
         if first > 0 {
@@ -1486,10 +1492,20 @@ fn push_clips_rows(
             clips_options(language),
             selected,
         )
-        .detail(ClipsText::Detail.text(language))
+        .detail(
+            if env.clips.portal {
+                ClipsText::DetailPicker
+            } else {
+                ClipsText::Detail
+            }
+            .text(language),
+        )
         .icon(Icon::CAMERA),
     );
-    if seconds > 0 {
+    if seconds > 0 && env.clips.no_key {
+        // No global key here (macOS, Linux): say so where the key would be, and what saves instead.
+        rows.push(Row::info("clipsNoKey", ClipsText::NoKey.text(language), None).attached());
+    } else if seconds > 0 {
         let hotkey = anyps5_core::clips::hotkey_or_default(prefs.clips_hotkey.as_deref());
         let sources = hotkey.parts().iter().map(|p| format!("KEY:{p}")).collect();
         // A detail line both ways, so that the rows below do not move when the row starts waiting.
@@ -2615,6 +2631,7 @@ mod tests {
             location: LocationEnv::default(),
             openh264: None,
             windows_rows: true,
+            clips_rows: true,
         }
     }
 
@@ -3511,7 +3528,36 @@ mod tests {
         };
         assert_eq!(has(&e), (true, true));
         e.windows_rows = false;
+        // The Clips rows follow their own switch: macOS and Linux have them too.
+        assert_eq!(has(&e), (true, false));
+        e.clips_rows = false;
         assert_eq!(has(&e), (false, false));
+    }
+
+    #[test]
+    fn without_a_clip_key_the_row_says_what_saves_and_the_detail_names_the_dialog() {
+        let mut prefs = Preferences::first_run();
+        prefs.clips_seconds = 30;
+        let mut e = env(None, UpdateState::Unknown);
+        let rows = |e: &SettingsEnv<'_>| {
+            build_categories(&prefs, e, Language::English)
+                .into_iter()
+                .find(|c| c.category == Category::Captures)
+                .unwrap()
+                .rows
+        };
+        let ids = |rows: &[Row]| rows.iter().map(|r| r.id).collect::<Vec<_>>();
+        assert!(ids(&rows(&e)).contains(&"clipsKey"));
+        e.clips.no_key = true;
+        e.clips.portal = true;
+        let rows = rows(&e);
+        let ids = ids(&rows);
+        assert!(!ids.contains(&"clipsKey") && ids.contains(&"clipsNoKey"));
+        let clips = rows.iter().find(|r| r.id == "clips").unwrap();
+        assert_eq!(
+            clips.detail.as_deref(),
+            Some(ClipsText::DetailPicker.text(Language::English))
+        );
     }
 
     #[test]
