@@ -71,11 +71,8 @@ pub fn paint(ctx: &Context, painter: &Painter, rect: Rect, id: Id, open: bool, v
     if held.asked && held.texture.is_none() {
         let shot = held.slot.lock().ok().and_then(|mut guard| guard.take());
         if let Some(image) = shot {
-            held.texture = Some(ctx.load_texture(
-                "page-blur",
-                blurred(&image),
-                TextureOptions::LINEAR,
-            ));
+            held.texture =
+                Some(ctx.load_texture("page-blur", blurred(&image), TextureOptions::LINEAR));
         }
     }
     ctx.data_mut(|d| d.insert_temp(key, held.clone()));
@@ -245,7 +242,11 @@ mod tests {
         let src = ColorImage::from_rgba_unmultiplied([64, 32], &[40, 80, 120, 255].repeat(64 * 32));
         let out = blurred(&src);
         assert_eq!(out.size, [8, 4]);
-        assert!(out.pixels.iter().all(|c| c.to_array() == [40, 80, 120, 255]));
+        assert!(
+            out.pixels
+                .iter()
+                .all(|c| c.to_array() == [40, 80, 120, 255])
+        );
     }
 
     #[test]
