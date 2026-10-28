@@ -3,14 +3,14 @@
 //!
 //! ```text
 //! anyplay-launcher --gallery=controllers|controllers-test|controllers-lightbar|controllers-lightbar-custom|settings-sound|settings|settings1..6|game-settings|game-settings-foot|confirm|controls|controls-capture|
-//!                           controls-end|advanced|trophies|trophies-hidden|trophies-revealed|banner|start|unlocking|log|report|library|
+//!                           controls-end|advanced|trophies|trophies-hidden|trophies-revealed|banner|start|unlocking|log|log-focus|report|report-focus|library|
 //!                           captures-empty|captures-few|captures-many|captures-clips|captures-screenshot|captures-clip|
 //!                           captures-clip-plain|captures-confirm|captures-missing|captures-loading|
 //!                           game-hub|game-hub-running|game-hub-empty|trophies-all|
 //!                           find-players|find-players-mine|find-players-empty|post-listing|send-to-friend|
 //!                           about-update|behavior-links|settings-home-windows|settings-home-linux|settings-home-mac|settings-console-off|settings-console-autostart|settings-console|settings-console-image|settings-console-unavailable|settings-codec|settings-codec-off|settings-codec-downloading|settings-codec-failed|settings-codec-refused|settings-codec-not-loaded|settings-location|settings-location-custom|settings-location-network|settings-location-missing|settings-location-moving|settings-location-left|behavior-clips-off|behavior-clips|behavior-clips-key|behavior-steam|toolkit|toolkit-update|toolkit-newer|toolkit-pinned|toolkit-local|toolkit-engine|toolkit-engine-update|behavior-clips-linux|
 //!                           toolkit-unused|game-toolkit|
-//!                           recommended|recommended-warning|whats-new|whats-new-loading|
+//!                           recommended|recommended-warning|whats-new|whats-new-header|whats-new-loading|
 //!                           update-required|update-required-downloading|update-required-failed|
 //!                           update-required-download|update-required-packaged|
 //!                           update-required-packaged-long|update-required-offline|
@@ -211,8 +211,10 @@ pub enum ScreenPage {
     Start,
     Unlocking,
     Log,
+    LogFocus,
     /// The review of a report to AnyPS5.
     Report,
+    ReportFocus,
     Library,
     /// The library grid with no games.
     LibraryEmpty,
@@ -257,6 +259,7 @@ pub enum ScreenPage {
     Recommended,
     RecommendedWarning,
     WhatsNew,
+    WhatsNewHeader,
     WhatsNewLoading,
     /// The backups of the saves of the invented game: three of them, or none.
     Saves,
@@ -921,6 +924,8 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "start" => ScreenPage::Start,
         "unlocking" => ScreenPage::Unlocking,
         "log" => ScreenPage::Log,
+        "log-focus" => ScreenPage::LogFocus,
+        "report-focus" => ScreenPage::ReportFocus,
         "report" => ScreenPage::Report,
         "library" => ScreenPage::Library,
         "library-empty" => ScreenPage::LibraryEmpty,
@@ -1017,6 +1022,7 @@ pub fn parse(name: &str) -> Option<ScreenPage> {
         "recommended" => ScreenPage::Recommended,
         "recommended-warning" => ScreenPage::RecommendedWarning,
         "whats-new" => ScreenPage::WhatsNew,
+        "whats-new-header" => ScreenPage::WhatsNewHeader,
         "whats-new-loading" => ScreenPage::WhatsNewLoading,
         "saves" => ScreenPage::Saves,
         "saves-empty" => ScreenPage::SavesEmpty,
@@ -3464,7 +3470,7 @@ impl ScreenGallery {
         );
         let diagnosis =
             anyps5_core::diagnosis::Diagnosis::Crashed("0xC0000005 (ACCESS_VIOLATION)".into());
-        let report = matches!(self.page, ScreenPage::Report);
+        let report = matches!(self.page, ScreenPage::Report | ScreenPage::ReportFocus);
         let review = anyps5_core::issue::prepare(&sample_report());
         let hint = Share::ReportHint.text(language);
         self.log.show(
@@ -3940,6 +3946,9 @@ impl ScreenGallery {
                 self.whats_new
                     .open_expanded(&self.notes.notes, shell.language, 2);
             }
+            ScreenPage::WhatsNewHeader => self
+                .whats_new
+                .open_header(&self.notes.notes, shell.language),
             ScreenPage::WhatsNewLoading => self.whats_new.open(),
             ScreenPage::Required(look) => {
                 self.required.open();
@@ -3948,6 +3957,7 @@ impl ScreenGallery {
                 }
             }
             ScreenPage::Log | ScreenPage::Report => self.log.open(),
+            ScreenPage::LogFocus | ScreenPage::ReportFocus => self.log.open_at(1),
             ScreenPage::Start => self.start.open_at(ctx.clock()),
             ScreenPage::Banner | ScreenPage::Unlocking | ScreenPage::Together(_) => {}
         }

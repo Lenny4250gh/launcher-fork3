@@ -274,6 +274,9 @@ pub struct WhatsNewPanel {
     /// The showcase's scroll position, and whether the pad moved it this frame.
     scroll: f32,
     scroll_set: bool,
+    /// A header button holds the focus (Up from the first line, Left and Right between the two);
+    /// the showcase has no list, so it is always on one.
+    header: Option<Pick>,
 }
 
 impl WhatsNewPanel {
@@ -283,6 +286,13 @@ impl WhatsNewPanel {
         self.cursor = 1;
         self.expanded.clear();
         self.follow = true;
+        self.header = None;
+    }
+
+    /// Open with a header button focused (previews).
+    pub fn open_header(&mut self, notes: &ReleaseNotes, language: Language) {
+        self.open_expanded(notes, language, 2);
+        self.header = Some(Pick::Release);
     }
 
     /// Opens the showcase of a big release, from the top.
@@ -290,6 +300,7 @@ impl WhatsNewPanel {
         self.open();
         self.scroll = 0.0;
         self.scroll_set = true;
+        self.header = Some(Pick::Close);
     }
 
     /// Opens on a launcher's notes: every group unfolded, since there are few.
@@ -353,29 +364,54 @@ impl WhatsNewPanel {
         }
         if self.open {
             for pick in clicked {
-                match pick {
-                    Pick::Close => {
-                        shell.play(Cue::Close);
-                        self.close();
-                        actions.push(WhatsNewAction::Close);
-                    }
-                    Pick::Release => {
-                        shell.play(Cue::Select);
-                        let page = if data.launcher {
-                            LAUNCHER_RELEASE_PAGE
-                        } else {
-                            RELEASE_PAGE
-                        };
-                        actions.push(WhatsNewAction::OpenUrl(format!("{page}/v{}", data.tag)));
-                    }
-                    Pick::Line(index) => {
-                        self.cursor = index;
-                        self.activate(shell, data, &mut actions);
-                    }
-                }
+                self.press(shell, pick, data, &mut actions);
             }
         }
         actions
+    }
+
+    /// The button that holds the focus, if one does: always one in the showcase and while there
+    /// is no list to walk.
+    fn head(&self, data: &WhatsNewData<'_>) -> Option<Pick> {
+        if data.showcase {
+            return Some(self.header.unwrap_or(Pick::Close));
+        }
+        match self.header {
+            Some(pick) => Some(pick),
+            None if self.current_lines(data).is_empty() => Some(Pick::Close),
+            None => None,
+        }
+    }
+
+    /// A header button or a line was chosen, by click or by Select.
+    fn press(
+        &mut self,
+        shell: &mut Shell,
+        pick: Pick,
+        data: &WhatsNewData<'_>,
+        actions: &mut Vec<WhatsNewAction>,
+    ) {
+        match pick {
+            Pick::Close => {
+                shell.play(Cue::Close);
+                self.close();
+                actions.push(WhatsNewAction::Close);
+            }
+            Pick::Release => {
+                shell.play(Cue::Select);
+                let page = if data.launcher {
+                    LAUNCHER_RELEASE_PAGE
+                } else {
+                    RELEASE_PAGE
+                };
+                actions.push(WhatsNewAction::OpenUrl(format!("{page}/v{}", data.tag)));
+            }
+            Pick::Line(index) => {
+                self.cursor = index;
+                self.header = None;
+                self.activate(shell, data, actions);
+            }
+        }
     }
 
     fn current_lines<'a>(&self, data: &'a WhatsNewData<'_>) -> Vec<Line<'a>> {
@@ -403,10 +439,25 @@ impl WhatsNewPanel {
                 self.close();
                 actions.push(WhatsNewAction::Close);
             }
-            Command::Select if data.showcase => {
-                shell.play(Cue::Close);
-                self.close();
-                actions.push(WhatsNewAction::Close);
+            Command::Left | Command::Right if self.head(data).is_some() => {
+                let to = if command == Command::Left {
+                    Pick::Release
+                } else {
+                    Pick::Close
+                };
+                if self.head(data) != Some(to) {
+                    self.header = Some(to);
+                    shell.play(Cue::Move);
+                }
+            }
+            Command::Select if self.head(data).is_some() => {
+                let pick = self.head(data).unwrap_or(Pick::Close);
+                self.press(shell, pick, data, actions);
+            }
+            Command::Down if self.header.is_some() && !data.showcase => {
+                self.header = None;
+                self.follow = true;
+                shell.play(Cue::Move);
             }
             Command::Up | Command::Down if data.showcase => {
                 let step = if command == Command::Down {
@@ -418,6 +469,7 @@ impl WhatsNewPanel {
                 self.scroll_set = true;
                 shell.play(Cue::Move);
             }
+            Command::Up if self.header.is_some() => {}
             Command::Select => self.activate(shell, data, actions),
             Command::Up | Command::Down => {
                 let list = self.current_lines(data);
@@ -429,6 +481,9 @@ impl WhatsNewPanel {
                 if (0..list.len() as isize).contains(&at) {
                     self.cursor = at as usize;
                     self.follow = true;
+                    shell.play(Cue::Move);
+                } else if command == Command::Up {
+                    self.header = Some(Pick::Release);
                     shell.play(Cue::Move);
                 }
             }
@@ -465,7 +520,9 @@ impl WhatsNewPanel {
 
     fn draw(&mut self, ui: &mut Ui, data: &WhatsNewData<'_>, clicked: &mut Vec<Pick>) {
         let language = data.language;
+        let head = self.head(data);
         let painter = ui.painter().clone();
+        crate::screens::footer_hints(ui, ui.max_rect(), language, components::HintSet::BASIC);
         let area = ui.max_rect().shrink2(vec2(pad::LOG, pad::PANEL_TOP));
         // Header: title on the left, the two buttons on the right.
         let header = Rect::from_min_size(area.min, vec2(area.width(), HEADER_HEIGHT));
@@ -490,7 +547,7 @@ impl WhatsNewPanel {
         buttons.spacing_mut().item_spacing.x = size::CONTROL_GAP;
         if ConsoleButton::new(language.text(crate::ui::i18n::Key::Close))
             .icon(Icon::X)
-            .focused(data.showcase)
+            .focused(head == Some(Pick::Close))
             .show(&mut buttons)
             .clicked()
         {
@@ -498,6 +555,7 @@ impl WhatsNewPanel {
         }
         if ConsoleButton::new(Extra::NotesOpenRelease.text(language))
             .icon(Icon::GITHUB_LOGO)
+            .focused(head == Some(Pick::Release))
             .show(&mut buttons)
             .clicked()
         {
@@ -574,12 +632,18 @@ impl WhatsNewPanel {
                 let list = self.current_lines(data);
                 self.cursor = self.cursor.min(list.len().saturating_sub(1));
                 let mut child = ui.new_child(UiBuilder::new().max_rect(body));
-                self.draw_list(&mut child, &list, clicked);
+                self.draw_list(&mut child, &list, head.is_none(), clicked);
             }
         }
     }
 
-    fn draw_list(&mut self, ui: &mut Ui, list: &[Line<'_>], clicked: &mut Vec<Pick>) {
+    fn draw_list(
+        &mut self,
+        ui: &mut Ui,
+        list: &[Line<'_>],
+        focused: bool,
+        clicked: &mut Vec<Pick>,
+    ) {
         let step = ROW_HEIGHT + ROW_GAP;
         let follow = std::mem::take(&mut self.follow);
         let cursor = self.cursor;
@@ -605,7 +669,7 @@ impl WhatsNewPanel {
                         pos2(origin.x, origin.y + index as f32 * step),
                         vec2(width, ROW_HEIGHT),
                     );
-                    if draw_line(ui, rect, line, index == cursor, index) {
+                    if draw_line(ui, rect, line, focused && index == cursor, index) {
                         clicked.push(Pick::Line(index));
                     }
                 }
@@ -613,7 +677,7 @@ impl WhatsNewPanel {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Pick {
     Close,
     Release,
@@ -862,6 +926,54 @@ mod tests {
             );
         }
         assert_eq!(area_title("libSceSaveData", Language::Turkish), "Kayıtlar");
+    }
+
+    fn data(view: NotesView<'_>, showcase: bool) -> WhatsNewData<'_> {
+        WhatsNewData {
+            tag: "0.1.3",
+            view,
+            language: Language::English,
+            launcher: false,
+            showcase,
+            accent: Color32::WHITE,
+        }
+    }
+
+    #[test]
+    fn a_pad_always_has_a_button_when_there_is_no_list_to_walk() {
+        let mut panel = WhatsNewPanel::default();
+        panel.open();
+        assert_eq!(
+            panel.head(&data(NotesView::Loading, false)),
+            Some(Pick::Close)
+        );
+        assert_eq!(
+            panel.head(&data(NotesView::Unavailable, false)),
+            Some(Pick::Close)
+        );
+        panel.open_showcase();
+        assert_eq!(
+            panel.head(&data(NotesView::Loading, true)),
+            Some(Pick::Close)
+        );
+    }
+
+    #[test]
+    fn the_open_release_button_can_hold_the_focus() {
+        let mut panel = WhatsNewPanel::default();
+        panel.open();
+        panel.header = Some(Pick::Release);
+        assert_eq!(
+            panel.head(&data(NotesView::Loading, false)),
+            Some(Pick::Release)
+        );
+        assert_eq!(
+            panel.head(&data(NotesView::Loading, true)),
+            Some(Pick::Release)
+        );
+        // Opening again starts on the list.
+        panel.open();
+        assert_eq!(panel.header, None);
     }
 
     #[test]

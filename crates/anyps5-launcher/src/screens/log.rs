@@ -24,7 +24,7 @@ use crate::screens::side::commands;
 use crate::screens::strings::Extra;
 use crate::ui::Shell;
 use crate::ui::chrome::fullscreen_panel;
-use crate::ui::components::ConsoleButton;
+use crate::ui::components::{ConsoleButton, HintSet};
 use crate::ui::glass::{GlassStyle, paint_glass};
 use crate::ui::i18n::{Arg, Key, Language};
 use crate::ui::icons::Icon;
@@ -157,12 +157,21 @@ pub struct ReviewData<'a> {
 pub struct LogView {
     open: bool,
     closing: bool,
+    /// The focused button, counted from the left; `None` is the rightmost, the main one.
+    focus: Option<usize>,
 }
 
 impl LogView {
     pub fn open(&mut self) {
         self.open = true;
         self.closing = false;
+        self.focus = None;
+    }
+
+    /// Open with the button `index` (from the left) focused.
+    pub fn open_at(&mut self, index: usize) {
+        self.open();
+        self.focus = Some(index);
     }
 
     pub fn close(&mut self) {
@@ -189,12 +198,25 @@ impl LogView {
         }
         // Back closes it; so does select, except in the review, where it continues. Everything
         // else is swallowed by the host.
+        let buttons = header_buttons(data);
         if self.open {
             for command in commands(events) {
+                let at = self.focus.unwrap_or(usize::MAX).min(buttons.len() - 1);
                 match command {
-                    Command::Select if data.review.is_some() => {
+                    Command::Left | Command::Right => {
+                        let to = if command == Command::Left {
+                            at.saturating_sub(1)
+                        } else {
+                            (at + 1).min(buttons.len() - 1)
+                        };
+                        if to != at {
+                            self.focus = Some(to);
+                            shell.play(Cue::Move);
+                        }
+                    }
+                    Command::Select if buttons[at].action != LogAction::Close => {
                         shell.play(Cue::Select);
-                        actions.push(LogAction::OpenReport);
+                        actions.push(buttons[at].action);
                         break;
                     }
                     Command::Back | Command::Select => {
@@ -207,13 +229,14 @@ impl LogView {
                 }
             }
         }
+        let focus = self.focus.unwrap_or(usize::MAX).min(buttons.len() - 1);
         let mut clicked = None;
         let drawn = fullscreen_panel(
             ctx,
             "log-view",
             self.open,
             GlassStyle::log_panel(),
-            |ui, _| draw(ui, data, &mut clicked),
+            |ui, _| draw(ui, data, &buttons, focus, &mut clicked),
         );
         if drawn.is_none() {
             self.closing = false;
@@ -241,7 +264,63 @@ impl LogView {
     }
 }
 
-fn draw(ui: &mut Ui, data: &LogData<'_>, clicked: &mut Option<LogAction>) {
+/// One button of the header.
+struct HeaderButton<'a> {
+    action: LogAction,
+    label: &'a str,
+    icon: Icon,
+}
+
+/// The header's buttons from left to right: the view's own ways out and sideways come first, the
+/// main one (Close, or Open on GitHub in the review) is the last and holds the focus at first.
+fn header_buttons<'a>(data: &LogData<'a>) -> Vec<HeaderButton<'a>> {
+    let language = data.language;
+    let mut buttons = Vec::new();
+    if data.review.is_some() {
+        buttons.push(HeaderButton {
+            action: LogAction::Close,
+            label: language.text(Key::Cancel),
+            icon: Icon::X,
+        });
+        buttons.push(HeaderButton {
+            action: LogAction::SaveReport,
+            label: Extra::SaveReport.text(language),
+            icon: Icon::FILE_TEXT,
+        });
+        buttons.push(HeaderButton {
+            action: LogAction::OpenReport,
+            label: Share::ReportOpen.text(language),
+            icon: Icon::GITHUB_LOGO,
+        });
+    } else {
+        buttons.push(HeaderButton {
+            action: LogAction::OpenOnlineLog,
+            label: Extra::OpenOnlineLog.text(language),
+            icon: Icon::FILE_TEXT,
+        });
+        if data.game_name.is_some() {
+            buttons.push(HeaderButton {
+                action: LogAction::MakeReport,
+                label: Share::Report.text(language),
+                icon: Icon::STETHOSCOPE,
+            });
+        }
+        buttons.push(HeaderButton {
+            action: LogAction::Close,
+            label: language.text(Key::Close),
+            icon: Icon::X,
+        });
+    }
+    buttons
+}
+
+fn draw(
+    ui: &mut Ui,
+    data: &LogData<'_>,
+    buttons: &[HeaderButton<'_>],
+    focus: usize,
+    clicked: &mut Option<LogAction>,
+) {
     let language = data.language;
     let painter = ui.painter().clone();
     let area = ui.max_rect().shrink(pad::LOG);
@@ -270,60 +349,22 @@ fn draw(ui: &mut Ui, data: &LogData<'_>, clicked: &mut Option<LogAction>) {
             crate::ui::theme::color::text(),
         );
     }
-    let mut buttons = ui.new_child(
+    let mut buttons_ui = ui.new_child(
         UiBuilder::new()
             .max_rect(header)
             .layout(Layout::right_to_left(egui::Align::Center)),
     );
-    buttons.spacing_mut().item_spacing.x = 12.0;
+    buttons_ui.spacing_mut().item_spacing.x = 12.0;
     // Right to left: the main button first, then the others to its left.
-    if data.review.is_some() {
-        if ConsoleButton::new(Share::ReportOpen.text(language))
-            .icon(Icon::GITHUB_LOGO)
-            .focused(true)
-            .show(&mut buttons)
+    for (index, button) in buttons.iter().enumerate().rev() {
+        if ConsoleButton::new(button.label)
+            .icon(button.icon)
+            .focused(index == focus)
+            .show(&mut buttons_ui)
             .clicked()
         {
-            *clicked = Some(LogAction::OpenReport);
+            *clicked = Some(button.action);
         }
-        if ConsoleButton::new(Extra::SaveReport.text(language))
-            .icon(Icon::FILE_TEXT)
-            .show(&mut buttons)
-            .clicked()
-        {
-            *clicked = Some(LogAction::SaveReport);
-        }
-        if ConsoleButton::new(language.text(Key::Cancel))
-            .icon(Icon::X)
-            .show(&mut buttons)
-            .clicked()
-        {
-            *clicked = Some(LogAction::Close);
-        }
-    } else if ConsoleButton::new(language.text(Key::Close))
-        .icon(Icon::X)
-        .focused(true)
-        .show(&mut buttons)
-        .clicked()
-    {
-        *clicked = Some(LogAction::Close);
-    }
-    if data.review.is_none()
-        && data.game_name.is_some()
-        && ConsoleButton::new(Share::Report.text(language))
-            .icon(Icon::STETHOSCOPE)
-            .show(&mut buttons)
-            .clicked()
-    {
-        *clicked = Some(LogAction::MakeReport);
-    }
-    if data.review.is_none()
-        && ConsoleButton::new(Extra::OpenOnlineLog.text(language))
-            .icon(Icon::FILE_TEXT)
-            .show(&mut buttons)
-            .clicked()
-    {
-        *clicked = Some(LogAction::OpenOnlineLog);
     }
     y += header_h + 18.0;
 
@@ -374,6 +415,8 @@ fn draw(ui: &mut Ui, data: &LogData<'_>, clicked: &mut Option<LogAction>) {
     }
 
     // The log box.
+    // The hint bar: bottom right, as on every full-screen area (the 90 dp margin holds it).
+    crate::screens::footer_hints(ui, ui.max_rect(), language, HintSet::BASIC);
     let log_rect = Rect::from_min_max(pos2(area.min.x, y), area.max);
     paint_glass(ui.ctx(), &painter, log_rect, GlassStyle::log_box());
     let inner = log_rect.shrink(20.0);
@@ -629,6 +672,44 @@ mod tests {
         let toast = diagnosis_toast(&Diagnosis::GpuLost, "Stray", Language::English);
         assert!(toast.text.starts_with("Stray: "));
         assert_eq!(toast.icon, Icon::WARNING);
+    }
+
+    fn view(game: bool, review: bool) -> Vec<(LogAction, &'static str)> {
+        let data = LogData {
+            game_name: game.then_some("Ember Drift"),
+            diagnosis: None,
+            text: "",
+            language: Language::English,
+            review: review.then_some(ReviewData { hint: "" }),
+        };
+        header_buttons(&data)
+            .into_iter()
+            .map(|b| (b.action, b.label))
+            .collect()
+    }
+
+    #[test]
+    fn every_header_button_is_in_the_walk_and_the_main_one_is_last() {
+        assert_eq!(
+            view(true, false),
+            [
+                (LogAction::OpenOnlineLog, "Open Online Log"),
+                (LogAction::MakeReport, "Report a Problem"),
+                (LogAction::Close, "Close"),
+            ]
+        );
+        let no_game = view(false, false);
+        assert_eq!(no_game.len(), 2);
+        assert_eq!(no_game.last().map(|b| b.0), Some(LogAction::Close));
+        let review = view(true, true);
+        assert_eq!(
+            review.iter().map(|b| b.0).collect::<Vec<_>>(),
+            [
+                LogAction::Close,
+                LogAction::SaveReport,
+                LogAction::OpenReport
+            ]
+        );
     }
 
     #[test]
